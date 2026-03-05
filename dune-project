@@ -19,8 +19,32 @@
  (name nopal)
  (synopsis "A short synopsis")
  (description "A longer description")
- (depends ocaml)
+ (depends
+  (alcotest
+   (and
+    (>= 1.9.1)
+    :with-test))
+  ocaml)
  (tags
   ("add topics" "to describe" your project)))
 
-; See the complete stanza docs at https://dune.readthedocs.io/en/stable/reference/dune-project/index.html
+(package
+ (name nopal_element)
+ (synopsis "Pure element description types for Nopal")
+ (depends
+  (alcotest
+   (and
+    (>= 1.9.1)
+    :with-test))
+  ocaml))
+
+(package
+ (name nopal_mvu)
+ (synopsis "MVU architecture core for Nopal")
+ (depends
+  (alcotest
+   (and
+    (>= 1.9.1)
+    :with-test))
+  ocaml
+  nopal_element))

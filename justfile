@@ -3,6 +3,9 @@ default: build test fmt lint
 build:
     opam exec -- dune build
 
+build-native:
+    opam exec -- dune build lib/nopal_element lib/nopal_mvu
+
 run:
     opam exec -- dune exec nopal
 

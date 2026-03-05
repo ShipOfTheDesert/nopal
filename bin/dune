@@ -1,4 +1,5 @@
 (executable
  (public_name nopal)
+ (package nopal)
  (name main)
  (libraries nopal))
