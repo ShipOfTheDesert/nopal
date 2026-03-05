@@ -1,0 +1,34 @@
+name: PR
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+    branches:
+      - main
+
+# Cancel any previous runs of this workflow for the same PR.
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    if: contains(github.event.pull_request.labels.*.name, 'ready')
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: extractions/setup-just@v3
+        with:
+          just-version: '1.46.0'
+      - uses: ./.github/actions/ocaml-deps
+
+      - name: Build
+        run: just build
+
+      - name: Test
+        run: just test

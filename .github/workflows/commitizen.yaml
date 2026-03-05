@@ -1,0 +1,23 @@
+name: commitizen
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  commitizen:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: Homebrew/actions/setup-homebrew@master
+      - name: Install Commitizen
+        run: |
+          brew install commitizen
+
+      - name: Run Commitizen
+        run: |
+          cz check --rev-range ${{ github.event.pull_request.head.sha }}~${{ github.event.pull_request.commits }}..${{ github.event.pull_request.head.sha }}

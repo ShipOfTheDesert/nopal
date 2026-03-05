@@ -1,0 +1,21 @@
+{
+  "commitizen": {
+    "name": "cz_customize",
+    "tag_format": "v$version",
+    "version_scheme": "semver",
+    "version_provider": "scm",
+    "customize": {
+      "bump_pattern": "^(BREAKING CHANGE|feat|fix|ci|test|refactor|chore|docs)",
+      "bump_map": {
+        "BREAKING CHANGE": "MAJOR",
+        "feat": "MINOR",
+        "fix": "PATCH",
+        "ci": "PATCH",
+        "test": "PATCH",
+        "refactor": "PATCH",
+        "chore": "PATCH"
+      },
+      "schema_pattern": "^(BREAKING CHANGE|feat|fix|ci|test|refactor|chore|docs|style|revert|utils)(\\(\\S+\\))?\\:?\\s.*"
+    }
+  }
+}
