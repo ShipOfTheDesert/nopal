@@ -1,0 +1,30 @@
+name: ocaml-deps
+description: Install OCaml dependencies
+
+runs:
+  using: "composite"
+
+  steps:
+    - uses: ocaml/setup-ocaml@v3
+      with:
+        ocaml-compiler: 5.3.0
+        dune-cache: true
+        dune-cache-prefix: v1
+        opam-disable-sandboxing: true
+
+    - name: Update opam
+      uses: nick-fields/retry@v3
+      with:
+        timeout_minutes: 10
+        max_attempts: 5
+        command: |
+          opam update
+        shell: bash
+
+    - name: Install dependencies
+      uses: nick-fields/retry@v3
+      with:
+        timeout_minutes: 5
+        max_attempts: 3
+        command: opam install -y --deps-only -t .
+        shell: bash

@@ -1,0 +1,5 @@
+profile = default
+version = 0.28.1
+
+break-cases=all
+break-infix=wrap-or-vertical
