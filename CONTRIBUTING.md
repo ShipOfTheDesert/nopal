@@ -36,7 +36,7 @@ nopal_style        ← no platform deps
 nopal_router       ← no platform deps
 nopal_runtime      ← depends on mvu + element + lwd
 nopal_web          ← depends on runtime + brr + js_of_ocaml
-nopal_test         ← depends on element only (must build on native OCaml)
+nopal_test         ← depends on element + style + mvu (must build on native OCaml)
 ```
 
 A module is acceptable when it is:

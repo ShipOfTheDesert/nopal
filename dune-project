@@ -59,3 +59,16 @@
     :with-test))
   ocaml
   nopal_element))
+
+(package
+ (name nopal_test)
+ (synopsis "Pure structural test renderer for Nopal")
+ (depends
+  (alcotest
+   (and
+    (>= 1.9.1)
+    :with-test))
+  ocaml
+  nopal_element
+  nopal_style
+  nopal_mvu))
