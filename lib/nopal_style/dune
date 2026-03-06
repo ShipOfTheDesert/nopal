@@ -1,0 +1,3 @@
+(library
+ (name nopal_style)
+ (public_name nopal_style))

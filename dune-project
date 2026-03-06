@@ -29,6 +29,16 @@
   ("add topics" "to describe" your project)))
 
 (package
+ (name nopal_style)
+ (synopsis "Typed style properties for Nopal")
+ (depends
+  (alcotest
+   (and
+    (>= 1.9.1)
+    :with-test))
+  ocaml))
+
+(package
  (name nopal_element)
  (synopsis "Pure element description types for Nopal")
  (depends
@@ -36,7 +46,8 @@
    (and
     (>= 1.9.1)
     :with-test))
-  ocaml))
+  ocaml
+  nopal_style))
 
 (package
  (name nopal_mvu)

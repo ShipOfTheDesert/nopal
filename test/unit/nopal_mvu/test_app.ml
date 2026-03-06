@@ -35,7 +35,16 @@ let app_module_roundtrip () =
     "view returns Empty" true
     (match elem with
     | Nopal_element.Element.Empty -> true
-    | Nopal_element.Element.Text _ -> false);
+    | Nopal_element.Element.Text _
+    | Nopal_element.Element.Box _
+    | Nopal_element.Element.Row _
+    | Nopal_element.Element.Column _
+    | Nopal_element.Element.Button _
+    | Nopal_element.Element.Input _
+    | Nopal_element.Element.Image _
+    | Nopal_element.Element.Scroll _
+    | Nopal_element.Element.Keyed _ ->
+        false);
   let sub = Counter.subscriptions model in
   let keys = Sub.keys sub in
   Alcotest.(check int)
