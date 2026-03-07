@@ -161,6 +161,27 @@ let test_sub_map_batch () =
   let ks = Nopal_mvu.Sub.keys mapped in
   Alcotest.(check (list string)) "map preserves batch keys" [ "a"; "b" ] ks
 
+let test_sub_extract_customs_batch () =
+  let setup_a _dispatch = fun () -> () in
+  let setup_b _dispatch = fun () -> () in
+  let sub =
+    Nopal_mvu.Sub.batch
+      [
+        Nopal_mvu.Sub.custom "a" setup_a;
+        Nopal_mvu.Sub.every "tick" 1000 (fun () -> 0);
+        Nopal_mvu.Sub.custom "b" setup_b;
+      ]
+  in
+  let customs = Nopal_mvu.Sub.extract_customs sub in
+  let keys = List.map fst customs in
+  Alcotest.(check (list string))
+    "extract_customs finds customs in batch" [ "a"; "b" ] keys
+
+let test_sub_extract_customs_none () =
+  let customs = Nopal_mvu.Sub.extract_customs Nopal_mvu.Sub.none in
+  Alcotest.(check (list string))
+    "extract_customs of none is empty" [] (List.map fst customs)
+
 (* sub_is_opaque: REQ-F17 is enforced at compile time by sub.mli.
    User code cannot pattern-match on Sub.t because the type is abstract. *)
 
@@ -200,5 +221,9 @@ let () =
             test_sub_map_on_visibility_change;
           Alcotest.test_case "map custom" `Quick test_sub_map_custom;
           Alcotest.test_case "map batch" `Quick test_sub_map_batch;
+          Alcotest.test_case "extract_customs batch" `Quick
+            test_sub_extract_customs_batch;
+          Alcotest.test_case "extract_customs none" `Quick
+            test_sub_extract_customs_none;
         ] );
     ]

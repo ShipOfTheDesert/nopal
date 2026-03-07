@@ -1,0 +1,4 @@
+(library
+ (name nopal_runtime)
+ (public_name nopal_runtime)
+ (libraries nopal_mvu nopal_element lwd))
