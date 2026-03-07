@@ -39,6 +39,13 @@ lint-opam:
 
 lint: lint-doc lint-fmt lint-opam
 
+# Examples
+
+serve-counter: build
+    @echo "Serving counter at http://localhost:8000"
+    @ln -sf ../../_build/default/examples/counter/main.bc.js examples/counter/main.bc.js
+    python3 -m http.server 8000 -d examples/counter
+
 # Versioning
 
 version:
