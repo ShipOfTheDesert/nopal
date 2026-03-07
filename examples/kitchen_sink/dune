@@ -1,0 +1,5 @@
+(executable
+ (name main)
+ (libraries nopal_element nopal_mvu nopal_router nopal_runtime nopal_web)
+ (modes js)
+ (js_of_ocaml))

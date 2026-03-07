@@ -74,6 +74,17 @@
   lwd))
 
 (package
+ (name nopal_router)
+ (synopsis "Type-safe bidirectional router for Nopal")
+ (depends
+  (alcotest
+   (and
+    (>= 1.9.1)
+    :with-test))
+  ocaml
+  nopal_mvu))
+
+(package
  (name nopal_test)
  (synopsis "Pure structural test renderer for Nopal")
  (depends
@@ -99,6 +110,7 @@
   nopal_element
   nopal_style
   nopal_mvu
+  nopal_router
   lwd
   brr
   js_of_ocaml))
