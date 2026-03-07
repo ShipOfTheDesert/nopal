@@ -102,6 +102,29 @@ let test_cmd_map_none () =
   Nopal_mvu.Cmd.execute dispatch mapped;
   Alcotest.(check (list int)) "map none dispatches nothing" [] !results
 
+let test_cmd_interpret_single_pass () =
+  let dispatched = ref [] in
+  let scheduled = ref [] in
+  let cmd =
+    Nopal_mvu.Cmd.batch
+      [
+        Nopal_mvu.Cmd.perform (fun d -> d "hello");
+        Nopal_mvu.Cmd.after 300 "delayed";
+        Nopal_mvu.Cmd.task (fun d -> d "async");
+        Nopal_mvu.Cmd.none;
+      ]
+  in
+  Nopal_mvu.Cmd.interpret
+    ~dispatch:(fun msg -> dispatched := msg :: !dispatched)
+    ~schedule_after:(fun ms msg -> scheduled := (ms, msg) :: !scheduled)
+    cmd;
+  Alcotest.(check (list string))
+    "dispatched perform and task" [ "async"; "hello" ] !dispatched;
+  Alcotest.(check (list (pair int string)))
+    "scheduled after"
+    [ (300, "delayed") ]
+    !scheduled
+
 let test_cmd_batch_deep_nesting () =
   let results = ref [] in
   let dispatch msg = results := msg :: !results in
@@ -136,5 +159,7 @@ let () =
           Alcotest.test_case "map none" `Quick test_cmd_map_none;
           Alcotest.test_case "batch deep nesting" `Quick
             test_cmd_batch_deep_nesting;
+          Alcotest.test_case "interpret single pass" `Quick
+            test_cmd_interpret_single_pass;
         ] );
     ]

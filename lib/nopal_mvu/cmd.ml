@@ -43,3 +43,10 @@ let extract_after = function
   | Perform _
   | Task _ ->
       Option.none
+
+let rec interpret ~dispatch ~schedule_after = function
+  | None -> ()
+  | Batch cmds -> List.iter (interpret ~dispatch ~schedule_after) cmds
+  | Perform f -> f dispatch
+  | Task f -> f dispatch
+  | After { ms; msg } -> schedule_after ms msg

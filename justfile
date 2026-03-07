@@ -4,7 +4,7 @@ build:
     opam exec -- dune build
 
 build-native:
-    opam exec -- dune build lib/nopal_style lib/nopal_element lib/nopal_mvu lib/nopal_test
+    opam exec -- dune build lib/nopal_style lib/nopal_element lib/nopal_mvu lib/nopal_test lib/nopal_runtime
 
 run:
     opam exec -- dune exec nopal

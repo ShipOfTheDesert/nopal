@@ -118,3 +118,15 @@ let extract_custom = function
   | On_resize _
   | On_visibility_change _ ->
       Option.none
+
+let rec extract_customs sub =
+  match sub with
+  | None -> []
+  | Batch subs -> List.concat_map extract_customs subs
+  | Custom { key; setup } -> [ (key, setup) ]
+  | Every _
+  | On_keydown _
+  | On_keyup _
+  | On_resize _
+  | On_visibility_change _ ->
+      []

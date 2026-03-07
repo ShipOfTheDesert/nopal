@@ -80,8 +80,24 @@ val map : ('a -> 'b) -> 'a t -> 'b t
 
 val execute : 'msg dispatch -> 'msg t -> unit
 (** [execute dispatch cmd] interprets a command tree, calling [dispatch] for
-    each message produced. Used by the runtime. *)
+    each message produced. Ignores [after] nodes — use {!interpret} when [after]
+    must be handled via a platform scheduler. Useful in tests that don't need
+    scheduling. *)
 
 val extract_after : 'msg t -> (int * 'msg) option
 (** [extract_after cmd] extracts the delay and message from an [after] command.
     Returns [None] if [cmd] is not an [after]. *)
+
+val interpret :
+  dispatch:'msg dispatch ->
+  schedule_after:(int -> 'msg -> unit) ->
+  'msg t ->
+  unit
+(** [interpret ~dispatch ~schedule_after cmd] processes the entire command tree
+    in a single pass. [Perform] and [Task] nodes are executed with [dispatch].
+    [After] nodes are passed to [schedule_after]. [None] is ignored.
+
+    Note: [schedule_after] receives the raw message (['msg]), not a callback.
+    The runtime wraps this to produce the [(int -> (unit -> unit) -> unit)]
+    signature expected by platform schedulers (adding lifecycle guards before
+    dispatching). *)

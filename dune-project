@@ -61,6 +61,19 @@
   nopal_element))
 
 (package
+ (name nopal_runtime)
+ (synopsis "Platform-agnostic MVU runtime for Nopal")
+ (depends
+  (alcotest
+   (and
+    (>= 1.9.1)
+    :with-test))
+  ocaml
+  nopal_mvu
+  nopal_element
+  lwd))
+
+(package
  (name nopal_test)
  (synopsis "Pure structural test renderer for Nopal")
  (depends

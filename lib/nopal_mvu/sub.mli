@@ -67,3 +67,7 @@ val extract_on_visibility_change : 'msg t -> (bool -> 'msg) option
 val extract_custom : 'msg t -> ('msg dispatch -> unit -> unit) option
 (** [extract_custom sub] extracts the setup function from a [custom]
     subscription. Returns [None] if [sub] is not a [custom]. *)
+
+val extract_customs : 'msg t -> (string * ('msg dispatch -> unit -> unit)) list
+(** [extract_customs sub] flattens [sub] and returns all [custom] entries as
+    [(key, setup)] pairs. Traverses [batch] nodes recursively. *)
