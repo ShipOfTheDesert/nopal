@@ -1,0 +1,11 @@
+(library
+ (name nopal_web)
+ (public_name nopal_web)
+ (libraries
+  nopal_runtime
+  nopal_element
+  nopal_style
+  nopal_mvu
+  lwd
+  brr
+  js_of_ocaml))

@@ -85,3 +85,20 @@
   nopal_element
   nopal_style
   nopal_mvu))
+
+(package
+ (name nopal_web)
+ (synopsis "Web renderer backend for Nopal")
+ (depends
+  (alcotest
+   (and
+    (>= 1.9.1)
+    :with-test))
+  ocaml
+  nopal_runtime
+  nopal_element
+  nopal_style
+  nopal_mvu
+  lwd
+  brr
+  js_of_ocaml))

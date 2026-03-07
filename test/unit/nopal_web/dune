@@ -1,0 +1,31 @@
+(test
+ (name test_style_css)
+ (package nopal_web)
+ (libraries nopal_web nopal_style alcotest)
+ (modes js)
+ (js_of_ocaml))
+
+; dom_shim.js provides a minimal fake DOM (document, window, Event, etc.)
+; so that Brr-based renderer tests can run under Node.js via js_of_ocaml
+; without a headless browser. It covers element creation, child manipulation,
+; event dispatch, and style proxying — not layout or rendering.
+
+(test
+ (name test_nopal_web)
+ (package nopal_web)
+ (libraries
+  nopal_web
+  nopal_element
+  nopal_style
+  nopal_runtime
+  nopal_mvu
+  alcotest
+  brr
+  js_of_ocaml)
+ (modes js)
+ (js_of_ocaml
+  (javascript_files dom_shim.js)))
+
+(test
+ (name test_structural)
+ (libraries counter nopal_test nopal_element nopal_mvu alcotest))

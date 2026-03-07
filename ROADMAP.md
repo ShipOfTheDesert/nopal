@@ -59,3 +59,40 @@ advance the virtual clock by 3000ms, assert that 3 `Tick` messages were
 dispatched and the model reflects them." Or: "Given an app that issues
 `Cmd.async fetch_data`, resolve the pending command with `Ok data`, assert
 the model updated correctly."
+
+### Split `align` Type in `nopal_style`
+
+**Package:** `nopal_style`
+
+The `align` type is shared between `main_align` (maps to `justify-content`) and
+`cross_align` (maps to `align-items`). `Space_between` is valid for
+`justify-content` but not for `align-items` — CSS silently ignores it. Either
+split into `main_align` and `cross_align` types (where only `main_align` carries
+`Space_between`), or validate at construction time.
+
+## Performance
+
+Performance-related improvements tracked here. None of these are regressions —
+they are optimisation opportunities identified during code review.
+
+### `of_style` Per-Field Comparison
+
+**Package:** `nopal_web` (`style_css.ml`)
+
+`of_style` uses a fast-path check comparing the entire `layout`/`paint` record
+against defaults. When any single field differs, all fields in that record are
+evaluated. For example, setting only `gap = 10.` also evaluates direction,
+alignment, wrap, padding, width, height, and flex_grow. A per-field comparison
+would emit only the properties that actually differ from defaults, avoiding
+redundant CSS output and unnecessary string formatting.
+
+### Keyed Reconciliation: Skip Reordering When Order Unchanged
+
+**Package:** `nopal_web` (`renderer.ml`)
+
+`reconcile_keyed_children` calls `appendChild` for every child in the new list
+to ensure correct DOM order. `appendChild` on an already-present child moves it,
+so this is correct, but it performs O(n) DOM operations even when the order has
+not changed. Comparing the old key order against the new key order before
+touching the DOM would skip reordering entirely in the common case (e.g., only
+content within keyed items changed, no reorder).

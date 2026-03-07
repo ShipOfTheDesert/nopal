@@ -1,0 +1,11 @@
+(library
+ (name counter)
+ (modules counter)
+ (libraries nopal_mvu nopal_element))
+
+(executable
+ (name main)
+ (modules main)
+ (libraries counter nopal_web nopal_mvu brr)
+ (modes js)
+ (js_of_ocaml))
