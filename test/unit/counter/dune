@@ -1,0 +1,7 @@
+(test
+ (name test_counter)
+ (libraries counter nopal_test nopal_element nopal_mvu alcotest))
+
+(test
+ (name test_counter_app)
+ (libraries counter nopal_test nopal_element nopal_mvu alcotest))
