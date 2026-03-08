@@ -46,6 +46,11 @@ serve-counter: build
     @ln -sf ../../_build/default/examples/counter/main.bc.js examples/counter/main.bc.js
     python3 -m http.server 8000 -d examples/counter
 
+serve-kitchen: build
+    @echo "Serving kitchen sink at http://localhost:8000"
+    @ln -sf ../../_build/default/examples/kitchen_sink/main.bc.js examples/kitchen_sink/main.bc.js
+    python3 -m http.server 8000 -d examples/kitchen_sink
+
 # Versioning
 
 version:

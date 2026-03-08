@@ -1,63 +1,26 @@
 open Nopal_test.Test_renderer
-module E = Nopal_element.Element
+open Kitchen_sink_app
 
-type route = Home | About | Item of int | NotFound
+let make_test_router () =
+  let platform =
+    (module struct
+      let current_path () = "/"
+      let push_state _ = ()
+      let replace_state _ = ()
+      let back () = ()
+      let on_popstate _ = fun () -> ()
+    end : Nopal_router.Platform.S)
+  in
+  Nopal_router.Router.create ~platform ~parse ~to_path ~not_found:NotFound
 
-module Kitchen_sink_routing = struct
-  type model = { current_route : route }
-  type msg = Navigate_to of route | Route_changed of route
-
-  let init () = ({ current_route = Home }, Nopal_mvu.Cmd.none)
-
-  let update _model = function
-    | Navigate_to route -> ({ current_route = route }, Nopal_mvu.Cmd.none)
-    | Route_changed route -> ({ current_route = route }, Nopal_mvu.Cmd.none)
-
-  let view_for_route = function
-    | Home ->
-        E.column
-          [
-            E.text "Home Page";
-            E.button ~on_click:(Navigate_to About) (E.text "Go to About");
-            E.button ~on_click:(Navigate_to (Item 1)) (E.text "Go to Item 1");
-          ]
-    | About ->
-        E.column
-          [
-            E.text "About Page";
-            E.button ~on_click:(Navigate_to Home) (E.text "Go Home");
-          ]
-    | Item id ->
-        E.column
-          [
-            E.text ("Item " ^ string_of_int id);
-            E.button ~on_click:(Navigate_to Home) (E.text "Go Home");
-          ]
-    | NotFound ->
-        E.column
-          [
-            E.text "Page Not Found";
-            E.button ~on_click:(Navigate_to Home) (E.text "Go Home");
-          ]
-
-  let view model =
-    E.column
-      [
-        E.text "Routing Demo";
-        E.row
-          [
-            E.button ~on_click:(Navigate_to Home) (E.text "Home");
-            E.button ~on_click:(Navigate_to About) (E.text "About");
-            E.button ~on_click:(Navigate_to (Item 42)) (E.text "Item 42");
-          ];
-        view_for_route model.current_route;
-      ]
-end
+let router = make_test_router ()
+let test_init = init router
+let test_update = update
+let test_view = view
 
 let test_home_view () =
   let _model, rendered =
-    run_app ~init:Kitchen_sink_routing.init ~update:Kitchen_sink_routing.update
-      ~view:Kitchen_sink_routing.view []
+    run_app ~init:test_init ~update:test_update ~view:test_view []
   in
   let t = tree rendered in
   let home_text = find (By_text "Home Page") t in
@@ -67,9 +30,8 @@ let test_home_view () =
 
 let test_about_view () =
   let _model, rendered =
-    run_app ~init:Kitchen_sink_routing.init ~update:Kitchen_sink_routing.update
-      ~view:Kitchen_sink_routing.view
-      [ Kitchen_sink_routing.Navigate_to About ]
+    run_app ~init:test_init ~update:test_update ~view:test_view
+      [ Navigate_to About ]
   in
   let t = tree rendered in
   let about_text = find (By_text "About Page") t in
@@ -81,9 +43,8 @@ let test_about_view () =
 
 let test_item_view () =
   let _model, rendered =
-    run_app ~init:Kitchen_sink_routing.init ~update:Kitchen_sink_routing.update
-      ~view:Kitchen_sink_routing.view
-      [ Kitchen_sink_routing.Navigate_to (Item 7) ]
+    run_app ~init:test_init ~update:test_update ~view:test_view
+      [ Navigate_to (Item 7) ]
   in
   let t = tree rendered in
   let item_text = find (By_text "Item 7") t in
@@ -91,9 +52,8 @@ let test_item_view () =
 
 let test_not_found_view () =
   let _model, rendered =
-    run_app ~init:Kitchen_sink_routing.init ~update:Kitchen_sink_routing.update
-      ~view:Kitchen_sink_routing.view
-      [ Kitchen_sink_routing.Route_changed NotFound ]
+    run_app ~init:test_init ~update:test_update ~view:test_view
+      [ Route_changed NotFound ]
   in
   let t = tree rendered in
   let nf_text = find (By_text "Page Not Found") t in
@@ -101,8 +61,7 @@ let test_not_found_view () =
 
 let test_nav_bar_present () =
   let _model, rendered =
-    run_app ~init:Kitchen_sink_routing.init ~update:Kitchen_sink_routing.update
-      ~view:Kitchen_sink_routing.view []
+    run_app ~init:test_init ~update:test_update ~view:test_view []
   in
   let t = tree rendered in
   let title = find (By_text "Routing Demo") t in
@@ -118,53 +77,22 @@ let test_nav_bar_present () =
 
 let test_navigation_updates_view () =
   let model, _rendered =
-    run_app ~init:Kitchen_sink_routing.init ~update:Kitchen_sink_routing.update
-      ~view:Kitchen_sink_routing.view
-      [
-        Kitchen_sink_routing.Navigate_to About;
-        Kitchen_sink_routing.Navigate_to (Item 3);
-      ]
+    run_app ~init:test_init ~update:test_update ~view:test_view
+      [ Navigate_to About; Navigate_to (Item 3) ]
   in
   Alcotest.(check bool)
     "model ends on Item 3" true
     (match model.current_route with
     | Item 3 -> true
-    | _ -> false)
+    | Home
+    | About
+    | Item _
+    | NotFound ->
+        false)
 
 let test_subscriptions_returns_on_navigate () =
-  let platform, _controls =
-    let current = ref "/" in
-    let popstate_listener : (string -> unit) option ref = ref None in
-    let p =
-      (module struct
-        let current_path () = !current
-        let push_state path = current := path
-        let replace_state path = current := path
-        let back () = ()
-
-        let on_popstate callback =
-          popstate_listener := Some callback;
-          fun () -> popstate_listener := None
-      end : Nopal_router.Platform.S)
-    in
-    (p, ())
-  in
-  let router =
-    Nopal_router.Router.create ~platform
-      ~parse:(function
-        | "/" -> Some Home
-        | "/about" -> Some About
-        | _ -> None)
-      ~to_path:(function
-        | Home -> "/"
-        | About -> "/about"
-        | Item _ -> "/items/0"
-        | NotFound -> "/not-found")
-      ~not_found:NotFound
-  in
   let sub =
-    Nopal_router.Router.on_navigate router (fun route ->
-        Kitchen_sink_routing.Route_changed route)
+    Nopal_router.Router.on_navigate router (fun route -> Route_changed route)
   in
   let extracted = Nopal_mvu.Sub.extract_custom sub in
   Alcotest.(check bool)

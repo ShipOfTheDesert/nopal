@@ -28,8 +28,18 @@ if (typeof globalThis.window === "undefined") {
         }
       },
     },
-    addEventListener: function () {},
-    removeEventListener: function () {},
+    _listeners: {},
+    addEventListener: function (type, fn) {
+      if (!this._listeners[type]) this._listeners[type] = [];
+      this._listeners[type].push(fn);
+    },
+    removeEventListener: function (type, fn) {
+      if (!this._listeners[type]) return;
+      this._listeners[type] = this._listeners[type].filter(function (f) { return f !== fn; });
+    },
+    _getListenerCount: function (type) {
+      return (this._listeners[type] || []).length;
+    },
   };
 
   globalThis.location = loc;
