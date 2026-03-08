@@ -1,0 +1,10 @@
+(tests
+ (names test_nopal_router test_kitchen_sink_routing)
+ (package nopal_router)
+ (libraries
+  nopal_router
+  nopal_mvu
+  nopal_element
+  nopal_test
+  kitchen_sink_app
+  alcotest))

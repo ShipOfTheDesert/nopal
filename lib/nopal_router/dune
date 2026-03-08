@@ -1,0 +1,4 @@
+(library
+ (name nopal_router)
+ (public_name nopal_router)
+ (libraries nopal_mvu))

@@ -21,3 +21,6 @@ module Style_css = Style_css
 
 module Renderer = Renderer
 (** Re-exported for direct access. *)
+
+module Platform_web = Platform_web
+(** Web platform navigation via the browser History API. *)

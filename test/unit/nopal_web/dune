@@ -29,3 +29,11 @@
 (test
  (name test_structural)
  (libraries counter nopal_test nopal_element nopal_mvu alcotest))
+
+(test
+ (name test_platform_web)
+ (package nopal_web)
+ (libraries nopal_web alcotest)
+ (modes js)
+ (js_of_ocaml
+  (javascript_files browser_shim.js)))

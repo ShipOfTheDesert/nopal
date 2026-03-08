@@ -1,5 +1,6 @@
 module Style_css = Style_css
 module Renderer = Renderer
+module Platform_web = Platform_web
 
 let schedule_after ms callback =
   let w = Jv.get Jv.global "window" in
