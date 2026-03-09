@@ -1,0 +1,11 @@
+(library
+ (name jsfb)
+ (modules jsfb)
+ (libraries nopal_mvu nopal_element nopal_style))
+
+(executable
+ (name main)
+ (modules main)
+ (libraries jsfb nopal_web nopal_runtime lwd brr)
+ (modes js)
+ (js_of_ocaml))

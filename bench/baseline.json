@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "timestamp": "2026-03-09T07:28:39.599Z",
+  "runner": "local",
+  "metrics": {
+    "jsfb/create_1000": {
+      "value": 123.79999999701977,
+      "unit": "ms"
+    },
+    "jsfb/replace_1000": {
+      "value": 156.90000000223517,
+      "unit": "ms"
+    },
+    "jsfb/partial_update": {
+      "value": 173,
+      "unit": "ms"
+    },
+    "jsfb/select_row": {
+      "value": 173.69999999925494,
+      "unit": "ms"
+    },
+    "jsfb/swap_rows": {
+      "value": 154.19999999925494,
+      "unit": "ms"
+    },
+    "jsfb/remove_row": {
+      "value": 169.39999999850988,
+      "unit": "ms"
+    },
+    "jsfb/create_10000": {
+      "value": 385.1000000014901,
+      "unit": "ms"
+    },
+    "jsfb/append_1000": {
+      "value": 205.80000000074506,
+      "unit": "ms"
+    },
+    "jsfb/clear_rows": {
+      "value": 136.19999999925494,
+      "unit": "ms"
+    },
+    "custom/incremental_update_1000": {
+      "value": 0.30000000074505806,
+      "unit": "ms"
+    },
+    "custom/message_throughput_10000": {
+      "value": 5.100000001490116,
+      "unit": "ms"
+    },
+    "bundle/main_bc_js": {
+      "value": 3106310,
+      "unit": "bytes"
+    }
+  }
+}

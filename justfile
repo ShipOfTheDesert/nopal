@@ -56,6 +56,21 @@ serve-kitchen: build
     @cp examples/kitchen_sink/index.html _build/default/examples/kitchen_sink/
     python3 -m http.server 8000 -d _build/default/examples/kitchen_sink
 
+# Benchmarks
+
+bench: build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd bench/runner
+    npm ci --silent
+    npx playwright install --with-deps chromium
+    npx playwright test
+    npx tsx bundle-size.ts
+    npx tsx collect.ts
+
+bench-compare: bench
+    npx tsx bench/runner/compare.ts
+
 # Versioning
 
 version:
