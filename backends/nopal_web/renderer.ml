@@ -302,6 +302,42 @@ let set_data_key live key =
         (Jv.call jv "setAttribute"
            [| Jv.of_string "data-key"; Jv.of_string key |])
 
+let equal_attrs a1 a2 =
+  a1 == a2
+  || List.equal
+       (fun (k1, v1) (k2, v2) -> String.equal k1 k2 && String.equal v1 v2)
+       a1 a2
+
+let attrs_of (el : 'msg Nopal_element.Element.t) =
+  match el with
+  | Box { attrs; _ }
+  | Row { attrs; _ }
+  | Column { attrs; _ }
+  | Button { attrs; _ }
+  | Input { attrs; _ } ->
+      attrs
+  | Empty
+  | Text _
+  | Image _
+  | Scroll _
+  | Keyed _ ->
+      []
+
+let maybe_apply_attrs el old_element new_element =
+  let old_attrs = attrs_of old_element in
+  let new_attrs = attrs_of new_element in
+  if not (equal_attrs old_attrs new_attrs) then (
+    (* Remove attrs present in old but absent in new *)
+    List.iter
+      (fun (k, _) ->
+        if not (List.exists (fun (k2, _) -> String.equal k k2) new_attrs) then
+          Brr.El.set_at (Jstr.v k) None el)
+      old_attrs;
+    (* Set new/changed attrs *)
+    List.iter
+      (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
+      new_attrs)
+
 let style_of (el : 'msg Nopal_element.Element.t) =
   match el with
   | Box { style; _ }
@@ -439,44 +475,59 @@ and reconcile_node ~dispatch (old_n : 'msg live_node)
   let el = old_n.dom in
   maybe_apply_style el old_n.element new_el;
   (match new_el with
-  | Box { attrs; children; _ }
-  | Row { attrs; children; _ }
-  | Column { attrs; children; _ } ->
-      List.iter
-        (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
-        attrs;
+  | Box { children; _ }
+  | Row { children; _ }
+  | Column { children; _ } ->
+      maybe_apply_attrs el old_n.element new_el;
       old_n.children <- reconcile_children ~dispatch el old_n.children children
-  | Button { attrs; on_click; on_dblclick; child; _ } ->
-      List.iter
-        (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
-        attrs;
+  | Button { on_click; on_dblclick; child; _ } ->
+      maybe_apply_attrs el old_n.element new_el;
       unlisten_all old_n.listeners;
       old_n.listeners <-
         wire_click ~dispatch el on_click
         @ wire_dblclick ~dispatch el on_dblclick;
       old_n.children <- reconcile_children ~dispatch el old_n.children [ child ]
-  | Input
-      {
-        attrs;
-        value;
-        placeholder;
-        on_change;
-        on_submit;
-        on_blur;
-        on_keydown;
-        _;
-      } ->
+  | Input { value; placeholder; on_change; on_submit; on_blur; on_keydown; _ }
+    ->
       Jv.set (Brr.El.to_jv el) "value" (Jv.of_string value);
-      Brr.El.set_at (Jstr.v "placeholder") (Some (Jstr.v placeholder)) el;
-      List.iter
-        (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
-        attrs;
+      (match old_n.element with
+      | Input { placeholder = old_ph; _ } ->
+          if not (String.equal old_ph placeholder) then
+            Brr.El.set_at (Jstr.v "placeholder") (Some (Jstr.v placeholder)) el
+      | Empty
+      | Text _
+      | Box _
+      | Row _
+      | Column _
+      | Button _
+      | Image _
+      | Scroll _
+      | Keyed _ ->
+          Brr.El.set_at (Jstr.v "placeholder") (Some (Jstr.v placeholder)) el);
+      maybe_apply_attrs el old_n.element new_el;
       unlisten_all old_n.listeners;
       old_n.listeners <-
         wire_input_events ~dispatch el on_change on_submit on_blur on_keydown
-  | Image { src; alt; _ } ->
-      Brr.El.set_at (Jstr.v "src") (Some (Jstr.v src)) el;
-      Brr.El.set_at (Jstr.v "alt") (Some (Jstr.v alt)) el
+  | Image { src; alt; _ } -> (
+      match old_n.element with
+      | Image { src = old_src; alt = old_alt; _ } ->
+          if not (String.equal old_src src) then
+            Brr.El.set_at (Jstr.v "src") (Some (Jstr.v src)) el;
+          if not (String.equal old_alt alt) then
+            Brr.El.set_at (Jstr.v "alt") (Some (Jstr.v alt)) el
+      | Empty
+      | Text _
+      | Box _
+      | Row _
+      | Column _
+      | Button _
+      | Input _
+      | Scroll _
+      | Keyed _ ->
+          (* Unreachable: reconcile_node is only called when same_variant
+             returns true, so old_n.element is always Image here *)
+          Brr.El.set_at (Jstr.v "src") (Some (Jstr.v src)) el;
+          Brr.El.set_at (Jstr.v "alt") (Some (Jstr.v alt)) el)
   | Scroll { child; _ } ->
       old_n.children <- reconcile_children ~dispatch el old_n.children [ child ]
   | Empty
