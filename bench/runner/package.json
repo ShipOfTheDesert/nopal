@@ -1,0 +1,9 @@
+{
+  "name": "nopal-bench-runner",
+  "private": true,
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "serve": "^14.2.0",
+    "tsx": "^4.0.0"
+  }
+}

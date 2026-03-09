@@ -1,0 +1,59 @@
+name: bench
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: extractions/setup-just@v3
+        with:
+          just-version: "1.46.0"
+      - uses: ./.github/actions/ocaml-deps
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Playwright browsers
+        run: |
+          cd bench/runner
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run benchmarks and compare
+        run: just bench-compare
+
+      - name: Report bundle size
+        if: always()
+        run: |
+          if [ -f bench/results.json ]; then
+            echo "## Bundle Size" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            node -e "
+              const r = require('./bench/results.json');
+              const entries = Object.entries(r.metrics)
+                .filter(([k]) => k.startsWith('bundle/'));
+              if (entries.length === 0) {
+                console.log('No bundle metrics found.');
+              } else {
+                console.log('| Metric | Value | Unit |');
+                console.log('|--------|------:|------|');
+                for (const [k, v] of entries) {
+                  console.log('| ' + k + ' | ' + v.value.toFixed(2) + ' | ' + v.unit + ' |');
+                }
+              }
+            " >> "$GITHUB_STEP_SUMMARY"
+          fi

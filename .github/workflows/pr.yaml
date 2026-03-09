@@ -6,7 +6,7 @@ on:
       - opened
       - synchronize
       - reopened
-      - labeled
+      - ready_for_review
     branches:
       - main
 
@@ -18,7 +18,7 @@ concurrency:
 jobs:
   unit-tests:
     runs-on: ubuntu-latest
-    if: contains(github.event.pull_request.labels.*.name, 'ready')
+    if: "!github.event.pull_request.draft"
 
     steps:
       - uses: actions/checkout@v6
