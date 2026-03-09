@@ -5,21 +5,25 @@ type 'msg t =
   | Text of string
   | Box of {
       style : Nopal_style.Style.t;
+      interaction : Nopal_style.Interaction.t;
       attrs : (string * string) list;
       children : 'msg t list;
     }
   | Row of {
       style : Nopal_style.Style.t;
+      interaction : Nopal_style.Interaction.t;
       attrs : (string * string) list;
       children : 'msg t list;
     }
   | Column of {
       style : Nopal_style.Style.t;
+      interaction : Nopal_style.Interaction.t;
       attrs : (string * string) list;
       children : 'msg t list;
     }
   | Button of {
       style : Nopal_style.Style.t;
+      interaction : Nopal_style.Interaction.t;
       attrs : (string * string) list;
       on_click : 'msg option;
       on_dblclick : 'msg option;
@@ -27,6 +31,7 @@ type 'msg t =
     }
   | Input of {
       style : Nopal_style.Style.t;
+      interaction : Nopal_style.Interaction.t;
       attrs : (string * string) list;
       value : string;
       placeholder : string;
@@ -52,24 +57,30 @@ type 'msg t =
 let empty = Empty
 let text s = Text s
 
-let box ?(style = Nopal_style.Style.empty) ?(attrs = []) children =
-  Box { style; attrs; children }
+let box ?(style = Nopal_style.Style.empty)
+    ?(interaction = Nopal_style.Interaction.default) ?(attrs = []) children =
+  Box { style; interaction; attrs; children }
 
-let row ?(style = Nopal_style.Style.empty) ?(attrs = []) children =
-  Row { style; attrs; children }
+let row ?(style = Nopal_style.Style.empty)
+    ?(interaction = Nopal_style.Interaction.default) ?(attrs = []) children =
+  Row { style; interaction; attrs; children }
 
-let column ?(style = Nopal_style.Style.empty) ?(attrs = []) children =
-  Column { style; attrs; children }
+let column ?(style = Nopal_style.Style.empty)
+    ?(interaction = Nopal_style.Interaction.default) ?(attrs = []) children =
+  Column { style; interaction; attrs; children }
 
-let button ?(style = Nopal_style.Style.empty) ?(attrs = []) ?on_click
+let button ?(style = Nopal_style.Style.empty)
+    ?(interaction = Nopal_style.Interaction.default) ?(attrs = []) ?on_click
     ?on_dblclick child =
-  Button { style; attrs; on_click; on_dblclick; child }
+  Button { style; interaction; attrs; on_click; on_dblclick; child }
 
-let input ?(style = Nopal_style.Style.empty) ?(attrs = []) ?(placeholder = "")
-    ?on_change ?on_submit ?on_blur ?on_keydown value =
+let input ?(style = Nopal_style.Style.empty)
+    ?(interaction = Nopal_style.Interaction.default) ?(attrs = [])
+    ?(placeholder = "") ?on_change ?on_submit ?on_blur ?on_keydown value =
   Input
     {
       style;
+      interaction;
       attrs;
       value;
       placeholder;
@@ -102,16 +113,17 @@ let draw ?on_pointer_move ?on_click ?on_pointer_leave ?cursor ?aria_label ~width
 let rec map f = function
   | Empty -> Empty
   | Text s -> Text s
-  | Box { style; attrs; children } ->
-      Box { style; attrs; children = List.map (map f) children }
-  | Row { style; attrs; children } ->
-      Row { style; attrs; children = List.map (map f) children }
-  | Column { style; attrs; children } ->
-      Column { style; attrs; children = List.map (map f) children }
-  | Button { style; attrs; on_click; on_dblclick; child } ->
+  | Box { style; interaction; attrs; children } ->
+      Box { style; interaction; attrs; children = List.map (map f) children }
+  | Row { style; interaction; attrs; children } ->
+      Row { style; interaction; attrs; children = List.map (map f) children }
+  | Column { style; interaction; attrs; children } ->
+      Column { style; interaction; attrs; children = List.map (map f) children }
+  | Button { style; interaction; attrs; on_click; on_dblclick; child } ->
       Button
         {
           style;
+          interaction;
           attrs;
           on_click = Option.map f on_click;
           on_dblclick = Option.map f on_dblclick;
@@ -120,6 +132,7 @@ let rec map f = function
   | Input
       {
         style;
+        interaction;
         attrs;
         value;
         placeholder;
@@ -131,6 +144,7 @@ let rec map f = function
       Input
         {
           style;
+          interaction;
           attrs;
           value;
           placeholder;
@@ -174,16 +188,20 @@ let rec equal a b =
   match (a, b) with
   | Empty, Empty -> true
   | Text s1, Text s2 -> String.equal s1 s2
-  | ( Box { style = s1; attrs = a1; children = c1 },
-      Box { style = s2; attrs = a2; children = c2 } )
-  | ( Row { style = s1; attrs = a1; children = c1 },
-      Row { style = s2; attrs = a2; children = c2 } )
-  | ( Column { style = s1; attrs = a1; children = c1 },
-      Column { style = s2; attrs = a2; children = c2 } ) ->
-      Nopal_style.Style.equal s1 s2 && equal_attrs a1 a2 && equal_children c1 c2
+  | ( Box { style = s1; interaction = i1; attrs = a1; children = c1 },
+      Box { style = s2; interaction = i2; attrs = a2; children = c2 } )
+  | ( Row { style = s1; interaction = i1; attrs = a1; children = c1 },
+      Row { style = s2; interaction = i2; attrs = a2; children = c2 } )
+  | ( Column { style = s1; interaction = i1; attrs = a1; children = c1 },
+      Column { style = s2; interaction = i2; attrs = a2; children = c2 } ) ->
+      Nopal_style.Style.equal s1 s2
+      && Nopal_style.Interaction.equal i1 i2
+      && equal_attrs a1 a2
+      && equal_children c1 c2
   | ( Button
         {
           style = s1;
+          interaction = i1;
           attrs = a1;
           on_click = oc1;
           on_dblclick = od1;
@@ -192,12 +210,14 @@ let rec equal a b =
       Button
         {
           style = s2;
+          interaction = i2;
           attrs = a2;
           on_click = oc2;
           on_dblclick = od2;
           child = ch2;
         } ) ->
       Nopal_style.Style.equal s1 s2
+      && Nopal_style.Interaction.equal i1 i2
       && equal_attrs a1 a2
       && Option.equal ( = ) oc1 oc2
       && Option.equal ( = ) od1 od2
@@ -205,6 +225,7 @@ let rec equal a b =
   | ( Input
         {
           style = s1;
+          interaction = i1;
           attrs = a1;
           value = v1;
           placeholder = p1;
@@ -216,6 +237,7 @@ let rec equal a b =
       Input
         {
           style = s2;
+          interaction = i2;
           attrs = a2;
           value = v2;
           placeholder = p2;
@@ -225,6 +247,7 @@ let rec equal a b =
           on_keydown = ok2;
         } ) ->
       Nopal_style.Style.equal s1 s2
+      && Nopal_style.Interaction.equal i1 i2
       && equal_attrs a1 a2
       && String.equal v1 v2
       && String.equal p1 p2

@@ -11,6 +11,9 @@ type 'msg live_node = {
   mutable listeners : Brr.Ev.listener list;
       (* mutable: event listeners are detached and reattached on
      reconciliation when handlers change *)
+  mutable class_id : Style_sheet.class_id option;
+      (* mutable: interaction style class is injected/removed during
+     reconciliation when the element's interaction changes *)
 }
 
 and 'msg live_comment = {
@@ -33,6 +36,7 @@ type 'msg t = {
   mutable root : 'msg live;
   (* mutable: root is replaced on reconciliation when element variant changes *)
   parent : Brr.El.t;
+  sheet : Style_sheet.t;
 }
 
 let doc () = Jv.get Jv.global "document"
@@ -53,6 +57,39 @@ let apply_style el (style : Nopal_style.Style.t) =
 
 let apply_container_base_style el =
   Brr.El.set_inline_style (Jstr.v "display") (Jstr.v "flex") el
+
+(* Element.t has no Map constructor — the runtime resolves mapped subtrees
+   before they reach the renderer. This match is exhaustive over all
+   concrete element variants. *)
+let interaction_of (el : 'msg Nopal_element.Element.t) =
+  match el with
+  | Box { interaction; _ }
+  | Row { interaction; _ }
+  | Column { interaction; _ }
+  | Button { interaction; _ }
+  | Input { interaction; _ } ->
+      Some interaction
+  | Empty
+  | Text _
+  | Image _
+  | Scroll _
+  | Keyed _
+  | Draw _ ->
+      None
+
+let inject_interaction sheet el interaction =
+  if Nopal_style.Interaction.has_any interaction then
+    match Style_sheet.inject sheet ~interaction with
+    | Ok cid ->
+        let cl = Jv.get (Brr.El.to_jv el) "classList" in
+        ignore
+          (Jv.call cl "add" [| Jv.of_string (Style_sheet.class_name cid) |]);
+        Some cid
+    | Error _ ->
+        (* Unreachable: the outer has_any guard ensures inject always
+           succeeds. Kept for exhaustive result handling. *)
+        None
+  else None
 
 let wire_click ~dispatch el on_click =
   match on_click with
@@ -180,7 +217,7 @@ let wire_draw_pointer_events ~dispatch el on_pointer_move on_click
   in
   move_l @ click_l @ leave_l
 
-let rec create_live ~dispatch (element : 'msg Nopal_element.Element.t) :
+let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
     'msg live =
   match element with
   | Empty ->
@@ -191,16 +228,26 @@ let rec create_live ~dispatch (element : 'msg Nopal_element.Element.t) :
   | Text s ->
       let el = Brr.El.v (Jstr.v "span") [ Brr.El.txt (Jstr.v s) ] in
       Live_text { text_dom = el; text = s }
-  | Box { style; attrs; children } ->
+  | Box { style; interaction; attrs; children } ->
       let el = Brr.El.v (Jstr.v "div") [] in
       apply_container_base_style el;
       apply_style el style;
       List.iter
         (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
         attrs;
-      let live_children = List.map (create_and_append ~dispatch el) children in
-      Live_node { dom = el; element; children = live_children; listeners = [] }
-  | Row { style; attrs; children } ->
+      let class_id = inject_interaction sheet el interaction in
+      let live_children =
+        List.map (create_and_append ~sheet ~dispatch el) children
+      in
+      Live_node
+        {
+          dom = el;
+          element;
+          children = live_children;
+          listeners = [];
+          class_id;
+        }
+  | Row { style; interaction; attrs; children } ->
       let el = Brr.El.v (Jstr.v "div") [] in
       apply_container_base_style el;
       (* Set flex-direction before user style so that layout.direction in
@@ -210,9 +257,19 @@ let rec create_live ~dispatch (element : 'msg Nopal_element.Element.t) :
       List.iter
         (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
         attrs;
-      let live_children = List.map (create_and_append ~dispatch el) children in
-      Live_node { dom = el; element; children = live_children; listeners = [] }
-  | Column { style; attrs; children } ->
+      let class_id = inject_interaction sheet el interaction in
+      let live_children =
+        List.map (create_and_append ~sheet ~dispatch el) children
+      in
+      Live_node
+        {
+          dom = el;
+          element;
+          children = live_children;
+          listeners = [];
+          class_id;
+        }
+  | Column { style; interaction; attrs; children } ->
       let el = Brr.El.v (Jstr.v "div") [] in
       apply_container_base_style el;
       (* Set flex-direction before user style so that layout.direction in
@@ -222,23 +279,36 @@ let rec create_live ~dispatch (element : 'msg Nopal_element.Element.t) :
       List.iter
         (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
         attrs;
-      let live_children = List.map (create_and_append ~dispatch el) children in
-      Live_node { dom = el; element; children = live_children; listeners = [] }
-  | Button { style; attrs; on_click; on_dblclick; child } ->
+      let class_id = inject_interaction sheet el interaction in
+      let live_children =
+        List.map (create_and_append ~sheet ~dispatch el) children
+      in
+      Live_node
+        {
+          dom = el;
+          element;
+          children = live_children;
+          listeners = [];
+          class_id;
+        }
+  | Button { style; interaction; attrs; on_click; on_dblclick; child } ->
       let el = Brr.El.v (Jstr.v "button") [] in
       apply_style el style;
       List.iter
         (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
         attrs;
-      let live_child = create_and_append ~dispatch el child in
+      let class_id = inject_interaction sheet el interaction in
+      let live_child = create_and_append ~sheet ~dispatch el child in
       let listeners =
         wire_click ~dispatch el on_click
         @ wire_dblclick ~dispatch el on_dblclick
       in
-      Live_node { dom = el; element; children = [ live_child ]; listeners }
+      Live_node
+        { dom = el; element; children = [ live_child ]; listeners; class_id }
   | Input
       {
         style;
+        interaction;
         attrs;
         value;
         placeholder;
@@ -254,24 +324,33 @@ let rec create_live ~dispatch (element : 'msg Nopal_element.Element.t) :
       List.iter
         (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
         attrs;
+      let class_id = inject_interaction sheet el interaction in
       let listeners =
         wire_input_events ~dispatch el on_change on_submit on_blur on_keydown
       in
-      Live_node { dom = el; element; children = []; listeners }
+      Live_node { dom = el; element; children = []; listeners; class_id }
   | Image { style; src; alt } ->
       let el = Brr.El.v (Jstr.v "img") [] in
       apply_style el style;
       Brr.El.set_at (Jstr.v "src") (Some (Jstr.v src)) el;
       Brr.El.set_at (Jstr.v "alt") (Some (Jstr.v alt)) el;
-      Live_node { dom = el; element; children = []; listeners = [] }
+      Live_node
+        { dom = el; element; children = []; listeners = []; class_id = None }
   | Scroll { style; child } ->
       let el = Brr.El.v (Jstr.v "div") [] in
       Brr.El.set_inline_style (Jstr.v "overflow") (Jstr.v "auto") el;
       apply_style el style;
-      let live_child = create_and_append ~dispatch el child in
-      Live_node { dom = el; element; children = [ live_child ]; listeners = [] }
+      let live_child = create_and_append ~sheet ~dispatch el child in
+      Live_node
+        {
+          dom = el;
+          element;
+          children = [ live_child ];
+          listeners = [];
+          class_id = None;
+        }
   | Keyed { key; child } ->
-      let live_child = create_live ~dispatch child in
+      let live_child = create_live ~sheet ~dispatch child in
       (* Set data-key on the rendered node. For comment nodes, skip
          since they don't support setAttribute. *)
       (match live_child with
@@ -306,28 +385,34 @@ let rec create_live ~dispatch (element : 'msg Nopal_element.Element.t) :
         wire_draw_pointer_events ~dispatch el on_pointer_move on_click
           on_pointer_leave
       in
-      Live_node { dom = el; element; children = []; listeners }
+      Live_node { dom = el; element; children = []; listeners; class_id = None }
 
-and create_and_append ~dispatch parent (element : 'msg Nopal_element.Element.t)
-    =
-  let live = create_live ~dispatch element in
+and create_and_append ~sheet ~dispatch parent
+    (element : 'msg Nopal_element.Element.t) =
+  let live = create_live ~sheet ~dispatch element in
   let jv = jv_of_live live in
   ignore (Jv.call (Brr.El.to_jv parent) "appendChild" [| jv |]);
   live
 
 let create ~dispatch ~parent element =
-  let live = create_live ~dispatch element in
+  let sheet = Style_sheet.create () in
+  let live = create_live ~sheet ~dispatch element in
   let jv = jv_of_live live in
   ignore (Jv.call (Brr.El.to_jv parent) "appendChild" [| jv |]);
-  { root = live; parent }
+  { root = live; parent; sheet }
 
 let unlisten_all listeners = List.iter Brr.Ev.unlisten listeners
 
-let rec unlisten_tree live =
+let rec unlisten_tree ~sheet live =
   match live with
   | Live_node n ->
       unlisten_all n.listeners;
-      List.iter unlisten_tree n.children
+      (match n.class_id with
+      | Some cid ->
+          Style_sheet.remove sheet cid;
+          n.class_id <- None
+      | None -> ());
+      List.iter (unlisten_tree ~sheet) n.children
   | Live_comment _
   | Live_text _ ->
       ()
@@ -442,7 +527,8 @@ let maybe_apply_style dom old_el new_el =
          don't (Empty, Text, Keyed) never reach this path. *)
       ()
 
-let rec reconcile_keyed_children ~dispatch parent_el old_children new_pairs =
+let rec reconcile_keyed_children ~sheet ~dispatch parent_el old_children
+    new_pairs =
   let parent_jv = Brr.El.to_jv parent_el in
   let old_map = Hashtbl.create (List.length old_children) in
   List.iter (fun (key, live) -> Hashtbl.replace old_map key live) old_children;
@@ -453,10 +539,12 @@ let rec reconcile_keyed_children ~dispatch parent_el old_children new_pairs =
         match Hashtbl.find_opt old_map key with
         | Some old_live ->
             Hashtbl.remove old_map key;
-            let updated = reconcile_live ~dispatch parent_el old_live child in
+            let updated =
+              reconcile_live ~sheet ~dispatch parent_el old_live child
+            in
             (key, updated)
         | None ->
-            let live = create_live ~dispatch child in
+            let live = create_live ~sheet ~dispatch child in
             set_data_key live key;
             (key, live))
       new_pairs
@@ -466,7 +554,7 @@ let rec reconcile_keyed_children ~dispatch parent_el old_children new_pairs =
     (fun _key old_live ->
       let old_jv = jv_of_live old_live in
       ignore (Jv.call parent_jv "removeChild" [| old_jv |]);
-      unlisten_tree old_live)
+      unlisten_tree ~sheet old_live)
     old_map;
   (* Reorder: appendChild moves existing nodes to the correct position *)
   List.iter
@@ -476,7 +564,7 @@ let rec reconcile_keyed_children ~dispatch parent_el old_children new_pairs =
     new_lives;
   List.map snd new_lives
 
-and reconcile_children ~dispatch parent_el old_children new_elements =
+and reconcile_children ~sheet ~dispatch parent_el old_children new_elements =
   (* If all new elements are Keyed, use keyed reconciliation *)
   match extract_keyed_pairs new_elements with
   | Some keyed_pairs ->
@@ -497,26 +585,28 @@ and reconcile_children ~dispatch parent_el old_children new_elements =
             | None -> None)
           old_children
       in
-      reconcile_keyed_children ~dispatch parent_el old_keyed keyed_pairs
+      reconcile_keyed_children ~sheet ~dispatch parent_el old_keyed keyed_pairs
   | None ->
       let rec go olds news acc =
         match (olds, news) with
         | [], [] -> List.rev acc
         | [], new_el :: rest_new ->
-            let live = create_and_append ~dispatch parent_el new_el in
+            let live = create_and_append ~sheet ~dispatch parent_el new_el in
             go [] rest_new (live :: acc)
         | old_live :: rest_old, [] ->
             let old_jv = jv_of_live old_live in
             ignore (Jv.call (Brr.El.to_jv parent_el) "removeChild" [| old_jv |]);
-            unlisten_tree old_live;
+            unlisten_tree ~sheet old_live;
             go rest_old [] acc
         | old_live :: rest_old, new_el :: rest_new ->
-            let updated = reconcile_live ~dispatch parent_el old_live new_el in
+            let updated =
+              reconcile_live ~sheet ~dispatch parent_el old_live new_el
+            in
             go rest_old rest_new (updated :: acc)
       in
       go old_children new_elements []
 
-and reconcile_live ~dispatch parent_el (old_live : 'msg live)
+and reconcile_live ~sheet ~dispatch parent_el (old_live : 'msg live)
     (new_element : 'msg Nopal_element.Element.t) : 'msg live =
   match (old_live, new_element) with
   | Live_text t, Text s ->
@@ -527,7 +617,7 @@ and reconcile_live ~dispatch parent_el (old_live : 'msg live)
       Live_text t
   | Live_comment c, Empty -> Live_comment c
   | Live_node old_n, new_el when same_variant old_n.element new_el ->
-      reconcile_node ~dispatch old_n new_el;
+      reconcile_node ~sheet ~dispatch old_n new_el;
       Live_node old_n
   | ( Live_text _,
       ( Empty | Box _ | Row _ | Column _ | Button _ | Input _ | Image _
@@ -537,31 +627,62 @@ and reconcile_live ~dispatch parent_el (old_live : 'msg live)
       | Scroll _ | Keyed _ | Draw _ ) )
   | Live_node _, _ ->
       (* Different variant or same_variant returned false — replace *)
-      let new_live = create_live ~dispatch new_element in
+      let new_live = create_live ~sheet ~dispatch new_element in
       let old_jv = jv_of_live old_live in
       let new_jv = jv_of_live new_live in
       ignore
         (Jv.call (Brr.El.to_jv parent_el) "replaceChild" [| new_jv; old_jv |]);
-      unlisten_tree old_live;
+      unlisten_tree ~sheet old_live;
       new_live
 
-and reconcile_node ~dispatch (old_n : 'msg live_node)
+and maybe_reconcile_interaction ~sheet (old_n : 'msg live_node)
+    (old_el : 'msg Nopal_element.Element.t)
+    (new_el : 'msg Nopal_element.Element.t) =
+  let old_ix = interaction_of old_el in
+  let new_ix = interaction_of new_el in
+  let changed =
+    match (old_ix, new_ix) with
+    | Some a, Some b -> not (Nopal_style.Interaction.equal a b)
+    | None, None -> false
+    | Some _, None
+    | None, Some _ ->
+        true
+  in
+  if changed then begin
+    (* Remove old interaction rules and class *)
+    (match old_n.class_id with
+    | Some cid ->
+        let cl = Jv.get (Brr.El.to_jv old_n.dom) "classList" in
+        ignore
+          (Jv.call cl "remove" [| Jv.of_string (Style_sheet.class_name cid) |]);
+        Style_sheet.remove sheet cid
+    | None -> ());
+    (* Inject new interaction rules *)
+    match new_ix with
+    | Some ix -> old_n.class_id <- inject_interaction sheet old_n.dom ix
+    | None -> old_n.class_id <- None
+  end
+
+and reconcile_node ~sheet ~dispatch (old_n : 'msg live_node)
     (new_el : 'msg Nopal_element.Element.t) =
   let el = old_n.dom in
   maybe_apply_style el old_n.element new_el;
+  maybe_reconcile_interaction ~sheet old_n old_n.element new_el;
   (match new_el with
   | Box { children; _ }
   | Row { children; _ }
   | Column { children; _ } ->
       maybe_apply_attrs el old_n.element new_el;
-      old_n.children <- reconcile_children ~dispatch el old_n.children children
+      old_n.children <-
+        reconcile_children ~sheet ~dispatch el old_n.children children
   | Button { on_click; on_dblclick; child; _ } ->
       maybe_apply_attrs el old_n.element new_el;
       unlisten_all old_n.listeners;
       old_n.listeners <-
         wire_click ~dispatch el on_click
         @ wire_dblclick ~dispatch el on_dblclick;
-      old_n.children <- reconcile_children ~dispatch el old_n.children [ child ]
+      old_n.children <-
+        reconcile_children ~sheet ~dispatch el old_n.children [ child ]
   | Input { value; placeholder; on_change; on_submit; on_blur; on_keydown; _ }
     ->
       Jv.set (Brr.El.to_jv el) "value" (Jv.of_string value);
@@ -606,7 +727,8 @@ and reconcile_node ~dispatch (old_n : 'msg live_node)
           Brr.El.set_at (Jstr.v "src") (Some (Jstr.v src)) el;
           Brr.El.set_at (Jstr.v "alt") (Some (Jstr.v alt)) el)
   | Scroll { child; _ } ->
-      old_n.children <- reconcile_children ~dispatch el old_n.children [ child ]
+      old_n.children <-
+        reconcile_children ~sheet ~dispatch el old_n.children [ child ]
   | Draw
       {
         width;
@@ -658,4 +780,6 @@ and reconcile_node ~dispatch (old_n : 'msg live_node)
   old_n.element <- new_el
 
 let update ~dispatch handle new_element =
-  handle.root <- reconcile_live ~dispatch handle.parent handle.root new_element
+  handle.root <-
+    reconcile_live ~sheet:handle.sheet ~dispatch handle.parent handle.root
+      new_element

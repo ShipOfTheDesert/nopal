@@ -27,11 +27,8 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Install Playwright browsers
-        run: |
-          cd bench/runner
-          npm ci
-          npx playwright install --with-deps chromium
+      - name: Install benchmark dependencies
+        run: just bench-setup-ci
 
       - name: Run benchmarks and compare
         run: just bench-compare

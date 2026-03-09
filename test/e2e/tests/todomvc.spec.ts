@@ -22,7 +22,7 @@ const EDIT_INPUT = 'input[data-action="edit-input"]';
 
 test.beforeEach(async ({ page }) => {
   // Clear localStorage and navigate fresh
-  await page.goto("/");
+  await page.goto("/todomvc/");
   await page.evaluate(() => localStorage.clear());
   await page.reload({ waitUntil: "load" });
   // Wait for the Nopal app to mount and render the header input
@@ -214,7 +214,7 @@ test("direct URL navigation to filter", async ({ page }) => {
   await page.click(todoToggle(2));
 
   // Navigate directly to /#/completed (hash-based routing)
-  await page.goto("/#/completed");
+  await page.goto("/todomvc/#/completed");
 
   // Only completed todo visible
   await expect(page.locator(todoLabel(1))).toHaveCount(0);

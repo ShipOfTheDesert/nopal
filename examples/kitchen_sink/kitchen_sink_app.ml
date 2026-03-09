@@ -40,6 +40,7 @@ type model = {
   submitted_value : string;
   keyed_items : (int * string) list;
   next_keyed_id : int;
+  interaction_toggled : bool;
   sub_counter : Sub_counter.model;
   draw_pointer : (float * float) option;
 }
@@ -53,6 +54,7 @@ type msg =
   | AddKeyedItem
   | RemoveKeyedItem of int
   | MoveKeyedItemUp of int
+  | ToggleInteraction
   | SubCounterMsg of Sub_counter.msg
   | DrawPointerMove of float * float
   | DrawPointerLeave
@@ -66,6 +68,7 @@ let init () =
       submitted_value = "";
       keyed_items = [ (1, "Item 1"); (2, "Item 2"); (3, "Item 3") ];
       next_keyed_id = 4;
+      interaction_toggled = false;
       sub_counter;
       draw_pointer = None;
     },
@@ -107,6 +110,9 @@ let update model = function
         | [] -> []
       in
       ( { model with keyed_items = move_up model.keyed_items },
+        Nopal_mvu.Cmd.none )
+  | ToggleInteraction ->
+      ( { model with interaction_toggled = not model.interaction_toggled },
         Nopal_mvu.Cmd.none )
   | SubCounterMsg sub_msg ->
       let sub_counter, sub_cmd = Sub_counter.update model.sub_counter sub_msg in
@@ -465,7 +471,166 @@ let view_nested _model =
         ];
     ]
 
-(* Section 9: Map / Composition (REQ-F9) *)
+(* Section 9: Interaction States (PRD REQ-F7) *)
+let view_interaction_states model =
+  let btn_base_style =
+    Style.default
+    |> Style.with_layout (fun l -> l |> Style.padding 6.0 16.0 6.0 16.0)
+    |> Style.with_paint (fun p ->
+        {
+          p with
+          background = Some bg_accent;
+          border =
+            Some
+              {
+                width = 1.0;
+                style = Solid;
+                color = Style.hex "#3a7bc8";
+                radius = 6.0;
+              };
+        })
+  in
+  let hover_btn_interaction =
+    {
+      Interaction.default with
+      hover =
+        Some
+          (Style.default
+          |> Style.with_paint (fun p ->
+              { p with background = Some (Style.hex "#5ba0e9") }));
+    }
+  in
+  let pressed_btn_interaction =
+    {
+      Interaction.default with
+      hover =
+        Some
+          (Style.default
+          |> Style.with_paint (fun p ->
+              { p with background = Some (Style.hex "#5ba0e9") }));
+      pressed =
+        Some
+          (Style.default
+          |> Style.with_paint (fun p ->
+              { p with background = Some (Style.hex "#2a6ab8") }));
+    }
+  in
+  let focus_input_style =
+    Style.default
+    |> Style.with_layout (fun l -> l |> Style.padding 6.0 8.0 6.0 8.0)
+    |> Style.with_paint (fun p ->
+        {
+          p with
+          border =
+            Some
+              { width = 1.0; style = Solid; color = border_light; radius = 4.0 };
+        })
+  in
+  let focus_interaction =
+    {
+      Interaction.default with
+      focused =
+        Some
+          (Style.default
+          |> Style.with_paint (fun p ->
+              {
+                p with
+                border =
+                  Some
+                    {
+                      width = 2.0;
+                      style = Solid;
+                      color = bg_accent;
+                      radius = 4.0;
+                    };
+              }));
+    }
+  in
+  let card_style =
+    Style.default
+    |> Style.with_layout (fun l ->
+        { l with gap = 4.0 } |> Style.padding_all 12.0)
+    |> Style.with_paint (fun p ->
+        {
+          p with
+          background = Some bg_muted;
+          border =
+            Some
+              { width = 1.0; style = Solid; color = border_light; radius = 8.0 };
+        })
+  in
+  let card_hover_interaction =
+    {
+      Interaction.default with
+      hover =
+        Some
+          (Style.default
+          |> Style.with_paint (fun p ->
+              {
+                p with
+                background = Some (Style.hex "#d0e4f7");
+                shadow =
+                  Some
+                    {
+                      x = 0.0;
+                      y = 2.0;
+                      blur = 8.0;
+                      color = Style.rgba 0 0 0 0.12;
+                    };
+              }));
+    }
+  in
+  let row_style =
+    Style.default
+    |> Style.with_layout (fun l -> { l with gap = 8.0; cross_align = Center })
+  in
+  view_section "Interaction States"
+    [
+      Element.text "Button with hover highlight:";
+      Element.button ~style:btn_base_style ~interaction:hover_btn_interaction
+        ~attrs:[ ("data-testid", "hover-button") ]
+        ~on_click:ButtonClicked (Element.text "Hover me");
+      Element.text "Button with hover + pressed state:";
+      Element.button ~style:btn_base_style ~interaction:pressed_btn_interaction
+        ~attrs:[ ("data-testid", "pressed-button") ]
+        ~on_click:ButtonClicked (Element.text "Press me");
+      Element.text "Input with focus ring:";
+      Element.row ~style:row_style
+        [
+          Element.input ~style:focus_input_style ~interaction:focus_interaction
+            ~attrs:[ ("data-testid", "focus-input") ]
+            ~placeholder:"Click to focus" "";
+        ];
+      Element.text "Clickable box card with hover highlight:";
+      Element.box ~style:card_style ~interaction:card_hover_interaction
+        ~attrs:[ ("data-testid", "hover-card") ]
+        [
+          Element.text "Hoverable Card";
+          Element.text "This card highlights on hover";
+        ];
+      Element.text "Dynamic interaction toggle:";
+      Element.row ~style:row_style
+        [
+          Element.button
+            ~style:
+              (Style.default
+              |> Style.with_layout (fun l ->
+                  l |> Style.padding 6.0 16.0 6.0 16.0))
+            ~attrs:[ ("data-testid", "toggle-interaction-btn") ]
+            ~on_click:ToggleInteraction
+            (Element.text
+               (if model.interaction_toggled then "Disable hover"
+                else "Enable hover"));
+          Element.box ~style:card_style
+            ~interaction:
+              (if model.interaction_toggled then card_hover_interaction
+               else Interaction.default)
+            ~attrs:[ ("data-testid", "toggle-card") ]
+            [ Element.text "Toggleable card" ];
+        ];
+    ]
+
+(* Section 10: Map / Composition (REQ-F9) *)
 let view_composition model =
   view_section "Map / Composition"
     [
@@ -768,6 +933,7 @@ let view model =
          view_scroll model;
          view_keyed model;
          view_nested model;
+         view_interaction_states model;
          view_composition model;
          view_draw model;
        ])

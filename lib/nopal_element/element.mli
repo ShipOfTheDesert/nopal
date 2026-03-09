@@ -13,21 +13,25 @@ type 'msg t =
   | Text of string
   | Box of {
       style : Nopal_style.Style.t;
+      interaction : Nopal_style.Interaction.t;
       attrs : (string * string) list;
       children : 'msg t list;
     }
   | Row of {
       style : Nopal_style.Style.t;
+      interaction : Nopal_style.Interaction.t;
       attrs : (string * string) list;
       children : 'msg t list;
     }
   | Column of {
       style : Nopal_style.Style.t;
+      interaction : Nopal_style.Interaction.t;
       attrs : (string * string) list;
       children : 'msg t list;
     }
   | Button of {
       style : Nopal_style.Style.t;
+      interaction : Nopal_style.Interaction.t;
       attrs : (string * string) list;
       on_click : 'msg option;
       on_dblclick : 'msg option;
@@ -35,6 +39,7 @@ type 'msg t =
     }
   | Input of {
       style : Nopal_style.Style.t;
+      interaction : Nopal_style.Interaction.t;
       attrs : (string * string) list;
       value : string;
       placeholder : string;
@@ -70,6 +75,7 @@ val text : string -> 'msg t
 
 val box :
   ?style:Nopal_style.Style.t ->
+  ?interaction:Nopal_style.Interaction.t ->
   ?attrs:(string * string) list ->
   'msg t list ->
   'msg t
@@ -82,6 +88,7 @@ val box :
 
 val row :
   ?style:Nopal_style.Style.t ->
+  ?interaction:Nopal_style.Interaction.t ->
   ?attrs:(string * string) list ->
   'msg t list ->
   'msg t
@@ -89,6 +96,7 @@ val row :
 
 val column :
   ?style:Nopal_style.Style.t ->
+  ?interaction:Nopal_style.Interaction.t ->
   ?attrs:(string * string) list ->
   'msg t list ->
   'msg t
@@ -96,6 +104,7 @@ val column :
 
 val button :
   ?style:Nopal_style.Style.t ->
+  ?interaction:Nopal_style.Interaction.t ->
   ?attrs:(string * string) list ->
   ?on_click:'msg ->
   ?on_dblclick:'msg ->
@@ -105,6 +114,7 @@ val button :
 
 val input :
   ?style:Nopal_style.Style.t ->
+  ?interaction:Nopal_style.Interaction.t ->
   ?attrs:(string * string) list ->
   ?placeholder:string ->
   ?on_change:(string -> 'msg) ->

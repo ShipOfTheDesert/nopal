@@ -5,6 +5,7 @@ type node =
       tag : string;
       attrs : (string * string) list;
       children : node list;
+      interaction : Nopal_style.Interaction.t;
     }
 
 type 'msg handler_entry = {
@@ -40,14 +41,31 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
     match el with
     | Empty -> Empty
     | Text s -> Text s
-    | Box { style = _; attrs; children } ->
-        Element { tag = "box"; attrs; children = go_children rev_path children }
-    | Row { style = _; attrs; children } ->
-        Element { tag = "row"; attrs; children = go_children rev_path children }
-    | Column { style = _; attrs; children } ->
+    | Box { style = _; interaction; attrs; children } ->
         Element
-          { tag = "column"; attrs; children = go_children rev_path children }
-    | Button { style = _; attrs; on_click; on_dblclick; child } ->
+          {
+            tag = "box";
+            attrs;
+            children = go_children rev_path children;
+            interaction;
+          }
+    | Row { style = _; interaction; attrs; children } ->
+        Element
+          {
+            tag = "row";
+            attrs;
+            children = go_children rev_path children;
+            interaction;
+          }
+    | Column { style = _; interaction; attrs; children } ->
+        Element
+          {
+            tag = "column";
+            attrs;
+            children = go_children rev_path children;
+            interaction;
+          }
+    | Button { style = _; interaction; attrs; on_click; on_dblclick; child } ->
         handlers :=
           {
             path = List.rev rev_path;
@@ -60,10 +78,16 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
           }
           :: !handlers;
         Element
-          { tag = "button"; attrs; children = [ go (0 :: rev_path) child ] }
+          {
+            tag = "button";
+            attrs;
+            children = [ go (0 :: rev_path) child ];
+            interaction;
+          }
     | Input
         {
           style = _;
+          interaction;
           attrs;
           value;
           placeholder;
@@ -88,6 +112,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             tag = "input";
             attrs = [ ("value", value); ("placeholder", placeholder) ] @ attrs;
             children = [];
+            interaction;
           }
     | Image { style = _; src; alt } ->
         Element
@@ -95,6 +120,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             tag = "image";
             attrs = [ ("src", src); ("alt", alt) ];
             children = [];
+            interaction = Nopal_style.Interaction.default;
           }
     | Scroll { style = _; child } ->
         Element
@@ -102,6 +128,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             tag = "scroll";
             attrs = [];
             children = [ go (0 :: rev_path) child ];
+            interaction = Nopal_style.Interaction.default;
           }
     | Keyed { key; child } ->
         Element
@@ -109,6 +136,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             tag = "keyed";
             attrs = [ ("key", key) ];
             children = [ go (0 :: rev_path) child ];
+            interaction = Nopal_style.Interaction.default;
           }
     | Draw
         { width; height; scene; on_pointer_move; on_click; on_pointer_leave; _ }
@@ -131,6 +159,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
                 ("scene-nodes", string_of_int (List.length scene));
               ];
             children = [];
+            interaction = Nopal_style.Interaction.default;
           }
   and go_children rev_path children =
     List.mapi (fun i c -> go (i :: rev_path) c) children
@@ -256,6 +285,28 @@ let find_all sel node =
         acc
   in
   List.rev (go [] node)
+
+let interaction node =
+  match node with
+  | Element { interaction; _ } -> Some interaction
+  | Empty
+  | Text _ ->
+      None
+
+let has_hover node =
+  match interaction node with
+  | Some ix -> Option.is_some ix.Nopal_style.Interaction.hover
+  | None -> false
+
+let has_pressed node =
+  match interaction node with
+  | Some ix -> Option.is_some ix.Nopal_style.Interaction.pressed
+  | None -> false
+
+let has_focused node =
+  match interaction node with
+  | Some ix -> Option.is_some ix.Nopal_style.Interaction.focused
+  | None -> false
 
 let has_attr name node =
   match node with

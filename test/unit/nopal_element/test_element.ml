@@ -725,6 +725,181 @@ let test_equal_keyed_different_child () =
   Alcotest.(check bool)
     "different keyed child not equal" false (Element.equal a b)
 
+let test_box_default_interaction () =
+  Alcotest.(check bool)
+    "box defaults to Interaction.default" true
+    (match Element.box [] with
+    | Element.Box { interaction; _ } ->
+        Nopal_style.Interaction.equal interaction
+          Nopal_style.Interaction.default
+    | Element.Empty
+    | Element.Text _
+    | Element.Row _
+    | Element.Column _
+    | Element.Button _
+    | Element.Input _
+    | Element.Image _
+    | Element.Scroll _
+    | Element.Keyed _
+    | Element.Draw _ ->
+        false)
+
+let hover_style = Nopal_style.Style.empty
+
+let test_interaction =
+  { Nopal_style.Interaction.default with hover = Some hover_style }
+
+let test_button_with_interaction () =
+  let ix = test_interaction in
+  Alcotest.(check bool)
+    "button accepts interaction" true
+    (match Element.button ~interaction:ix (Element.text "ok") with
+    | Element.Button { interaction; _ } ->
+        Nopal_style.Interaction.equal interaction ix
+    | Element.Empty
+    | Element.Text _
+    | Element.Box _
+    | Element.Row _
+    | Element.Column _
+    | Element.Input _
+    | Element.Image _
+    | Element.Scroll _
+    | Element.Keyed _
+    | Element.Draw _ ->
+        false)
+
+let test_input_with_interaction () =
+  let ix = test_interaction in
+  Alcotest.(check bool)
+    "input accepts interaction" true
+    (match Element.input ~interaction:ix "val" with
+    | Element.Input { interaction; _ } ->
+        Nopal_style.Interaction.equal interaction ix
+    | Element.Empty
+    | Element.Text _
+    | Element.Box _
+    | Element.Row _
+    | Element.Column _
+    | Element.Button _
+    | Element.Image _
+    | Element.Scroll _
+    | Element.Keyed _
+    | Element.Draw _ ->
+        false)
+
+let test_map_preserves_interaction_button () =
+  let ix = test_interaction in
+  let el = Element.button ~interaction:ix ~on_click:Click (Element.text "ok") in
+  let mapped = Element.map (fun m -> Wrapped m) el in
+  Alcotest.(check bool)
+    "map preserves interaction on button" true
+    (match mapped with
+    | Element.Button { interaction; on_click = Some (Wrapped Click); _ } ->
+        Nopal_style.Interaction.equal interaction ix
+    | Element.Empty
+    | Element.Text _
+    | Element.Box _
+    | Element.Row _
+    | Element.Column _
+    | Element.Button _
+    | Element.Input _
+    | Element.Image _
+    | Element.Scroll _
+    | Element.Keyed _
+    | Element.Draw _ ->
+        false)
+
+let test_map_preserves_interaction_box () =
+  let ix = test_interaction in
+  let el = Element.box ~interaction:ix [ Element.text "child" ] in
+  let mapped = Element.map (fun _m -> ()) el in
+  Alcotest.(check bool)
+    "map preserves interaction on box" true
+    (match mapped with
+    | Element.Box { interaction; _ } ->
+        Nopal_style.Interaction.equal interaction ix
+    | Element.Empty
+    | Element.Text _
+    | Element.Row _
+    | Element.Column _
+    | Element.Button _
+    | Element.Input _
+    | Element.Image _
+    | Element.Scroll _
+    | Element.Keyed _
+    | Element.Draw _ ->
+        false)
+
+let test_map_preserves_interaction_row () =
+  let ix = test_interaction in
+  let el = Element.row ~interaction:ix [ Element.text "child" ] in
+  let mapped = Element.map (fun _m -> ()) el in
+  Alcotest.(check bool)
+    "map preserves interaction on row" true
+    (match mapped with
+    | Element.Row { interaction; _ } ->
+        Nopal_style.Interaction.equal interaction ix
+    | Element.Empty
+    | Element.Text _
+    | Element.Box _
+    | Element.Column _
+    | Element.Button _
+    | Element.Input _
+    | Element.Image _
+    | Element.Scroll _
+    | Element.Keyed _
+    | Element.Draw _ ->
+        false)
+
+let test_map_preserves_interaction_column () =
+  let ix = test_interaction in
+  let el = Element.column ~interaction:ix [ Element.text "child" ] in
+  let mapped = Element.map (fun _m -> ()) el in
+  Alcotest.(check bool)
+    "map preserves interaction on column" true
+    (match mapped with
+    | Element.Column { interaction; _ } ->
+        Nopal_style.Interaction.equal interaction ix
+    | Element.Empty
+    | Element.Text _
+    | Element.Box _
+    | Element.Row _
+    | Element.Button _
+    | Element.Input _
+    | Element.Image _
+    | Element.Scroll _
+    | Element.Keyed _
+    | Element.Draw _ ->
+        false)
+
+let test_map_preserves_interaction_input () =
+  let ix = test_interaction in
+  let el = Element.input ~interaction:ix "val" in
+  let mapped = Element.map (fun _m -> ()) el in
+  Alcotest.(check bool)
+    "map preserves interaction on input" true
+    (match mapped with
+    | Element.Input { interaction; _ } ->
+        Nopal_style.Interaction.equal interaction ix
+    | Element.Empty
+    | Element.Text _
+    | Element.Box _
+    | Element.Row _
+    | Element.Column _
+    | Element.Button _
+    | Element.Image _
+    | Element.Scroll _
+    | Element.Keyed _
+    | Element.Draw _ ->
+        false)
+
+let test_equal_different_interaction () =
+  let ix = test_interaction in
+  let a = Element.box ~interaction:ix [] in
+  let b = Element.box [] in
+  Alcotest.(check bool)
+    "different interaction not equal" false (Element.equal a b)
+
 let () =
   Alcotest.run "nopal_element"
     [
@@ -816,5 +991,26 @@ let () =
             test_equal_keyed_different_key;
           Alcotest.test_case "equal_keyed_different_child" `Quick
             test_equal_keyed_different_child;
+        ] );
+      ( "interaction",
+        [
+          Alcotest.test_case "box_default_interaction" `Quick
+            test_box_default_interaction;
+          Alcotest.test_case "button_with_interaction" `Quick
+            test_button_with_interaction;
+          Alcotest.test_case "input_with_interaction" `Quick
+            test_input_with_interaction;
+          Alcotest.test_case "map_preserves_interaction_button" `Quick
+            test_map_preserves_interaction_button;
+          Alcotest.test_case "map_preserves_interaction_box" `Quick
+            test_map_preserves_interaction_box;
+          Alcotest.test_case "map_preserves_interaction_row" `Quick
+            test_map_preserves_interaction_row;
+          Alcotest.test_case "map_preserves_interaction_column" `Quick
+            test_map_preserves_interaction_column;
+          Alcotest.test_case "map_preserves_interaction_input" `Quick
+            test_map_preserves_interaction_input;
+          Alcotest.test_case "equal_different_interaction" `Quick
+            test_equal_different_interaction;
         ] );
     ]

@@ -5,7 +5,7 @@ let node_pp fmt node =
   let rec aux indent = function
     | Empty -> Format.fprintf fmt "%sEmpty" indent
     | Text s -> Format.fprintf fmt "%sText %S" indent s
-    | Element { tag; attrs; children } ->
+    | Element { tag; attrs; children; _ } ->
         Format.fprintf fmt "%sElement { tag = %S; attrs = [%s]; children = ["
           indent tag
           (String.concat "; "
@@ -24,8 +24,8 @@ let node_equal a b =
     match (a, b) with
     | Empty, Empty -> true
     | Text s1, Text s2 -> String.equal s1 s2
-    | ( Element { tag = t1; attrs = a1; children = c1 },
-        Element { tag = t2; attrs = a2; children = c2 } ) ->
+    | ( Element { tag = t1; attrs = a1; children = c1; _ },
+        Element { tag = t2; attrs = a2; children = c2; _ } ) ->
         String.equal t1 t2 && a1 = a2 && List.equal eq c1 c2
     | _ -> false
   in
@@ -78,6 +78,7 @@ let test_render_draw_node () =
          tag = "canvas";
          attrs = [ ("width", "200."); ("height", "100."); ("scene-nodes", "1") ];
          children = [];
+         interaction = Nopal_style.Interaction.default;
        })
     (tree r)
 
