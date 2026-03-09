@@ -1,20 +1,37 @@
 type 'msg t =
   | Empty
   | Text of string
-  | Box of { style : Nopal_style.Style.t; children : 'msg t list }
-  | Row of { style : Nopal_style.Style.t; children : 'msg t list }
-  | Column of { style : Nopal_style.Style.t; children : 'msg t list }
+  | Box of {
+      style : Nopal_style.Style.t;
+      attrs : (string * string) list;
+      children : 'msg t list;
+    }
+  | Row of {
+      style : Nopal_style.Style.t;
+      attrs : (string * string) list;
+      children : 'msg t list;
+    }
+  | Column of {
+      style : Nopal_style.Style.t;
+      attrs : (string * string) list;
+      children : 'msg t list;
+    }
   | Button of {
       style : Nopal_style.Style.t;
+      attrs : (string * string) list;
       on_click : 'msg option;
+      on_dblclick : 'msg option;
       child : 'msg t;
     }
   | Input of {
       style : Nopal_style.Style.t;
+      attrs : (string * string) list;
       value : string;
       placeholder : string;
       on_change : (string -> 'msg) option;
       on_submit : 'msg option;
+      on_blur : 'msg option;
+      on_keydown : (string -> 'msg option) option;
     }
   | Image of { style : Nopal_style.Style.t; src : string; alt : string }
   | Scroll of { style : Nopal_style.Style.t; child : 'msg t }
@@ -22,18 +39,33 @@ type 'msg t =
 
 let empty = Empty
 let text s = Text s
-let box ?(style = Nopal_style.Style.empty) children = Box { style; children }
-let row ?(style = Nopal_style.Style.empty) children = Row { style; children }
 
-let column ?(style = Nopal_style.Style.empty) children =
-  Column { style; children }
+let box ?(style = Nopal_style.Style.empty) ?(attrs = []) children =
+  Box { style; attrs; children }
 
-let button ?(style = Nopal_style.Style.empty) ?on_click child =
-  Button { style; on_click; child }
+let row ?(style = Nopal_style.Style.empty) ?(attrs = []) children =
+  Row { style; attrs; children }
 
-let input ?(style = Nopal_style.Style.empty) ?(placeholder = "") ?on_change
-    ?on_submit value =
-  Input { style; value; placeholder; on_change; on_submit }
+let column ?(style = Nopal_style.Style.empty) ?(attrs = []) children =
+  Column { style; attrs; children }
+
+let button ?(style = Nopal_style.Style.empty) ?(attrs = []) ?on_click
+    ?on_dblclick child =
+  Button { style; attrs; on_click; on_dblclick; child }
+
+let input ?(style = Nopal_style.Style.empty) ?(attrs = []) ?(placeholder = "")
+    ?on_change ?on_submit ?on_blur ?on_keydown value =
+  Input
+    {
+      style;
+      attrs;
+      value;
+      placeholder;
+      on_change;
+      on_submit;
+      on_blur;
+      on_keydown;
+    }
 
 let image ?(style = Nopal_style.Style.empty) ~src ~alt () =
   Image { style; src; alt }
@@ -44,62 +76,114 @@ let keyed key child = Keyed { key; child }
 let rec map f = function
   | Empty -> Empty
   | Text s -> Text s
-  | Box { style; children } ->
-      Box { style; children = List.map (map f) children }
-  | Row { style; children } ->
-      Row { style; children = List.map (map f) children }
-  | Column { style; children } ->
-      Column { style; children = List.map (map f) children }
-  | Button { style; on_click; child } ->
-      Button { style; on_click = Option.map f on_click; child = map f child }
-  | Input { style; value; placeholder; on_change; on_submit } ->
+  | Box { style; attrs; children } ->
+      Box { style; attrs; children = List.map (map f) children }
+  | Row { style; attrs; children } ->
+      Row { style; attrs; children = List.map (map f) children }
+  | Column { style; attrs; children } ->
+      Column { style; attrs; children = List.map (map f) children }
+  | Button { style; attrs; on_click; on_dblclick; child } ->
+      Button
+        {
+          style;
+          attrs;
+          on_click = Option.map f on_click;
+          on_dblclick = Option.map f on_dblclick;
+          child = map f child;
+        }
+  | Input
+      {
+        style;
+        attrs;
+        value;
+        placeholder;
+        on_change;
+        on_submit;
+        on_blur;
+        on_keydown;
+      } ->
       Input
         {
           style;
+          attrs;
           value;
           placeholder;
           on_change = Option.map (fun g s -> f (g s)) on_change;
           on_submit = Option.map f on_submit;
+          on_blur = Option.map f on_blur;
+          on_keydown = Option.map (fun g s -> Option.map f (g s)) on_keydown;
         }
   | Image { style; src; alt } -> Image { style; src; alt }
   | Scroll { style; child } -> Scroll { style; child = map f child }
   | Keyed { key; child } -> Keyed { key; child = map f child }
 
+let equal_attrs a1 a2 =
+  List.equal
+    (fun (k1, v1) (k2, v2) -> String.equal k1 k2 && String.equal v1 v2)
+    a1 a2
+
 let rec equal a b =
   match (a, b) with
   | Empty, Empty -> true
   | Text s1, Text s2 -> String.equal s1 s2
-  | Box { style = s1; children = c1 }, Box { style = s2; children = c2 }
-  | Row { style = s1; children = c1 }, Row { style = s2; children = c2 }
-  | Column { style = s1; children = c1 }, Column { style = s2; children = c2 }
-    ->
-      Nopal_style.Style.equal s1 s2 && equal_children c1 c2
-  | ( Button { style = s1; on_click = oc1; child = ch1 },
-      Button { style = s2; on_click = oc2; child = ch2 } ) ->
+  | ( Box { style = s1; attrs = a1; children = c1 },
+      Box { style = s2; attrs = a2; children = c2 } )
+  | ( Row { style = s1; attrs = a1; children = c1 },
+      Row { style = s2; attrs = a2; children = c2 } )
+  | ( Column { style = s1; attrs = a1; children = c1 },
+      Column { style = s2; attrs = a2; children = c2 } ) ->
+      Nopal_style.Style.equal s1 s2 && equal_attrs a1 a2 && equal_children c1 c2
+  | ( Button
+        {
+          style = s1;
+          attrs = a1;
+          on_click = oc1;
+          on_dblclick = od1;
+          child = ch1;
+        },
+      Button
+        {
+          style = s2;
+          attrs = a2;
+          on_click = oc2;
+          on_dblclick = od2;
+          child = ch2;
+        } ) ->
       Nopal_style.Style.equal s1 s2
+      && equal_attrs a1 a2
       && Option.equal ( = ) oc1 oc2
+      && Option.equal ( = ) od1 od2
       && equal ch1 ch2
   | ( Input
         {
           style = s1;
+          attrs = a1;
           value = v1;
           placeholder = p1;
           on_change = oc1;
           on_submit = os1;
+          on_blur = ob1;
+          on_keydown = ok1;
         },
       Input
         {
           style = s2;
+          attrs = a2;
           value = v2;
           placeholder = p2;
           on_change = oc2;
           on_submit = os2;
+          on_blur = ob2;
+          on_keydown = ok2;
         } ) ->
       Nopal_style.Style.equal s1 s2
+      && equal_attrs a1 a2
       && String.equal v1 v2
       && String.equal p1 p2
       && Option.equal ( == ) oc1 oc2
       && Option.equal ( = ) os1 os2
+      && Option.equal ( = ) ob1 ob2
+      && Option.equal ( == ) ok1 ok2
   | ( Image { style = s1; src = src1; alt = alt1 },
       Image { style = s2; src = src2; alt = alt2 } ) ->
       Nopal_style.Style.equal s1 s2

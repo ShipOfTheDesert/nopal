@@ -10,8 +10,11 @@ type node =
 type 'msg handler_entry = {
   path : int list;
   on_click : 'msg option;
+  on_dblclick : 'msg option;
   on_change : (string -> 'msg) option;
   on_submit : 'msg option;
+  on_blur : 'msg option;
+  on_keydown : (string -> 'msg option) option;
 }
 
 type 'msg rendered = {
@@ -28,42 +31,53 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
     match el with
     | Empty -> Empty
     | Text s -> Text s
-    | Box { style = _; children } ->
+    | Box { style = _; attrs; children } ->
+        Element { tag = "box"; attrs; children = go_children rev_path children }
+    | Row { style = _; attrs; children } ->
+        Element { tag = "row"; attrs; children = go_children rev_path children }
+    | Column { style = _; attrs; children } ->
         Element
-          { tag = "box"; attrs = []; children = go_children rev_path children }
-    | Row { style = _; children } ->
-        Element
-          { tag = "row"; attrs = []; children = go_children rev_path children }
-    | Column { style = _; children } ->
-        Element
-          {
-            tag = "column";
-            attrs = [];
-            children = go_children rev_path children;
-          }
-    | Button { style = _; on_click; child } ->
+          { tag = "column"; attrs; children = go_children rev_path children }
+    | Button { style = _; attrs; on_click; on_dblclick; child } ->
         handlers :=
           {
             path = List.rev rev_path;
             on_click;
+            on_dblclick;
             on_change = None;
             on_submit = None;
+            on_blur = None;
+            on_keydown = None;
           }
           :: !handlers;
         Element
-          {
-            tag = "button";
-            attrs = [];
-            children = [ go (0 :: rev_path) child ];
-          }
-    | Input { style = _; value; placeholder; on_change; on_submit } ->
+          { tag = "button"; attrs; children = [ go (0 :: rev_path) child ] }
+    | Input
+        {
+          style = _;
+          attrs;
+          value;
+          placeholder;
+          on_change;
+          on_submit;
+          on_blur;
+          on_keydown;
+        } ->
         handlers :=
-          { path = List.rev rev_path; on_click = None; on_change; on_submit }
+          {
+            path = List.rev rev_path;
+            on_click = None;
+            on_dblclick = None;
+            on_change;
+            on_submit;
+            on_blur;
+            on_keydown;
+          }
           :: !handlers;
         Element
           {
             tag = "input";
-            attrs = [ ("value", value); ("placeholder", placeholder) ];
+            attrs = [ ("value", value); ("placeholder", placeholder) ] @ attrs;
             children = [];
           }
     | Image { style = _; src; alt } ->
@@ -347,6 +361,54 @@ let submit sel r =
   | Some msg ->
       r.msgs := msg :: !(r.msgs);
       Ok ()
+
+let dblclick sel r =
+  let* path, found =
+    resolve_path sel r.tree |> Option.to_result ~none:(Not_found sel)
+  in
+  let tag = tag_of_node found in
+  let* handler =
+    find_handler_by_path path r.handlers
+    |> Option.to_result ~none:(No_handler { tag; event = "dblclick" })
+  in
+  match handler.on_dblclick with
+  | None -> Error (No_handler { tag; event = "dblclick" })
+  | Some msg ->
+      r.msgs := msg :: !(r.msgs);
+      Ok ()
+
+let blur sel r =
+  let* path, found =
+    resolve_path sel r.tree |> Option.to_result ~none:(Not_found sel)
+  in
+  let tag = tag_of_node found in
+  let* handler =
+    find_handler_by_path path r.handlers
+    |> Option.to_result ~none:(No_handler { tag; event = "blur" })
+  in
+  match handler.on_blur with
+  | None -> Error (No_handler { tag; event = "blur" })
+  | Some msg ->
+      r.msgs := msg :: !(r.msgs);
+      Ok ()
+
+let keydown sel key r =
+  let* path, found =
+    resolve_path sel r.tree |> Option.to_result ~none:(Not_found sel)
+  in
+  let tag = tag_of_node found in
+  let* handler =
+    find_handler_by_path path r.handlers
+    |> Option.to_result ~none:(No_handler { tag; event = "keydown" })
+  in
+  match handler.on_keydown with
+  | None -> Error (No_handler { tag; event = "keydown" })
+  | Some f -> (
+      match f key with
+      | None -> Ok ()
+      | Some msg ->
+          r.msgs := msg :: !(r.msgs);
+          Ok ())
 
 let run_app ~init ~update ~view msgs =
   let model, _cmd = init () in

@@ -96,6 +96,25 @@ val submit : selector -> 'msg rendered -> (unit, error) result
     [Error (Not_found selector)] if no element matches, [Error (No_handler ...)]
     if the element has no submit handler. *)
 
+val dblclick : selector -> 'msg rendered -> (unit, error) result
+(** [dblclick selector rendered] finds the first element matching [selector],
+    invokes its [on_dblclick] handler, and appends the resulting message.
+    Returns [Error (Not_found selector)] if no element matches,
+    [Error (No_handler ...)] if the element has no dblclick handler. *)
+
+val blur : selector -> 'msg rendered -> (unit, error) result
+(** [blur selector rendered] finds the first element matching [selector],
+    invokes its [on_blur] handler, and appends the resulting message. Returns
+    [Error (Not_found selector)] if no element matches, [Error (No_handler ...)]
+    if the element has no blur handler. *)
+
+val keydown : selector -> string -> 'msg rendered -> (unit, error) result
+(** [keydown selector key rendered] finds the first element matching [selector]
+    and invokes its [on_keydown] handler with [key]. If the handler returns
+    [Some msg], the message is appended; if [None], no message is dispatched.
+    Returns [Error (Not_found selector)] if no element matches,
+    [Error (No_handler ...)] if the element has no keydown handler. *)
+
 (** {1 MVU loop} *)
 
 val run_app :

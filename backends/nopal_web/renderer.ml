@@ -65,7 +65,18 @@ let wire_click ~dispatch el on_click =
       in
       [ listener ]
 
-let wire_input_events ~dispatch el on_change on_submit =
+let wire_dblclick ~dispatch el on_dblclick =
+  match on_dblclick with
+  | None -> []
+  | Some msg ->
+      let listener =
+        Brr.Ev.listen Brr.Ev.dblclick
+          (fun _ev -> dispatch msg)
+          (Brr.El.as_target el)
+      in
+      [ listener ]
+
+let wire_input_events ~dispatch el on_change on_submit on_blur on_keydown =
   let change_l =
     match on_change with
     | None -> []
@@ -81,9 +92,14 @@ let wire_input_events ~dispatch el on_change on_submit =
         ]
   in
   let submit_l =
-    match on_submit with
-    | None -> []
-    | Some msg ->
+    match (on_submit, on_keydown) with
+    | None, _
+    | _, Some _ ->
+        (* When on_keydown is present it receives all key events including
+           Enter, so we skip the on_submit keydown listener to avoid
+           double-dispatch. Handle Enter in the on_keydown handler instead. *)
+        []
+    | Some msg, None ->
         [
           Brr.Ev.listen Brr.Ev.keydown
             (fun ev ->
@@ -92,7 +108,31 @@ let wire_input_events ~dispatch el on_change on_submit =
             (Brr.El.as_target el);
         ]
   in
-  change_l @ submit_l
+  let blur_l =
+    match on_blur with
+    | None -> []
+    | Some msg ->
+        [
+          Brr.Ev.listen Brr.Ev.blur
+            (fun _ev -> dispatch msg)
+            (Brr.El.as_target el);
+        ]
+  in
+  let keydown_l =
+    match on_keydown with
+    | None -> []
+    | Some f ->
+        [
+          Brr.Ev.listen Brr.Ev.keydown
+            (fun ev ->
+              let key = Jv.Jstr.get (Brr.Ev.to_jv ev) "key" |> Jstr.to_string in
+              match f key with
+              | None -> ()
+              | Some msg -> dispatch msg)
+            (Brr.El.as_target el);
+        ]
+  in
+  change_l @ submit_l @ blur_l @ keydown_l
 
 let rec create_live ~dispatch (element : 'msg Nopal_element.Element.t) :
     'msg live =
@@ -105,42 +145,72 @@ let rec create_live ~dispatch (element : 'msg Nopal_element.Element.t) :
   | Text s ->
       let el = Brr.El.v (Jstr.v "span") [ Brr.El.txt (Jstr.v s) ] in
       Live_text { text_dom = el; text = s }
-  | Box { style; children } ->
+  | Box { style; attrs; children } ->
       let el = Brr.El.v (Jstr.v "div") [] in
       apply_container_base_style el;
       apply_style el style;
+      List.iter
+        (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
+        attrs;
       let live_children = List.map (create_and_append ~dispatch el) children in
       Live_node { dom = el; element; children = live_children; listeners = [] }
-  | Row { style; children } ->
+  | Row { style; attrs; children } ->
       let el = Brr.El.v (Jstr.v "div") [] in
       apply_container_base_style el;
       (* Set flex-direction before user style so that layout.direction in
          Style.t can override if the user explicitly sets it. *)
       Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v "row") el;
       apply_style el style;
+      List.iter
+        (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
+        attrs;
       let live_children = List.map (create_and_append ~dispatch el) children in
       Live_node { dom = el; element; children = live_children; listeners = [] }
-  | Column { style; children } ->
+  | Column { style; attrs; children } ->
       let el = Brr.El.v (Jstr.v "div") [] in
       apply_container_base_style el;
       (* Set flex-direction before user style so that layout.direction in
          Style.t can override if the user explicitly sets it. *)
       Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v "column") el;
       apply_style el style;
+      List.iter
+        (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
+        attrs;
       let live_children = List.map (create_and_append ~dispatch el) children in
       Live_node { dom = el; element; children = live_children; listeners = [] }
-  | Button { style; on_click; child } ->
+  | Button { style; attrs; on_click; on_dblclick; child } ->
       let el = Brr.El.v (Jstr.v "button") [] in
       apply_style el style;
+      List.iter
+        (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
+        attrs;
       let live_child = create_and_append ~dispatch el child in
-      let listeners = wire_click ~dispatch el on_click in
+      let listeners =
+        wire_click ~dispatch el on_click
+        @ wire_dblclick ~dispatch el on_dblclick
+      in
       Live_node { dom = el; element; children = [ live_child ]; listeners }
-  | Input { style; value; placeholder; on_change; on_submit } ->
+  | Input
+      {
+        style;
+        attrs;
+        value;
+        placeholder;
+        on_change;
+        on_submit;
+        on_blur;
+        on_keydown;
+      } ->
       let el = Brr.El.v (Jstr.v "input") [] in
       apply_style el style;
       Jv.set (Brr.El.to_jv el) "value" (Jv.of_string value);
       Brr.El.set_at (Jstr.v "placeholder") (Some (Jstr.v placeholder)) el;
-      let listeners = wire_input_events ~dispatch el on_change on_submit in
+      List.iter
+        (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
+        attrs;
+      let listeners =
+        wire_input_events ~dispatch el on_change on_submit on_blur on_keydown
+      in
       Live_node { dom = el; element; children = []; listeners }
   | Image { style; src; alt } ->
       let el = Brr.El.v (Jstr.v "img") [] in
@@ -369,19 +439,41 @@ and reconcile_node ~dispatch (old_n : 'msg live_node)
   let el = old_n.dom in
   maybe_apply_style el old_n.element new_el;
   (match new_el with
-  | Box { children; _ }
-  | Row { children; _ }
-  | Column { children; _ } ->
+  | Box { attrs; children; _ }
+  | Row { attrs; children; _ }
+  | Column { attrs; children; _ } ->
+      List.iter
+        (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
+        attrs;
       old_n.children <- reconcile_children ~dispatch el old_n.children children
-  | Button { on_click; child; _ } ->
+  | Button { attrs; on_click; on_dblclick; child; _ } ->
+      List.iter
+        (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
+        attrs;
       unlisten_all old_n.listeners;
-      old_n.listeners <- wire_click ~dispatch el on_click;
+      old_n.listeners <-
+        wire_click ~dispatch el on_click
+        @ wire_dblclick ~dispatch el on_dblclick;
       old_n.children <- reconcile_children ~dispatch el old_n.children [ child ]
-  | Input { value; placeholder; on_change; on_submit; _ } ->
+  | Input
+      {
+        attrs;
+        value;
+        placeholder;
+        on_change;
+        on_submit;
+        on_blur;
+        on_keydown;
+        _;
+      } ->
       Jv.set (Brr.El.to_jv el) "value" (Jv.of_string value);
       Brr.El.set_at (Jstr.v "placeholder") (Some (Jstr.v placeholder)) el;
+      List.iter
+        (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
+        attrs;
       unlisten_all old_n.listeners;
-      old_n.listeners <- wire_input_events ~dispatch el on_change on_submit
+      old_n.listeners <-
+        wire_input_events ~dispatch el on_change on_submit on_blur on_keydown
   | Image { src; alt; _ } ->
       Brr.El.set_at (Jstr.v "src") (Some (Jstr.v src)) el;
       Brr.El.set_at (Jstr.v "alt") (Some (Jstr.v alt)) el

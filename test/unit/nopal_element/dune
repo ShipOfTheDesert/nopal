@@ -1,3 +1,7 @@
 (test
  (name test_element)
  (libraries nopal_element nopal_style alcotest))
+
+(test
+ (name test_element_events)
+ (libraries nopal_element nopal_style alcotest))

@@ -1,0 +1,10 @@
+(library
+ (name todomvc)
+ (libraries nopal_mvu nopal_element nopal_router)
+ (modules todomvc))
+
+(executable
+ (name main)
+ (libraries todomvc nopal_web brr)
+ (modules main)
+ (modes js))

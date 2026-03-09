@@ -8,14 +8,53 @@ dune build
 dune test
 ```
 
-For E2E tests:
+## Running Tests
+
+### All at once
+
+```bash
+just                  # build + unit tests + fmt + lint (run before every commit)
+```
+
+### Unit tests (Alcotest)
+
+```bash
+just test             # run all unit tests via dune
+```
+
+Unit tests live under `test/unit/` and are organized per package:
+
+```
+test/unit/nopal_element/    # Element.t constructors, map, equal, events
+test/unit/nopal_test/       # test_renderer simulation (click, blur, keydown…)
+test/unit/nopal_web/        # web renderer reconciliation
+test/unit/todomvc/          # TodoMVC model + structural view tests
+```
+
+### Native build check
+
+```bash
+just build-native     # verify DSL packages compile without js_of_ocaml
+```
+
+Required for any change touching `nopal_element`, `nopal_style`,
+`nopal_test`, or `nopal_router`.
+
+### E2E tests (Playwright)
 
 ```bash
 cd test/e2e
-npm install
-npx playwright install chromium
-npx playwright test
+npm install                       # first time only
+npx playwright install chromium   # first time only
+npx playwright test               # headless
+npx playwright test --headed      # visual debug mode
 ```
+
+The Playwright config auto-starts a local server (`npx serve` on port 3000)
+that builds and serves the TodoMVC example. Tests run against headless
+Chromium by default.
+
+E2E tests live in `test/e2e/tests/` and cover every interactive example.
 
 ## Coding Principles
 

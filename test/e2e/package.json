@@ -1,0 +1,8 @@
+{
+  "name": "nopal-e2e",
+  "private": true,
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "serve": "^14.2.0"
+  }
+}
