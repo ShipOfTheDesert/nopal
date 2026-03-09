@@ -115,6 +115,29 @@ val keydown : selector -> string -> 'msg rendered -> (unit, error) result
     Returns [Error (Not_found selector)] if no element matches,
     [Error (No_handler ...)] if the element has no keydown handler. *)
 
+val pointer_move :
+  selector -> x:float -> y:float -> 'msg rendered -> (unit, error) result
+(** [pointer_move selector ~x ~y rendered] finds the first canvas element
+    matching [selector], invokes its [on_pointer_move] handler with the given
+    coordinates, and appends the resulting message. Returns
+    [Error (Not_found selector)] if no element matches, [Error (No_handler ...)]
+    if the element has no pointer_move handler. *)
+
+val pointer_click :
+  selector -> x:float -> y:float -> 'msg rendered -> (unit, error) result
+(** [pointer_click selector ~x ~y rendered] finds the first canvas element
+    matching [selector], invokes its [on_click] handler with the given
+    coordinates, and appends the resulting message. Returns
+    [Error (Not_found selector)] if no element matches, [Error (No_handler ...)]
+    if the element has no pointer_click handler. *)
+
+val pointer_leave : selector -> 'msg rendered -> (unit, error) result
+(** [pointer_leave selector rendered] finds the first canvas element matching
+    [selector], invokes its [on_pointer_leave] handler, and appends the
+    resulting message. Returns [Error (Not_found selector)] if no element
+    matches, [Error (No_handler ...)] if the element has no pointer_leave
+    handler. *)
+
 (** {1 MVU loop} *)
 
 val run_app :

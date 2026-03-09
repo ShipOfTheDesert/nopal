@@ -39,6 +39,17 @@
   ocaml))
 
 (package
+ (name nopal_draw)
+ (synopsis "2D drawing DSL for Nopal")
+ (depends
+  (alcotest
+   (and
+    (>= 1.9.1)
+    :with-test))
+  ocaml
+  nopal_style))
+
+(package
  (name nopal_element)
  (synopsis "Pure element description types for Nopal")
  (depends

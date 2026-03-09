@@ -134,6 +134,52 @@ let wire_input_events ~dispatch el on_change on_submit on_blur on_keydown =
   in
   change_l @ submit_l @ blur_l @ keydown_l
 
+let pointer_event_of_mouse ev el =
+  let rect = Jv.call (Brr.El.to_jv el) "getBoundingClientRect" [||] in
+  let client_x = Jv.Float.get (Brr.Ev.to_jv ev) "clientX" in
+  let client_y = Jv.Float.get (Brr.Ev.to_jv ev) "clientY" in
+  let rect_left = Jv.Float.get rect "left" in
+  let rect_top = Jv.Float.get rect "top" in
+  { Nopal_element.Element.x = client_x -. rect_left; y = client_y -. rect_top }
+
+let wire_draw_pointer_events ~dispatch el on_pointer_move on_click
+    on_pointer_leave =
+  let move_l =
+    match on_pointer_move with
+    | None -> []
+    | Some f ->
+        [
+          Brr.Ev.listen Brr.Ev.pointermove
+            (fun ev ->
+              let pe = pointer_event_of_mouse ev el in
+              dispatch (f pe))
+            (Brr.El.as_target el);
+        ]
+  in
+  let click_l =
+    match on_click with
+    | None -> []
+    | Some f ->
+        [
+          Brr.Ev.listen Brr.Ev.click
+            (fun ev ->
+              let pe = pointer_event_of_mouse ev el in
+              dispatch (f pe))
+            (Brr.El.as_target el);
+        ]
+  in
+  let leave_l =
+    match on_pointer_leave with
+    | None -> []
+    | Some msg ->
+        [
+          Brr.Ev.listen Brr.Ev.pointerleave
+            (fun _ev -> dispatch msg)
+            (Brr.El.as_target el);
+        ]
+  in
+  move_l @ click_l @ leave_l
+
 let rec create_live ~dispatch (element : 'msg Nopal_element.Element.t) :
     'msg live =
   match element with
@@ -235,6 +281,32 @@ let rec create_live ~dispatch (element : 'msg Nopal_element.Element.t) :
           Brr.El.set_at (Jstr.v "data-key") (Some (Jstr.v key)) t.text_dom
       | Live_comment _ -> ());
       live_child
+  | Draw
+      {
+        width;
+        height;
+        scene;
+        on_pointer_move;
+        on_click;
+        on_pointer_leave;
+        cursor;
+        aria_label;
+      } ->
+      let el = Brr.El.v (Jstr.v "canvas") [] in
+      let canvas = Brr_canvas.Canvas.of_el el in
+      let ctx = Brr_canvas.C2d.get_context canvas in
+      Canvas_renderer.setup_hidpi el ctx ~width ~height;
+      Style_css.apply_cursor el cursor;
+      (match aria_label with
+      | Some label ->
+          Brr.El.set_at (Jstr.v "aria-label") (Some (Jstr.v label)) el
+      | None -> ());
+      Canvas_renderer.render ctx scene;
+      let listeners =
+        wire_draw_pointer_events ~dispatch el on_pointer_move on_click
+          on_pointer_leave
+      in
+      Live_node { dom = el; element; children = []; listeners }
 
 and create_and_append ~dispatch parent (element : 'msg Nopal_element.Element.t)
     =
@@ -272,10 +344,11 @@ let same_variant (a : 'msg Nopal_element.Element.t)
   | Input _, Input _
   | Image _, Image _
   | Scroll _, Scroll _
-  | Keyed _, Keyed _ ->
+  | Keyed _, Keyed _
+  | Draw _, Draw _ ->
       true
   | ( ( Empty | Text _ | Box _ | Row _ | Column _ | Button _ | Input _ | Image _
-      | Scroll _ | Keyed _ ),
+      | Scroll _ | Keyed _ | Draw _ ),
       _ ) ->
       false
 
@@ -284,7 +357,7 @@ let extract_keyed_pairs elements =
     | [] -> Some (List.rev acc)
     | Keyed { key; child } :: rest -> go ((key, child) :: acc) rest
     | ( Empty | Text _ | Box _ | Row _ | Column _ | Button _ | Input _ | Image _
-      | Scroll _ )
+      | Scroll _ | Draw _ )
       :: _ ->
         None
   in
@@ -320,7 +393,8 @@ let attrs_of (el : 'msg Nopal_element.Element.t) =
   | Text _
   | Image _
   | Scroll _
-  | Keyed _ ->
+  | Keyed _
+  | Draw _ ->
       []
 
 let maybe_apply_attrs el old_element new_element =
@@ -350,7 +424,8 @@ let style_of (el : 'msg Nopal_element.Element.t) =
       Some style
   | Empty
   | Text _
-  | Keyed _ ->
+  | Keyed _
+  | Draw _ ->
       None
 
 let maybe_apply_style dom old_el new_el =
@@ -456,10 +531,10 @@ and reconcile_live ~dispatch parent_el (old_live : 'msg live)
       Live_node old_n
   | ( Live_text _,
       ( Empty | Box _ | Row _ | Column _ | Button _ | Input _ | Image _
-      | Scroll _ | Keyed _ ) )
+      | Scroll _ | Keyed _ | Draw _ ) )
   | ( Live_comment _,
       ( Text _ | Box _ | Row _ | Column _ | Button _ | Input _ | Image _
-      | Scroll _ | Keyed _ ) )
+      | Scroll _ | Keyed _ | Draw _ ) )
   | Live_node _, _ ->
       (* Different variant or same_variant returned false — replace *)
       let new_live = create_live ~dispatch new_element in
@@ -502,7 +577,8 @@ and reconcile_node ~dispatch (old_n : 'msg live_node)
       | Button _
       | Image _
       | Scroll _
-      | Keyed _ ->
+      | Keyed _
+      | Draw _ ->
           Brr.El.set_at (Jstr.v "placeholder") (Some (Jstr.v placeholder)) el);
       maybe_apply_attrs el old_n.element new_el;
       unlisten_all old_n.listeners;
@@ -523,13 +599,54 @@ and reconcile_node ~dispatch (old_n : 'msg live_node)
       | Button _
       | Input _
       | Scroll _
-      | Keyed _ ->
+      | Keyed _
+      | Draw _ ->
           (* Unreachable: reconcile_node is only called when same_variant
              returns true, so old_n.element is always Image here *)
           Brr.El.set_at (Jstr.v "src") (Some (Jstr.v src)) el;
           Brr.El.set_at (Jstr.v "alt") (Some (Jstr.v alt)) el)
   | Scroll { child; _ } ->
       old_n.children <- reconcile_children ~dispatch el old_n.children [ child ]
+  | Draw
+      {
+        width;
+        height;
+        scene;
+        on_pointer_move;
+        on_click;
+        on_pointer_leave;
+        cursor;
+        aria_label;
+      } ->
+      let canvas = Brr_canvas.Canvas.of_el el in
+      let ctx = Brr_canvas.C2d.get_context canvas in
+      let old_w, old_h =
+        match old_n.element with
+        | Draw { width = ow; height = oh; _ } -> (ow, oh)
+        | Empty
+        | Text _
+        | Box _
+        | Row _
+        | Column _
+        | Button _
+        | Input _
+        | Image _
+        | Scroll _
+        | Keyed _ ->
+            (0.0, 0.0)
+      in
+      if (not (Float.equal old_w width)) || not (Float.equal old_h height) then
+        Canvas_renderer.setup_hidpi el ctx ~width ~height;
+      Style_css.apply_cursor el cursor;
+      (match aria_label with
+      | Some label ->
+          Brr.El.set_at (Jstr.v "aria-label") (Some (Jstr.v label)) el
+      | None -> Brr.El.set_at (Jstr.v "aria-label") None el);
+      Canvas_renderer.render ctx scene;
+      unlisten_all old_n.listeners;
+      old_n.listeners <-
+        wire_draw_pointer_events ~dispatch el on_pointer_move on_click
+          on_pointer_leave
   | Empty
   | Text _
   | Keyed _ ->

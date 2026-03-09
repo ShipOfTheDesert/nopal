@@ -16,7 +16,8 @@ let test_button_dblclick_none_by_default () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_button_dblclick_some () =
@@ -33,7 +34,8 @@ let test_button_dblclick_some () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_input_blur_none_by_default () =
@@ -50,7 +52,8 @@ let test_input_blur_none_by_default () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_input_blur_some () =
@@ -67,7 +70,8 @@ let test_input_blur_some () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_input_keydown_none_by_default () =
@@ -84,7 +88,8 @@ let test_input_keydown_none_by_default () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_input_keydown_some () =
@@ -107,7 +112,8 @@ let test_input_keydown_some () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 type wrapper = Wrapped of msg
@@ -128,7 +134,8 @@ let test_map_preserves_dblclick () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_map_preserves_blur () =
@@ -147,7 +154,8 @@ let test_map_preserves_blur () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_map_preserves_keydown () =
@@ -172,7 +180,8 @@ let test_map_preserves_keydown () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let () =

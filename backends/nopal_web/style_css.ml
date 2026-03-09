@@ -155,3 +155,11 @@ let of_style (style : t) =
 let to_inline_string props =
   String.concat ";"
     (List.map (fun { property; value } -> property ^ ":" ^ value) props)
+
+let apply_cursor el cursor =
+  let value =
+    match cursor with
+    | Some c -> Jstr.v (Nopal_style.Cursor.to_css_string c)
+    | None -> Jstr.v ""
+  in
+  Brr.El.set_inline_style (Jstr.v "cursor") value el

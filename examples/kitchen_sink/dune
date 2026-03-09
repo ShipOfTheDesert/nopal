@@ -1,7 +1,7 @@
 (library
  (name kitchen_sink_app)
  (modules kitchen_sink_app sub_counter)
- (libraries nopal_element nopal_mvu nopal_style))
+ (libraries nopal_element nopal_mvu nopal_style nopal_draw))
 
 (executable
  (name main)

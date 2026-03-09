@@ -5,6 +5,9 @@
     is exposed (not abstract) so that renderers can exhaustively pattern-match
     on all constructors. *)
 
+type pointer_event = { x : float; y : float }
+(** Canvas-local pointer coordinates. *)
+
 type 'msg t =
   | Empty
   | Text of string
@@ -43,6 +46,16 @@ type 'msg t =
   | Image of { style : Nopal_style.Style.t; src : string; alt : string }
   | Scroll of { style : Nopal_style.Style.t; child : 'msg t }
   | Keyed of { key : string; child : 'msg t }
+  | Draw of {
+      width : float;
+      height : float;
+      scene : Nopal_draw.Scene.t list;
+      on_pointer_move : (pointer_event -> 'msg) option;
+      on_click : (pointer_event -> 'msg) option;
+      on_pointer_leave : 'msg option;
+      cursor : Nopal_style.Cursor.t option;
+      aria_label : string option;
+    }
 
 (** {1 Builders}
 
@@ -112,6 +125,20 @@ val scroll : ?style:Nopal_style.Style.t -> 'msg t -> 'msg t
 val keyed : string -> 'msg t -> 'msg t
 (** [keyed key child] wraps [child] with a stable identity key for list
     reconciliation. *)
+
+val draw :
+  ?on_pointer_move:(pointer_event -> 'msg) ->
+  ?on_click:(pointer_event -> 'msg) ->
+  ?on_pointer_leave:'msg ->
+  ?cursor:Nopal_style.Cursor.t ->
+  ?aria_label:string ->
+  width:float ->
+  height:float ->
+  Nopal_draw.Scene.t list ->
+  'msg t
+(** [draw ~width ~height scene] creates a 2D drawing canvas element. The scene
+    list describes shapes rendered onto the canvas. Optional pointer callbacks
+    receive canvas-local coordinates. *)
 
 (** {1 Transforms} *)
 

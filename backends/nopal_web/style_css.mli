@@ -14,3 +14,6 @@ val of_style : Nopal_style.Style.t -> css_prop list
 val to_inline_string : css_prop list -> string
 (** [to_inline_string props] joins property-value pairs into a semicolon-
     separated inline style string. Returns [""] for an empty list. *)
+
+val apply_cursor : Brr.El.t -> Nopal_style.Cursor.t option -> unit
+(** [apply_cursor el cursor] sets or clears the cursor inline style on [el]. *)
