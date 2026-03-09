@@ -1,8 +1,8 @@
 (** Typed, platform-agnostic 2D drawing DSL for Nopal.
 
     [Nopal_draw] provides a pure scene description that view functions return
-    inside {!Nopal_element.Element.Draw} nodes. The scene tree is interpreted by
-    the platform backend (e.g. Canvas 2D in [nopal_web]).
+    inside [Draw] element nodes. The scene tree is interpreted by the platform
+    backend (e.g. Canvas 2D in [nopal_web]).
 
     This package has no browser or platform dependencies and compiles on native
     OCaml. It depends only on {!Nopal_style} for shared font types. *)

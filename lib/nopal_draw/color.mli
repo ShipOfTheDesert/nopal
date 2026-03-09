@@ -1,8 +1,8 @@
 (** Float RGBA color type for graphics rendering.
 
     Colors use float components in the 0.0-1.0 range, matching GPU API
-    conventions. This is separate from {!Nopal_style.Style.color} which uses
-    integer RGBA for CSS authoring. *)
+    conventions. This is separate from {!type:Nopal_style.Style.color} which
+    uses integer RGBA for CSS authoring. *)
 
 type t = { r : float; g : float; b : float; a : float }
 

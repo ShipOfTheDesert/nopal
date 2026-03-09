@@ -24,7 +24,7 @@ fmt:
 lint-doc:
     #!/usr/bin/env bash
     set -euo pipefail
-    out=$(opam exec -- dune build @doc 2>&1)
+    out=$(opam exec -- dune build @doc --force 2>&1)
     printf '%s\n' "$out"
     if printf '%s\n' "$out" | grep -q 'Warning:'; then
         echo 'lint-doc FAIL: odoc warnings present (CI treats these as errors)' >&2
