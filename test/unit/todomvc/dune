@@ -1,0 +1,28 @@
+(library
+ (name test_helpers)
+ (modules test_helpers)
+ (libraries todomvc nopal_router))
+
+(test
+ (name test_todomvc)
+ (modules test_todomvc)
+ (libraries
+  test_helpers
+  todomvc
+  nopal_test
+  nopal_element
+  nopal_mvu
+  nopal_router
+  alcotest))
+
+(test
+ (name test_todomvc_view)
+ (modules test_todomvc_view)
+ (libraries
+  test_helpers
+  todomvc
+  nopal_test
+  nopal_element
+  nopal_mvu
+  nopal_router
+  alcotest))

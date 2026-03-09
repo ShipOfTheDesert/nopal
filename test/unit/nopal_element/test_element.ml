@@ -39,7 +39,7 @@ let test_box_default_style () =
   Alcotest.(check bool)
     "box defaults to Style.empty" true
     (match Element.box [] with
-    | Element.Box { style; children = [] } ->
+    | Element.Box { style; children = []; _ } ->
         Nopal_style.Style.equal style Nopal_style.Style.empty
     | Element.Empty
     | Element.Text _
@@ -57,7 +57,7 @@ let test_row_default_style () =
   Alcotest.(check bool)
     "row defaults to Style.empty" true
     (match Element.row [] with
-    | Element.Row { style; children = [] } ->
+    | Element.Row { style; children = []; _ } ->
         Nopal_style.Style.equal style Nopal_style.Style.empty
     | Element.Empty
     | Element.Text _
@@ -75,7 +75,7 @@ let test_column_default_style () =
   Alcotest.(check bool)
     "column defaults to Style.empty" true
     (match Element.column [] with
-    | Element.Column { style; children = [] } ->
+    | Element.Column { style; children = []; _ } ->
         Nopal_style.Style.equal style Nopal_style.Style.empty
     | Element.Empty
     | Element.Text _

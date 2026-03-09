@@ -4,7 +4,7 @@ build:
     opam exec -- dune build
 
 build-native:
-    opam exec -- dune build lib/nopal_style lib/nopal_element lib/nopal_mvu lib/nopal_test lib/nopal_runtime lib/nopal_router
+    opam exec -- dune build lib/nopal_style lib/nopal_element lib/nopal_mvu lib/nopal_test lib/nopal_runtime lib/nopal_router examples/todomvc/todomvc.cma
 
 run:
     opam exec -- dune exec nopal
@@ -43,13 +43,18 @@ lint: lint-doc lint-fmt lint-opam
 
 serve-counter: build
     @echo "Serving counter at http://localhost:8000"
-    @ln -sf ../../_build/default/examples/counter/main.bc.js examples/counter/main.bc.js
-    python3 -m http.server 8000 -d examples/counter
+    @cp examples/counter/index.html _build/default/examples/counter/
+    python3 -m http.server 8000 -d _build/default/examples/counter
+
+serve-todomvc: build
+    @echo "Serving todomvc at http://localhost:8000"
+    @cp examples/todomvc/index.html _build/default/examples/todomvc/
+    python3 -m http.server 8000 -d _build/default/examples/todomvc
 
 serve-kitchen: build
     @echo "Serving kitchen sink at http://localhost:8000"
-    @ln -sf ../../_build/default/examples/kitchen_sink/main.bc.js examples/kitchen_sink/main.bc.js
-    python3 -m http.server 8000 -d examples/kitchen_sink
+    @cp examples/kitchen_sink/index.html _build/default/examples/kitchen_sink/
+    python3 -m http.server 8000 -d _build/default/examples/kitchen_sink
 
 # Versioning
 

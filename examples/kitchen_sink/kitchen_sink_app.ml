@@ -19,11 +19,29 @@ let to_path = function
   | Item id -> "/items/" ^ string_of_int id
   | NotFound -> "/not-found"
 
-type model = { current_route : route; router : route Nopal_router.Router.t }
-type msg = Navigate_to of route | Route_changed of route
+type model = {
+  current_route : route;
+  router : route Nopal_router.Router.t;
+  dblclick_count : int;
+  blur_count : int;
+  last_key : string;
+}
+
+type msg =
+  | Navigate_to of route
+  | Route_changed of route
+  | Button_dblclicked
+  | Input_blurred
+  | Key_pressed of string
 
 let init router () =
-  ( { current_route = Nopal_router.Router.current router; router },
+  ( {
+      current_route = Nopal_router.Router.current router;
+      router;
+      dblclick_count = 0;
+      blur_count = 0;
+      last_key = "(none)";
+    },
     Nopal_mvu.Cmd.none )
 
 let update model = function
@@ -32,6 +50,12 @@ let update model = function
         Nopal_router.Router.push model.router route )
   | Route_changed route ->
       ({ model with current_route = route }, Nopal_mvu.Cmd.none)
+  | Button_dblclicked ->
+      ( { model with dblclick_count = model.dblclick_count + 1 },
+        Nopal_mvu.Cmd.none )
+  | Input_blurred ->
+      ({ model with blur_count = model.blur_count + 1 }, Nopal_mvu.Cmd.none)
+  | Key_pressed key -> ({ model with last_key = key }, Nopal_mvu.Cmd.none)
 
 let view_for_route = function
   | Home ->
@@ -60,6 +84,29 @@ let view_for_route = function
           E.button ~on_click:(Navigate_to Home) (E.text "Go Home");
         ]
 
+let view_events model =
+  E.column
+    [
+      E.text "Events";
+      E.row
+        [
+          E.button ~on_dblclick:Button_dblclicked (E.text "Double-click me");
+          E.text ("Double-clicks: " ^ string_of_int model.dblclick_count);
+        ];
+      E.row
+        [
+          E.input ~placeholder:"Focus then blur" ~on_blur:Input_blurred "";
+          E.text ("Blur count: " ^ string_of_int model.blur_count);
+        ];
+      E.row
+        [
+          E.input ~placeholder:"Press any key"
+            ~on_keydown:(fun key -> Some (Key_pressed key))
+            "";
+          E.text ("Last key: " ^ model.last_key);
+        ];
+    ]
+
 let view model =
   E.column
     [
@@ -71,6 +118,7 @@ let view model =
           E.button ~on_click:(Navigate_to (Item 42)) (E.text "Item 42");
         ];
       view_for_route model.current_route;
+      view_events model;
     ]
 
 let subscriptions model =

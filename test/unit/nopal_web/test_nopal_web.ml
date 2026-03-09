@@ -37,7 +37,7 @@ let test_text_creates_span () =
 let test_box_creates_div () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
-  let el = Box { style = default; children = [ Text "a" ] } in
+  let el = Box { style = default; attrs = []; children = [ Text "a" ] } in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
   let node = Nopal_web.Renderer.dom_node handle in
   Alcotest.(check string) "tag is DIV" "DIV" (tag_of node);
@@ -49,7 +49,7 @@ let test_box_creates_div () =
 let test_row_creates_div_flex_row () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
-  let el = Row { style = default; children = [] } in
+  let el = Row { style = default; attrs = []; children = [] } in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
   let node = Nopal_web.Renderer.dom_node handle in
   Alcotest.(check string) "tag is DIV" "DIV" (tag_of node);
@@ -61,7 +61,7 @@ let test_row_creates_div_flex_row () =
 let test_column_creates_div_flex_column () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
-  let el = Column { style = default; children = [] } in
+  let el = Column { style = default; attrs = []; children = [] } in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
   let node = Nopal_web.Renderer.dom_node handle in
   Alcotest.(check string) "tag is DIV" "DIV" (tag_of node);
@@ -73,7 +73,16 @@ let test_column_creates_div_flex_column () =
 let test_button_creates_button () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
-  let el = Button { style = default; on_click = None; child = Text "ok" } in
+  let el =
+    Button
+      {
+        style = default;
+        attrs = [];
+        on_click = None;
+        on_dblclick = None;
+        child = Text "ok";
+      }
+  in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
   let node = Nopal_web.Renderer.dom_node handle in
   Alcotest.(check string) "tag is BUTTON" "BUTTON" (tag_of node)
@@ -86,10 +95,13 @@ let test_input_creates_input () =
     Input
       {
         style = default;
+        attrs = [];
         value = "hi";
         placeholder = "type here";
         on_change = None;
         on_submit = None;
+        on_blur = None;
+        on_keydown = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
@@ -148,7 +160,14 @@ let test_button_click_dispatches () =
   let parent = fresh_parent () in
   let dispatch, msgs = fresh_dispatch () in
   let el =
-    Button { style = default; on_click = Some Click; child = Text "go" }
+    Button
+      {
+        style = default;
+        attrs = [];
+        on_click = Some Click;
+        on_dblclick = None;
+        child = Text "go";
+      }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
   let node = Nopal_web.Renderer.dom_node handle in
@@ -167,10 +186,13 @@ let test_input_change_dispatches () =
     Input
       {
         style = default;
+        attrs = [];
         value = "";
         placeholder = "";
         on_change = Some (fun s -> Change s);
         on_submit = None;
+        on_blur = None;
+        on_keydown = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
@@ -192,10 +214,13 @@ let test_input_submit_dispatches_on_enter () =
     Input
       {
         style = default;
+        attrs = [];
         value = "";
         placeholder = "";
         on_change = None;
         on_submit = Some Submit;
+        on_blur = None;
+        on_keydown = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
@@ -219,10 +244,13 @@ let test_input_submit_ignores_non_enter () =
     Input
       {
         style = default;
+        attrs = [];
         value = "";
         placeholder = "";
         on_change = None;
         on_submit = Some Submit;
+        on_blur = None;
+        on_keydown = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
@@ -244,7 +272,7 @@ let test_style_applied_as_inline () =
       (fun p -> { p with background = Some (rgba 255 0 0 1.0) })
       default
   in
-  let el = Box { style = styled; children = [] } in
+  let el = Box { style = styled; attrs = []; children = [] } in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
   let node = Nopal_web.Renderer.dom_node handle in
   let style_obj = Jv.get node "style" in
@@ -267,10 +295,10 @@ let test_reconcile_text_update () =
 let test_reconcile_same_variant_reuses_node () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
-  let el1 = Box { style = default; children = [ Text "a" ] } in
+  let el1 = Box { style = default; attrs = []; children = [ Text "a" ] } in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
   let node_before = Nopal_web.Renderer.dom_node handle in
-  let el2 = Box { style = default; children = [ Text "b" ] } in
+  let el2 = Box { style = default; attrs = []; children = [ Text "b" ] } in
   Nopal_web.Renderer.update ~dispatch handle el2;
   let node_after = Nopal_web.Renderer.dom_node handle in
   Alcotest.(check bool) "same div node" true (node_before == node_after)
@@ -281,7 +309,16 @@ let test_reconcile_different_variant_replaces () =
   let dispatch, _msgs = fresh_dispatch () in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent (Text "a") in
   let node_before = Nopal_web.Renderer.dom_node handle in
-  let el2 = Button { style = default; on_click = None; child = Text "b" } in
+  let el2 =
+    Button
+      {
+        style = default;
+        attrs = [];
+        on_click = None;
+        on_dblclick = None;
+        child = Text "b";
+      }
+  in
   Nopal_web.Renderer.update ~dispatch handle el2;
   let node_after = Nopal_web.Renderer.dom_node handle in
   Alcotest.(check bool) "different node" false (node_before == node_after);
@@ -291,12 +328,14 @@ let test_reconcile_different_variant_replaces () =
 let test_reconcile_children_append () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
-  let el1 = Box { style = default; children = [ Text "a" ] } in
+  let el1 = Box { style = default; attrs = []; children = [ Text "a" ] } in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
   let node = Nopal_web.Renderer.dom_node handle in
   let count_before = Jv.Int.get (Jv.get node "childNodes") "length" in
   Alcotest.(check int) "one child" 1 count_before;
-  let el2 = Box { style = default; children = [ Text "a"; Text "b" ] } in
+  let el2 =
+    Box { style = default; attrs = []; children = [ Text "a"; Text "b" ] }
+  in
   Nopal_web.Renderer.update ~dispatch handle el2;
   let count_after = Jv.Int.get (Jv.get node "childNodes") "length" in
   Alcotest.(check int) "two children" 2 count_after
@@ -305,12 +344,14 @@ let test_reconcile_children_append () =
 let test_reconcile_children_remove () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
-  let el1 = Box { style = default; children = [ Text "a"; Text "b" ] } in
+  let el1 =
+    Box { style = default; attrs = []; children = [ Text "a"; Text "b" ] }
+  in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
   let node = Nopal_web.Renderer.dom_node handle in
   let count_before = Jv.Int.get (Jv.get node "childNodes") "length" in
   Alcotest.(check int) "two children" 2 count_before;
-  let el2 = Box { style = default; children = [ Text "a" ] } in
+  let el2 = Box { style = default; attrs = []; children = [ Text "a" ] } in
   Nopal_web.Renderer.update ~dispatch handle el2;
   let count_after = Jv.Int.get (Jv.get node "childNodes") "length" in
   Alcotest.(check int) "one child" 1 count_after
@@ -319,13 +360,17 @@ let test_reconcile_children_remove () =
 let test_reconcile_children_reuse_by_position () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
-  let el1 = Box { style = default; children = [ Text "a"; Text "b" ] } in
+  let el1 =
+    Box { style = default; attrs = []; children = [ Text "a"; Text "b" ] }
+  in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
   let node = Nopal_web.Renderer.dom_node handle in
   let children = Jv.get node "childNodes" in
   let child0_before = Jv.get children "0" in
   let child1_before = Jv.get children "1" in
-  let el2 = Box { style = default; children = [ Text "c"; Text "d" ] } in
+  let el2 =
+    Box { style = default; attrs = []; children = [ Text "c"; Text "d" ] }
+  in
   Nopal_web.Renderer.update ~dispatch handle el2;
   let children_after = Jv.get node "childNodes" in
   let child0_after = Jv.get children_after "0" in
@@ -345,6 +390,7 @@ let test_keyed_reorder_reuses_nodes () =
     Box
       {
         style = default;
+        attrs = [];
         children =
           [
             Keyed { key = "a"; child = Text "A" };
@@ -362,6 +408,7 @@ let test_keyed_reorder_reuses_nodes () =
     Box
       {
         style = default;
+        attrs = [];
         children =
           [
             Keyed { key = "b"; child = Text "B" };
@@ -383,7 +430,11 @@ let test_keyed_add_new_key () =
   let dispatch, _msgs = fresh_dispatch () in
   let el1 =
     Box
-      { style = default; children = [ Keyed { key = "a"; child = Text "A" } ] }
+      {
+        style = default;
+        attrs = [];
+        children = [ Keyed { key = "a"; child = Text "A" } ];
+      }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
   let node = Nopal_web.Renderer.dom_node handle in
@@ -393,6 +444,7 @@ let test_keyed_add_new_key () =
     Box
       {
         style = default;
+        attrs = [];
         children =
           [
             Keyed { key = "a"; child = Text "A" };
@@ -419,6 +471,7 @@ let test_keyed_remove_key () =
     Box
       {
         style = default;
+        attrs = [];
         children =
           [
             Keyed { key = "a"; child = Text "A" };
@@ -432,7 +485,11 @@ let test_keyed_remove_key () =
   let child_b = Jv.get children_before "1" in
   let el2 =
     Box
-      { style = default; children = [ Keyed { key = "a"; child = Text "A" } ] }
+      {
+        style = default;
+        attrs = [];
+        children = [ Keyed { key = "a"; child = Text "A" } ];
+      }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
   let children_after = Jv.get node "childNodes" in
@@ -450,6 +507,7 @@ let test_keyed_stable_node_identity () =
     Box
       {
         style = default;
+        attrs = [];
         children =
           [
             Keyed
@@ -459,10 +517,13 @@ let test_keyed_stable_node_identity () =
                   Input
                     {
                       style = default;
+                      attrs = [];
                       value = "v";
                       placeholder = "";
                       on_change = None;
                       on_submit = None;
+                      on_blur = None;
+                      on_keydown = None;
                     };
               };
             Keyed { key = "y"; child = Text "Y" };
@@ -478,6 +539,7 @@ let test_keyed_stable_node_identity () =
     Box
       {
         style = default;
+        attrs = [];
         children =
           [
             Keyed { key = "z"; child = Text "Z" };
@@ -488,10 +550,13 @@ let test_keyed_stable_node_identity () =
                   Input
                     {
                       style = default;
+                      attrs = [];
                       value = "v2";
                       placeholder = "";
                       on_change = None;
                       on_submit = None;
+                      on_blur = None;
+                      on_keydown = None;
                     };
               };
           ];
@@ -527,11 +592,25 @@ let test_reconcile_event_listener_update () =
   let parent = fresh_parent () in
   let dispatch, msgs = fresh_dispatch () in
   let el1 =
-    Button { style = default; on_click = Some Click; child = Text "a" }
+    Button
+      {
+        style = default;
+        attrs = [];
+        on_click = Some Click;
+        on_dblclick = None;
+        child = Text "a";
+      }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
   let el2 =
-    Button { style = default; on_click = Some Submit; child = Text "a" }
+    Button
+      {
+        style = default;
+        attrs = [];
+        on_click = Some Submit;
+        on_dblclick = None;
+        child = Text "a";
+      }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
   let node = Nopal_web.Renderer.dom_node handle in
@@ -576,10 +655,17 @@ let test_recursive_unlisten_on_remove () =
     Box
       {
         style = default;
+        attrs = [];
         children =
           [
             Button
-              { style = default; on_click = Some Click; child = Text "inner" };
+              {
+                style = default;
+                attrs = [];
+                on_click = Some Click;
+                on_dblclick = None;
+                child = Text "inner";
+              };
           ];
       }
   in
