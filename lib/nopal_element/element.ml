@@ -1,3 +1,5 @@
+type pointer_event = { x : float; y : float }
+
 type 'msg t =
   | Empty
   | Text of string
@@ -41,6 +43,16 @@ type 'msg t =
   | Image of { style : Nopal_style.Style.t; src : string; alt : string }
   | Scroll of { style : Nopal_style.Style.t; child : 'msg t }
   | Keyed of { key : string; child : 'msg t }
+  | Draw of {
+      width : float;
+      height : float;
+      scene : Nopal_draw.Scene.t list;
+      on_pointer_move : (pointer_event -> 'msg) option;
+      on_click : (pointer_event -> 'msg) option;
+      on_pointer_leave : 'msg option;
+      cursor : Nopal_style.Cursor.t option;
+      aria_label : string option;
+    }
 
 let empty = Empty
 let text s = Text s
@@ -83,6 +95,20 @@ let image ?(style = Nopal_style.Style.empty) ~src ~alt () =
 
 let scroll ?(style = Nopal_style.Style.empty) child = Scroll { style; child }
 let keyed key child = Keyed { key; child }
+
+let draw ?on_pointer_move ?on_click ?on_pointer_leave ?cursor ?aria_label ~width
+    ~height scene =
+  Draw
+    {
+      width;
+      height;
+      scene;
+      on_pointer_move;
+      on_click;
+      on_pointer_leave;
+      cursor;
+      aria_label;
+    }
 
 let rec map f = function
   | Empty -> Empty
@@ -130,6 +156,28 @@ let rec map f = function
   | Image { style; src; alt } -> Image { style; src; alt }
   | Scroll { style; child } -> Scroll { style; child = map f child }
   | Keyed { key; child } -> Keyed { key; child = map f child }
+  | Draw
+      {
+        width;
+        height;
+        scene;
+        on_pointer_move;
+        on_click;
+        on_pointer_leave;
+        cursor;
+        aria_label;
+      } ->
+      Draw
+        {
+          width;
+          height;
+          scene;
+          on_pointer_move = Option.map (fun g pe -> f (g pe)) on_pointer_move;
+          on_click = Option.map (fun g pe -> f (g pe)) on_click;
+          on_pointer_leave = Option.map f on_pointer_leave;
+          cursor;
+          aria_label;
+        }
 
 let equal_attrs a1 a2 =
   List.equal
@@ -216,8 +264,35 @@ let rec equal a b =
       Nopal_style.Style.equal s1 s2 && equal ch1 ch2
   | Keyed { key = k1; child = ch1 }, Keyed { key = k2; child = ch2 } ->
       String.equal k1 k2 && equal ch1 ch2
+  | ( Draw
+        {
+          width = w1;
+          height = h1;
+          scene = s1;
+          cursor = c1;
+          aria_label = al1;
+          on_pointer_move = _;
+          on_click = _;
+          on_pointer_leave = _;
+        },
+      Draw
+        {
+          width = w2;
+          height = h2;
+          scene = s2;
+          cursor = c2;
+          aria_label = al2;
+          on_pointer_move = _;
+          on_click = _;
+          on_pointer_leave = _;
+        } ) ->
+      Float.equal w1 w2
+      && Float.equal h1 h2
+      && List.equal Nopal_draw.Scene.equal s1 s2
+      && Option.equal Nopal_style.Cursor.equal c1 c2
+      && Option.equal String.equal al1 al2
   | ( ( Empty | Text _ | Box _ | Row _ | Column _ | Button _ | Input _ | Image _
-      | Scroll _ | Keyed _ ),
+      | Scroll _ | Keyed _ | Draw _ ),
       _ ) ->
       false
 

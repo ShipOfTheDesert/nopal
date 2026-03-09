@@ -15,7 +15,8 @@ let test_empty_builder () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_text_builder () =
@@ -32,7 +33,8 @@ let test_text_builder () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_box_default_style () =
@@ -50,7 +52,8 @@ let test_box_default_style () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_row_default_style () =
@@ -68,7 +71,8 @@ let test_row_default_style () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_column_default_style () =
@@ -86,7 +90,8 @@ let test_column_default_style () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_box_preserves_children () =
@@ -108,7 +113,8 @@ let test_box_preserves_children () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_button_no_handler () =
@@ -125,7 +131,8 @@ let test_button_no_handler () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_button_with_handler () =
@@ -142,7 +149,8 @@ let test_button_with_handler () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_button_child () =
@@ -160,7 +168,8 @@ let test_button_child () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_input_defaults () =
@@ -185,7 +194,8 @@ let test_input_defaults () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_input_placeholder () =
@@ -202,7 +212,8 @@ let test_input_placeholder () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_input_on_change () =
@@ -226,7 +237,8 @@ let test_input_on_change () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_input_on_submit () =
@@ -243,7 +255,8 @@ let test_input_on_submit () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_image_required_fields () =
@@ -260,7 +273,8 @@ let test_image_required_fields () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_image_default_style () =
@@ -277,7 +291,8 @@ let test_image_default_style () =
     | Element.Button _
     | Element.Input _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_scroll_default_style () =
@@ -294,7 +309,8 @@ let test_scroll_default_style () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_scroll_child () =
@@ -311,7 +327,8 @@ let test_scroll_child () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_keyed_preserves_key () =
@@ -328,7 +345,8 @@ let test_keyed_preserves_key () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_keyed_preserves_child () =
@@ -345,7 +363,8 @@ let test_keyed_preserves_child () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 type wrapper = Wrapped of msg
@@ -366,7 +385,8 @@ let test_map_transforms_click () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_map_transforms_input () =
@@ -390,7 +410,8 @@ let test_map_transforms_input () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_map_recursive () =
@@ -429,7 +450,8 @@ let test_map_recursive () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_map_column () =
@@ -455,7 +477,8 @@ let test_map_column () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_map_image () =
@@ -474,7 +497,8 @@ let test_map_image () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_map_scroll () =
@@ -495,7 +519,8 @@ let test_map_scroll () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_map_keyed () =
@@ -521,7 +546,8 @@ let test_map_keyed () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_map_empty_noop () =
@@ -538,7 +564,8 @@ let test_map_empty_noop () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_map_text_noop () =
@@ -556,7 +583,8 @@ let test_map_text_noop () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_equal_empty () =
@@ -712,7 +740,8 @@ let test_box_default_interaction () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let hover_style = Nopal_style.Style.empty
@@ -735,7 +764,8 @@ let test_button_with_interaction () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_input_with_interaction () =
@@ -753,7 +783,8 @@ let test_input_with_interaction () =
     | Element.Button _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_map_preserves_interaction_button () =
@@ -774,7 +805,8 @@ let test_map_preserves_interaction_button () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_map_preserves_interaction_box () =
@@ -794,7 +826,8 @@ let test_map_preserves_interaction_box () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_map_preserves_interaction_row () =
@@ -814,7 +847,8 @@ let test_map_preserves_interaction_row () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_map_preserves_interaction_column () =
@@ -834,7 +868,8 @@ let test_map_preserves_interaction_column () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_map_preserves_interaction_input () =
@@ -854,7 +889,8 @@ let test_map_preserves_interaction_input () =
     | Element.Button _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Draw _ ->
         false)
 
 let test_equal_different_interaction () =

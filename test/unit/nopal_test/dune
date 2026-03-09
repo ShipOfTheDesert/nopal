@@ -5,3 +5,7 @@
 (test
  (name test_event_simulation)
  (libraries nopal_test nopal_element nopal_style alcotest))
+
+(test
+ (name test_draw_renderer)
+ (libraries nopal_test nopal_element nopal_draw nopal_style alcotest))
