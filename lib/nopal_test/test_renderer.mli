@@ -13,6 +13,7 @@ type node =
       tag : string;
       attrs : (string * string) list;
       children : node list;
+      interaction : Nopal_style.Interaction.t;
     }
 
 (** {1 Selectors} *)
@@ -63,6 +64,22 @@ val find_all : selector -> node -> node list
 val text_content : node -> string
 (** [text_content node] returns the concatenated text of all [Text] descendants.
     Returns [""] for [Empty]. *)
+
+val interaction : node -> Nopal_style.Interaction.t option
+(** [interaction node] returns [Some interaction] if the node is an [Element],
+    [None] for [Empty] and [Text]. *)
+
+val has_hover : node -> bool
+(** [has_hover node] returns [true] if the node is an [Element] whose
+    interaction has a hover style set. *)
+
+val has_pressed : node -> bool
+(** [has_pressed node] returns [true] if the node is an [Element] whose
+    interaction has a pressed style set. *)
+
+val has_focused : node -> bool
+(** [has_focused node] returns [true] if the node is an [Element] whose
+    interaction has a focused style set. *)
 
 val has_attr : string -> node -> bool
 (** [has_attr name node] returns [true] if the node is an [Element] with an

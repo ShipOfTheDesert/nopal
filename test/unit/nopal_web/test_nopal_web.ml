@@ -37,7 +37,15 @@ let test_text_creates_span () =
 let test_box_creates_div () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
-  let el = Box { style = default; attrs = []; children = [ Text "a" ] } in
+  let el =
+    Box
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        children = [ Text "a" ];
+      }
+  in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
   let node = Nopal_web.Renderer.dom_node handle in
   Alcotest.(check string) "tag is DIV" "DIV" (tag_of node);
@@ -49,7 +57,15 @@ let test_box_creates_div () =
 let test_row_creates_div_flex_row () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
-  let el = Row { style = default; attrs = []; children = [] } in
+  let el =
+    Row
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        children = [];
+      }
+  in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
   let node = Nopal_web.Renderer.dom_node handle in
   Alcotest.(check string) "tag is DIV" "DIV" (tag_of node);
@@ -61,7 +77,15 @@ let test_row_creates_div_flex_row () =
 let test_column_creates_div_flex_column () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
-  let el = Column { style = default; attrs = []; children = [] } in
+  let el =
+    Column
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        children = [];
+      }
+  in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
   let node = Nopal_web.Renderer.dom_node handle in
   Alcotest.(check string) "tag is DIV" "DIV" (tag_of node);
@@ -77,6 +101,7 @@ let test_button_creates_button () =
     Button
       {
         style = default;
+        interaction = Nopal_style.Interaction.default;
         attrs = [];
         on_click = None;
         on_dblclick = None;
@@ -95,6 +120,7 @@ let test_input_creates_input () =
     Input
       {
         style = default;
+        interaction = Nopal_style.Interaction.default;
         attrs = [];
         value = "hi";
         placeholder = "type here";
@@ -163,6 +189,7 @@ let test_button_click_dispatches () =
     Button
       {
         style = default;
+        interaction = Nopal_style.Interaction.default;
         attrs = [];
         on_click = Some Click;
         on_dblclick = None;
@@ -186,6 +213,7 @@ let test_input_change_dispatches () =
     Input
       {
         style = default;
+        interaction = Nopal_style.Interaction.default;
         attrs = [];
         value = "";
         placeholder = "";
@@ -214,6 +242,7 @@ let test_input_submit_dispatches_on_enter () =
     Input
       {
         style = default;
+        interaction = Nopal_style.Interaction.default;
         attrs = [];
         value = "";
         placeholder = "";
@@ -244,6 +273,7 @@ let test_input_submit_ignores_non_enter () =
     Input
       {
         style = default;
+        interaction = Nopal_style.Interaction.default;
         attrs = [];
         value = "";
         placeholder = "";
@@ -272,7 +302,15 @@ let test_style_applied_as_inline () =
       (fun p -> { p with background = Some (rgba 255 0 0 1.0) })
       default
   in
-  let el = Box { style = styled; attrs = []; children = [] } in
+  let el =
+    Box
+      {
+        style = styled;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        children = [];
+      }
+  in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
   let node = Nopal_web.Renderer.dom_node handle in
   let style_obj = Jv.get node "style" in
@@ -295,10 +333,26 @@ let test_reconcile_text_update () =
 let test_reconcile_same_variant_reuses_node () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
-  let el1 = Box { style = default; attrs = []; children = [ Text "a" ] } in
+  let el1 =
+    Box
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        children = [ Text "a" ];
+      }
+  in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
   let node_before = Nopal_web.Renderer.dom_node handle in
-  let el2 = Box { style = default; attrs = []; children = [ Text "b" ] } in
+  let el2 =
+    Box
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        children = [ Text "b" ];
+      }
+  in
   Nopal_web.Renderer.update ~dispatch handle el2;
   let node_after = Nopal_web.Renderer.dom_node handle in
   Alcotest.(check bool) "same div node" true (node_before == node_after)
@@ -313,6 +367,7 @@ let test_reconcile_different_variant_replaces () =
     Button
       {
         style = default;
+        interaction = Nopal_style.Interaction.default;
         attrs = [];
         on_click = None;
         on_dblclick = None;
@@ -328,13 +383,27 @@ let test_reconcile_different_variant_replaces () =
 let test_reconcile_children_append () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
-  let el1 = Box { style = default; attrs = []; children = [ Text "a" ] } in
+  let el1 =
+    Box
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        children = [ Text "a" ];
+      }
+  in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
   let node = Nopal_web.Renderer.dom_node handle in
   let count_before = Jv.Int.get (Jv.get node "childNodes") "length" in
   Alcotest.(check int) "one child" 1 count_before;
   let el2 =
-    Box { style = default; attrs = []; children = [ Text "a"; Text "b" ] }
+    Box
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        children = [ Text "a"; Text "b" ];
+      }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
   let count_after = Jv.Int.get (Jv.get node "childNodes") "length" in
@@ -345,13 +414,27 @@ let test_reconcile_children_remove () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
   let el1 =
-    Box { style = default; attrs = []; children = [ Text "a"; Text "b" ] }
+    Box
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        children = [ Text "a"; Text "b" ];
+      }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
   let node = Nopal_web.Renderer.dom_node handle in
   let count_before = Jv.Int.get (Jv.get node "childNodes") "length" in
   Alcotest.(check int) "two children" 2 count_before;
-  let el2 = Box { style = default; attrs = []; children = [ Text "a" ] } in
+  let el2 =
+    Box
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        children = [ Text "a" ];
+      }
+  in
   Nopal_web.Renderer.update ~dispatch handle el2;
   let count_after = Jv.Int.get (Jv.get node "childNodes") "length" in
   Alcotest.(check int) "one child" 1 count_after
@@ -361,7 +444,13 @@ let test_reconcile_children_reuse_by_position () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
   let el1 =
-    Box { style = default; attrs = []; children = [ Text "a"; Text "b" ] }
+    Box
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        children = [ Text "a"; Text "b" ];
+      }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
   let node = Nopal_web.Renderer.dom_node handle in
@@ -369,7 +458,13 @@ let test_reconcile_children_reuse_by_position () =
   let child0_before = Jv.get children "0" in
   let child1_before = Jv.get children "1" in
   let el2 =
-    Box { style = default; attrs = []; children = [ Text "c"; Text "d" ] }
+    Box
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        children = [ Text "c"; Text "d" ];
+      }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
   let children_after = Jv.get node "childNodes" in
@@ -390,6 +485,7 @@ let test_keyed_reorder_reuses_nodes () =
     Box
       {
         style = default;
+        interaction = Nopal_style.Interaction.default;
         attrs = [];
         children =
           [
@@ -408,6 +504,7 @@ let test_keyed_reorder_reuses_nodes () =
     Box
       {
         style = default;
+        interaction = Nopal_style.Interaction.default;
         attrs = [];
         children =
           [
@@ -432,6 +529,7 @@ let test_keyed_add_new_key () =
     Box
       {
         style = default;
+        interaction = Nopal_style.Interaction.default;
         attrs = [];
         children = [ Keyed { key = "a"; child = Text "A" } ];
       }
@@ -444,6 +542,7 @@ let test_keyed_add_new_key () =
     Box
       {
         style = default;
+        interaction = Nopal_style.Interaction.default;
         attrs = [];
         children =
           [
@@ -471,6 +570,7 @@ let test_keyed_remove_key () =
     Box
       {
         style = default;
+        interaction = Nopal_style.Interaction.default;
         attrs = [];
         children =
           [
@@ -487,6 +587,7 @@ let test_keyed_remove_key () =
     Box
       {
         style = default;
+        interaction = Nopal_style.Interaction.default;
         attrs = [];
         children = [ Keyed { key = "a"; child = Text "A" } ];
       }
@@ -507,6 +608,7 @@ let test_keyed_stable_node_identity () =
     Box
       {
         style = default;
+        interaction = Nopal_style.Interaction.default;
         attrs = [];
         children =
           [
@@ -517,6 +619,7 @@ let test_keyed_stable_node_identity () =
                   Input
                     {
                       style = default;
+                      interaction = Nopal_style.Interaction.default;
                       attrs = [];
                       value = "v";
                       placeholder = "";
@@ -539,6 +642,7 @@ let test_keyed_stable_node_identity () =
     Box
       {
         style = default;
+        interaction = Nopal_style.Interaction.default;
         attrs = [];
         children =
           [
@@ -550,6 +654,7 @@ let test_keyed_stable_node_identity () =
                   Input
                     {
                       style = default;
+                      interaction = Nopal_style.Interaction.default;
                       attrs = [];
                       value = "v2";
                       placeholder = "";
@@ -633,13 +738,25 @@ let test_reconcile_box_skips_unchanged_attrs () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
   let el1 =
-    Box { style = default; attrs = [ ("data-id", "x") ]; children = [] }
+    Box
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [ ("data-id", "x") ];
+        children = [];
+      }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
   let node = Nopal_web.Renderer.dom_node handle in
   let count = spy_set_attr node in
   let el2 =
-    Box { style = default; attrs = [ ("data-id", "x") ]; children = [] }
+    Box
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [ ("data-id", "x") ];
+        children = [];
+      }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
   Alcotest.(check int) "setAttribute not called for unchanged attrs" 0 !count
@@ -649,13 +766,25 @@ let test_reconcile_box_updates_changed_attrs () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
   let el1 =
-    Box { style = default; attrs = [ ("data-id", "x") ]; children = [] }
+    Box
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [ ("data-id", "x") ];
+        children = [];
+      }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
   let node = Nopal_web.Renderer.dom_node handle in
   let count = spy_set_attr node in
   let el2 =
-    Box { style = default; attrs = [ ("data-id", "y") ]; children = [] }
+    Box
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [ ("data-id", "y") ];
+        children = [];
+      }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
   Alcotest.(check int) "setAttribute called once for changed attr" 1 !count;
@@ -672,6 +801,7 @@ let test_reconcile_box_removes_stale_attrs () =
     Box
       {
         style = default;
+        interaction = Nopal_style.Interaction.default;
         attrs = [ ("data-id", "x"); ("data-extra", "y") ];
         children = [];
       }
@@ -685,7 +815,13 @@ let test_reconcile_box_removes_stale_attrs () =
   Alcotest.(check string) "data-extra initially set" "y" v;
   (* Update: remove data-extra, keep data-id *)
   let el2 =
-    Box { style = default; attrs = [ ("data-id", "x") ]; children = [] }
+    Box
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [ ("data-id", "x") ];
+        children = [];
+      }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
   let removed =
@@ -701,6 +837,7 @@ let test_reconcile_button_skips_unchanged_attrs () =
     Button
       {
         style = default;
+        interaction = Nopal_style.Interaction.default;
         attrs = [ ("data-id", "x") ];
         on_click = Some Click;
         on_dblclick = None;
@@ -714,6 +851,7 @@ let test_reconcile_button_skips_unchanged_attrs () =
     Button
       {
         style = default;
+        interaction = Nopal_style.Interaction.default;
         attrs = [ ("data-id", "x") ];
         on_click = Some Click;
         on_dblclick = None;
@@ -731,6 +869,7 @@ let test_reconcile_input_skips_unchanged_placeholder () =
     Input
       {
         style = default;
+        interaction = Nopal_style.Interaction.default;
         attrs = [];
         value = "";
         placeholder = "type here";
@@ -747,6 +886,7 @@ let test_reconcile_input_skips_unchanged_placeholder () =
     Input
       {
         style = default;
+        interaction = Nopal_style.Interaction.default;
         attrs = [];
         value = "typed";
         placeholder = "type here";
@@ -768,6 +908,7 @@ let test_reconcile_input_updates_changed_placeholder () =
     Input
       {
         style = default;
+        interaction = Nopal_style.Interaction.default;
         attrs = [];
         value = "";
         placeholder = "old";
@@ -784,6 +925,7 @@ let test_reconcile_input_updates_changed_placeholder () =
     Input
       {
         style = default;
+        interaction = Nopal_style.Interaction.default;
         attrs = [];
         value = "";
         placeholder = "new";
@@ -809,6 +951,7 @@ let test_reconcile_input_skips_unchanged_attrs () =
     Input
       {
         style = default;
+        interaction = Nopal_style.Interaction.default;
         attrs = [ ("data-id", "x") ];
         value = "";
         placeholder = "";
@@ -825,6 +968,7 @@ let test_reconcile_input_skips_unchanged_attrs () =
     Input
       {
         style = default;
+        interaction = Nopal_style.Interaction.default;
         attrs = [ ("data-id", "x") ];
         value = "typed";
         placeholder = "";
@@ -845,6 +989,7 @@ let test_reconcile_event_listener_update () =
     Button
       {
         style = default;
+        interaction = Nopal_style.Interaction.default;
         attrs = [];
         on_click = Some Click;
         on_dblclick = None;
@@ -856,6 +1001,7 @@ let test_reconcile_event_listener_update () =
     Button
       {
         style = default;
+        interaction = Nopal_style.Interaction.default;
         attrs = [];
         on_click = Some Submit;
         on_dblclick = None;
@@ -905,12 +1051,14 @@ let test_recursive_unlisten_on_remove () =
     Box
       {
         style = default;
+        interaction = Nopal_style.Interaction.default;
         attrs = [];
         children =
           [
             Button
               {
                 style = default;
+                interaction = Nopal_style.Interaction.default;
                 attrs = [];
                 on_click = Some Click;
                 on_dblclick = None;
@@ -929,6 +1077,156 @@ let test_recursive_unlisten_on_remove () =
   let ev = Jv.new' (Jv.get Jv.global "Event") [| Jv.of_string "click" |] in
   ignore (Jv.call inner_button "dispatchEvent" [| ev |]);
   Alcotest.(check int) "no dispatch from orphaned button" 0 (List.length !msgs)
+
+let has_class node class_name =
+  let cl = Jv.get node "classList" in
+  Jv.to_bool (Jv.call cl "contains" [| Jv.of_string class_name |])
+
+let class_count node =
+  let cl = Jv.get node "classList" in
+  let s = Jv.to_string (Jv.call cl "toString" [||]) in
+  match String.trim s with
+  | "" -> 0
+  | s -> List.length (String.split_on_char ' ' s)
+
+let hover_style =
+  Nopal_style.Style.default
+  |> Nopal_style.Style.with_paint (fun p ->
+      { p with background = Some (Nopal_style.Style.rgba 91 160 233 1.0) })
+
+let hover_interaction =
+  { Nopal_style.Interaction.default with hover = Some hover_style }
+
+let pressed_style =
+  Nopal_style.Style.default
+  |> Nopal_style.Style.with_paint (fun p ->
+      { p with background = Some (Nopal_style.Style.rgba 42 106 184 1.0) })
+
+let hover_pressed_interaction =
+  {
+    Nopal_style.Interaction.default with
+    hover = Some hover_style;
+    pressed = Some pressed_style;
+  }
+
+(* I-2a: reconciling from no interaction to hover adds class *)
+let test_reconcile_interaction_inject_on_change () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let el1 =
+    Box
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        children = [];
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let node = Nopal_web.Renderer.dom_node handle in
+  Alcotest.(check int) "no classes initially" 0 (class_count node);
+  let el2 =
+    Box
+      {
+        style = default;
+        interaction = hover_interaction;
+        attrs = [];
+        children = [];
+      }
+  in
+  Nopal_web.Renderer.update ~dispatch handle el2;
+  Alcotest.(check int) "one class after inject" 1 (class_count node);
+  Alcotest.(check bool)
+    "has _nopal_ix_ class" true
+    (has_class node "_nopal_ix_0")
+
+(* I-2b: reconciling from hover interaction to no interaction removes class *)
+let test_reconcile_interaction_remove_on_change () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let el1 =
+    Box
+      {
+        style = default;
+        interaction = hover_interaction;
+        attrs = [];
+        children = [];
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let node = Nopal_web.Renderer.dom_node handle in
+  Alcotest.(check int) "one class initially" 1 (class_count node);
+  let el2 =
+    Box
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        children = [];
+      }
+  in
+  Nopal_web.Renderer.update ~dispatch handle el2;
+  Alcotest.(check int) "no classes after remove" 0 (class_count node)
+
+(* I-2c: reconciling to a different interaction replaces class *)
+let test_reconcile_interaction_replace_on_change () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let el1 =
+    Box
+      {
+        style = default;
+        interaction = hover_interaction;
+        attrs = [];
+        children = [];
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let node = Nopal_web.Renderer.dom_node handle in
+  Alcotest.(check bool) "has first class" true (has_class node "_nopal_ix_0");
+  let el2 =
+    Box
+      {
+        style = default;
+        interaction = hover_pressed_interaction;
+        attrs = [];
+        children = [];
+      }
+  in
+  Nopal_web.Renderer.update ~dispatch handle el2;
+  Alcotest.(check int) "still one class" 1 (class_count node);
+  Alcotest.(check bool) "old class removed" false (has_class node "_nopal_ix_0");
+  Alcotest.(check bool) "new class added" true (has_class node "_nopal_ix_1")
+
+(* I-2d: unchanged interaction skips injection *)
+let test_reconcile_interaction_skips_unchanged () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let el1 =
+    Box
+      {
+        style = default;
+        interaction = hover_interaction;
+        attrs = [];
+        children = [];
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let node = Nopal_web.Renderer.dom_node handle in
+  Alcotest.(check bool) "has class" true (has_class node "_nopal_ix_0");
+  let el2 =
+    Box
+      {
+        style = default;
+        interaction = hover_interaction;
+        attrs = [];
+        children = [];
+      }
+  in
+  Nopal_web.Renderer.update ~dispatch handle el2;
+  (* Same class retained, no new class injected *)
+  Alcotest.(check int) "still one class" 1 (class_count node);
+  Alcotest.(check bool) "same class kept" true (has_class node "_nopal_ix_0")
 
 (* C3: Keyed wrapping an Empty produces a comment node with no data-key *)
 let test_keyed_empty_has_no_data_key () =
@@ -1043,5 +1341,16 @@ let () =
         [
           Alcotest.test_case "keyed empty has no data-key" `Quick
             test_keyed_empty_has_no_data_key;
+        ] );
+      ( "interaction reconciliation",
+        [
+          Alcotest.test_case "inject class on interaction change" `Quick
+            test_reconcile_interaction_inject_on_change;
+          Alcotest.test_case "remove class on interaction change" `Quick
+            test_reconcile_interaction_remove_on_change;
+          Alcotest.test_case "replace class on interaction change" `Quick
+            test_reconcile_interaction_replace_on_change;
+          Alcotest.test_case "skip injection when unchanged" `Quick
+            test_reconcile_interaction_skips_unchanged;
         ] );
     ]
