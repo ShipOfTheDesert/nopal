@@ -155,3 +155,32 @@ let of_style (style : t) =
 let to_inline_string props =
   String.concat ";"
     (List.map (fun { property; value } -> property ^ ":" ^ value) props)
+
+let to_important_rule_body props =
+  String.concat ""
+    (List.map
+       (fun { property; value } -> property ^ ":" ^ value ^ " !important;")
+       props)
+
+let interaction_rules ~class_name (interaction : Nopal_style.Interaction.t) =
+  let buf = Buffer.create 128 in
+  let add_rule selector style =
+    let props = of_style style in
+    match props with
+    | [] -> ()
+    | _ ->
+        let body = to_important_rule_body props in
+        Buffer.add_string buf (selector ^ "{" ^ body ^ "}")
+  in
+  (* Precedence by rule order: hover first, focused second, pressed last.
+     Later rules win for equal specificity. *)
+  (match interaction.hover with
+  | Some style -> add_rule ("." ^ class_name ^ ":hover") style
+  | None -> ());
+  (match interaction.focused with
+  | Some style -> add_rule ("." ^ class_name ^ ":focus-visible") style
+  | None -> ());
+  (match interaction.pressed with
+  | Some style -> add_rule ("." ^ class_name ^ ":active") style
+  | None -> ());
+  Buffer.contents buf

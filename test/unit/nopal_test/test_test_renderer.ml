@@ -1,11 +1,14 @@
 open Nopal_test.Test_renderer
 module E = Nopal_element.Element
+module Ix = Nopal_style.Interaction
+
+let ix0 = Ix.default
 
 let node_pp fmt node =
   let rec aux indent = function
     | Empty -> Format.fprintf fmt "%sEmpty" indent
     | Text s -> Format.fprintf fmt "%sText %S" indent s
-    | Element { tag; attrs; children } ->
+    | Element { tag; attrs; children; _ } ->
         Format.fprintf fmt "%sElement { tag = %S; attrs = [%s]; children = ["
           indent tag
           (String.concat "; "
@@ -24,8 +27,8 @@ let node_equal a b =
     match (a, b) with
     | Empty, Empty -> true
     | Text s1, Text s2 -> String.equal s1 s2
-    | ( Element { tag = t1; attrs = a1; children = c1 },
-        Element { tag = t2; attrs = a2; children = c2 } ) ->
+    | ( Element { tag = t1; attrs = a1; children = c1; _ },
+        Element { tag = t2; attrs = a2; children = c2; _ } ) ->
         String.equal t1 t2 && a1 = a2 && List.equal eq c1 c2
     | _ -> false
   in
@@ -49,25 +52,44 @@ let render_text () =
 let render_box () =
   let r = render (E.box [ E.text "a"; E.text "b" ]) in
   check_node "box renders correctly"
-    (Element { tag = "box"; attrs = []; children = [ Text "a"; Text "b" ] })
+    (Element
+       {
+         tag = "box";
+         attrs = [];
+         children = [ Text "a"; Text "b" ];
+         interaction = ix0;
+       })
     (tree r)
 
 let render_row () =
   let r = render (E.row [ E.text "a" ]) in
   check_node "row renders correctly"
-    (Element { tag = "row"; attrs = []; children = [ Text "a" ] })
+    (Element
+       { tag = "row"; attrs = []; children = [ Text "a" ]; interaction = ix0 })
     (tree r)
 
 let render_column () =
   let r = render (E.column [ E.text "a" ]) in
   check_node "column renders correctly"
-    (Element { tag = "column"; attrs = []; children = [ Text "a" ] })
+    (Element
+       {
+         tag = "column";
+         attrs = [];
+         children = [ Text "a" ];
+         interaction = ix0;
+       })
     (tree r)
 
 let render_button () =
   let r = render (E.button (E.text "click me")) in
   check_node "button renders correctly"
-    (Element { tag = "button"; attrs = []; children = [ Text "click me" ] })
+    (Element
+       {
+         tag = "button";
+         attrs = [];
+         children = [ Text "click me" ];
+         interaction = ix0;
+       })
     (tree r)
 
 let render_input_attrs () =
@@ -78,6 +100,7 @@ let render_input_attrs () =
          tag = "input";
          attrs = [ ("value", "val"); ("placeholder", "ph") ];
          children = [];
+         interaction = ix0;
        })
     (tree r)
 
@@ -89,20 +112,32 @@ let render_image_attrs () =
          tag = "image";
          attrs = [ ("src", "a.png"); ("alt", "pic") ];
          children = [];
+         interaction = ix0;
        })
     (tree r)
 
 let render_scroll () =
   let r = render (E.scroll (E.text "content")) in
   check_node "scroll renders correctly"
-    (Element { tag = "scroll"; attrs = []; children = [ Text "content" ] })
+    (Element
+       {
+         tag = "scroll";
+         attrs = [];
+         children = [ Text "content" ];
+         interaction = ix0;
+       })
     (tree r)
 
 let render_keyed () =
   let r = render (E.keyed "k1" (E.text "child")) in
   check_node "keyed renders correctly"
     (Element
-       { tag = "keyed"; attrs = [ ("key", "k1") ]; children = [ Text "child" ] })
+       {
+         tag = "keyed";
+         attrs = [ ("key", "k1") ];
+         children = [ Text "child" ];
+         interaction = ix0;
+       })
     (tree r)
 
 let render_nested () =
@@ -132,11 +167,14 @@ let render_nested () =
                          tag = "column";
                          attrs = [];
                          children = [ Text "b"; Text "c" ];
+                         interaction = ix0;
                        };
                    ];
+                 interaction = ix0;
                };
              Text "d";
            ];
+         interaction = ix0;
        })
     (tree r)
 

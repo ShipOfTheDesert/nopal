@@ -70,6 +70,52 @@ The `align` type is shared between `main_align` (maps to `justify-content`) and
 split into `main_align` and `cross_align` types (where only `main_align` carries
 `Space_between`), or validate at construction time.
 
+### Redesign Interaction Styling Architecture
+
+**Packages:** `nopal_style`, `nopal_web` (`style_sheet.ml`, `style_css.ml`, `renderer.ml`)
+
+The current interaction styling implementation (PRD 0023) has three known
+design limitations that share a root cause: the styling system was not designed
+with stylesheet-based rules in mind. A unified redesign should address all three
+together.
+
+**1. Per-element `<style>` injection (scalability)**
+
+Each interactive element creates its own `<style>` DOM element in `<head>`,
+containing that element's pseudo-class rules. This is O(n) DOM nodes for n
+interactive elements. The original RFC design (single `<style>` with
+`insertRule`/`deleteRule`) was abandoned because `deleteRule(index)` shifts all
+subsequent rule indices, making index tracking unreliable when rules are removed
+in arbitrary order.
+
+A redesign should provide O(1) DOM nodes for CSS rule management. Options
+include: a single `<style>` element with content rebuilt on change (acceptable
+if change frequency is low), an append-only `insertRule` with periodic
+compaction, or a stable-key rule registry that avoids index-based deletion.
+
+**2. `!important` on pseudo-class rules (specificity conflict)**
+
+Base styles are applied as inline styles on DOM elements. Inline styles have the
+highest CSS specificity, so pseudo-class rules in a stylesheet cannot override
+them without `!important`. This works but is a blunt instrument that makes
+debugging harder and risks a specificity arms race if future features also need
+`!important`.
+
+A redesign should eliminate the need for `!important` by ensuring base styles
+and interaction styles use the same styling mechanism. The cleanest approach is
+to move base styles to the stylesheet (at least for interactive elements),
+allowing pseudo-class rules to override naturally via CSS cascade.
+
+**3. No deduplication of identical interaction styles**
+
+Multiple elements with structurally identical `Interaction.t` values each get
+separate class names and rules. A cache keyed on `Interaction.equal` (with
+reference counting for cleanup) would eliminate redundant rules.
+
+**Design constraint:** Any redesign must preserve the property that elements
+without interaction styles (`Interaction.default`) pay zero cost — no class
+name, no stylesheet rules, no DOM attribute changes.
+
 ## Performance
 
 Performance-related improvements tracked here. None of these are regressions —

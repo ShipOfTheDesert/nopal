@@ -177,6 +177,136 @@ let test_background_color_named () =
   let props = of_style style in
   check_has_prop "background-color" "red" props
 
+(* I-5: to_important_rule_body tests *)
+let test_important_rule_body_single () =
+  let props = [ { property = "color"; value = "red" } ] in
+  let result = to_important_rule_body props in
+  Alcotest.(check string) "single prop" "color:red !important;" result
+
+let test_important_rule_body_multiple () =
+  let props =
+    [
+      { property = "background-color"; value = "#ff0000" };
+      { property = "padding"; value = "8px" };
+    ]
+  in
+  let result = to_important_rule_body props in
+  Alcotest.(check string)
+    "multiple props"
+    "background-color:#ff0000 !important;padding:8px !important;" result
+
+let test_important_rule_body_empty () =
+  let result = to_important_rule_body [] in
+  Alcotest.(check string) "empty list" "" result
+
+(* Substring search helper — returns position or -1 *)
+let find_substring haystack needle =
+  let hlen = String.length haystack in
+  let nlen = String.length needle in
+  if nlen > hlen then -1
+  else
+    let found = ref (-1) in
+    let i = ref 0 in
+    while !found = -1 && !i <= hlen - nlen do
+      if String.sub haystack !i nlen = needle then found := !i;
+      incr i
+    done;
+    !found
+
+let contains s sub = find_substring s sub >= 0
+
+(* I-6: interaction_rules tests *)
+let test_interaction_rules_hover_only () =
+  let interaction =
+    {
+      Nopal_style.Interaction.default with
+      hover =
+        Some
+          (Nopal_style.Style.default
+          |> Nopal_style.Style.with_paint (fun p ->
+              { p with background = Some (Nopal_style.Style.hex "#ff0000") }));
+    }
+  in
+  let result = interaction_rules ~class_name:"_nopal_ix_0" interaction in
+  Alcotest.(check bool)
+    "has hover selector" true
+    (contains result "._nopal_ix_0:hover{");
+  Alcotest.(check bool) "has !important" true (contains result "!important");
+  Alcotest.(check bool) "no active rule" true (not (contains result ":active"))
+
+let test_interaction_rules_all_states () =
+  let hover_style =
+    Nopal_style.Style.default
+    |> Nopal_style.Style.with_paint (fun p ->
+        { p with background = Some (Nopal_style.Style.hex "#aaa") })
+  in
+  let pressed_style =
+    Nopal_style.Style.default
+    |> Nopal_style.Style.with_paint (fun p ->
+        { p with background = Some (Nopal_style.Style.hex "#bbb") })
+  in
+  let focused_style =
+    Nopal_style.Style.default
+    |> Nopal_style.Style.with_paint (fun p ->
+        { p with background = Some (Nopal_style.Style.hex "#ccc") })
+  in
+  let interaction =
+    {
+      Nopal_style.Interaction.hover = Some hover_style;
+      pressed = Some pressed_style;
+      focused = Some focused_style;
+    }
+  in
+  let result = interaction_rules ~class_name:"_nopal_ix_5" interaction in
+  Alcotest.(check bool) "has hover" true (contains result "._nopal_ix_5:hover{");
+  Alcotest.(check bool)
+    "has focus-visible" true
+    (contains result "._nopal_ix_5:focus-visible{");
+  Alcotest.(check bool)
+    "has active" true
+    (contains result "._nopal_ix_5:active{");
+  (* Verify precedence order: hover before focus-visible before active *)
+  let hover_pos = find_substring result ":hover{" in
+  let focus_pos = find_substring result ":focus-visible{" in
+  let active_pos = find_substring result ":active{" in
+  Alcotest.(check bool) "hover before focus-visible" true (hover_pos < focus_pos);
+  Alcotest.(check bool)
+    "focus-visible before active" true (focus_pos < active_pos)
+
+let test_interaction_rules_default_empty () =
+  let result =
+    interaction_rules ~class_name:"_nopal_ix_0" Nopal_style.Interaction.default
+  in
+  Alcotest.(check string) "default produces empty" "" result
+
+let test_interaction_rules_focused_only () =
+  let interaction =
+    {
+      Nopal_style.Interaction.default with
+      focused =
+        Some
+          (Nopal_style.Style.default
+          |> Nopal_style.Style.with_paint (fun p ->
+              {
+                p with
+                border =
+                  Some
+                    {
+                      width = 2.0;
+                      style = Solid;
+                      color = Nopal_style.Style.hex "#0000ff";
+                      radius = 4.0;
+                    };
+              }));
+    }
+  in
+  let result = interaction_rules ~class_name:"_nopal_ix_1" interaction in
+  Alcotest.(check bool)
+    "has focus-visible selector" true
+    (contains result "._nopal_ix_1:focus-visible{");
+  Alcotest.(check bool) "no hover rule" true (not (contains result ":hover"));
+  Alcotest.(check bool) "no active rule" true (not (contains result ":active"))
+
 let () =
   Alcotest.run "style_css"
     [
@@ -226,5 +356,24 @@ let () =
         [
           Alcotest.test_case "hex color" `Quick test_background_color_hex;
           Alcotest.test_case "named color" `Quick test_background_color_named;
+        ] );
+      ( "to_important_rule_body",
+        [
+          Alcotest.test_case "single property" `Quick
+            test_important_rule_body_single;
+          Alcotest.test_case "multiple properties" `Quick
+            test_important_rule_body_multiple;
+          Alcotest.test_case "empty list" `Quick test_important_rule_body_empty;
+        ] );
+      ( "interaction_rules",
+        [
+          Alcotest.test_case "hover only" `Quick
+            test_interaction_rules_hover_only;
+          Alcotest.test_case "all states with precedence" `Quick
+            test_interaction_rules_all_states;
+          Alcotest.test_case "default produces empty" `Quick
+            test_interaction_rules_default_empty;
+          Alcotest.test_case "focused only" `Quick
+            test_interaction_rules_focused_only;
         ] );
     ]

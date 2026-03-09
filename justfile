@@ -58,12 +58,18 @@ serve-kitchen: build
 
 # Benchmarks
 
+bench-setup:
+    cd bench/runner && npm ci --silent
+    cd bench/runner && npx playwright install chromium
+
+bench-setup-ci:
+    cd bench/runner && npm ci --silent
+    cd bench/runner && npx playwright install --with-deps chromium
+
 bench: build
     #!/usr/bin/env bash
     set -euo pipefail
     cd bench/runner
-    npm ci --silent
-    npx playwright install --with-deps chromium
     npx playwright test
     npx tsx bundle-size.ts
     npx tsx collect.ts
