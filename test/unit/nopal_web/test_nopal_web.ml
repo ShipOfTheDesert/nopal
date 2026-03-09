@@ -567,6 +567,19 @@ let test_keyed_stable_node_identity () =
   let input_after = Jv.get children_after "1" in
   Alcotest.(check bool) "input node preserved" true (input_node == input_after)
 
+(* Spy utility: wraps setAttribute on a DOM node and counts calls *)
+let spy_set_attr node =
+  let count = ref 0 in
+  let original_fn = Jv.get node "setAttribute" in
+  let spy =
+    Jv.callback ~arity:2 (fun name value ->
+        incr count;
+        ignore (Jv.apply original_fn [| name; value |]);
+        Jv.undefined)
+  in
+  Jv.set node "setAttribute" spy;
+  count
+
 (* test_reconcile_image_attributes *)
 let test_reconcile_image_attributes () =
   let parent = fresh_parent () in
@@ -586,6 +599,243 @@ let test_reconcile_image_attributes () =
   in
   Alcotest.(check string) "src updated" "b.png" src;
   Alcotest.(check string) "alt updated" "new" alt
+
+(* Image: unchanged src/alt must not trigger setAttribute *)
+let test_reconcile_image_skips_unchanged_src () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let el1 = Image { style = default; src = "same.png"; alt = "same" } in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let count = spy_set_attr node in
+  let el2 = Image { style = default; src = "same.png"; alt = "same" } in
+  Nopal_web.Renderer.update ~dispatch handle el2;
+  Alcotest.(check int) "setAttribute not called for unchanged image" 0 !count
+
+(* Image: changed src triggers setAttribute for src only *)
+let test_reconcile_image_updates_only_changed_attr () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let el1 = Image { style = default; src = "a.png"; alt = "same" } in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let count = spy_set_attr node in
+  let el2 = Image { style = default; src = "b.png"; alt = "same" } in
+  Nopal_web.Renderer.update ~dispatch handle el2;
+  Alcotest.(check int) "setAttribute called once (src only)" 1 !count;
+  let src =
+    Jv.call node "getAttribute" [| Jv.of_string "src" |] |> Jv.to_string
+  in
+  Alcotest.(check string) "src updated" "b.png" src
+
+(* Box: unchanged attrs must not trigger setAttribute *)
+let test_reconcile_box_skips_unchanged_attrs () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let el1 =
+    Box { style = default; attrs = [ ("data-id", "x") ]; children = [] }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let count = spy_set_attr node in
+  let el2 =
+    Box { style = default; attrs = [ ("data-id", "x") ]; children = [] }
+  in
+  Nopal_web.Renderer.update ~dispatch handle el2;
+  Alcotest.(check int) "setAttribute not called for unchanged attrs" 0 !count
+
+(* Box: changed attrs triggers setAttribute *)
+let test_reconcile_box_updates_changed_attrs () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let el1 =
+    Box { style = default; attrs = [ ("data-id", "x") ]; children = [] }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let count = spy_set_attr node in
+  let el2 =
+    Box { style = default; attrs = [ ("data-id", "y") ]; children = [] }
+  in
+  Nopal_web.Renderer.update ~dispatch handle el2;
+  Alcotest.(check int) "setAttribute called once for changed attr" 1 !count;
+  let v =
+    Jv.call node "getAttribute" [| Jv.of_string "data-id" |] |> Jv.to_string
+  in
+  Alcotest.(check string) "attr updated" "y" v
+
+(* Box: removed attrs must be cleared from the DOM *)
+let test_reconcile_box_removes_stale_attrs () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let el1 =
+    Box
+      {
+        style = default;
+        attrs = [ ("data-id", "x"); ("data-extra", "y") ];
+        children = [];
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let node = Nopal_web.Renderer.dom_node handle in
+  (* Verify initial attrs are set *)
+  let v =
+    Jv.call node "getAttribute" [| Jv.of_string "data-extra" |] |> Jv.to_string
+  in
+  Alcotest.(check string) "data-extra initially set" "y" v;
+  (* Update: remove data-extra, keep data-id *)
+  let el2 =
+    Box { style = default; attrs = [ ("data-id", "x") ]; children = [] }
+  in
+  Nopal_web.Renderer.update ~dispatch handle el2;
+  let removed =
+    Jv.call node "getAttribute" [| Jv.of_string "data-extra" |] |> Jv.is_null
+  in
+  Alcotest.(check bool) "data-extra removed from DOM" true removed
+
+(* Button: unchanged attrs must not trigger setAttribute *)
+let test_reconcile_button_skips_unchanged_attrs () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let el1 =
+    Button
+      {
+        style = default;
+        attrs = [ ("data-id", "x") ];
+        on_click = Some Click;
+        on_dblclick = None;
+        child = Text "a";
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let count = spy_set_attr node in
+  let el2 =
+    Button
+      {
+        style = default;
+        attrs = [ ("data-id", "x") ];
+        on_click = Some Click;
+        on_dblclick = None;
+        child = Text "a";
+      }
+  in
+  Nopal_web.Renderer.update ~dispatch handle el2;
+  Alcotest.(check int) "setAttribute not called for unchanged attrs" 0 !count
+
+(* Input: unchanged placeholder must not trigger setAttribute *)
+let test_reconcile_input_skips_unchanged_placeholder () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let el1 =
+    Input
+      {
+        style = default;
+        attrs = [];
+        value = "";
+        placeholder = "type here";
+        on_change = None;
+        on_submit = None;
+        on_blur = None;
+        on_keydown = None;
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let count = spy_set_attr node in
+  let el2 =
+    Input
+      {
+        style = default;
+        attrs = [];
+        value = "typed";
+        placeholder = "type here";
+        on_change = None;
+        on_submit = None;
+        on_blur = None;
+        on_keydown = None;
+      }
+  in
+  Nopal_web.Renderer.update ~dispatch handle el2;
+  Alcotest.(check int)
+    "setAttribute not called for unchanged placeholder" 0 !count
+
+(* Input: changed placeholder triggers setAttribute *)
+let test_reconcile_input_updates_changed_placeholder () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let el1 =
+    Input
+      {
+        style = default;
+        attrs = [];
+        value = "";
+        placeholder = "old";
+        on_change = None;
+        on_submit = None;
+        on_blur = None;
+        on_keydown = None;
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let count = spy_set_attr node in
+  let el2 =
+    Input
+      {
+        style = default;
+        attrs = [];
+        value = "";
+        placeholder = "new";
+        on_change = None;
+        on_submit = None;
+        on_blur = None;
+        on_keydown = None;
+      }
+  in
+  Nopal_web.Renderer.update ~dispatch handle el2;
+  Alcotest.(check int)
+    "setAttribute called once for changed placeholder" 1 !count;
+  let ph =
+    Jv.call node "getAttribute" [| Jv.of_string "placeholder" |] |> Jv.to_string
+  in
+  Alcotest.(check string) "placeholder updated" "new" ph
+
+(* Input: unchanged attrs must not trigger setAttribute *)
+let test_reconcile_input_skips_unchanged_attrs () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let el1 =
+    Input
+      {
+        style = default;
+        attrs = [ ("data-id", "x") ];
+        value = "";
+        placeholder = "";
+        on_change = None;
+        on_submit = None;
+        on_blur = None;
+        on_keydown = None;
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let count = spy_set_attr node in
+  let el2 =
+    Input
+      {
+        style = default;
+        attrs = [ ("data-id", "x") ];
+        value = "typed";
+        placeholder = "";
+        on_change = None;
+        on_submit = None;
+        on_blur = None;
+        on_keydown = None;
+      }
+  in
+  Nopal_web.Renderer.update ~dispatch handle el2;
+  Alcotest.(check int) "setAttribute not called for unchanged attrs" 0 !count
 
 (* 39 *)
 let test_reconcile_event_listener_update () =
@@ -751,6 +1001,24 @@ let () =
             test_reconcile_event_listener_update;
           Alcotest.test_case "reconcile image attributes" `Quick
             test_reconcile_image_attributes;
+          Alcotest.test_case "reconcile image skips unchanged src/alt" `Quick
+            test_reconcile_image_skips_unchanged_src;
+          Alcotest.test_case "reconcile image updates only changed attr" `Quick
+            test_reconcile_image_updates_only_changed_attr;
+          Alcotest.test_case "reconcile box skips unchanged attrs" `Quick
+            test_reconcile_box_skips_unchanged_attrs;
+          Alcotest.test_case "reconcile box updates changed attrs" `Quick
+            test_reconcile_box_updates_changed_attrs;
+          Alcotest.test_case "reconcile box removes stale attrs" `Quick
+            test_reconcile_box_removes_stale_attrs;
+          Alcotest.test_case "reconcile button skips unchanged attrs" `Quick
+            test_reconcile_button_skips_unchanged_attrs;
+          Alcotest.test_case "reconcile input skips unchanged placeholder"
+            `Quick test_reconcile_input_skips_unchanged_placeholder;
+          Alcotest.test_case "reconcile input updates changed placeholder"
+            `Quick test_reconcile_input_updates_changed_placeholder;
+          Alcotest.test_case "reconcile input skips unchanged attrs" `Quick
+            test_reconcile_input_skips_unchanged_attrs;
         ] );
       ( "keyed reconciliation",
         [
