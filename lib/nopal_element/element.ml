@@ -2,7 +2,7 @@ type pointer_event = { x : float; y : float }
 
 type 'msg t =
   | Empty
-  | Text of string
+  | Text of { content : string; text_style : Nopal_style.Text.t option }
   | Box of {
       style : Nopal_style.Style.t;
       interaction : Nopal_style.Interaction.t;
@@ -55,7 +55,10 @@ type 'msg t =
     }
 
 let empty = Empty
-let text s = Text s
+let text s = Text { content = s; text_style = None }
+
+let styled_text ~text_style s =
+  Text { content = s; text_style = Some text_style }
 
 let box ?(style = Nopal_style.Style.empty)
     ?(interaction = Nopal_style.Interaction.default) ?(attrs = []) children =
@@ -112,7 +115,7 @@ let draw ?on_pointer_move ?on_click ?on_pointer_leave ?cursor ?aria_label ~width
 
 let rec map f = function
   | Empty -> Empty
-  | Text s -> Text s
+  | Text { content; text_style } -> Text { content; text_style }
   | Box { style; interaction; attrs; children } ->
       Box { style; interaction; attrs; children = List.map (map f) children }
   | Row { style; interaction; attrs; children } ->
@@ -187,7 +190,9 @@ let equal_attrs a1 a2 =
 let rec equal a b =
   match (a, b) with
   | Empty, Empty -> true
-  | Text s1, Text s2 -> String.equal s1 s2
+  | ( Text { content = c1; text_style = ts1 },
+      Text { content = c2; text_style = ts2 } ) ->
+      String.equal c1 c2 && Option.equal Nopal_style.Text.equal ts1 ts2
   | ( Box { style = s1; interaction = i1; attrs = a1; children = c1 },
       Box { style = s2; interaction = i2; attrs = a2; children = c2 } )
   | ( Row { style = s1; interaction = i1; attrs = a1; children = c1 },

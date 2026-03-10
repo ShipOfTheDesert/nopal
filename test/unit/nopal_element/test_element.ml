@@ -23,7 +23,7 @@ let test_text_builder () =
   Alcotest.(check bool)
     "text produces Text" true
     (match Element.text "hello" with
-    | Element.Text "hello" -> true
+    | Element.Text { content = "hello"; _ } -> true
     | Element.Empty
     | Element.Text _
     | Element.Box _
@@ -103,7 +103,12 @@ let test_box_preserves_children () =
     (match Element.box [ a; b; c ] with
     | Element.Box { children; _ } -> (
         match children with
-        | [ Element.Text "a"; Element.Text "b"; Element.Text "c" ] -> true
+        | [
+         Element.Text { content = "a"; _ };
+         Element.Text { content = "b"; _ };
+         Element.Text { content = "c"; _ };
+        ] ->
+            true
         | _ -> false)
     | Element.Empty
     | Element.Text _
@@ -158,7 +163,8 @@ let test_button_child () =
   Alcotest.(check bool)
     "button wraps given child" true
     (match Element.button child with
-    | Element.Button { child = Element.Text "label"; _ } -> true
+    | Element.Button { child = Element.Text { content = "label"; _ }; _ } ->
+        true
     | Element.Empty
     | Element.Text _
     | Element.Box _
@@ -317,7 +323,8 @@ let test_scroll_child () =
   Alcotest.(check bool)
     "scroll wraps child" true
     (match Element.scroll (Element.text "inner") with
-    | Element.Scroll { child = Element.Text "inner"; _ } -> true
+    | Element.Scroll { child = Element.Text { content = "inner"; _ }; _ } ->
+        true
     | Element.Empty
     | Element.Text _
     | Element.Box _
@@ -353,7 +360,7 @@ let test_keyed_preserves_child () =
   Alcotest.(check bool)
     "keyed preserves child" true
     (match Element.keyed "k1" (Element.text "x") with
-    | Element.Keyed { child = Element.Text "x"; _ } -> true
+    | Element.Keyed { child = Element.Text { content = "x"; _ }; _ } -> true
     | Element.Empty
     | Element.Text _
     | Element.Box _
@@ -573,7 +580,7 @@ let test_map_text_noop () =
   Alcotest.(check bool)
     "map on Text returns same Text" true
     (match mapped with
-    | Element.Text "hi" -> true
+    | Element.Text { content = "hi"; _ } -> true
     | Element.Empty
     | Element.Text _
     | Element.Box _
@@ -900,6 +907,67 @@ let test_equal_different_interaction () =
   Alcotest.(check bool)
     "different interaction not equal" false (Element.equal a b)
 
+let test_text_unchanged_signature () =
+  Alcotest.(check bool)
+    "text builder still returns Text with content" true
+    (match Element.text "hello" with
+    | Element.Text { content = "hello"; text_style = None } -> true
+    | Element.Empty
+    | Element.Text _
+    | Element.Box _
+    | Element.Row _
+    | Element.Column _
+    | Element.Button _
+    | Element.Input _
+    | Element.Image _
+    | Element.Scroll _
+    | Element.Keyed _
+    | Element.Draw _ ->
+        false)
+
+let test_styled_text_carries_style () =
+  let ts =
+    Nopal_style.Text.default
+    |> Nopal_style.Text.font_size 16.0
+    |> Nopal_style.Text.font_weight Nopal_style.Font.Bold
+  in
+  Alcotest.(check bool)
+    "styled_text carries text_style" true
+    (match Element.styled_text ~text_style:ts "hello" with
+    | Element.Text { content = "hello"; text_style = Some ts' } ->
+        Nopal_style.Text.equal ts ts'
+    | Element.Empty
+    | Element.Text _
+    | Element.Box _
+    | Element.Row _
+    | Element.Column _
+    | Element.Button _
+    | Element.Input _
+    | Element.Image _
+    | Element.Scroll _
+    | Element.Keyed _
+    | Element.Draw _ ->
+        false)
+
+let test_styled_text_with_default_is_some () =
+  Alcotest.(check bool)
+    "styled_text with default text style is Some" true
+    (match Element.styled_text ~text_style:Nopal_style.Text.default "hi" with
+    | Element.Text { content = "hi"; text_style = Some ts } ->
+        Nopal_style.Text.equal ts Nopal_style.Text.default
+    | Element.Empty
+    | Element.Text _
+    | Element.Box _
+    | Element.Row _
+    | Element.Column _
+    | Element.Button _
+    | Element.Input _
+    | Element.Image _
+    | Element.Scroll _
+    | Element.Keyed _
+    | Element.Draw _ ->
+        false)
+
 let () =
   Alcotest.run "nopal_element"
     [
@@ -1012,5 +1080,14 @@ let () =
             test_map_preserves_interaction_input;
           Alcotest.test_case "equal_different_interaction" `Quick
             test_equal_different_interaction;
+        ] );
+      ( "styled_text",
+        [
+          Alcotest.test_case "text_unchanged_signature" `Quick
+            test_text_unchanged_signature;
+          Alcotest.test_case "styled_text_carries_style" `Quick
+            test_styled_text_carries_style;
+          Alcotest.test_case "styled_text_with_default_is_some" `Quick
+            test_styled_text_with_default_is_some;
         ] );
     ]

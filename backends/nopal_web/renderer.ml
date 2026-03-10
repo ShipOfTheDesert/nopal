@@ -25,6 +25,13 @@ and 'msg live_text = {
   text_dom : Brr.El.t;
   mutable text : string;
       (* mutable: text content is updated in place on reconciliation *)
+  mutable text_style : Nopal_style.Text.t option;
+      (* mutable: text style is updated on reconciliation when the element's
+         text_style changes *)
+  mutable text_css_props : Style_css.css_prop list;
+      (* mutable: tracks the CSS properties currently applied to the span,
+         so reconciliation can clear exactly the right properties without
+         maintaining a hardcoded list *)
 }
 
 and 'msg live =
@@ -54,6 +61,17 @@ let apply_style el (style : Nopal_style.Style.t) =
     (fun { Style_css.property; value } ->
       Brr.El.set_inline_style (Jstr.v property) (Jstr.v value) el)
     props
+
+let apply_text_style el text_style =
+  match text_style with
+  | Some ts ->
+      let props = Style_css.of_text ts in
+      List.iter
+        (fun { Style_css.property; value } ->
+          Brr.El.set_inline_style (Jstr.v property) (Jstr.v value) el)
+        props;
+      props
+  | None -> []
 
 let apply_container_base_style el =
   Brr.El.set_inline_style (Jstr.v "display") (Jstr.v "flex") el
@@ -225,9 +243,10 @@ let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
         Jv.call (doc ()) "createComment" [| Jv.of_string "empty" |]
       in
       Live_comment { comment }
-  | Text s ->
+  | Text { content = s; text_style } ->
       let el = Brr.El.v (Jstr.v "span") [ Brr.El.txt (Jstr.v s) ] in
-      Live_text { text_dom = el; text = s }
+      let text_css_props = apply_text_style el text_style in
+      Live_text { text_dom = el; text = s; text_style; text_css_props }
   | Box { style; interaction; attrs; children } ->
       let el = Brr.El.v (Jstr.v "div") [] in
       apply_container_base_style el;
@@ -609,10 +628,28 @@ and reconcile_children ~sheet ~dispatch parent_el old_children new_elements =
 and reconcile_live ~sheet ~dispatch parent_el (old_live : 'msg live)
     (new_element : 'msg Nopal_element.Element.t) : 'msg live =
   match (old_live, new_element) with
-  | Live_text t, Text s ->
+  | Live_text t, Text { content = s; text_style } ->
       if not (String.equal t.text s) then begin
         Brr.El.set_children t.text_dom [ Brr.El.txt (Jstr.v s) ];
         t.text <- s
+      end;
+      let style_changed =
+        match (t.text_style, text_style) with
+        | None, None -> false
+        | Some a, Some b -> not (Nopal_style.Text.equal a b)
+        | Some _, None
+        | None, Some _ ->
+            true
+      in
+      if style_changed then begin
+        (* Clear properties from the previous of_text result *)
+        List.iter
+          (fun { Style_css.property; _ } ->
+            Brr.El.set_inline_style (Jstr.v property) (Jstr.v "") t.text_dom)
+          t.text_css_props;
+        let new_props = apply_text_style t.text_dom text_style in
+        t.text_style <- text_style;
+        t.text_css_props <- new_props
       end;
       Live_text t
   | Live_comment c, Empty -> Live_comment c

@@ -1,6 +1,6 @@
 type node =
   | Empty
-  | Text of string
+  | Text of { content : string; text_style : Nopal_style.Text.t option }
   | Element of {
       tag : string;
       attrs : (string * string) list;
@@ -40,7 +40,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
   let rec go rev_path (el : 'msg Nopal_element.Element.t) : node =
     match el with
     | Empty -> Empty
-    | Text s -> Text s
+    | Text { content; text_style } -> Text { content; text_style }
     | Box { style = _; interaction; attrs; children } ->
         Element
           {
@@ -193,8 +193,15 @@ let string_contains ~haystack ~needle =
 let rec text_content node =
   match node with
   | Empty -> ""
-  | Text s -> s
+  | Text { content; _ } -> content
   | Element { children; _ } -> String.concat "" (List.map text_content children)
+
+let text_style node =
+  match node with
+  | Text { text_style; _ } -> text_style
+  | Empty
+  | Element _ ->
+      None
 
 let rec find sel node =
   match sel with
@@ -208,7 +215,8 @@ let rec find sel node =
           None)
   | By_text s -> (
       match node with
-      | Text t when string_contains ~haystack:t ~needle:s -> Some node
+      | Text { content; _ } when string_contains ~haystack:content ~needle:s ->
+          Some node
       | Element { children; _ } -> find_in_children sel children
       | Empty
       | Text _ ->
@@ -260,7 +268,9 @@ let find_all sel node =
             acc)
     | By_text s -> (
         match n with
-        | Text t when string_contains ~haystack:t ~needle:s -> n :: acc
+        | Text { content; _ } when string_contains ~haystack:content ~needle:s
+          ->
+            n :: acc
         | Element { children; _ } -> List.fold_left go acc children
         | Empty
         | Text _ ->
@@ -348,7 +358,8 @@ let resolve_path sel node =
             None)
     | By_text s -> (
         match n with
-        | Text t when string_contains ~haystack:t ~needle:s ->
+        | Text { content; _ } when string_contains ~haystack:content ~needle:s
+          ->
             Some (List.rev rev_path, n)
         | Element { children; _ } -> go_children rev_path children
         | Empty

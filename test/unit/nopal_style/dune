@@ -1,3 +1,3 @@
 (tests
- (names test_style test_font test_cursor)
+ (names test_style test_font test_cursor test_text)
  (libraries nopal_style alcotest))

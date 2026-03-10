@@ -371,6 +371,57 @@ let test_equal_paint_same () =
   let p2 = { default_paint with opacity = 0.7 } in
   Alcotest.(check bool) "same paint" true (equal_paint p1 p2)
 
+(* --- Text integration tests --- *)
+
+let test_default_text_is_text_default () =
+  Alcotest.(check bool)
+    "default.text is Text.default" true
+    (Nopal_style.Text.equal default.text Nopal_style.Text.default)
+
+let test_with_text_applies_fn () =
+  let s = with_text (fun t -> Nopal_style.Text.font_size 16.0 t) default in
+  Alcotest.(check bool)
+    "font_size set" true
+    (match s.text.Nopal_style.Text.font_size with
+    | Some v -> Float.equal v 16.0
+    | None -> false)
+
+let test_with_text_preserves_layout_paint () =
+  let s = with_text (fun t -> Nopal_style.Text.font_size 16.0 t) default in
+  Alcotest.(check bool)
+    "layout unchanged" true
+    (equal_layout s.layout default_layout);
+  Alcotest.(check bool)
+    "paint unchanged" true
+    (equal_paint s.paint default_paint)
+
+let test_set_text_replaces () =
+  let custom_text =
+    Nopal_style.Text.default
+    |> Nopal_style.Text.font_size 24.0
+    |> Nopal_style.Text.italic true
+  in
+  let s = set_text custom_text default in
+  Alcotest.(check bool)
+    "text replaced" true
+    (Nopal_style.Text.equal s.text custom_text)
+
+let test_equal_different_text () =
+  let s =
+    with_text
+      (fun t -> Nopal_style.Text.font_weight Nopal_style.Font.Bold t)
+      default
+  in
+  Alcotest.(check bool) "different text means not equal" false (equal default s)
+
+let test_backward_compat_default_layout_paint () =
+  Alcotest.(check bool)
+    "default still has correct layout" true
+    (equal_layout default.layout default_layout);
+  Alcotest.(check bool)
+    "default still has correct paint" true
+    (equal_paint default.paint default_paint)
+
 (* --- Test runner --- *)
 
 let () =
@@ -481,5 +532,19 @@ let () =
             test_equal_color_different_variants;
           Alcotest.test_case "equal_layout_same" `Quick test_equal_layout_same;
           Alcotest.test_case "equal_paint_same" `Quick test_equal_paint_same;
+        ] );
+      ( "Text integration",
+        [
+          Alcotest.test_case "default_text_is_text_default" `Quick
+            test_default_text_is_text_default;
+          Alcotest.test_case "with_text_applies_fn" `Quick
+            test_with_text_applies_fn;
+          Alcotest.test_case "with_text_preserves_layout_paint" `Quick
+            test_with_text_preserves_layout_paint;
+          Alcotest.test_case "set_text_replaces" `Quick test_set_text_replaces;
+          Alcotest.test_case "equal_different_text" `Quick
+            test_equal_different_text;
+          Alcotest.test_case "backward_compat_default_layout_paint" `Quick
+            test_backward_compat_default_layout_paint;
         ] );
     ]

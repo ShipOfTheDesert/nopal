@@ -2,7 +2,7 @@ open Nopal_element
 open Nopal_style
 open Nopal_draw
 
-(* Color palette (REQ-F12) *)
+(* Color palette *)
 let bg_page = Style.hex "#f8f9fa"
 let bg_section = Style.hex "#ffffff"
 let bg_accent = Style.hex "#4a90d9"
@@ -127,51 +127,161 @@ let view_section title children =
   Element.column ~style:section_style
     [ Element.text title; Element.column ~style:section_body_style children ]
 
-(* Section 1: Typography (REQ-F1) — container styling since typography properties are planned *)
+(* Section 1: Typography *)
 let view_typography _model =
-  let heading_style =
-    Style.default
-    |> Style.with_layout (fun l -> l |> Style.padding_all 12.0)
-    |> Style.with_paint (fun p ->
-        {
-          p with
-          background = Some bg_accent;
-          border = Some { Style.default_border with radius = 4.0 };
-        })
+  let open Nopal_style in
+  (* Heading scale h1–h4 *)
+  let heading size label =
+    Element.styled_text
+      ~text_style:
+        (Text.default |> Text.font_size size |> Text.font_weight Font.Bold)
+      label
   in
-  let muted_style =
-    Style.default
-    |> Style.with_layout (fun l -> l |> Style.padding_all 10.0)
-    |> Style.with_paint (fun p ->
-        {
-          p with
-          background = Some bg_muted;
-          border =
-            Some
-              { width = 1.0; style = Solid; color = border_light; radius = 4.0 };
-        })
+  (* Fixed-width container for ellipsis demo *)
+  let fixed_width_style =
+    Style.default |> Style.with_layout (fun l -> { l with width = Fixed 150.0 })
   in
-  let shadow_style =
-    Style.default
-    |> Style.with_layout (fun l -> l |> Style.padding_all 10.0)
-    |> Style.with_paint (fun p ->
-        {
-          p with
-          background = Some bg_section;
-          shadow =
-            Some { x = 0.0; y = 2.0; blur = 6.0; color = Style.rgba 0 0 0 0.15 };
-        })
+  (* Alignment container: block-level div with text-align set via Style.t text *)
+  let align_box align ~attrs children =
+    let style =
+      Style.default
+      |> Style.with_layout (fun l -> { l with width = Fill })
+      |> Style.with_text (fun t -> t |> Text.text_align align)
+    in
+    Element.box ~style ~attrs children
   in
-  view_section "Typography"
+  (* Weight label helper *)
+  let weight_item (w : Font.weight) (label : string) (testid : string) =
+    Element.box
+      ~attrs:[ ("data-testid", testid) ]
+      [
+        Element.styled_text
+          ~text_style:(Text.default |> Text.font_weight w)
+          label;
+      ]
+  in
+  Element.column ~style:section_style
+    ~attrs:[ ("data-section", "typography") ]
     [
-      Element.box ~style:heading_style
-        [ Element.text "Heading-style container (accent background)" ];
-      Element.box ~style:muted_style
-        [ Element.text "Muted container (border + muted background)" ];
-      Element.box ~style:shadow_style
-        [ Element.text "Shadow container (elevated appearance)" ];
-      Element.text
-        "(Typography properties like font-size and text-color are planned)";
+      Element.text "Typography";
+      Element.column ~style:section_body_style
+        [
+          Element.text "Heading scale:";
+          Element.box
+            ~attrs:[ ("data-testid", "heading-h1") ]
+            [ heading 2.0 "Heading 1 (2rem)" ];
+          Element.box
+            ~attrs:[ ("data-testid", "heading-h2") ]
+            [ heading 1.5 "Heading 2 (1.5rem)" ];
+          Element.box
+            ~attrs:[ ("data-testid", "heading-h3") ]
+            [ heading 1.25 "Heading 3 (1.25rem)" ];
+          Element.box
+            ~attrs:[ ("data-testid", "heading-h4") ]
+            [ heading 1.0 "Heading 4 (1rem)" ];
+          Element.text "Body copy with line height:";
+          Element.box
+            ~attrs:[ ("data-testid", "body-copy") ]
+            [
+              Element.styled_text
+                ~text_style:
+                  (Text.default
+                  |> Text.font_size 1.0
+                  |> Text.line_height (Lh_multiplier 1.6))
+                "This is body text with a 1.6x line-height multiplier for \
+                 comfortable reading.";
+            ];
+          Element.text "Monospace block:";
+          Element.box
+            ~attrs:[ ("data-testid", "monospace-block") ]
+            [
+              Element.styled_text
+                ~text_style:(Text.default |> Text.font_family Monospace)
+                "let x = 42 in x + 1";
+            ];
+          Element.text "Full 9-weight scale:";
+          Element.column ~style:section_body_style
+            [
+              weight_item Thin "Thin (100)" "weight-100";
+              weight_item Extra_light "Extra Light (200)" "weight-200";
+              weight_item Light "Light (300)" "weight-300";
+              weight_item Normal "Normal (400)" "weight-400";
+              weight_item Medium "Medium (500)" "weight-500";
+              weight_item Semi_bold "Semi Bold (600)" "weight-600";
+              weight_item Bold "Bold (700)" "weight-700";
+              weight_item Extra_bold "Extra Bold (800)" "weight-800";
+              weight_item Black "Black (900)" "weight-900";
+            ];
+          Element.text "Ellipsis truncation:";
+          Element.box ~style:fixed_width_style
+            ~attrs:[ ("data-testid", "ellipsis-text") ]
+            [
+              Element.styled_text
+                ~text_style:(Text.default |> Text.text_overflow Ellipsis)
+                "This text is long enough to be truncated with an ellipsis in \
+                 a narrow container.";
+            ];
+          Element.text "Wrap vs no-wrap:";
+          Element.box ~style:fixed_width_style
+            [
+              Element.styled_text
+                ~text_style:(Text.default |> Text.text_overflow Wrap)
+                "This text wraps normally in a fixed container.";
+            ];
+          Element.box ~style:fixed_width_style
+            [
+              Element.styled_text
+                ~text_style:(Text.default |> Text.text_overflow No_wrap)
+                "This text does not wrap and overflows.";
+            ];
+          Element.text "Text alignment:";
+          align_box Align_left
+            ~attrs:[ ("data-testid", "align-left") ]
+            [ Element.text "Left aligned" ];
+          align_box Align_center
+            ~attrs:[ ("data-testid", "align-center") ]
+            [ Element.text "Center aligned" ];
+          align_box Align_right
+            ~attrs:[ ("data-testid", "align-right") ]
+            [ Element.text "Right aligned" ];
+          align_box Align_justify
+            ~attrs:[ ("data-testid", "align-justify") ]
+            [
+              Element.text
+                "Justified text that needs to be long enough to show the \
+                 justification effect across the full width of the container.";
+            ];
+          Element.text "Italic text:";
+          Element.box
+            ~attrs:[ ("data-testid", "italic-text") ]
+            [
+              Element.styled_text
+                ~text_style:(Text.default |> Text.italic true)
+                "This text is italic.";
+            ];
+          Element.text "Text transforms:";
+          Element.box
+            ~attrs:[ ("data-testid", "transform-uppercase") ]
+            [
+              Element.styled_text
+                ~text_style:(Text.default |> Text.text_transform Uppercase)
+                "uppercase text";
+            ];
+          Element.box
+            ~attrs:[ ("data-testid", "transform-lowercase") ]
+            [
+              Element.styled_text
+                ~text_style:(Text.default |> Text.text_transform Lowercase)
+                "LOWERCASE TEXT";
+            ];
+          Element.box
+            ~attrs:[ ("data-testid", "transform-capitalize") ]
+            [
+              Element.styled_text
+                ~text_style:(Text.default |> Text.text_transform Capitalize)
+                "capitalize each word";
+            ];
+        ];
     ]
 
 (* Section 2: Layout (REQ-F2) *)
