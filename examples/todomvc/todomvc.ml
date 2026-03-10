@@ -2,7 +2,7 @@ module E = Nopal_element.Element
 
 type todo = { id : int; title : string; completed : bool }
 type filter = All | Active | Completed
-type editing = { id : int; text : string; original : string; cancelled : bool }
+type editing = { id : int; text : string; original : string }
 type route = All_route | Active_route | Completed_route
 
 type model = {
@@ -114,8 +114,7 @@ let update (module S : Storage) model msg =
   | Start_editing id ->
       let editing =
         match List.find_opt (fun (t : todo) -> t.id = id) model.todos with
-        | Some t ->
-            Some { id; text = t.title; original = t.title; cancelled = false }
+        | Some t -> Some { id; text = t.title; original = t.title }
         | None -> None
       in
       ({ model with editing }, Nopal_mvu.Cmd.none)
@@ -129,8 +128,6 @@ let update (module S : Storage) model msg =
   | Submit_edit -> (
       match model.editing with
       | None -> (model, Nopal_mvu.Cmd.none)
-      | Some { cancelled = true; _ } ->
-          ({ model with editing = None }, Nopal_mvu.Cmd.none)
       | Some { id; text; _ } ->
           let trimmed = String.trim text in
           if String.length trimmed = 0 then
@@ -147,15 +144,9 @@ let update (module S : Storage) model msg =
             in
             save_and_return (module S) { model with todos; editing = None })
   | Cancel_edit ->
-      (* Set cancelled flag rather than clearing editing immediately. A
-         Submit_edit from on_blur fires synchronously and may be queued before
-         or after this message; the flag lets Submit_edit skip the save. *)
-      let editing =
-        match model.editing with
-        | Some e -> Some { e with text = e.original; cancelled = true }
-        | None -> None
-      in
-      ({ model with editing }, Nopal_mvu.Cmd.none)
+      (* Clear editing immediately. When the input is removed from the DOM,
+         blur fires Submit_edit, but it sees editing = None and does nothing. *)
+      ({ model with editing = None }, Nopal_mvu.Cmd.none)
   | Clear_completed ->
       let todos = List.filter (fun (t : todo) -> not t.completed) model.todos in
       save_and_return (module S) { model with todos }

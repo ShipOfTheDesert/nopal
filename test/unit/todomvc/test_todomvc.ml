@@ -205,8 +205,8 @@ let test_submit_edit_empty_deletes () =
 
 let test_cancel_edit () =
   let model = init_model () in
-  (* Cancel_edit sets cancelled flag and restores original text;
-     the subsequent Submit_edit from blur clears editing. *)
+  (* Cancel_edit clears editing directly; the subsequent Submit_edit
+     from blur sees editing = None and does nothing. *)
   let model =
     apply_msgs noop_storage model
       [

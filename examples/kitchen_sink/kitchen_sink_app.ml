@@ -1,6 +1,7 @@
 open Nopal_element
 open Nopal_style
 open Nopal_draw
+open Nopal_charts
 
 (* Color palette *)
 let bg_page = Style.hex "#f8f9fa"
@@ -43,6 +44,9 @@ type model = {
   interaction_toggled : bool;
   sub_counter : Sub_counter.model;
   draw_pointer : (float * float) option;
+  chart_hover : Hover.t option;
+  pie_hover : Hover.t option;
+  scatter_hover : Hover.t option;
 }
 
 (* Messages *)
@@ -58,6 +62,12 @@ type msg =
   | SubCounterMsg of Sub_counter.msg
   | DrawPointerMove of float * float
   | DrawPointerLeave
+  | ChartHovered of Hover.t
+  | ChartLeft
+  | PieHovered of Hover.t
+  | PieLeft
+  | ScatterHovered of Hover.t
+  | ScatterLeft
 
 let init () =
   let sub_counter, sub_cmd = Sub_counter.init () in
@@ -71,6 +81,9 @@ let init () =
       interaction_toggled = false;
       sub_counter;
       draw_pointer = None;
+      chart_hover = None;
+      pie_hover = None;
+      scatter_hover = None;
     },
     Nopal_mvu.Cmd.map (fun m -> SubCounterMsg m) sub_cmd )
 
@@ -121,6 +134,13 @@ let update model = function
   | DrawPointerMove (x, y) ->
       ({ model with draw_pointer = Some (x, y) }, Nopal_mvu.Cmd.none)
   | DrawPointerLeave -> ({ model with draw_pointer = None }, Nopal_mvu.Cmd.none)
+  | ChartHovered h -> ({ model with chart_hover = Some h }, Nopal_mvu.Cmd.none)
+  | ChartLeft -> ({ model with chart_hover = None }, Nopal_mvu.Cmd.none)
+  | PieHovered h -> ({ model with pie_hover = Some h }, Nopal_mvu.Cmd.none)
+  | PieLeft -> ({ model with pie_hover = None }, Nopal_mvu.Cmd.none)
+  | ScatterHovered h ->
+      ({ model with scatter_hover = Some h }, Nopal_mvu.Cmd.none)
+  | ScatterLeft -> ({ model with scatter_hover = None }, Nopal_mvu.Cmd.none)
 
 (* Section wrapper (REQ-F10) *)
 let view_section title children =
@@ -1030,6 +1050,196 @@ let view_draw model =
         ];
     ]
 
+(* Section 12: Charts (nopal_charts kitchen sink) *)
+let view_charts model =
+  let cat = Color.categorical in
+  (* Sample bar data *)
+  let bar_data =
+    [
+      ("Jan", 30.0);
+      ("Feb", 45.0);
+      ("Mar", 25.0);
+      ("Apr", 60.0);
+      ("May", 35.0);
+      ("Jun", 50.0);
+    ]
+  in
+  (* Sample time-series data for line/area charts *)
+  let ts_data =
+    [
+      (0.0, 10.0, 20.0);
+      (1.0, 25.0, 15.0);
+      (2.0, 18.0, 30.0);
+      (3.0, 40.0, 25.0);
+      (4.0, 30.0, 35.0);
+      (5.0, 55.0, 40.0);
+    ]
+  in
+  (* Sample pie data *)
+  let pie_data =
+    [
+      ("Desktop", 45.0, cat.(0));
+      ("Mobile", 35.0, cat.(1));
+      ("Tablet", 15.0, cat.(2));
+      ("Other", 5.0, cat.(3));
+    ]
+  in
+  (* Sample scatter data *)
+  let scatter_data =
+    [
+      (10.0, 20.0, 6.0);
+      (25.0, 40.0, 10.0);
+      (35.0, 15.0, 4.0);
+      (50.0, 50.0, 8.0);
+      (60.0, 30.0, 12.0);
+      (70.0, 45.0, 5.0);
+      (80.0, 25.0, 7.0);
+    ]
+  in
+  (* Sparkline data *)
+  let spark_data =
+    [ 5.0; 10.0; 8.0; 15.0; 12.0; 20.0; 18.0; 25.0; 22.0; 30.0 ]
+  in
+  let chart_w = 400.0 in
+  let chart_h = 250.0 in
+  let row_style =
+    Style.default |> Style.with_layout (fun l -> { l with gap = 16.0 })
+  in
+  let sparkline_row_style =
+    Style.default
+    |> Style.with_layout (fun l -> { l with gap = 8.0; cross_align = Center })
+  in
+  Element.column ~style:section_style
+    ~attrs:[ ("data-section", "charts") ]
+    [
+      Element.text "Charts";
+      Element.column ~style:section_body_style
+        [
+          (* Bar chart with hover + tooltip *)
+          Element.text "Bar chart (shared hover):";
+          Element.box
+            ~attrs:[ ("data-testid", "bar-chart") ]
+            [
+              Bar.view ~data:bar_data
+                ~label:(fun (l, _) -> l)
+                ~value:(fun (_, v) -> v)
+                ~color:(fun _ -> cat.(0))
+                ~width:chart_w ~height:chart_h
+                ~format_tooltip:(fun (l, v) ->
+                  Tooltip.text (Printf.sprintf "%s: %.0f" l v))
+                ~on_hover:(fun h -> ChartHovered h)
+                ~on_leave:ChartLeft ?hover:model.chart_hover ();
+            ];
+          (* Line chart — multi-series, cross-chart hover + tooltip *)
+          Element.text "Line chart (multi-series, cross-chart hover):";
+          Element.box
+            ~attrs:[ ("data-testid", "line-chart") ]
+            [
+              Line.view
+                ~series:
+                  [
+                    Line.series ~smooth:true ~show_points:true ~label:"Revenue"
+                      ~color:cat.(1)
+                      ~y:(fun (_, a, _) -> a)
+                      ts_data;
+                    Line.series ~label:"Costs" ~color:cat.(2)
+                      ~y:(fun (_, _, b) -> b)
+                      ts_data;
+                  ]
+                ~x:(fun (x, _, _) -> x)
+                ~width:chart_w ~height:chart_h
+                ~format_tooltip:(fun entries ->
+                  Tooltip.text
+                    (String.concat ", "
+                       (List.map
+                          (fun (l, v) -> Printf.sprintf "%s: %.0f" l v)
+                          entries)))
+                ~on_hover:(fun h -> ChartHovered h)
+                ~on_leave:ChartLeft ?hover:model.chart_hover ();
+            ];
+          (* Area chart — stacked *)
+          Element.text "Area chart (stacked):";
+          Area.view
+            ~series:
+              [
+                Area.series ~label:"Product A" ~color:cat.(3)
+                  ~y:(fun (_, a, _) -> a)
+                  ts_data;
+                Area.series ~label:"Product B" ~color:cat.(4)
+                  ~y:(fun (_, _, b) -> b)
+                  ts_data;
+              ]
+            ~x:(fun (x, _, _) -> x)
+            ~width:chart_w ~height:chart_h ~mode:Area.Stacked ();
+          (* Pie and donut side by side *)
+          Element.text "Pie chart and donut chart:";
+          Element.row ~style:row_style
+            [
+              Element.box
+                ~attrs:[ ("data-testid", "pie-chart") ]
+                [
+                  Pie.view ~data:pie_data
+                    ~value:(fun (_, v, _) -> v)
+                    ~label:(fun (l, _, _) -> l)
+                    ~color:(fun (_, _, c) -> c)
+                    ~width:200.0 ~height:200.0
+                    ~format_tooltip:(fun (l, v, _) ->
+                      Tooltip.text (Printf.sprintf "%s: %.0f%%" l v))
+                    ~on_hover:(fun h -> PieHovered h)
+                    ~on_leave:PieLeft ?hover:model.pie_hover ();
+                ];
+              Pie.view ~data:pie_data
+                ~value:(fun (_, v, _) -> v)
+                ~label:(fun (l, _, _) -> l)
+                ~color:(fun (_, _, c) -> c)
+                ~width:200.0 ~height:200.0 ~inner_radius:50.0 ();
+            ];
+          (* Scatter chart with variable radius + tooltip *)
+          Element.text "Scatter chart (variable radius):";
+          Element.box
+            ~attrs:[ ("data-testid", "scatter-chart") ]
+            [
+              Scatter.view ~data:scatter_data
+                ~x:(fun (x, _, _) -> x)
+                ~y:(fun (_, y, _) -> y)
+                ~radius:(fun (_, _, r) -> r)
+                ~color:(fun _ -> cat.(7))
+                ~width:chart_w ~height:chart_h
+                ~format_tooltip:(fun (x, y, _) ->
+                  Tooltip.text (Printf.sprintf "(%.0f, %.0f)" x y))
+                ~on_hover:(fun h -> ScatterHovered h)
+                ~on_leave:ScatterLeft ?hover:model.scatter_hover ();
+            ];
+          (* Sparkline in a row *)
+          Element.text "Sparkline (inline):";
+          Element.row ~style:sparkline_row_style
+            ~attrs:[ ("data-testid", "sparkline-row") ]
+            [
+              Element.text "Trend:";
+              Sparkline.view ~data:spark_data ~width:120.0 ~height:24.0
+                ~color:cat.(0) ();
+              Element.text "Growth:";
+              Sparkline.view ~data:(List.rev spark_data) ~width:120.0
+                ~height:24.0 ~color:cat.(2) ();
+            ];
+          (* Legend *)
+          Element.text "Legend:";
+          Element.box
+            ~attrs:[ ("data-testid", "chart-legend") ]
+            [
+              Legend.view
+                ~entries:
+                  [
+                    Legend.entry ~label:"Revenue" ~color:cat.(1);
+                    Legend.entry ~label:"Costs" ~color:cat.(2);
+                    Legend.entry ~label:"Product A" ~color:cat.(3);
+                    Legend.entry ~label:"Product B" ~color:cat.(4);
+                  ]
+                ();
+            ];
+        ];
+    ]
+
 (* Main view — all sections in a scrollable column (REQ-F10, REQ-F12) *)
 let view model =
   Element.scroll
@@ -1046,6 +1256,7 @@ let view model =
          view_interaction_states model;
          view_composition model;
          view_draw model;
+         view_charts model;
        ])
 
 let subscriptions _model = Nopal_mvu.Sub.none

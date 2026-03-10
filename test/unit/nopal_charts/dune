@@ -1,0 +1,23 @@
+(tests
+ (names
+  test_hover
+  test_padding
+  test_hit_map
+  test_axis
+  test_tooltip
+  test_legend
+  test_sparkline
+  test_bar
+  test_line
+  test_area
+  test_pie
+  test_scatter
+  test_charts_structural
+  test_chart_compose)
+ (libraries
+  nopal_charts
+  nopal_draw
+  nopal_element
+  nopal_style
+  nopal_test
+  alcotest))

@@ -89,8 +89,7 @@ let test_dblclick_enters_editing () =
 let test_edit_blur_saves () =
   let model =
     model_with
-      ~edit_state:
-        (Some { id = 1; text = "Editing"; original = "Task"; cancelled = false })
+      ~edit_state:(Some { id = 1; text = "Editing"; original = "Task" })
       [ make_todo 1 "Task" ]
   in
   let rendered = R.render (view model) in
@@ -104,8 +103,7 @@ let test_edit_blur_saves () =
 let test_edit_escape_cancels () =
   let model =
     model_with
-      ~edit_state:
-        (Some { id = 1; text = "Editing"; original = "Task"; cancelled = false })
+      ~edit_state:(Some { id = 1; text = "Editing"; original = "Task" })
       [ make_todo 1 "Task" ]
   in
   let rendered = R.render (view model) in
@@ -182,9 +180,7 @@ let test_clear_completed_hidden () =
 let test_editing_mode () =
   let model =
     model_with
-      ~edit_state:
-        (Some
-           { id = 1; text = "Edit text"; original = "Task"; cancelled = false })
+      ~edit_state:(Some { id = 1; text = "Edit text"; original = "Task" })
       [ make_todo 1 "Task" ]
   in
   let rendered = R.render (view model) in
