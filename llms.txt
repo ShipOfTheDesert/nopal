@@ -1,0 +1,425 @@
+# Nopal
+
+> Cross-platform UI framework for OCaml using MVU (Model-View-Update) architecture. Build local-first applications targeting desktop, mobile, and web from a single OCaml codebase.
+
+Nopal compiles to JavaScript via js_of_ocaml for web and Tauri webview targets. Desktop and mobile are served via Tauri. The framework is not a React-style VDOM framework — it uses a pure description type (`Element.t`) that renderers interpret directly.
+
+Homepage: nopal.run
+
+## Architecture
+
+Every concern is a separate opam package with strict one-way dependency flow:
+
+```
+nopal_mvu       ← MVU core (Cmd, Sub, App) — no UI or platform deps
+nopal_element   ← Element.t DSL — no platform deps
+nopal_style     ← Typed layout/paint — no platform deps
+nopal_router    ← Type-safe bidirectional routing — no platform deps
+nopal_draw      ← 2D drawing DSL (Color, Paint, Path, Scene, Scale)
+nopal_charts    ← Composable interactive charts (Bar, Line, Area, Pie, Scatter, Sparkline)
+nopal_runtime   ← Lwd reactive integration + MVU loop
+nopal_test      ← Pure OCaml test renderer — no js_of_ocaml
+nopal_web       ← js_of_ocaml + Brr DOM renderer (only browser-dependent package)
+```
+
+Critical boundary: `nopal_element`, `nopal_style`, `nopal_test`, `nopal_router` must compile on native OCaml without js_of_ocaml. Application view code never imports `nopal_web` or `Brr`.
+
+## Quick Start
+
+### Setup
+
+```bash
+opam install . --deps-only --with-test
+just build    # opam exec -- dune build
+just test     # opam exec -- dune runtest
+just          # build + test + fmt + lint (run before every commit)
+```
+
+### Minimal Counter App
+
+**counter.ml** — Pure model, update, and view:
+
+```ocaml
+open Nopal_element
+open Nopal_style
+
+type model = { count : int }
+type msg = Increment | Decrement | Reset
+
+let init () = ({ count = 0 }, Nopal_mvu.Cmd.none)
+
+let update model = function
+  | Increment -> ({ count = model.count + 1 }, Nopal_mvu.Cmd.none)
+  | Decrement -> ({ count = max 0 (model.count - 1) }, Nopal_mvu.Cmd.none)
+  | Reset -> ({ count = 0 }, Nopal_mvu.Cmd.none)
+
+let button_style =
+  Style.default
+  |> Style.with_layout (fun l ->
+       { l with width = Fixed 64.0 } |> Style.padding 8.0 16.0 8.0 16.0)
+
+let view model =
+  column
+    ~style:
+      (Style.default
+      |> Style.with_layout (fun l ->
+           { l with cross_align = Center; gap = 8.0 } |> Style.padding_all 16.0))
+    [
+      text (string_of_int model.count);
+      button ~style:button_style ~on_click:Increment (text "+");
+      button ~style:button_style ~on_click:Decrement (text "-");
+      button ~style:button_style ~on_click:Reset (text "Reset");
+    ]
+
+let subscriptions _model = Nopal_mvu.Sub.none
+```
+
+**main.ml** — Web mounting (the only file that touches browser APIs):
+
+```ocaml
+let () =
+  let open Brr in
+  let target =
+    match Document.find_el_by_id G.document (Jstr.v "app") with
+    | Some el -> el
+    | None ->
+        let body = Document.body G.document in
+        let div = El.div [] in
+        El.append_children body [ div ];
+        div
+  in
+  Nopal_web.mount
+    (module Counter : Nopal_mvu.App.S
+      with type model = Counter.model
+       and type msg = Counter.msg)
+    target
+```
+
+## Core API Reference
+
+### App Module (`nopal_mvu`)
+
+Every Nopal application implements this signature:
+
+```ocaml
+module type App.S = sig
+  type model
+  type msg
+  val init          : unit -> model * msg Cmd.t
+  val update        : model -> msg -> model * msg Cmd.t
+  val view          : model -> msg Element.t
+  val subscriptions : model -> msg Sub.t
+end
+```
+
+### Commands (`Cmd.t`)
+
+Pure descriptions of side effects — never execute directly. The runtime interprets them.
+
+```ocaml
+Cmd.none                                      (* no effect *)
+Cmd.batch : 'msg Cmd.t list -> 'msg Cmd.t     (* combine multiple commands *)
+Cmd.perform : (('msg -> unit) -> unit) -> 'msg Cmd.t  (* synchronous effect *)
+Cmd.task : (('msg -> unit) -> unit) -> 'msg Cmd.t     (* async deferred effect *)
+Cmd.after : int -> 'msg -> 'msg Cmd.t         (* delay message by N ms *)
+Cmd.map : ('a -> 'b) -> 'a Cmd.t -> 'b Cmd.t  (* transform message type *)
+```
+
+### Subscriptions (`Sub.t`)
+
+Ongoing event sources managed by the runtime. All subscriptions are keyed for identity-based diffing.
+
+```ocaml
+Sub.none                                                        (* no subs *)
+Sub.batch : 'msg Sub.t list -> 'msg Sub.t                       (* combine *)
+Sub.every : string -> int -> (unit -> 'msg) -> 'msg Sub.t       (* timer, key + ms *)
+Sub.on_keydown : string -> (string -> 'msg) -> 'msg Sub.t       (* global keydown *)
+Sub.on_keyup : string -> (string -> 'msg) -> 'msg Sub.t         (* global keyup *)
+Sub.on_resize : string -> (int -> int -> 'msg) -> 'msg Sub.t    (* window resize *)
+Sub.on_visibility_change : string -> (bool -> 'msg) -> 'msg Sub.t
+Sub.custom : string -> (('msg -> unit) -> unit -> unit) -> 'msg Sub.t  (* setup returns cleanup *)
+Sub.map : ('a -> 'b) -> 'a Sub.t -> 'b Sub.t
+```
+
+### Element DSL (`nopal_element`)
+
+`Element.t` is an exposed (not abstract) variant type so renderers can pattern-match exhaustively.
+
+```ocaml
+Element.empty                                                    (* renders nothing *)
+Element.text : string -> 'msg Element.t                          (* plain text *)
+Element.styled_text : text_style:Text.t -> string -> 'msg Element.t
+
+(* Layout containers *)
+Element.box    : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list -> 'msg Element.t list -> 'msg Element.t
+Element.row    : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list -> 'msg Element.t list -> 'msg Element.t
+Element.column : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list -> 'msg Element.t list -> 'msg Element.t
+
+(* Interactive elements *)
+Element.button : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
+  -> ?on_click:'msg -> ?on_dblclick:'msg -> 'msg Element.t -> 'msg Element.t
+Element.input : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
+  -> ?placeholder:string -> ?on_change:(string -> 'msg) -> ?on_submit:'msg
+  -> ?on_blur:'msg -> ?on_keydown:(string -> 'msg option) -> string -> 'msg Element.t
+
+(* Media and scrolling *)
+Element.image  : ?style:Style.t -> src:string -> alt:string -> unit -> 'msg Element.t
+Element.scroll : ?style:Style.t -> 'msg Element.t -> 'msg Element.t
+
+(* Identity for list reconciliation *)
+Element.keyed : string -> 'msg Element.t -> 'msg Element.t
+
+(* 2D canvas drawing *)
+Element.draw : ?on_pointer_move:(pointer_event -> 'msg) -> ?on_click:(pointer_event -> 'msg)
+  -> ?on_pointer_leave:'msg -> ?cursor:Cursor.t -> ?aria_label:string
+  -> width:float -> height:float -> Scene.t list -> 'msg Element.t
+
+(* Message transform for component embedding *)
+Element.map : ('a -> 'b) -> 'a Element.t -> 'b Element.t
+```
+
+### Style System (`nopal_style`)
+
+All styling is typed — no CSS strings in view code.
+
+```ocaml
+(* Layout *)
+type direction = Row_dir | Column_dir
+type align = Start | Center | End_ | Stretch | Space_between
+type size = Fill | Hug | Fixed of float | Fraction of float
+
+(* Colors *)
+type color = Rgba of { r : int; g : int; b : int; a : float }
+           | Hex of string | Named of string | Transparent
+
+(* Borders *)
+type border_style = Solid | Dashed | Dotted | No_border
+type border = { width : float; style : border_style; color : color; radius : float }
+
+(* Building styles *)
+Style.default                                            (* sensible defaults *)
+Style.with_layout : (layout -> layout) -> Style.t -> Style.t
+Style.with_paint  : (paint -> paint)   -> Style.t -> Style.t
+Style.with_text   : (Text.t -> Text.t) -> Style.t -> Style.t
+Style.padding     : float -> float -> float -> float -> layout -> layout  (* T R B L *)
+Style.padding_all : float -> layout -> layout
+Style.hex   : string -> color
+Style.named : string -> color
+Style.rgba  : int -> int -> int -> float -> color
+```
+
+### Interaction (`nopal_style`)
+
+State-based style overrides for hover, press, and focus:
+
+```ocaml
+type Interaction.t = {
+  hover   : Style.t option;
+  pressed : Style.t option;
+  focused : Style.t option;
+}
+```
+
+### Typography (`nopal_style`)
+
+```ocaml
+type Font.family = System_ui | Sans_serif | Serif | Monospace | Custom of string
+type Font.weight = Thin | Extra_light | Light | Normal | Medium | Semi_bold | Bold | Extra_bold | Black
+
+type Text.t = {
+  font_family    : Font.family option;
+  font_size      : float option;
+  font_weight    : Font.weight option;
+  line_height    : line_height option;     (* Lh_normal | Lh_multiplier f | Lh_px f *)
+  letter_spacing : letter_spacing option;  (* Ls_normal | Ls_em f *)
+  text_align     : text_align option;      (* Align_left | Align_center | Align_right | Align_justify *)
+  text_decoration: text_decoration option; (* Underline | Line_through | Overline | No_decoration *)
+  text_transform : text_transform option;  (* Uppercase | Lowercase | Capitalize | No_transform *)
+  text_overflow  : text_overflow option;   (* Clip | Ellipsis | Wrap | No_wrap *)
+  italic         : bool option;
+}
+```
+
+### Routing (`nopal_router`)
+
+Type-safe bidirectional routing:
+
+```ocaml
+Router.create : platform:(module Platform.S) -> parse:(string -> 'route option)
+  -> to_path:('route -> string) -> not_found:'route -> 'route Router.t
+
+Router.current  : 'route Router.t -> 'route                    (* read current *)
+Router.push     : 'route Router.t -> 'route -> 'msg Cmd.t      (* push history *)
+Router.replace  : 'route Router.t -> 'route -> 'msg Cmd.t      (* replace current *)
+Router.back     : 'route Router.t -> 'msg Cmd.t                (* go back *)
+Router.on_navigate : 'route Router.t -> ('route -> 'msg) -> 'msg Sub.t  (* subscribe *)
+```
+
+### 2D Drawing (`nopal_draw`)
+
+Vector graphics DSL for `Element.draw`:
+
+```ocaml
+(* Colors — float 0.0-1.0 range *)
+Color.rgba : r:float -> g:float -> b:float -> a:float -> Color.t
+Color.rgb  : r:float -> g:float -> b:float -> Color.t
+Color.hsla : h:float -> s:float -> l:float -> a:float -> Color.t
+Color.of_hex : string -> (Color.t, string) result
+Color.lerp : Color.t -> Color.t -> float -> Color.t
+Color.categorical : Color.t array     (* 10 distinct colors *)
+
+(* Paint fills *)
+type Paint.t = Solid of Color.t
+             | Linear_gradient of { x0; y0; x1; y1; stops }
+             | Radial_gradient of { cx; cy; r; stops }
+             | No_paint
+
+(* Scene primitives *)
+Scene.rect   : ?rx -> ?ry -> ?fill -> ?stroke -> x -> y -> w -> h -> unit -> Scene.t
+Scene.circle : ?fill -> ?stroke -> cx -> cy -> r -> unit -> Scene.t
+Scene.text   : ?font_size -> ?font_family -> ?font_weight -> ?fill -> ?anchor -> ?baseline -> x -> y -> string -> Scene.t
+Scene.group  : ?opacity -> ?blend -> ?transforms -> Scene.t list -> Scene.t
+
+(* Path building *)
+Path.smooth_curve  : (float * float) list -> Path.segment list   (* Catmull-Rom spline *)
+Path.straight_line : (float * float) list -> Path.segment list
+Path.closed_area   : (float * float) list -> Path.segment list
+
+(* Data-to-pixel mapping *)
+Scale.create : domain:(float * float) -> range:(float * float) -> Scale.t
+Scale.apply  : Scale.t -> float -> float
+Scale.invert : Scale.t -> float -> float
+```
+
+### Charts (`nopal_charts`)
+
+Composable interactive charts built on `nopal_draw`:
+
+```ocaml
+(* Bar chart *)
+Bar.view : data:'a list -> label:('a -> string) -> value:('a -> float)
+  -> color:('a -> Color.t) -> width:float -> height:float
+  -> ?padding:Padding.t -> ?x_axis:Axis.config -> ?y_axis:Axis.config
+  -> ?format_tooltip:('a -> 'msg Element.t) -> ?on_hover:(Hover.t -> 'msg)
+  -> ?on_leave:'msg -> ?hover:Hover.t option -> unit -> 'msg Element.t
+
+(* Line chart *)
+Line.view : series:'a Line.series list -> x:('a -> float) -> width:float -> height:float -> ...
+
+(* Area chart — Stacked | Overlapping modes *)
+Area.view : series:'a Area.series list -> x:('a -> float) -> ?mode:Area.mode -> ...
+
+(* Pie/donut chart — inner_radius 0.0 = pie, >0.0 = donut *)
+Pie.view : data:'a list -> value:('a -> float) -> label:('a -> string)
+  -> color:('a -> Color.t) -> ?inner_radius:float -> ...
+
+(* Scatter/bubble chart *)
+Scatter.view : data:'a list -> x:('a -> float) -> y:('a -> float)
+  -> ?radius:('a -> float) -> color:('a -> Color.t) -> ...
+
+(* Sparkline — minimal inline chart *)
+Sparkline.view : data:float list -> width:float -> height:float
+  -> ?color:Color.t -> ?stroke_width:float -> unit -> 'msg Element.t
+```
+
+Chart hover state: `Hover.t = { index: int; series: int; cursor_x: float; cursor_y: float }`
+
+### Test Renderer (`nopal_test`)
+
+Pure OCaml structural testing without a browser:
+
+```ocaml
+(* Render and inspect *)
+Test_renderer.render   : 'msg Element.t -> 'msg rendered
+Test_renderer.tree     : 'msg rendered -> node
+Test_renderer.messages : 'msg rendered -> 'msg list
+
+(* Query *)
+Test_renderer.find     : selector -> node -> node option
+Test_renderer.find_all : selector -> node -> node list
+Test_renderer.text_content : node -> string
+
+type selector = By_tag of string | By_text of string | By_attr of string * string
+              | First_child | Nth_child of int
+
+(* Simulate events *)
+Test_renderer.click        : selector -> 'msg rendered -> (unit, error) result
+Test_renderer.input        : selector -> string -> 'msg rendered -> (unit, error) result
+Test_renderer.submit       : selector -> 'msg rendered -> (unit, error) result
+Test_renderer.dblclick     : selector -> 'msg rendered -> (unit, error) result
+Test_renderer.pointer_move : selector -> x:float -> y:float -> 'msg rendered -> (unit, error) result
+
+(* Full MVU loop testing *)
+Test_renderer.run_app :
+  init:(unit -> 'model * 'msg Cmd.t) ->
+  update:('model -> 'msg -> 'model * 'msg Cmd.t) ->
+  view:('model -> 'msg Element.t) ->
+  'msg list -> 'model * 'msg rendered
+```
+
+### Web Renderer (`nopal_web`)
+
+Mount an app to the DOM (the only package with browser dependencies):
+
+```ocaml
+Nopal_web.mount :
+  (module Nopal_mvu.App.S with type model = 'model and type msg = 'msg)
+  -> Brr.El.t -> unit
+
+(* Browser platform for routing *)
+module Platform_web : Nopal_router.Platform.S
+```
+
+## Coding Rules
+
+- Never `raise` for recoverable errors — return `('a, error) result`
+- Never use catch-all `_` in match where the compiler can enforce exhaustiveness
+- No `if/else` chains where `match` on a variant is correct
+- No `mutable` fields without a justifying comment
+- No inline helpers — helper functions live in dedicated modules with `.mli` files and tests
+- No CSS strings in view code — all styling uses `nopal_style` types
+- No business logic in `nopal_runtime` or `nopal_web` — they interpret and render only
+- `App.update` never produces side effects directly — return `Cmd.t` instead
+- Write tests first (TDD) — no `.ml` implementation without a failing test first
+- Three test layers required: unit (Alcotest), structural (nopal_test), E2E (Playwright)
+- Every PR touching runtime or web must benchmark against `bench/baseline.json` (no >20% regression)
+
+## Project Structure
+
+```
+lib/
+  nopal_mvu/         — Cmd, Sub, App — zero UI deps
+  nopal_element/     — Element.t DSL — zero platform deps
+  nopal_style/       — Style.t, Text.t, Interaction.t, Cursor.t
+  nopal_router/      — Router.t, Platform.S
+  nopal_draw/        — Color, Paint, Path, Scene, Transform, Scale
+  nopal_charts/      — Bar, Line, Area, Pie, Scatter, Sparkline
+  nopal_runtime/     — Lwd integration + MVU loop
+  nopal_test/        — Pure OCaml test renderer
+backends/
+  nopal_web/         — js_of_ocaml + Brr DOM renderer
+examples/
+  counter/           — Hello world
+  todomvc/           — Complex app with routing & localStorage
+  kitchen_sink/      — Living visual reference for all features
+  dashboard/         — Charts showcase
+test/
+  unit/              — Alcotest tests per package
+  e2e/               — Playwright + TypeScript
+bench/               — js-framework-benchmark + baseline.json
+```
+
+## Build Commands
+
+```bash
+just                   # build + test + fmt + lint (run before every commit)
+just build             # opam exec -- dune build
+just build-native      # verify DSL packages compile without js_of_ocaml
+just test              # opam exec -- dune runtest
+just serve-counter     # build + serve counter example
+just serve-todomvc     # build + serve todomvc example
+just serve-kitchen     # build + serve kitchen sink example
+just serve-dashboard   # build + serve dashboard example
+just bench             # run benchmark suite
+just bench-compare     # compare against bench/baseline.json
+```

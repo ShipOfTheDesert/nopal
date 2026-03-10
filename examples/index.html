@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nopal Examples</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                   Helvetica, Arial, sans-serif;
+      background: #faf9f7;
+      color: #1a1a1a;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 4rem 1.5rem;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+
+    header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.5rem;
+    }
+
+    header p {
+      color: #666;
+      font-size: 1.05rem;
+      max-width: 480px;
+    }
+
+    .examples {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1.25rem;
+      max-width: 720px;
+      width: 100%;
+    }
+
+    .card {
+      background: #fff;
+      border: 1px solid #e5e3df;
+      border-radius: 10px;
+      padding: 1.5rem;
+      text-decoration: none;
+      color: inherit;
+      transition: box-shadow 0.15s, border-color 0.15s;
+    }
+
+    .card:hover {
+      border-color: #c5c3bf;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+
+    .card h2 {
+      font-size: 1.15rem;
+      font-weight: 600;
+      margin-bottom: 0.35rem;
+    }
+
+    .card p {
+      color: #666;
+      font-size: 0.9rem;
+      line-height: 1.45;
+    }
+
+    .tag {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      background: #f0eee9;
+      color: #888;
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      margin-bottom: 0.5rem;
+    }
+
+    footer {
+      margin-top: 3rem;
+      color: #999;
+      font-size: 0.85rem;
+    }
+
+    footer a { color: #666; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Nopal Examples</h1>
+    <p>Interactive demos built with Nopal, a cross-platform UI framework for OCaml using the MVU architecture.</p>
+  </header>
+
+  <div class="examples">
+    <a class="card" href="counter/">
+      <span class="tag">Starter</span>
+      <h2>Counter</h2>
+      <p>Minimal MVU counter. The "hello world" of Nopal — increment, decrement, reset.</p>
+    </a>
+
+    <a class="card" href="todomvc/">
+      <span class="tag">App</span>
+      <h2>TodoMVC</h2>
+      <p>Full-featured todo app with routing, inline editing, filtering, and localStorage persistence.</p>
+    </a>
+
+    <a class="card" href="kitchen_sink/">
+      <span class="tag">Reference</span>
+      <h2>Kitchen Sink</h2>
+      <p>Living visual reference of all Nopal features — layout, drawing, charts, and interaction.</p>
+    </a>
+
+    <a class="card" href="dashboard/">
+      <span class="tag">Data Viz</span>
+      <h2>Dashboard</h2>
+      <p>Data visualization showcase with interactive line and pie charts.</p>
+    </a>
+  </div>
+
+  <footer>
+    Built with <a href="https://nopal.run">Nopal</a>
+  </footer>
+</body>
+</html>
