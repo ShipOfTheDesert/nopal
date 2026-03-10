@@ -19,6 +19,9 @@ val mount :
 module Style_css = Style_css
 (** Re-exported for direct access. *)
 
+module Style_sheet = Style_sheet
+(** Re-exported for direct access. *)
+
 module Renderer = Renderer
 (** Re-exported for direct access. *)
 

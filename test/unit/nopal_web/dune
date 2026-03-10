@@ -24,7 +24,15 @@
   js_of_ocaml)
  (modes js)
  (js_of_ocaml
-  (javascript_files dom_shim.js)))
+  (javascript_files dom_shim.js stylesheet_shim.js)))
+
+(test
+ (name test_style_sheet)
+ (package nopal_web)
+ (libraries nopal_web nopal_style alcotest brr)
+ (modes js)
+ (js_of_ocaml
+  (javascript_files dom_shim.js stylesheet_shim.js)))
 
 (test
  (name test_platform_web)

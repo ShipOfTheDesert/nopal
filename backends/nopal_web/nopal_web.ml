@@ -1,4 +1,5 @@
 module Style_css = Style_css
+module Style_sheet = Style_sheet
 module Renderer = Renderer
 module Platform_web = Platform_web
 

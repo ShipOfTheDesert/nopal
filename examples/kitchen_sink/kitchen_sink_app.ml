@@ -14,23 +14,39 @@ let border_light = Style.hex "#dee2e6"
 let section_style =
   Style.default
   |> Style.with_layout (fun l ->
-      { l with gap = 12.0 } |> Style.padding_all 16.0)
+      { l with gap = 12.0 } |> Style.padding_all 20.0)
   |> Style.with_paint (fun p ->
       {
         p with
         background = Some bg_section;
         border =
           Some
-            { width = 1.0; style = Solid; color = border_light; radius = 8.0 };
+            { width = 1.0; style = Solid; color = border_light; radius = 10.0 };
+        shadow =
+          Some { x = 0.0; y = 1.0; blur = 6.0; color = Style.rgba 0 0 0 0.04 };
       })
 
 let section_body_style =
   Style.default |> Style.with_layout (fun l -> { l with gap = 8.0 })
 
+let page_title_text =
+  Text.default
+  |> Text.font_size 1.8
+  |> Text.font_weight Font.Bold
+  |> Text.font_family System_ui
+
+let page_subtitle_text = Text.default |> Text.font_size 0.95
+
+let page_header_style =
+  Style.default
+  |> Style.with_layout (fun l ->
+      { l with gap = 4.0; cross_align = Center }
+      |> Style.padding 8.0 0.0 8.0 0.0)
+
 let page_style =
   Style.default
   |> Style.with_layout (fun l ->
-      { l with gap = 16.0; width = Fill } |> Style.padding_all 24.0)
+      { l with gap = 20.0 } |> Style.padding 32.0 32.0 32.0 32.0)
   |> Style.with_paint (fun p -> { p with background = Some bg_page })
 
 (* Model *)
@@ -1245,6 +1261,12 @@ let view model =
   Element.scroll
     (Element.column ~style:page_style
        [
+         Element.column ~style:page_header_style
+           [
+             Element.styled_text ~text_style:page_title_text "Kitchen Sink";
+             Element.styled_text ~text_style:page_subtitle_text
+               "A living reference of every Nopal feature.";
+           ];
          view_typography model;
          view_layout model;
          view_buttons model;

@@ -8,14 +8,22 @@ let cat = Nopal_draw.Color.categorical
 let page_style =
   Style.default
   |> Style.with_layout (fun l ->
-      { l with gap = 16.0; width = Fill } |> Style.padding_all 24.0)
+      { l with gap = 20.0 } |> Style.padding 32.0 32.0 32.0 32.0)
   |> Style.with_paint (fun p ->
-      { p with background = Some (Style.hex "#f8f9fa") })
+      { p with background = Some (Style.hex "#faf9f7") })
+
+let page_title_text =
+  Text.default
+  |> Text.font_size 1.8
+  |> Text.font_weight Font.Bold
+  |> Text.font_family System_ui
+
+let page_subtitle_text = Text.default |> Text.font_size 0.95
 
 let card_style =
   Style.default
   |> Style.with_layout (fun l ->
-      { l with gap = 12.0 } |> Style.padding_all 16.0)
+      { l with gap = 12.0 } |> Style.padding_all 20.0)
   |> Style.with_paint (fun p ->
       {
         p with
@@ -25,9 +33,11 @@ let card_style =
             {
               width = 1.0;
               style = Solid;
-              color = Style.hex "#dee2e6";
-              radius = 8.0;
+              color = Style.hex "#e5e3df";
+              radius = 10.0;
             };
+        shadow =
+          Some { x = 0.0; y = 1.0; blur = 6.0; color = Style.rgba 0 0 0 0.04 };
       })
 
 let row_style =
@@ -35,20 +45,26 @@ let row_style =
 
 let detail_style =
   Style.default
-  |> Style.with_layout (fun l -> { l with gap = 4.0 } |> Style.padding_all 12.0)
+  |> Style.with_layout (fun l -> { l with gap = 4.0 } |> Style.padding_all 14.0)
   |> Style.with_paint (fun p ->
       {
         p with
-        background = Some (Style.hex "#e9ecef");
+        background = Some (Style.hex "#f5f4f1");
         border =
           Some
             {
               width = 1.0;
               style = Solid;
-              color = Style.hex "#dee2e6";
-              radius = 4.0;
+              color = Style.hex "#e5e3df";
+              radius = 8.0;
             };
       })
+
+let card_heading_text =
+  Text.default
+  |> Text.font_size 0.9
+  |> Text.font_weight Font.Semi_bold
+  |> Text.letter_spacing (Ls_em 0.02)
 
 (* Sample data — monthly revenue and costs *)
 type month_data = {
@@ -107,7 +123,9 @@ let view model =
     (Element.column ~style:page_style
        ~attrs:[ ("data-section", "dashboard") ]
        [
-         Element.text "Multi-Chart Dashboard";
+         Element.styled_text ~text_style:page_title_text "Dashboard";
+         Element.styled_text ~text_style:page_subtitle_text
+           "Interactive data visualization with linked charts.";
          (* Detail panel *)
          Element.box ~style:detail_style
            ~attrs:[ ("data-testid", "detail-panel") ]
@@ -119,7 +137,8 @@ let view model =
              Element.column ~style:card_style
                ~attrs:[ ("data-testid", "dashboard-bar") ]
                [
-                 Element.text "Monthly Revenue";
+                 Element.styled_text ~text_style:card_heading_text
+                   "Monthly Revenue";
                  Bar.view ~data
                    ~label:(fun d -> d.month)
                    ~value:(fun d -> d.revenue)
@@ -134,7 +153,8 @@ let view model =
              Element.column ~style:card_style
                ~attrs:[ ("data-testid", "dashboard-line") ]
                [
-                 Element.text "Revenue vs Costs";
+                 Element.styled_text ~text_style:card_heading_text
+                   "Revenue vs Costs";
                  Line.view
                    ~series:
                      [
@@ -172,7 +192,8 @@ let view model =
            [
              Element.column ~style:card_style
                [
-                 Element.text "Revenue Breakdown";
+                 Element.styled_text ~text_style:card_heading_text
+                   "Revenue Breakdown";
                  Pie.view ~data:pie_data
                    ~value:(fun (_, v, _) -> v)
                    ~label:(fun (l, _, _) -> l)
@@ -185,7 +206,7 @@ let view model =
              Element.column ~style:card_style
                ~attrs:[ ("data-testid", "dashboard-legend") ]
                [
-                 Element.text "Legend";
+                 Element.styled_text ~text_style:card_heading_text "Legend";
                  (* Legend entries dim when another index is hovered *)
                  (let all_entries =
                     [

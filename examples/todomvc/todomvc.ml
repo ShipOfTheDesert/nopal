@@ -156,6 +156,319 @@ let update (module S : Storage) model msg =
   | Route_changed route ->
       ({ model with filter = filter_of_route route }, Nopal_mvu.Cmd.none)
 
+open Nopal_style
+
+(* Colors *)
+let bg_page = Style.hex "#faf9f7"
+let bg_card = Style.hex "#ffffff"
+let border_color = Style.hex "#e5e3df"
+let accent = Style.hex "#4a90d9"
+let check_green = Style.hex "#5ba85b"
+
+(* Page *)
+let page_style =
+  Style.default
+  |> Style.with_layout (fun l ->
+      { l with width = Fill; height = Fill; cross_align = Center }
+      |> Style.padding 48.0 16.0 32.0 16.0)
+  |> Style.with_paint (fun p -> { p with background = Some bg_page })
+
+(* Card *)
+let card_style =
+  Style.default
+  |> Style.with_layout (fun l ->
+      { l with width = Fixed 480.0; gap = 0.0; cross_align = Stretch })
+  |> Style.with_paint (fun p ->
+      {
+        p with
+        background = Some bg_card;
+        border =
+          Some
+            { width = 1.0; style = Solid; color = border_color; radius = 10.0 };
+        shadow =
+          Some { x = 0.0; y = 2.0; blur = 12.0; color = Style.rgba 0 0 0 0.06 };
+      })
+
+(* Title *)
+let title_text =
+  Text.default
+  |> Text.font_size 2.0
+  |> Text.font_weight Font.Thin
+  |> Text.font_family System_ui
+
+let title_style =
+  Style.default
+  |> Style.with_layout (fun l ->
+      { l with main_align = Center; cross_align = Center }
+      |> Style.padding 24.0 0.0 16.0 0.0)
+
+(* Header input *)
+let header_style =
+  Style.default
+  |> Style.with_layout (fun l -> l |> Style.padding 0.0 16.0 10.0 16.0)
+
+let input_style =
+  Style.default
+  |> Style.with_layout (fun l -> l |> Style.padding 12.0 16.0 12.0 16.0)
+  |> Style.with_paint (fun p ->
+      {
+        p with
+        background = Some (Style.hex "#f8f7f5");
+        border =
+          Some
+            { width = 1.0; style = Solid; color = border_color; radius = 8.0 };
+      })
+  |> Style.with_text (fun t -> t |> Text.font_size 1.0)
+
+let input_interaction =
+  let focused =
+    Style.default
+    |> Style.with_paint (fun p ->
+        {
+          p with
+          border =
+            Some { width = 2.0; style = Solid; color = accent; radius = 8.0 };
+          shadow =
+            Some
+              {
+                x = 0.0;
+                y = 0.0;
+                blur = 6.0;
+                color = Style.rgba 74 144 217 0.15;
+              };
+        })
+  in
+  { Interaction.default with focused = Some focused }
+
+(* Todo items *)
+let todo_row_style =
+  Style.default
+  |> Style.with_layout (fun l ->
+      { l with direction = Row_dir; cross_align = Center; gap = 12.0 }
+      |> Style.padding 12.0 16.0 12.0 16.0)
+  |> Style.with_paint (fun p ->
+      {
+        p with
+        border =
+          Some
+            { width = 0.0; style = Solid; color = border_color; radius = 0.0 };
+      })
+
+let todo_row_interaction =
+  let hover =
+    Style.default
+    |> Style.with_paint (fun p ->
+        { p with background = Some (Style.hex "#faf9f7") })
+  in
+  { Interaction.default with hover = Some hover }
+
+let divider_style =
+  Style.default
+  |> Style.with_layout (fun l -> { l with height = Fixed 1.0 })
+  |> Style.with_paint (fun p ->
+      { p with background = Some (Style.hex "#f0eeea") })
+
+let checkbox_style completed =
+  Style.default
+  |> Style.with_layout (fun l ->
+      {
+        l with
+        width = Fixed 24.0;
+        height = Fixed 24.0;
+        main_align = Center;
+        cross_align = Center;
+      })
+  |> Style.with_paint (fun p ->
+      {
+        p with
+        background = Some (if completed then check_green else Style.transparent);
+        border =
+          Some
+            {
+              width = (if completed then 0.0 else 2.0);
+              style = Solid;
+              color = (if completed then Style.transparent else border_color);
+              radius = 6.0;
+            };
+      })
+  |> Style.with_text (fun t -> t |> Text.font_size 0.7)
+
+let title_button_style completed =
+  Style.default
+  |> Style.with_layout (fun l ->
+      { l with flex_grow = Some 1.0; cross_align = Start })
+  |> Style.with_paint (fun p ->
+      {
+        p with
+        background = Some Style.transparent;
+        border =
+          Some
+            {
+              width = 0.0;
+              style = Solid;
+              color = Style.transparent;
+              radius = 0.0;
+            };
+      })
+  |> Style.with_text (fun t ->
+      let t' = t |> Text.font_size 1.0 |> Text.text_align Align_left in
+      if completed then t' |> Text.text_decoration Line_through else t')
+
+let delete_style =
+  Style.default
+  |> Style.with_layout (fun l ->
+      {
+        l with
+        width = Fixed 28.0;
+        height = Fixed 28.0;
+        main_align = Center;
+        cross_align = Center;
+      })
+  |> Style.with_paint (fun p ->
+      {
+        p with
+        background = Some Style.transparent;
+        border =
+          Some
+            {
+              width = 0.0;
+              style = Solid;
+              color = Style.transparent;
+              radius = 6.0;
+            };
+        opacity = 0.0;
+      })
+  |> Style.with_text (fun t -> t |> Text.font_size 0.85)
+
+let delete_interaction =
+  let hover =
+    Style.default
+    |> Style.with_paint (fun p ->
+        { p with background = Some (Style.hex "#ffeeed"); opacity = 1.0 })
+  in
+  { Interaction.default with hover = Some hover }
+
+let edit_input_style =
+  Style.default
+  |> Style.with_layout (fun l -> l |> Style.padding 10.0 14.0 10.0 14.0)
+  |> Style.with_paint (fun p ->
+      {
+        p with
+        border =
+          Some { width = 2.0; style = Solid; color = accent; radius = 6.0 };
+        shadow =
+          Some
+            { x = 0.0; y = 0.0; blur = 6.0; color = Style.rgba 74 144 217 0.15 };
+      })
+  |> Style.with_text (fun t -> t |> Text.font_size 1.0)
+
+(* Toggle all *)
+let toggle_all_style =
+  Style.default
+  |> Style.with_layout (fun l ->
+      { l with cross_align = Start } |> Style.padding 10.0 16.0 10.0 16.0)
+  |> Style.with_paint (fun p ->
+      {
+        p with
+        background = Some Style.transparent;
+        border =
+          Some
+            {
+              width = 0.0;
+              style = Solid;
+              color = Style.transparent;
+              radius = 0.0;
+            };
+      })
+  |> Style.with_text (fun t ->
+      t
+      |> Text.font_size 0.8
+      |> Text.text_transform Uppercase
+      |> Text.letter_spacing (Ls_em 0.05)
+      |> Text.font_weight Font.Medium
+      |> Text.text_align Align_left)
+
+let toggle_all_interaction =
+  let hover =
+    Style.default
+    |> Style.with_paint (fun p ->
+        { p with background = Some (Style.hex "#f5f4f1") })
+  in
+  { Interaction.default with hover = Some hover }
+
+(* Footer *)
+let footer_style =
+  Style.default
+  |> Style.with_layout (fun l ->
+      { l with gap = 8.0 } |> Style.padding 12.0 16.0 16.0 16.0)
+  |> Style.with_paint (fun p ->
+      { p with background = Some (Style.hex "#faf9f7") })
+
+let count_text_style = Text.default |> Text.font_size 0.85
+
+let filter_row_style =
+  Style.default
+  |> Style.with_layout (fun l -> { l with direction = Row_dir; gap = 4.0 })
+
+let filter_button_style selected =
+  Style.default
+  |> Style.with_layout (fun l -> l |> Style.padding 4.0 10.0 4.0 10.0)
+  |> Style.with_paint (fun p ->
+      {
+        p with
+        background =
+          Some (if selected then Style.hex "#eeedea" else Style.transparent);
+        border =
+          Some
+            {
+              width = (if selected then 1.0 else 0.0);
+              style = Solid;
+              color = (if selected then border_color else Style.transparent);
+              radius = 6.0;
+            };
+      })
+  |> Style.with_text (fun t ->
+      t
+      |> Text.font_size 0.8
+      |> Text.font_weight (if selected then Font.Semi_bold else Font.Normal))
+
+let filter_button_interaction =
+  let hover =
+    Style.default
+    |> Style.with_paint (fun p ->
+        { p with background = Some (Style.hex "#f0eeea") })
+  in
+  { Interaction.default with hover = Some hover }
+
+let clear_button_style =
+  Style.default
+  |> Style.with_layout (fun l -> l |> Style.padding 4.0 10.0 4.0 10.0)
+  |> Style.with_paint (fun p ->
+      {
+        p with
+        background = Some Style.transparent;
+        border =
+          Some
+            {
+              width = 0.0;
+              style = Solid;
+              color = Style.transparent;
+              radius = 6.0;
+            };
+      })
+  |> Style.with_text (fun t -> t |> Text.font_size 0.8)
+
+let clear_button_interaction =
+  let hover =
+    Style.default
+    |> Style.with_paint (fun p ->
+        { p with background = Some (Style.hex "#ffeeed") })
+    |> Style.with_text (fun t -> t |> Text.font_weight Font.Medium)
+  in
+  { Interaction.default with hover = Some hover }
+
+(* View functions *)
+
 let visible_todos model =
   match model.filter with
   | All -> model.todos
@@ -175,7 +488,7 @@ let view_todo_item editing (todo : todo) =
   in
   E.keyed
     ("todo-" ^ string_of_int todo.id)
-    (E.row
+    (E.row ~style:todo_row_style ~interaction:todo_row_interaction
        (if is_editing then
           let edit_text =
             match editing with
@@ -183,7 +496,7 @@ let view_todo_item editing (todo : todo) =
             | None -> todo.title
           in
           [
-            E.input
+            E.input ~style:edit_input_style
               ~attrs:[ ("data-action", "edit-input") ]
               ~on_change:(fun s -> Edit_changed s)
               ~on_blur:Submit_edit
@@ -197,37 +510,58 @@ let view_todo_item editing (todo : todo) =
         else
           [
             E.button
+              ~style:(checkbox_style todo.completed)
               ~attrs:[ ("data-action", "toggle-" ^ string_of_int todo.id) ]
               ~on_click:(Toggle todo.id)
-              (E.text (if todo.completed then "[x]" else "[ ]"));
+              (E.text (if todo.completed then "\xe2\x9c\x93" else ""));
             E.button
+              ~style:(title_button_style todo.completed)
               ~attrs:[ ("data-action", "edit-" ^ string_of_int todo.id) ]
-              ~on_dblclick:(Start_editing todo.id) (E.text todo.title);
-            E.button
+              ~on_dblclick:(Start_editing todo.id)
+              (E.styled_text
+                 ~text_style:
+                   (if todo.completed then Text.default |> Text.font_size 1.0
+                    else Text.default |> Text.font_size 1.0)
+                 todo.title);
+            E.button ~style:delete_style ~interaction:delete_interaction
               ~attrs:[ ("data-action", "delete-" ^ string_of_int todo.id) ]
-              ~on_click:(Delete todo.id) (E.text "x");
+              ~on_click:(Delete todo.id) (E.text "\xc3\x97");
           ]))
 
 let view_header model =
-  E.row
+  E.column ~style:header_style
     [
-      E.input ~placeholder:"What needs to be done?"
+      E.input ~style:input_style ~interaction:input_interaction
+        ~placeholder:"What needs to be done?"
         ~on_change:(fun s -> Input_changed s)
         ~on_submit:Add_todo model.input;
     ]
 
 let view_main model =
   let todos = visible_todos model in
+  let items =
+    List.concat_map
+      (fun todo ->
+        [ E.box ~style:divider_style []; view_todo_item model.editing todo ])
+      todos
+  in
   E.column
     ~attrs:[ ("data-section", "main") ]
-    (E.button
+    (E.button ~style:toggle_all_style ~interaction:toggle_all_interaction
        ~attrs:[ ("data-action", "toggle-all") ]
-       ~on_click:Toggle_all (E.text "Toggle all")
-    :: List.map (view_todo_item model.editing) todos)
+       ~on_click:Toggle_all
+       (E.styled_text
+          ~text_style:
+            (Text.default |> Text.font_size 0.8 |> Text.font_weight Font.Medium)
+          "Toggle all")
+    :: E.box ~style:divider_style []
+    :: items)
 
 let view_filter_link current_filter filter label =
   let selected = current_filter = filter in
   E.button
+    ~style:(filter_button_style selected)
+    ~interaction:filter_button_interaction
     ~attrs:(if selected then [ ("data-selected", "true") ] else [])
     ~on_click:
       (Navigate_to
@@ -244,8 +578,10 @@ let view_footer model =
   in
   let base =
     [
-      E.row ~attrs:[ ("data-section", "todo-count") ] [ E.text count_text ];
       E.row
+        ~attrs:[ ("data-section", "todo-count") ]
+        [ E.styled_text ~text_style:count_text_style count_text ];
+      E.row ~style:filter_row_style
         [
           view_filter_link model.filter All "All";
           view_filter_link model.filter Active "Active";
@@ -256,16 +592,27 @@ let view_footer model =
   let children =
     match has_completed model with
     | true ->
-        base @ [ E.button ~on_click:Clear_completed (E.text "Clear completed") ]
+        base
+        @ [
+            E.button ~style:clear_button_style
+              ~interaction:clear_button_interaction ~on_click:Clear_completed
+              (E.text "Clear completed");
+          ]
     | false -> base
   in
-  E.column ~attrs:[ ("data-section", "footer") ] children
+  E.column ~style:footer_style ~attrs:[ ("data-section", "footer") ] children
 
 let view model =
-  E.column
-    (match model.todos with
-    | [] -> [ view_header model ]
-    | _ :: _ -> [ view_header model; view_main model; view_footer model ])
+  E.column ~style:page_style
+    [
+      E.column ~style:card_style
+        (E.box ~style:title_style
+           [ E.styled_text ~text_style:title_text "todos" ]
+        ::
+        (match model.todos with
+        | [] -> [ view_header model ]
+        | _ :: _ -> [ view_header model; view_main model; view_footer model ]));
+    ]
 
 let subscriptions model =
   Nopal_router.Router.on_navigate model.router (fun route ->

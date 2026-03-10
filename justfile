@@ -61,6 +61,25 @@ serve-dashboard: build
     @cp examples/dashboard/index.html _build/default/examples/dashboard/
     python3 -m http.server 8000 -d _build/default/examples/dashboard
 
+# Site — assemble examples mini-site into dist/
+
+site: build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rm -rf dist
+    mkdir -p dist/counter dist/todomvc dist/kitchen_sink dist/dashboard
+    cp examples/index.html dist/
+    cp examples/counter/index.html     _build/default/examples/counter/main.bc.js     dist/counter/
+    cp examples/todomvc/index.html     _build/default/examples/todomvc/main.bc.js     dist/todomvc/
+    cp examples/kitchen_sink/index.html _build/default/examples/kitchen_sink/main.bc.js dist/kitchen_sink/
+    cp -r examples/kitchen_sink/assets  dist/kitchen_sink/assets
+    cp examples/dashboard/index.html   _build/default/examples/dashboard/main.bc.js   dist/dashboard/
+    echo "Site assembled in dist/"
+
+serve-site: site
+    @echo "Serving site at http://localhost:8000"
+    python3 -m http.server 8000 -d dist
+
 # E2E
 
 e2e: build
