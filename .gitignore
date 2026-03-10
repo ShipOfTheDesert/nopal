@@ -52,3 +52,6 @@ bench/results.json
 bench/runner/results/
 bench/runner/node_modules/
 bench/runner/test-results/
+
+# Site build output
+dist/
