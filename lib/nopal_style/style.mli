@@ -55,7 +55,7 @@ type paint = {
 
 (** {1 Top-level style} *)
 
-type t = { layout : layout; paint : paint }
+type t = { layout : layout; paint : paint; text : Text.t }
 
 (** {1 Defaults} *)
 
@@ -72,8 +72,11 @@ val default_layout : layout
 val default_paint : paint
 (** No background, no border, full opacity, no shadow, visible overflow. *)
 
+val default_text : Text.t
+(** [Text.default] — all fields [None]. *)
+
 val default : t
-(** [default_layout] + [default_paint]. *)
+(** [default_layout] + [default_paint] + [default_text]. *)
 
 (** {1 Constructors} *)
 
@@ -104,6 +107,13 @@ val set_layout : layout -> t -> t
 
 val set_paint : paint -> t -> t
 (** [set_paint p style] replaces the paint entirely. *)
+
+val with_text : (Text.t -> Text.t) -> t -> t
+(** [with_text f style] returns a new style where [text] is [f style.text]. The
+    original style is not mutated. *)
+
+val set_text : Text.t -> t -> t
+(** [set_text t style] replaces the text entirely. *)
 
 (** {1 Padding helpers} *)
 

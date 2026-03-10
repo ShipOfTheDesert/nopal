@@ -7,9 +7,10 @@ type todo = { id : int; title : string; completed : bool }
 (** Which subset of todos to display. *)
 type filter = All | Active | Completed
 
-type editing = { id : int; text : string; original : string }
+type editing = { id : int; text : string; original : string; cancelled : bool }
 (** Transient state while a todo title is being edited. [original] holds the
-    pre-edit title so that [Cancel_edit] can restore it. *)
+    pre-edit title so that [Cancel_edit] can restore it. [cancelled] prevents a
+    subsequent [Submit_edit] from blur from saving the changed text. *)
 
 (** Route values corresponding to URL hash fragments. *)
 type route = All_route | Active_route | Completed_route

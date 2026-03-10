@@ -7,7 +7,7 @@ let ix0 = Ix.default
 let node_pp fmt node =
   let rec aux indent = function
     | Empty -> Format.fprintf fmt "%sEmpty" indent
-    | Text s -> Format.fprintf fmt "%sText %S" indent s
+    | Text { content; _ } -> Format.fprintf fmt "%sText %S" indent content
     | Element { tag; attrs; children; _ } ->
         Format.fprintf fmt "%sElement { tag = %S; attrs = [%s]; children = ["
           indent tag
@@ -26,7 +26,9 @@ let node_equal a b =
   let rec eq a b =
     match (a, b) with
     | Empty, Empty -> true
-    | Text s1, Text s2 -> String.equal s1 s2
+    | ( Text { content = s1; text_style = ts1 },
+        Text { content = s2; text_style = ts2 } ) ->
+        String.equal s1 s2 && Option.equal Nopal_style.Text.equal ts1 ts2
     | ( Element { tag = t1; attrs = a1; children = c1; _ },
         Element { tag = t2; attrs = a2; children = c2; _ } ) ->
         String.equal t1 t2 && a1 = a2 && List.equal eq c1 c2
@@ -47,7 +49,9 @@ let render_empty () =
 
 let render_text () =
   let r = render (E.text "hello") in
-  check_node "text renders to Text" (Text "hello") (tree r)
+  check_node "text renders to Text"
+    (Text { content = "hello"; text_style = None })
+    (tree r)
 
 let render_box () =
   let r = render (E.box [ E.text "a"; E.text "b" ]) in
@@ -56,7 +60,11 @@ let render_box () =
        {
          tag = "box";
          attrs = [];
-         children = [ Text "a"; Text "b" ];
+         children =
+           [
+             Text { content = "a"; text_style = None };
+             Text { content = "b"; text_style = None };
+           ];
          interaction = ix0;
        })
     (tree r)
@@ -65,7 +73,12 @@ let render_row () =
   let r = render (E.row [ E.text "a" ]) in
   check_node "row renders correctly"
     (Element
-       { tag = "row"; attrs = []; children = [ Text "a" ]; interaction = ix0 })
+       {
+         tag = "row";
+         attrs = [];
+         children = [ Text { content = "a"; text_style = None } ];
+         interaction = ix0;
+       })
     (tree r)
 
 let render_column () =
@@ -75,7 +88,7 @@ let render_column () =
        {
          tag = "column";
          attrs = [];
-         children = [ Text "a" ];
+         children = [ Text { content = "a"; text_style = None } ];
          interaction = ix0;
        })
     (tree r)
@@ -87,7 +100,7 @@ let render_button () =
        {
          tag = "button";
          attrs = [];
-         children = [ Text "click me" ];
+         children = [ Text { content = "click me"; text_style = None } ];
          interaction = ix0;
        })
     (tree r)
@@ -123,7 +136,7 @@ let render_scroll () =
        {
          tag = "scroll";
          attrs = [];
-         children = [ Text "content" ];
+         children = [ Text { content = "content"; text_style = None } ];
          interaction = ix0;
        })
     (tree r)
@@ -135,7 +148,7 @@ let render_keyed () =
        {
          tag = "keyed";
          attrs = [ ("key", "k1") ];
-         children = [ Text "child" ];
+         children = [ Text { content = "child"; text_style = None } ];
          interaction = ix0;
        })
     (tree r)
@@ -161,18 +174,22 @@ let render_nested () =
                  attrs = [];
                  children =
                    [
-                     Text "a";
+                     Text { content = "a"; text_style = None };
                      Element
                        {
                          tag = "column";
                          attrs = [];
-                         children = [ Text "b"; Text "c" ];
+                         children =
+                           [
+                             Text { content = "b"; text_style = None };
+                             Text { content = "c"; text_style = None };
+                           ];
                          interaction = ix0;
                        };
                    ];
                  interaction = ix0;
                };
-             Text "d";
+             Text { content = "d"; text_style = None };
            ];
          interaction = ix0;
        })
@@ -236,7 +253,8 @@ let find_by_text () =
   let result = find (By_text "hello") (tree r) in
   Alcotest.(check bool) "finds text node" true (Option.is_some result);
   match result with
-  | Some (Text s) -> Alcotest.(check string) "text matches" "hello" s
+  | Some (Text { content; _ }) ->
+      Alcotest.(check string) "text matches" "hello" content
   | _ -> Alcotest.fail "expected Text node"
 
 let find_by_text_substring () =
@@ -244,7 +262,8 @@ let find_by_text_substring () =
   let result = find (By_text "world") (tree r) in
   Alcotest.(check bool) "finds text by substring" true (Option.is_some result);
   match result with
-  | Some (Text s) -> Alcotest.(check string) "full text" "hello world" s
+  | Some (Text { content; _ }) ->
+      Alcotest.(check string) "full text" "hello world" content
   | _ -> Alcotest.fail "expected Text node"
 
 let find_by_attr () =
@@ -259,18 +278,22 @@ let find_by_attr () =
 let find_first_child () =
   let r = render (E.box [ E.text "a"; E.text "b"; E.text "c" ]) in
   let result = find First_child (tree r) in
-  check_node "first child is text a" (Text "a") (Option.get result)
+  check_node "first child is text a"
+    (Text { content = "a"; text_style = None })
+    (Option.get result)
 
 let find_first_child_empty () =
   let result = find First_child Empty in
   Alcotest.(check bool) "Empty has no first child" true (Option.is_none result);
-  let result2 = find First_child (Text "hi") in
+  let result2 = find First_child (Text { content = "hi"; text_style = None }) in
   Alcotest.(check bool) "Text has no first child" true (Option.is_none result2)
 
 let find_nth_child () =
   let r = render (E.box [ E.text "a"; E.text "b"; E.text "c" ]) in
   let result = find (Nth_child 1) (tree r) in
-  check_node "nth child 1 is text b" (Text "b") (Option.get result)
+  check_node "nth child 1 is text b"
+    (Text { content = "b"; text_style = None })
+    (Option.get result)
 
 let find_nth_child_out_of_bounds () =
   let r = render (E.box [ E.text "a" ]) in
@@ -297,7 +320,7 @@ let find_all_empty_result () =
   Alcotest.(check int) "finds no buttons" 0 (List.length results)
 
 let text_content_text_node () =
-  let s = text_content (Text "hello") in
+  let s = text_content (Text { content = "hello"; text_style = None }) in
   Alcotest.(check string) "text content of Text" "hello" s
 
 let text_content_element () =
@@ -613,6 +636,146 @@ let run_app_tests =
       run_app_ignores_commands;
   ]
 
+(* Task 5: Text style in test renderer *)
+module T = Nopal_style.Text
+module F = Nopal_style.Font
+
+let text_node_has_no_text_style () =
+  let r = render (E.text "hello") in
+  match tree r with
+  | Text { text_style; _ } ->
+      Alcotest.(check bool)
+        "plain text has no text_style" true
+        (Option.is_none text_style)
+  | _ -> Alcotest.fail "expected Text node"
+
+let styled_text_node_has_text_style () =
+  let ts = T.default |> T.font_size 16.0 |> T.font_weight F.Bold in
+  let r = render (E.styled_text ~text_style:ts "styled") in
+  match tree r with
+  | Text { content; text_style } ->
+      Alcotest.(check string) "content preserved" "styled" content;
+      Alcotest.(check bool)
+        "text_style is Some" true
+        (Option.is_some text_style);
+      let ts' = Option.get text_style in
+      Alcotest.(check bool)
+        "font_size matches" true
+        (Option.equal Float.equal ts'.font_size (Some 16.0));
+      Alcotest.(check bool)
+        "font_weight matches" true
+        (Option.equal F.equal_weight ts'.font_weight (Some F.Bold))
+  | _ -> Alcotest.fail "expected Text node"
+
+let text_style_accessor_returns_style () =
+  let ts = T.default |> T.font_size 24.0 in
+  let r = render (E.styled_text ~text_style:ts "big") in
+  let result = text_style (tree r) in
+  Alcotest.(check bool) "text_style returns Some" true (Option.is_some result);
+  let ts' = Option.get result in
+  Alcotest.(check bool)
+    "font_size matches" true
+    (Option.equal Float.equal ts'.font_size (Some 24.0))
+
+let text_style_accessor_returns_none_for_plain () =
+  let r = render (E.text "plain") in
+  let result = text_style (tree r) in
+  Alcotest.(check bool)
+    "text_style returns None for plain" true (Option.is_none result)
+
+let text_style_accessor_returns_none_for_element () =
+  let r = render (E.box [ E.text "child" ]) in
+  let result = text_style (tree r) in
+  Alcotest.(check bool)
+    "text_style returns None for element" true (Option.is_none result)
+
+let text_content_still_works () =
+  let ts = T.default |> T.font_size 14.0 in
+  let r =
+    render (E.box [ E.text "plain"; E.styled_text ~text_style:ts " styled" ])
+  in
+  let s = text_content (tree r) in
+  Alcotest.(check string) "text_content concatenates" "plain styled" s
+
+type ts_msg = Ts_toggle
+
+let styled_text_reconciliation_changes_style () =
+  let init () = (false, Nopal_mvu.Cmd.none) in
+  let update _model msg =
+    match msg with
+    | Ts_toggle -> (true, Nopal_mvu.Cmd.none)
+  in
+  let view model =
+    if model then
+      E.styled_text
+        ~text_style:(T.default |> T.font_size 24.0 |> T.font_weight F.Bold)
+        "big"
+    else E.styled_text ~text_style:(T.default |> T.font_size 12.0) "small"
+  in
+  (* Before toggle *)
+  let model0, r0 = run_app ~init ~update ~view [] in
+  Alcotest.(check bool) "initial model" false model0;
+  let ts0 = text_style (tree r0) in
+  Alcotest.(check bool) "initial has text_style" true (Option.is_some ts0);
+  Alcotest.(check bool)
+    "initial font_size is 12"
+    true
+    (Option.equal Float.equal (Option.get ts0).font_size (Some 12.0));
+  Alcotest.(check bool)
+    "initial no font_weight" true
+    (Option.is_none (Option.get ts0).font_weight);
+  (* After toggle *)
+  let model1, r1 = run_app ~init ~update ~view [ Ts_toggle ] in
+  Alcotest.(check bool) "toggled model" true model1;
+  let ts1 = text_style (tree r1) in
+  Alcotest.(check bool) "toggled has text_style" true (Option.is_some ts1);
+  Alcotest.(check bool)
+    "toggled font_size is 24"
+    true
+    (Option.equal Float.equal (Option.get ts1).font_size (Some 24.0));
+  Alcotest.(check bool)
+    "toggled font_weight is Bold" true
+    (Option.equal F.equal_weight (Option.get ts1).font_weight (Some F.Bold))
+
+let styled_text_reconciliation_removes_style () =
+  let init () = (false, Nopal_mvu.Cmd.none) in
+  let update _model msg =
+    match msg with
+    | Ts_toggle -> (true, Nopal_mvu.Cmd.none)
+  in
+  let view model =
+    if model then E.text "plain"
+    else E.styled_text ~text_style:(T.default |> T.font_size 16.0) "styled"
+  in
+  let _model0, r0 = run_app ~init ~update ~view [] in
+  Alcotest.(check bool)
+    "initial has text_style" true
+    (Option.is_some (text_style (tree r0)));
+  let _model1, r1 = run_app ~init ~update ~view [ Ts_toggle ] in
+  Alcotest.(check bool)
+    "after toggle no text_style" true
+    (Option.is_none (text_style (tree r1)))
+
+let text_style_tests =
+  [
+    Alcotest.test_case "text_node_has_no_text_style" `Quick
+      text_node_has_no_text_style;
+    Alcotest.test_case "styled_text_node_has_text_style" `Quick
+      styled_text_node_has_text_style;
+    Alcotest.test_case "text_style_accessor_returns_style" `Quick
+      text_style_accessor_returns_style;
+    Alcotest.test_case "text_style_accessor_returns_none_for_plain" `Quick
+      text_style_accessor_returns_none_for_plain;
+    Alcotest.test_case "text_style_accessor_returns_none_for_element" `Quick
+      text_style_accessor_returns_none_for_element;
+    Alcotest.test_case "text_content_still_works" `Quick
+      text_content_still_works;
+    Alcotest.test_case "styled_text_reconciliation_changes_style" `Quick
+      styled_text_reconciliation_changes_style;
+    Alcotest.test_case "styled_text_reconciliation_removes_style" `Quick
+      styled_text_reconciliation_removes_style;
+  ]
+
 let () =
   Alcotest.run "Test_renderer"
     [
@@ -621,4 +784,5 @@ let () =
       ("events", event_tests);
       ("map", map_tests);
       ("run_app", run_app_tests);
+      ("text_style", text_style_tests);
     ]

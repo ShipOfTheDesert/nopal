@@ -56,6 +56,11 @@ serve-kitchen: build
     @cp examples/kitchen_sink/index.html _build/default/examples/kitchen_sink/
     python3 -m http.server 8000 -d _build/default/examples/kitchen_sink
 
+# E2E
+
+e2e: build
+    cd test/e2e && npx playwright test
+
 # Benchmarks
 
 bench-setup:

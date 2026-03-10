@@ -38,6 +38,7 @@ setup.log
 
 # Local OPAM switch
 _opam/
+_opam
 
 # Test artifacts
 test-results/

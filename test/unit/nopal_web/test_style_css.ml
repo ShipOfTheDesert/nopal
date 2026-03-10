@@ -279,6 +279,178 @@ let test_interaction_rules_default_empty () =
   in
   Alcotest.(check string) "default produces empty" "" result
 
+(* ── Text CSS tests ── *)
+
+let text_props ts = of_text ts
+
+let test_text_none_fields_no_css () =
+  let props = text_props Nopal_style.Text.default in
+  Alcotest.(check int) "no properties" 0 (List.length props)
+
+let test_text_font_family_sans_serif () =
+  let ts =
+    Nopal_style.Text.default
+    |> Nopal_style.Text.font_family Nopal_style.Font.Sans_serif
+  in
+  let props = text_props ts in
+  check_has_prop "font-family" "sans-serif" props
+
+let test_text_font_family_system_ui () =
+  let ts =
+    Nopal_style.Text.default
+    |> Nopal_style.Text.font_family Nopal_style.Font.System_ui
+  in
+  let props = text_props ts in
+  check_has_prop "font-family" "system-ui" props
+
+let test_text_font_family_custom_quoted () =
+  let ts =
+    Nopal_style.Text.default
+    |> Nopal_style.Text.font_family (Nopal_style.Font.Custom "Inter")
+  in
+  let props = text_props ts in
+  check_has_prop "font-family" "\"Inter\"" props
+
+let test_text_font_size_rem () =
+  let ts = Nopal_style.Text.default |> Nopal_style.Text.font_size 1.5 in
+  let props = text_props ts in
+  check_has_prop "font-size" "1.5rem" props
+
+let test_text_font_weight_thin () =
+  let ts =
+    Nopal_style.Text.default
+    |> Nopal_style.Text.font_weight Nopal_style.Font.Thin
+  in
+  let props = text_props ts in
+  check_has_prop "font-weight" "100" props
+
+let test_text_font_weight_bold () =
+  let ts =
+    Nopal_style.Text.default
+    |> Nopal_style.Text.font_weight Nopal_style.Font.Bold
+  in
+  let props = text_props ts in
+  check_has_prop "font-weight" "700" props
+
+let test_text_italic_true () =
+  let ts = Nopal_style.Text.default |> Nopal_style.Text.italic true in
+  let props = text_props ts in
+  check_has_prop "font-style" "italic" props
+
+let test_text_italic_false () =
+  let ts = Nopal_style.Text.default |> Nopal_style.Text.italic false in
+  let props = text_props ts in
+  check_has_prop "font-style" "normal" props
+
+let test_text_line_height_normal () =
+  let ts =
+    Nopal_style.Text.default
+    |> Nopal_style.Text.line_height Nopal_style.Text.Lh_normal
+  in
+  let props = text_props ts in
+  check_has_prop "line-height" "normal" props
+
+let test_text_line_height_multiplier () =
+  let ts =
+    Nopal_style.Text.default
+    |> Nopal_style.Text.line_height (Nopal_style.Text.Lh_multiplier 1.5)
+  in
+  let props = text_props ts in
+  check_has_prop "line-height" "1.5" props
+
+let test_text_line_height_px () =
+  let ts =
+    Nopal_style.Text.default
+    |> Nopal_style.Text.line_height (Nopal_style.Text.Lh_px 24.)
+  in
+  let props = text_props ts in
+  check_has_prop "line-height" "24px" props
+
+let test_text_letter_spacing_normal () =
+  let ts =
+    Nopal_style.Text.default
+    |> Nopal_style.Text.letter_spacing Nopal_style.Text.Ls_normal
+  in
+  let props = text_props ts in
+  check_has_prop "letter-spacing" "normal" props
+
+let test_text_letter_spacing_em () =
+  let ts =
+    Nopal_style.Text.default
+    |> Nopal_style.Text.letter_spacing (Nopal_style.Text.Ls_em 0.05)
+  in
+  let props = text_props ts in
+  check_has_prop "letter-spacing" "0.05em" props
+
+let test_text_align_center () =
+  let ts =
+    Nopal_style.Text.default
+    |> Nopal_style.Text.text_align Nopal_style.Text.Align_center
+  in
+  let props = text_props ts in
+  check_has_prop "text-align" "center" props
+
+let test_text_decoration_underline () =
+  let ts =
+    Nopal_style.Text.default
+    |> Nopal_style.Text.text_decoration Nopal_style.Text.Underline
+  in
+  let props = text_props ts in
+  check_has_prop "text-decoration" "underline" props
+
+let test_text_transform_uppercase () =
+  let ts =
+    Nopal_style.Text.default
+    |> Nopal_style.Text.text_transform Nopal_style.Text.Uppercase
+  in
+  let props = text_props ts in
+  check_has_prop "text-transform" "uppercase" props
+
+let test_text_overflow_ellipsis () =
+  let ts =
+    Nopal_style.Text.default
+    |> Nopal_style.Text.text_overflow Nopal_style.Text.Ellipsis
+  in
+  let props = text_props ts in
+  check_has_prop "text-overflow" "ellipsis" props;
+  check_has_prop "overflow" "hidden" props;
+  check_has_prop "white-space" "nowrap" props
+
+let test_text_overflow_clip () =
+  let ts =
+    Nopal_style.Text.default
+    |> Nopal_style.Text.text_overflow Nopal_style.Text.Clip
+  in
+  let props = text_props ts in
+  check_has_prop "text-overflow" "clip" props
+
+let test_text_overflow_wrap () =
+  let ts =
+    Nopal_style.Text.default
+    |> Nopal_style.Text.text_overflow Nopal_style.Text.Wrap
+  in
+  let props = text_props ts in
+  check_has_prop "white-space" "normal" props
+
+let test_text_overflow_no_wrap () =
+  let ts =
+    Nopal_style.Text.default
+    |> Nopal_style.Text.text_overflow Nopal_style.Text.No_wrap
+  in
+  let props = text_props ts in
+  check_has_prop "white-space" "nowrap" props
+
+let test_text_only_some_fields_emit () =
+  let ts =
+    Nopal_style.Text.default
+    |> Nopal_style.Text.font_size 2.0
+    |> Nopal_style.Text.font_weight Nopal_style.Font.Bold
+  in
+  let props = text_props ts in
+  Alcotest.(check int) "exactly 2 properties" 2 (List.length props);
+  check_has_prop "font-size" "2rem" props;
+  check_has_prop "font-weight" "700" props
+
 let test_interaction_rules_focused_only () =
   let interaction =
     {
@@ -375,5 +547,45 @@ let () =
             test_interaction_rules_default_empty;
           Alcotest.test_case "focused only" `Quick
             test_interaction_rules_focused_only;
+        ] );
+      ( "of_text",
+        [
+          Alcotest.test_case "none fields no css" `Quick
+            test_text_none_fields_no_css;
+          Alcotest.test_case "font family sans-serif" `Quick
+            test_text_font_family_sans_serif;
+          Alcotest.test_case "font family system-ui" `Quick
+            test_text_font_family_system_ui;
+          Alcotest.test_case "font family custom quoted" `Quick
+            test_text_font_family_custom_quoted;
+          Alcotest.test_case "font size rem" `Quick test_text_font_size_rem;
+          Alcotest.test_case "font weight thin" `Quick
+            test_text_font_weight_thin;
+          Alcotest.test_case "font weight bold" `Quick
+            test_text_font_weight_bold;
+          Alcotest.test_case "italic true" `Quick test_text_italic_true;
+          Alcotest.test_case "italic false" `Quick test_text_italic_false;
+          Alcotest.test_case "line height normal" `Quick
+            test_text_line_height_normal;
+          Alcotest.test_case "line height multiplier" `Quick
+            test_text_line_height_multiplier;
+          Alcotest.test_case "line height px" `Quick test_text_line_height_px;
+          Alcotest.test_case "letter spacing normal" `Quick
+            test_text_letter_spacing_normal;
+          Alcotest.test_case "letter spacing em" `Quick
+            test_text_letter_spacing_em;
+          Alcotest.test_case "text align center" `Quick test_text_align_center;
+          Alcotest.test_case "text decoration underline" `Quick
+            test_text_decoration_underline;
+          Alcotest.test_case "text transform uppercase" `Quick
+            test_text_transform_uppercase;
+          Alcotest.test_case "text overflow ellipsis" `Quick
+            test_text_overflow_ellipsis;
+          Alcotest.test_case "text overflow clip" `Quick test_text_overflow_clip;
+          Alcotest.test_case "text overflow wrap" `Quick test_text_overflow_wrap;
+          Alcotest.test_case "text overflow no wrap" `Quick
+            test_text_overflow_no_wrap;
+          Alcotest.test_case "only some fields emit" `Quick
+            test_text_only_some_fields_emit;
         ] );
     ]
