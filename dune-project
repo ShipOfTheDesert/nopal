@@ -109,6 +109,19 @@
   nopal_mvu))
 
 (package
+ (name nopal_charts)
+ (synopsis "Composable, interactive chart library for Nopal")
+ (depends
+  (alcotest
+   (and
+    (>= 1.9.1)
+    :with-test))
+  ocaml
+  nopal_draw
+  nopal_element
+  nopal_style))
+
+(package
  (name nopal_web)
  (synopsis "Web renderer backend for Nopal")
  (depends

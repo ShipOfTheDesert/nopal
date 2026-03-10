@@ -1,0 +1,4 @@
+(library
+ (name nopal_charts)
+ (public_name nopal_charts)
+ (libraries nopal_draw nopal_element nopal_style))

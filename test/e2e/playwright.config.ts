@@ -23,7 +23,7 @@ export default defineConfig({
   ],
   webServer: {
     command:
-      "cd ../.. && opam exec -- dune build && cp examples/todomvc/index.html _build/default/examples/todomvc/ && cp examples/kitchen_sink/index.html _build/default/examples/kitchen_sink/ && npx serve -l 3000 _build/default/examples",
+      "cd ../.. && opam exec -- dune build && cp examples/todomvc/index.html _build/default/examples/todomvc/ && cp examples/kitchen_sink/index.html _build/default/examples/kitchen_sink/ && cp examples/dashboard/index.html _build/default/examples/dashboard/ && npx serve -l 3000 _build/default/examples",
     port: 3000,
     reuseExistingServer: !process.env.CI,
   },

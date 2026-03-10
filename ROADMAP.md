@@ -70,6 +70,115 @@ The `align` type is shared between `main_align` (maps to `justify-content`) and
 split into `main_align` and `cross_align` types (where only `main_align` carries
 `Space_between`), or validate at construction time.
 
+### Animation System
+
+**Package:** `nopal_animate` (new package)
+**Depends on:** `nopal_element`, `nopal_style`, `nopal_mvu`
+
+A framework-wide animation system for Nopal. Animations touch multiple layers
+of the framework — element transitions, style property interpolation, draw
+scene transforms, chart data updates, and route transitions — so the animation
+primitive must be general enough to serve all of them from a single model.
+
+The system should provide:
+
+- A **declarative animation description type** (`'a Animation.t`) that specifies
+  start value, end value, duration, easing function, and delay. Animations are
+  values, not imperative callbacks — they compose with the MVU architecture.
+- **Style property interpolation** for `nopal_style` types: colour (HSL
+  channel-wise), dimensions (float), opacity, padding, gap, border radius.
+  Interpolators are typed so only compatible start/end values compile.
+- **Element transitions** driven by model changes: when a style property changes
+  between renders, the transition animates from the old value to the new value
+  over the specified duration. The runtime manages in-flight transitions.
+- **Draw scene animation** for `nopal_draw`: transform interpolation (translate,
+  rotate, scale), colour interpolation, path morphing (same-segment-count paths
+  interpolated point-wise). This enables animated charts, progress indicators,
+  and interactive visualisations.
+- **Chart data transitions** for `nopal_charts`: when data changes between
+  renders, bar heights, line positions, pie segment angles, and scatter point
+  positions animate smoothly from old values to new values. The chart library
+  provides animation-aware rendering that the animation system drives.
+- **Route transitions**: enter/exit animations for views during navigation,
+  composable with the router.
+- **Easing functions**: linear, ease-in, ease-out, ease-in-out, cubic-bezier
+  (custom control points), spring (mass/stiffness/damping). Easing is a
+  pure `float -> float` function — no platform dependency.
+- **Stagger and sequence combinators**: delay-offset animations across a list
+  of elements (e.g. staggered bar chart entrance), sequence multiple animations
+  with completion callbacks via `Cmd.t`.
+
+The animation system must compile on native OCaml without js_of_ocaml. The
+runtime integration (requestAnimationFrame on web, display link on native) is
+a backend concern — `nopal_animate` defines the description, `nopal_web` and
+future backends interpret it. Animation tick rate is controlled by the backend;
+the animation module itself is pure computation over time values.
+
+MVU integration: animations produce `Cmd.t` values for scheduling ticks and
+`Sub.t` values for ongoing animations. The application model holds animation
+state; `update` advances animations via a tick message. This keeps all state
+visible and testable — `nopal_test` can advance animations via the virtual
+clock without a real timer.
+
+### Trading and Financial Chart Extensions (`nopal_charts`)
+
+**Package:** `nopal_charts` (extension)
+**Depends on:** `nopal_charts`, `nopal_draw`
+
+Extend `nopal_charts` with features required for trading and financial data
+visualisation. This is a primary use case for the charting library and warrants
+dedicated chart types and scale utilities beyond the initial release.
+
+The extension should provide:
+
+- **Logarithmic scales.** A `Log` scale type in addition to the existing
+  `Linear` scale, essential for price charts where percentage changes matter
+  more than absolute changes. Log scales must handle the domain constraint
+  (min > 0) gracefully, with a clear error or fallback when zero/negative
+  values are present. Tick generation for log scales should produce ticks at
+  powers of 10 (or subdivisions) rather than linear intervals.
+
+- **Time series X axis.** A time-aware X axis that accepts Unix timestamps or
+  a date representation and formats tick labels appropriately for the zoom
+  level: seconds/minutes for intraday, days for weekly, months for yearly.
+  Requires a minimal date formatting utility (not a full date library — just
+  enough for axis labels). Tick placement should snap to natural time
+  boundaries (start of hour, start of day, start of month) rather than
+  uniform intervals.
+
+- **Stacked bar charts.** Bars within a category stacked vertically, each
+  segment representing a series value. Requires computing cumulative offsets
+  per category and rendering segments bottom-to-top. Hit testing returns the
+  specific segment (series + datum), not just the category. Tooltip shows the
+  segment value and total.
+
+- **Candlestick charts.** OHLC (open, high, low, close) candlestick chart
+  for price data. Each candlestick is a composite shape: a thin vertical line
+  (wick) from low to high, and a filled/hollow rectangle (body) from open to
+  close. Body colour indicates direction (close > open = bullish, close < open
+  = bearish). Configuration accepts colour for bullish/bearish candles.
+  Hit testing covers the full wick-to-wick range. Tooltip shows all four OHLC
+  values plus volume if provided.
+
+- **Waterfall charts.** A bar chart variant showing cumulative effect of
+  sequential positive and negative values. Each bar starts where the previous
+  bar ended. Running total bars (e.g. subtotals) are visually distinguished.
+  Connector lines between bars show the flow. Useful for P&L breakdowns and
+  fund flow visualisation.
+
+- **Volume overlay.** A secondary Y axis with a bar chart overlay on the lower
+  portion of a price chart, sharing the same X (time) axis. This is the
+  standard trading chart layout: price (line or candlestick) on the primary
+  axis, volume bars on a secondary axis occupying the bottom 20-30% of the
+  chart area.
+
+- **Crosshair cursor.** A vertical + horizontal line following the cursor
+  position, snapping to the nearest data point on the X axis. Axis labels
+  update to show the crosshair position values. Standard in trading terminals.
+
+All extensions must compile on native OCaml without js_of_ocaml (same
+constraint as `nopal_charts` itself).
+
 ### Redesign Interaction Styling Architecture
 
 **Packages:** `nopal_style`, `nopal_web` (`style_sheet.ml`, `style_css.ml`, `renderer.ml`)

@@ -1,0 +1,253 @@
+type mode = Stacked | Overlapping
+
+type 'a series = {
+  data : 'a list;
+  y : 'a -> float;
+  color : Nopal_draw.Color.t;
+  label : string;
+}
+
+let series ~label ~color ~y data = { data; y; color; label }
+
+let view ~series ~x ~width ~height ?(mode = Overlapping)
+    ?(padding = Padding.default) ?(x_axis = Axis.default_config)
+    ?(y_axis = Axis.default_config) ?format_tooltip ?on_hover ?on_leave ?hover
+    () =
+  (* Flatten all data across series to check emptiness *)
+  let all_data =
+    List.concat_map
+      (fun (s : _ series) -> List.map (fun d -> (s, d)) s.data)
+      series
+  in
+  match all_data with
+  | [] -> Nopal_element.Element.draw ~width ~height []
+  | _ -> (
+      let chart_x = padding.Padding.left in
+      let chart_y = padding.Padding.top in
+      let chart_width = width -. padding.left -. padding.right in
+      let chart_height = height -. padding.top -. padding.bottom in
+      (* Compute global X domain *)
+      let all_x = List.map (fun (_, d) -> x d) all_data in
+      let x_min = List.fold_left Float.min Float.infinity all_x in
+      let x_max = List.fold_left Float.max Float.neg_infinity all_x in
+      (* Compute Y domain — for stacked, use accumulated values *)
+      let raw_y_values = List.map (fun (s, d) -> s.y d) all_data in
+      let data_y_min_raw =
+        List.fold_left Float.min Float.infinity raw_y_values
+      in
+      let data_y_max_raw =
+        List.fold_left Float.max Float.neg_infinity raw_y_values
+      in
+      (* For stacked mode, compute the max accumulated value *)
+      let data_y_min, data_y_max =
+        match mode with
+        | Overlapping -> (data_y_min_raw, data_y_max_raw)
+        | Stacked ->
+            (* Group by x index and sum values *)
+            let n_points =
+              match series with
+              | [] -> 0
+              | s :: _ -> List.length s.data
+            in
+            let max_sum = ref 0.0 in
+            for i = 0 to n_points - 1 do
+              let sum = ref 0.0 in
+              List.iter
+                (fun (s : _ series) ->
+                  if i < List.length s.data then begin
+                    let d = List.nth s.data i in
+                    sum := !sum +. s.y d
+                  end)
+                series;
+              if !sum > !max_sum then max_sum := !sum
+            done;
+            (Float.min 0.0 data_y_min_raw, !max_sum)
+      in
+      let y_lo, y_hi =
+        Axis.compute_domain y_axis ~data_min:data_y_min ~data_max:data_y_max
+      in
+      let x_lo, x_hi =
+        Axis.compute_domain x_axis ~data_min:x_min ~data_max:x_max
+      in
+      let x_scale =
+        Nopal_draw.Scale.create ~domain:(x_lo, x_hi)
+          ~range:(chart_x, chart_x +. chart_width)
+      in
+      let y_scale =
+        Nopal_draw.Scale.create ~domain:(y_lo, y_hi)
+          ~range:(chart_y +. chart_height, chart_y)
+      in
+      (* Build scene: filled areas per series *)
+      let n_points =
+        match series with
+        | [] -> 0
+        | s :: _ -> List.length s.data
+      in
+      (* Mutable: stacked mode requires random-access update of per-index
+         baselines as each series accumulates atop the previous. An array
+         avoids rebuilding a map on every data point in the inner loop. *)
+      let baselines = Array.make n_points 0.0 in
+      let scene_nodes =
+        List.concat_map
+          (fun (s : _ series) ->
+            let points_with_baselines =
+              List.mapi
+                (fun i d ->
+                  let raw_y = s.y d in
+                  let base =
+                    match mode with
+                    | Overlapping -> 0.0
+                    | Stacked -> baselines.(i)
+                  in
+                  let top_y = base +. raw_y in
+                  (* Update baseline for next series in stacked mode *)
+                  (match mode with
+                  | Stacked -> baselines.(i) <- top_y
+                  | Overlapping -> ());
+                  let px = Nopal_draw.Scale.apply x_scale (x d) in
+                  let py_top = Nopal_draw.Scale.apply y_scale top_y in
+                  let py_base = Nopal_draw.Scale.apply y_scale base in
+                  (px, py_top, py_base))
+                s.data
+            in
+            match points_with_baselines with
+            | [] -> []
+            | _ ->
+                (* Build closed area path: top line forward, baseline backward *)
+                let top_points =
+                  List.map
+                    (fun (px, py_top, _) -> (px, py_top))
+                    points_with_baselines
+                in
+                let base_points =
+                  List.rev_map
+                    (fun (px, _, py_base) -> (px, py_base))
+                    points_with_baselines
+                in
+                let area_points = top_points @ base_points in
+                let segments = Nopal_draw.Path.closed_area area_points in
+                let alpha =
+                  match mode with
+                  | Overlapping -> 0.5
+                  | Stacked -> 0.8
+                in
+                let fill_color = { s.color with Nopal_draw.Color.a = alpha } in
+                [
+                  Nopal_draw.Scene.path
+                    ~fill:(Nopal_draw.Paint.solid fill_color)
+                    segments;
+                ])
+          series
+      in
+      (* Build hit map: vertical bands, one per X index *)
+      let unique_x_values =
+        let xs =
+          List.concat_map
+            (fun (s : _ series) -> List.mapi (fun i d -> (i, x d)) s.data)
+            series
+        in
+        let seen = Hashtbl.create 16 in
+        List.filter_map
+          (fun (i, xv) ->
+            if Hashtbl.mem seen i then None
+            else begin
+              Hashtbl.add seen i true;
+              Some (i, xv)
+            end)
+          xs
+      in
+      let n_x = List.length unique_x_values in
+      let band_width =
+        if n_x <= 1 then chart_width else chart_width /. Float.of_int n_x
+      in
+      let hit_map =
+        List.fold_left
+          (fun hmap (i, _xv) ->
+            let band_x = chart_x +. (Float.of_int i *. band_width) in
+            let region =
+              Hit_map.Rect_region
+                {
+                  x = band_x;
+                  y = chart_y;
+                  w = band_width;
+                  h = chart_height;
+                  hit = { index = i; series = 0 };
+                }
+            in
+            Hit_map.add region hmap)
+          Hit_map.empty unique_x_values
+      in
+      (* Axes *)
+      let x_ticks = Axis.compute_ticks x_axis ~data_min:x_min ~data_max:x_max in
+      let x_axis_scene =
+        Axis.render_x x_axis ~ticks:x_ticks ~scale:x_scale ~chart_x
+          ~chart_y:(chart_y +. chart_height) ~chart_width
+      in
+      let y_ticks =
+        Axis.compute_ticks y_axis ~data_min:data_y_min ~data_max:data_y_max
+      in
+      let y_axis_scene =
+        Axis.render_y y_axis ~ticks:y_ticks ~scale:y_scale ~chart_x ~chart_y
+          ~chart_height
+      in
+      let all_scene = scene_nodes @ x_axis_scene @ y_axis_scene in
+      (* Build on_pointer_move handler *)
+      let on_pointer_move =
+        match on_hover with
+        | None -> None
+        | Some handler ->
+            Some
+              (fun (pe : Nopal_element.Element.pointer_event) ->
+                match Hit_map.hit_test hit_map ~x:pe.x ~y:pe.y with
+                | Some hit ->
+                    handler
+                      {
+                        Hover.index = hit.index;
+                        series = hit.series;
+                        cursor_x = pe.x;
+                        cursor_y = pe.y;
+                      }
+                | None ->
+                    handler
+                      {
+                        Hover.index = -1;
+                        series = 0;
+                        cursor_x = pe.x;
+                        cursor_y = pe.y;
+                      })
+      in
+      let draw_el =
+        Nopal_element.Element.draw ?on_pointer_move ?on_pointer_leave:on_leave
+          ~width ~height all_scene
+      in
+      (* Compose with tooltip if hovered *)
+      match (hover, format_tooltip) with
+      | Some h, Some fmt when h.Hover.index >= 0 ->
+          let entries =
+            List.filter_map
+              (fun (s : _ series) ->
+                if h.Hover.index < List.length s.data then
+                  let datum = List.nth s.data h.Hover.index in
+                  Some (s.label, s.y datum)
+                else None)
+              series
+          in
+          let tip = fmt entries in
+          let tip_container =
+            Tooltip.container ~x:h.cursor_x ~y:h.cursor_y ~chart_width:width
+              ~chart_height:height tip
+          in
+          let outer_style =
+            Nopal_style.Style.default
+            |> Nopal_style.Style.with_layout (fun l ->
+                { l with width = Fixed width; height = Fixed height })
+          in
+          Nopal_element.Element.box ~style:outer_style
+            [ draw_el; tip_container ]
+      | _ ->
+          let outer_style =
+            Nopal_style.Style.default
+            |> Nopal_style.Style.with_layout (fun l ->
+                { l with width = Fixed width; height = Fixed height })
+          in
+          Nopal_element.Element.box ~style:outer_style [ draw_el ])
