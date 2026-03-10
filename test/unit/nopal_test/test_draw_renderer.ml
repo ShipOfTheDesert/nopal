@@ -4,7 +4,7 @@ module E = Nopal_element.Element
 let node_pp fmt node =
   let rec aux indent = function
     | Empty -> Format.fprintf fmt "%sEmpty" indent
-    | Text s -> Format.fprintf fmt "%sText %S" indent s
+    | Text { content; _ } -> Format.fprintf fmt "%sText %S" indent content
     | Element { tag; attrs; children; _ } ->
         Format.fprintf fmt "%sElement { tag = %S; attrs = [%s]; children = ["
           indent tag
@@ -23,7 +23,9 @@ let node_equal a b =
   let rec eq a b =
     match (a, b) with
     | Empty, Empty -> true
-    | Text s1, Text s2 -> String.equal s1 s2
+    | ( Text { content = s1; text_style = ts1 },
+        Text { content = s2; text_style = ts2 } ) ->
+        String.equal s1 s2 && Option.equal Nopal_style.Text.equal ts1 ts2
     | ( Element { tag = t1; attrs = a1; children = c1; _ },
         Element { tag = t2; attrs = a2; children = c2; _ } ) ->
         String.equal t1 t2 && a1 = a2 && List.equal eq c1 c2

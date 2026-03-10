@@ -61,6 +61,11 @@ serve-dashboard: build
     @cp examples/dashboard/index.html _build/default/examples/dashboard/
     python3 -m http.server 8000 -d _build/default/examples/dashboard
 
+# E2E
+
+e2e: build
+    cd test/e2e && npx playwright test
+
 # Benchmarks
 
 bench-setup:

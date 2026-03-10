@@ -43,7 +43,7 @@ type paint = {
   overflow : overflow;
 }
 
-type t = { layout : layout; paint : paint }
+type t = { layout : layout; paint : paint; text : Text.t }
 
 let default_border =
   { width = 0.; style = No_border; color = Transparent; radius = 0. }
@@ -75,7 +75,11 @@ let default_paint =
     overflow = Visible;
   }
 
-let default = { layout = default_layout; paint = default_paint }
+let default_text = Text.default
+
+let default =
+  { layout = default_layout; paint = default_paint; text = default_text }
+
 let rgba r g b a = Rgba { r; g; b; a }
 let hex s = Hex s
 let named s = Named s
@@ -84,6 +88,8 @@ let with_layout f s = { s with layout = f s.layout }
 let with_paint f s = { s with paint = f s.paint }
 let set_layout l s = { s with layout = l }
 let set_paint p s = { s with paint = p }
+let with_text f s = { s with text = f s.text }
+let set_text t s = { s with text = t }
 
 let padding top right bottom left l =
   {
@@ -179,4 +185,7 @@ let equal_paint a b =
   && Option.equal equal_shadow a.shadow b.shadow
   && equal_overflow a.overflow b.overflow
 
-let equal a b = equal_layout a.layout b.layout && equal_paint a.paint b.paint
+let equal a b =
+  equal_layout a.layout b.layout
+  && equal_paint a.paint b.paint
+  && Text.equal a.text b.text

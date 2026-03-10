@@ -203,7 +203,7 @@ test("persist todos across reload", async ({ page }) => {
   await expect(page.locator(todoLabel(1))).toHaveText("Persistent todo");
 });
 
-test("direct URL navigation to filter", async ({ page }) => {
+test("pushState navigation updates filter", async ({ page }) => {
   const input = page.locator(TODO_INPUT);
   await input.fill("Active todo");
   await input.press("Enter");
@@ -213,10 +213,23 @@ test("direct URL navigation to filter", async ({ page }) => {
   // Complete the second one
   await page.click(todoToggle(2));
 
-  // Navigate directly to /#/completed (hash-based routing)
-  await page.goto("/todomvc/#/completed");
+  // Click "Completed" filter via UI (uses pushState routing)
+  await page
+    .locator(FOOTER_SECTION)
+    .getByRole("button", { name: "Completed", exact: true })
+    .click();
 
   // Only completed todo visible
   await expect(page.locator(todoLabel(1))).toHaveCount(0);
+  await expect(page.locator(todoLabel(2))).toBeVisible();
+
+  // URL should reflect the filter
+  await expect(page).toHaveURL(/\/completed$/);
+
+  // Navigate back via browser history (triggers popstate)
+  await page.goBack();
+
+  // All todos visible again
+  await expect(page.locator(todoLabel(1))).toBeVisible();
   await expect(page.locator(todoLabel(2))).toBeVisible();
 });

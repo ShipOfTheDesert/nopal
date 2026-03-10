@@ -7,6 +7,11 @@
 type css_prop = { property : string; value : string }
 (** A single CSS property-value pair. *)
 
+val of_text : Nopal_style.Text.t -> css_prop list
+(** [of_text text] returns the CSS properties for [text]. Only [Some] fields
+    emit properties — [Text.default] produces [[]]. Ellipsis overflow emits
+    [text-overflow:ellipsis], [overflow:hidden], and [white-space:nowrap]. *)
+
 val of_style : Nopal_style.Style.t -> css_prop list
 (** [of_style style] returns the CSS properties for [style]. Only non-default
     values are emitted — a default [Style.t] produces [[]]. *)

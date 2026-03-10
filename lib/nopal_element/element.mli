@@ -10,7 +10,7 @@ type pointer_event = { x : float; y : float }
 
 type 'msg t =
   | Empty
-  | Text of string
+  | Text of { content : string; text_style : Nopal_style.Text.t option }
   | Box of {
       style : Nopal_style.Style.t;
       interaction : Nopal_style.Interaction.t;
@@ -71,7 +71,10 @@ val empty : 'msg t
 (** An element that renders nothing. *)
 
 val text : string -> 'msg t
-(** A text node. *)
+(** A text node with no text style. *)
+
+val styled_text : text_style:Nopal_style.Text.t -> string -> 'msg t
+(** A text node with an explicit text style. *)
 
 val box :
   ?style:Nopal_style.Style.t ->

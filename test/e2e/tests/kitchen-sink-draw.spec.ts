@@ -1,10 +1,11 @@
 import { test, expect } from "@playwright/test";
 
 test.beforeEach(async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/kitchen_sink/");
   // Wait for the Nopal app to mount
   await page.waitForFunction(
-    () => document.querySelector("[data-section='draw']") !== null,
+    (sel) => document.querySelector(sel) !== null,
+    "[data-section='draw']",
     { timeout: 10000 }
   );
 });

@@ -8,7 +8,7 @@
 
 type node =
   | Empty
-  | Text of string
+  | Text of { content : string; text_style : Nopal_style.Text.t option }
   | Element of {
       tag : string;
       attrs : (string * string) list;
@@ -64,6 +64,10 @@ val find_all : selector -> node -> node list
 val text_content : node -> string
 (** [text_content node] returns the concatenated text of all [Text] descendants.
     Returns [""] for [Empty]. *)
+
+val text_style : node -> Nopal_style.Text.t option
+(** [text_style node] returns [Some style] if the node is a [Text] with a text
+    style set, [None] for plain [Text], [Empty], and [Element] nodes. *)
 
 val interaction : node -> Nopal_style.Interaction.t option
 (** [interaction node] returns [Some interaction] if the node is an [Element],

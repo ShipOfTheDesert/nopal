@@ -26,7 +26,10 @@ let test_empty_creates_comment () =
 let test_text_creates_span () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
-  let handle = Nopal_web.Renderer.create ~dispatch ~parent (Text "hello") in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (Text { content = "hello"; text_style = None })
+  in
   let node = Nopal_web.Renderer.dom_node handle in
   Alcotest.(check int) "element nodeType" 1 (node_type node);
   Alcotest.(check string) "tag is SPAN" "SPAN" (tag_of node);
@@ -43,7 +46,7 @@ let test_box_creates_div () =
         style = default;
         interaction = Nopal_style.Interaction.default;
         attrs = [];
-        children = [ Text "a" ];
+        children = [ Text { content = "a"; text_style = None } ];
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
@@ -105,7 +108,7 @@ let test_button_creates_button () =
         attrs = [];
         on_click = None;
         on_dblclick = None;
-        child = Text "ok";
+        child = Text { content = "ok"; text_style = None };
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
@@ -161,7 +164,10 @@ let test_image_creates_img () =
 let test_scroll_creates_div_overflow_auto () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
-  let el = Scroll { style = default; child = Text "x" } in
+  let el =
+    Scroll
+      { style = default; child = Text { content = "x"; text_style = None } }
+  in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
   let node = Nopal_web.Renderer.dom_node handle in
   Alcotest.(check string) "tag is DIV" "DIV" (tag_of node);
@@ -173,7 +179,9 @@ let test_scroll_creates_div_overflow_auto () =
 let test_keyed_sets_data_key () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
-  let el = Keyed { key = "k1"; child = Text "x" } in
+  let el =
+    Keyed { key = "k1"; child = Text { content = "x"; text_style = None } }
+  in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
   let node = Nopal_web.Renderer.dom_node handle in
   let dk =
@@ -193,7 +201,7 @@ let test_button_click_dispatches () =
         attrs = [];
         on_click = Some Click;
         on_dblclick = None;
-        child = Text "go";
+        child = Text { content = "go"; text_style = None };
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
@@ -321,9 +329,13 @@ let test_style_applied_as_inline () =
 let test_reconcile_text_update () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
-  let handle = Nopal_web.Renderer.create ~dispatch ~parent (Text "a") in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (Text { content = "a"; text_style = None })
+  in
   let node_before = Nopal_web.Renderer.dom_node handle in
-  Nopal_web.Renderer.update ~dispatch handle (Text "b");
+  Nopal_web.Renderer.update ~dispatch handle
+    (Text { content = "b"; text_style = None });
   let node_after = Nopal_web.Renderer.dom_node handle in
   Alcotest.(check bool) "same node" true (node_before == node_after);
   let text = Jv.Jstr.get node_after "textContent" |> Jstr.to_string in
@@ -339,7 +351,7 @@ let test_reconcile_same_variant_reuses_node () =
         style = default;
         interaction = Nopal_style.Interaction.default;
         attrs = [];
-        children = [ Text "a" ];
+        children = [ Text { content = "a"; text_style = None } ];
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -350,7 +362,7 @@ let test_reconcile_same_variant_reuses_node () =
         style = default;
         interaction = Nopal_style.Interaction.default;
         attrs = [];
-        children = [ Text "b" ];
+        children = [ Text { content = "b"; text_style = None } ];
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
@@ -361,7 +373,10 @@ let test_reconcile_same_variant_reuses_node () =
 let test_reconcile_different_variant_replaces () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
-  let handle = Nopal_web.Renderer.create ~dispatch ~parent (Text "a") in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (Text { content = "a"; text_style = None })
+  in
   let node_before = Nopal_web.Renderer.dom_node handle in
   let el2 =
     Button
@@ -371,7 +386,7 @@ let test_reconcile_different_variant_replaces () =
         attrs = [];
         on_click = None;
         on_dblclick = None;
-        child = Text "b";
+        child = Text { content = "b"; text_style = None };
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
@@ -389,7 +404,7 @@ let test_reconcile_children_append () =
         style = default;
         interaction = Nopal_style.Interaction.default;
         attrs = [];
-        children = [ Text "a" ];
+        children = [ Text { content = "a"; text_style = None } ];
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -402,7 +417,11 @@ let test_reconcile_children_append () =
         style = default;
         interaction = Nopal_style.Interaction.default;
         attrs = [];
-        children = [ Text "a"; Text "b" ];
+        children =
+          [
+            Text { content = "a"; text_style = None };
+            Text { content = "b"; text_style = None };
+          ];
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
@@ -419,7 +438,11 @@ let test_reconcile_children_remove () =
         style = default;
         interaction = Nopal_style.Interaction.default;
         attrs = [];
-        children = [ Text "a"; Text "b" ];
+        children =
+          [
+            Text { content = "a"; text_style = None };
+            Text { content = "b"; text_style = None };
+          ];
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -432,7 +455,7 @@ let test_reconcile_children_remove () =
         style = default;
         interaction = Nopal_style.Interaction.default;
         attrs = [];
-        children = [ Text "a" ];
+        children = [ Text { content = "a"; text_style = None } ];
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
@@ -449,7 +472,11 @@ let test_reconcile_children_reuse_by_position () =
         style = default;
         interaction = Nopal_style.Interaction.default;
         attrs = [];
-        children = [ Text "a"; Text "b" ];
+        children =
+          [
+            Text { content = "a"; text_style = None };
+            Text { content = "b"; text_style = None };
+          ];
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -463,7 +490,11 @@ let test_reconcile_children_reuse_by_position () =
         style = default;
         interaction = Nopal_style.Interaction.default;
         attrs = [];
-        children = [ Text "c"; Text "d" ];
+        children =
+          [
+            Text { content = "c"; text_style = None };
+            Text { content = "d"; text_style = None };
+          ];
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
@@ -489,8 +520,10 @@ let test_keyed_reorder_reuses_nodes () =
         attrs = [];
         children =
           [
-            Keyed { key = "a"; child = Text "A" };
-            Keyed { key = "b"; child = Text "B" };
+            Keyed
+              { key = "a"; child = Text { content = "A"; text_style = None } };
+            Keyed
+              { key = "b"; child = Text { content = "B"; text_style = None } };
           ];
       }
   in
@@ -508,8 +541,10 @@ let test_keyed_reorder_reuses_nodes () =
         attrs = [];
         children =
           [
-            Keyed { key = "b"; child = Text "B" };
-            Keyed { key = "a"; child = Text "A" };
+            Keyed
+              { key = "b"; child = Text { content = "B"; text_style = None } };
+            Keyed
+              { key = "a"; child = Text { content = "A"; text_style = None } };
           ];
       }
   in
@@ -531,7 +566,11 @@ let test_keyed_add_new_key () =
         style = default;
         interaction = Nopal_style.Interaction.default;
         attrs = [];
-        children = [ Keyed { key = "a"; child = Text "A" } ];
+        children =
+          [
+            Keyed
+              { key = "a"; child = Text { content = "A"; text_style = None } };
+          ];
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -546,8 +585,10 @@ let test_keyed_add_new_key () =
         attrs = [];
         children =
           [
-            Keyed { key = "a"; child = Text "A" };
-            Keyed { key = "b"; child = Text "B" };
+            Keyed
+              { key = "a"; child = Text { content = "A"; text_style = None } };
+            Keyed
+              { key = "b"; child = Text { content = "B"; text_style = None } };
           ];
       }
   in
@@ -574,8 +615,10 @@ let test_keyed_remove_key () =
         attrs = [];
         children =
           [
-            Keyed { key = "a"; child = Text "A" };
-            Keyed { key = "b"; child = Text "B" };
+            Keyed
+              { key = "a"; child = Text { content = "A"; text_style = None } };
+            Keyed
+              { key = "b"; child = Text { content = "B"; text_style = None } };
           ];
       }
   in
@@ -589,7 +632,11 @@ let test_keyed_remove_key () =
         style = default;
         interaction = Nopal_style.Interaction.default;
         attrs = [];
-        children = [ Keyed { key = "a"; child = Text "A" } ];
+        children =
+          [
+            Keyed
+              { key = "a"; child = Text { content = "A"; text_style = None } };
+          ];
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
@@ -629,7 +676,8 @@ let test_keyed_stable_node_identity () =
                       on_keydown = None;
                     };
               };
-            Keyed { key = "y"; child = Text "Y" };
+            Keyed
+              { key = "y"; child = Text { content = "Y"; text_style = None } };
           ];
       }
   in
@@ -646,7 +694,8 @@ let test_keyed_stable_node_identity () =
         attrs = [];
         children =
           [
-            Keyed { key = "z"; child = Text "Z" };
+            Keyed
+              { key = "z"; child = Text { content = "Z"; text_style = None } };
             Keyed
               {
                 key = "x";
@@ -841,7 +890,7 @@ let test_reconcile_button_skips_unchanged_attrs () =
         attrs = [ ("data-id", "x") ];
         on_click = Some Click;
         on_dblclick = None;
-        child = Text "a";
+        child = Text { content = "a"; text_style = None };
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -855,7 +904,7 @@ let test_reconcile_button_skips_unchanged_attrs () =
         attrs = [ ("data-id", "x") ];
         on_click = Some Click;
         on_dblclick = None;
-        child = Text "a";
+        child = Text { content = "a"; text_style = None };
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
@@ -993,7 +1042,7 @@ let test_reconcile_event_listener_update () =
         attrs = [];
         on_click = Some Click;
         on_dblclick = None;
-        child = Text "a";
+        child = Text { content = "a"; text_style = None };
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -1005,7 +1054,7 @@ let test_reconcile_event_listener_update () =
         attrs = [];
         on_click = Some Submit;
         on_dblclick = None;
-        child = Text "a";
+        child = Text { content = "a"; text_style = None };
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
@@ -1062,7 +1111,7 @@ let test_recursive_unlisten_on_remove () =
                 attrs = [];
                 on_click = Some Click;
                 on_dblclick = None;
-                child = Text "inner";
+                child = Text { content = "inner"; text_style = None };
               };
           ];
       }
@@ -1071,7 +1120,8 @@ let test_recursive_unlisten_on_remove () =
   let node = Nopal_web.Renderer.dom_node handle in
   let inner_button = Jv.get (Jv.get node "childNodes") "0" in
   (* Replace the entire Box with a Text — this removes the Box and its Button child *)
-  Nopal_web.Renderer.update ~dispatch handle (Text "replaced");
+  Nopal_web.Renderer.update ~dispatch handle
+    (Text { content = "replaced"; text_style = None });
   (* The old inner button's listener should have been cleaned up.
      Dispatching a click on the orphaned button should not produce a message. *)
   let ev = Jv.new' (Jv.get Jv.global "Event") [| Jv.of_string "click" |] in
