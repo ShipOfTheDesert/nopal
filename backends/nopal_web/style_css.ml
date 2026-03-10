@@ -249,11 +249,53 @@ let apply_cursor el cursor =
   in
   Brr.El.set_inline_style (Jstr.v "cursor") value el
 
-let to_important_rule_body props =
+let to_rule_body props =
   String.concat ""
-    (List.map
-       (fun { property; value } -> property ^ ":" ^ value ^ " !important;")
-       props)
+    (List.map (fun { property; value } -> property ^ ":" ^ value ^ ";") props)
+
+let base_class_rule ~class_name props =
+  match props with
+  | [] -> ""
+  | _ -> "." ^ class_name ^ "{" ^ to_rule_body props ^ "}"
+
+let split_css_rules css =
+  let len = String.length css in
+  let rec scan_rule i depth =
+    if i >= len then i
+    else
+      match css.[i] with
+      | '{' -> scan_rule (i + 1) (depth + 1)
+      | '}' when depth = 1 -> i + 1
+      | '}' -> scan_rule (i + 1) (depth - 1)
+      | _ -> scan_rule (i + 1) depth
+  in
+  let rec go i acc =
+    if i >= len then List.rev acc
+    else
+      let rule_end = scan_rule i 0 in
+      if rule_end > i then go rule_end (String.sub css i (rule_end - i) :: acc)
+      else List.rev acc
+  in
+  go 0 []
+
+let normalize_key css class_name =
+  let clen = String.length class_name in
+  let slen = String.length css in
+  let placeholder = "__NOPAL_IX__" in
+  let buf = Buffer.create slen in
+  let rec go i =
+    if i >= slen then ()
+    else if i + clen <= slen && String.sub css i clen = class_name then begin
+      Buffer.add_string buf placeholder;
+      go (i + clen)
+    end
+    else begin
+      Buffer.add_char buf css.[i];
+      go (i + 1)
+    end
+  in
+  go 0;
+  Buffer.contents buf
 
 let interaction_rules ~class_name (interaction : Nopal_style.Interaction.t) =
   let buf = Buffer.create 128 in
@@ -262,7 +304,7 @@ let interaction_rules ~class_name (interaction : Nopal_style.Interaction.t) =
     match props with
     | [] -> ()
     | _ ->
-        let body = to_important_rule_body props in
+        let body = to_rule_body props in
         Buffer.add_string buf (selector ^ "{" ^ body ^ "}")
   in
   (* Precedence by rule order: hover first, focused second, pressed last.

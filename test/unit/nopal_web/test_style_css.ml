@@ -177,28 +177,6 @@ let test_background_color_named () =
   let props = of_style style in
   check_has_prop "background-color" "red" props
 
-(* I-5: to_important_rule_body tests *)
-let test_important_rule_body_single () =
-  let props = [ { property = "color"; value = "red" } ] in
-  let result = to_important_rule_body props in
-  Alcotest.(check string) "single prop" "color:red !important;" result
-
-let test_important_rule_body_multiple () =
-  let props =
-    [
-      { property = "background-color"; value = "#ff0000" };
-      { property = "padding"; value = "8px" };
-    ]
-  in
-  let result = to_important_rule_body props in
-  Alcotest.(check string)
-    "multiple props"
-    "background-color:#ff0000 !important;padding:8px !important;" result
-
-let test_important_rule_body_empty () =
-  let result = to_important_rule_body [] in
-  Alcotest.(check string) "empty list" "" result
-
 (* Substring search helper — returns position or -1 *)
 let find_substring haystack needle =
   let hlen = String.length haystack in
@@ -231,7 +209,9 @@ let test_interaction_rules_hover_only () =
   Alcotest.(check bool)
     "has hover selector" true
     (contains result "._nopal_ix_0:hover{");
-  Alcotest.(check bool) "has !important" true (contains result "!important");
+  Alcotest.(check bool)
+    "no !important" true
+    (not (contains result "!important"));
   Alcotest.(check bool) "no active rule" true (not (contains result ":active"))
 
 let test_interaction_rules_all_states () =
@@ -479,6 +459,117 @@ let test_interaction_rules_focused_only () =
   Alcotest.(check bool) "no hover rule" true (not (contains result ":hover"));
   Alcotest.(check bool) "no active rule" true (not (contains result ":active"))
 
+(* ── Task 1 tests: base_class_rule and no !important ── *)
+
+let test_base_class_rule_generates_class_selector () =
+  let props =
+    [
+      { property = "background-color"; value = "red" };
+      { property = "padding"; value = "10px" };
+    ]
+  in
+  let result = base_class_rule ~class_name:"_nopal_b_0" props in
+  Alcotest.(check string)
+    "class rule" "._nopal_b_0{background-color:red;padding:10px;}" result
+
+let test_base_class_rule_empty_props () =
+  let result = base_class_rule ~class_name:"_nopal_b_0" [] in
+  Alcotest.(check string) "empty props" "" result
+
+let test_interaction_rules_no_important () =
+  let interaction =
+    {
+      Nopal_style.Interaction.default with
+      hover =
+        Some
+          (Nopal_style.Style.default
+          |> Nopal_style.Style.with_paint (fun p ->
+              { p with background = Some (Nopal_style.Style.hex "#ff0000") }));
+    }
+  in
+  let result = interaction_rules ~class_name:"_nopal_ix_0" interaction in
+  Alcotest.(check bool)
+    "no !important in output" true
+    (not (contains result "!important"))
+
+let test_interaction_rules_precedence_order () =
+  let mk_style color =
+    Nopal_style.Style.default
+    |> Nopal_style.Style.with_paint (fun p ->
+        { p with background = Some (Nopal_style.Style.hex color) })
+  in
+  let interaction =
+    {
+      Nopal_style.Interaction.hover = Some (mk_style "#aaa");
+      pressed = Some (mk_style "#bbb");
+      focused = Some (mk_style "#ccc");
+    }
+  in
+  let result = interaction_rules ~class_name:"_nopal_ix_0" interaction in
+  let hover_pos = find_substring result ":hover{" in
+  let focus_pos = find_substring result ":focus-visible{" in
+  let active_pos = find_substring result ":active{" in
+  Alcotest.(check bool) "hover before focus" true (hover_pos < focus_pos);
+  Alcotest.(check bool) "focus before active" true (focus_pos < active_pos)
+
+let test_interaction_rules_empty () =
+  let result =
+    interaction_rules ~class_name:"_nopal_ix_0" Nopal_style.Interaction.default
+  in
+  Alcotest.(check string) "empty interaction" "" result
+
+(* ── split_css_rules tests ── *)
+
+let test_split_css_rules_single () =
+  let result = split_css_rules ".a:hover{color:red;}" in
+  Alcotest.(check (list string)) "single rule" [ ".a:hover{color:red;}" ] result
+
+let test_split_css_rules_multiple () =
+  let css = ".a:hover{color:red;}.a:active{color:blue;}" in
+  let result = split_css_rules css in
+  Alcotest.(check (list string))
+    "two rules"
+    [ ".a:hover{color:red;}"; ".a:active{color:blue;}" ]
+    result
+
+let test_split_css_rules_empty () =
+  let result = split_css_rules "" in
+  Alcotest.(check (list string)) "empty string" [] result
+
+let test_split_css_rules_three_rules () =
+  let css = ".x:hover{a:1;}.x:focus-visible{b:2;}.x:active{c:3;}" in
+  let result = split_css_rules css in
+  Alcotest.(check (list string))
+    "three rules"
+    [ ".x:hover{a:1;}"; ".x:focus-visible{b:2;}"; ".x:active{c:3;}" ]
+    result
+
+(* ── normalize_key tests ── *)
+
+let test_normalize_key_replaces_class_name () =
+  let css = "._nopal_ix_5:hover{color:red;}" in
+  let result = normalize_key css "_nopal_ix_5" in
+  Alcotest.(check string)
+    "class replaced" ".__NOPAL_IX__:hover{color:red;}" result
+
+let test_normalize_key_replaces_all_occurrences () =
+  let css = "._nopal_ix_3:hover{a:1;}._nopal_ix_3:active{b:2;}" in
+  let result = normalize_key css "_nopal_ix_3" in
+  Alcotest.(check string)
+    "all occurrences replaced"
+    ".__NOPAL_IX__:hover{a:1;}.__NOPAL_IX__:active{b:2;}" result
+
+let test_normalize_key_empty_css () =
+  let result = normalize_key "" "_nopal_ix_0" in
+  Alcotest.(check string) "empty css" "" result
+
+let test_normalize_key_same_key_for_identical_styles () =
+  let css_a = "._nopal_ix_0:hover{color:red;}" in
+  let css_b = "._nopal_ix_7:hover{color:red;}" in
+  let key_a = normalize_key css_a "_nopal_ix_0" in
+  let key_b = normalize_key css_b "_nopal_ix_7" in
+  Alcotest.(check string) "same normalized key" key_a key_b
+
 let () =
   Alcotest.run "style_css"
     [
@@ -528,14 +619,6 @@ let () =
         [
           Alcotest.test_case "hex color" `Quick test_background_color_hex;
           Alcotest.test_case "named color" `Quick test_background_color_named;
-        ] );
-      ( "to_important_rule_body",
-        [
-          Alcotest.test_case "single property" `Quick
-            test_important_rule_body_single;
-          Alcotest.test_case "multiple properties" `Quick
-            test_important_rule_body_multiple;
-          Alcotest.test_case "empty list" `Quick test_important_rule_body_empty;
         ] );
       ( "interaction_rules",
         [
@@ -587,5 +670,40 @@ let () =
             test_text_overflow_no_wrap;
           Alcotest.test_case "only some fields emit" `Quick
             test_text_only_some_fields_emit;
+        ] );
+      ( "base_class_rule",
+        [
+          Alcotest.test_case "generates class selector" `Quick
+            test_base_class_rule_generates_class_selector;
+          Alcotest.test_case "empty props" `Quick
+            test_base_class_rule_empty_props;
+        ] );
+      ( "interaction_rules_redesign",
+        [
+          Alcotest.test_case "no !important" `Quick
+            test_interaction_rules_no_important;
+          Alcotest.test_case "precedence order" `Quick
+            test_interaction_rules_precedence_order;
+          Alcotest.test_case "empty interaction" `Quick
+            test_interaction_rules_empty;
+        ] );
+      ( "split_css_rules",
+        [
+          Alcotest.test_case "single rule" `Quick test_split_css_rules_single;
+          Alcotest.test_case "multiple rules" `Quick
+            test_split_css_rules_multiple;
+          Alcotest.test_case "empty string" `Quick test_split_css_rules_empty;
+          Alcotest.test_case "three rules" `Quick
+            test_split_css_rules_three_rules;
+        ] );
+      ( "normalize_key",
+        [
+          Alcotest.test_case "replaces class name" `Quick
+            test_normalize_key_replaces_class_name;
+          Alcotest.test_case "replaces all occurrences" `Quick
+            test_normalize_key_replaces_all_occurrences;
+          Alcotest.test_case "empty css" `Quick test_normalize_key_empty_css;
+          Alcotest.test_case "same key for identical styles" `Quick
+            test_normalize_key_same_key_for_identical_styles;
         ] );
     ]

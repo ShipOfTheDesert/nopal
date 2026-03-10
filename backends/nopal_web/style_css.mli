@@ -23,15 +23,24 @@ val to_inline_string : css_prop list -> string
 val apply_cursor : Brr.El.t -> Nopal_style.Cursor.t option -> unit
 (** [apply_cursor el cursor] sets or clears the cursor inline style on [el]. *)
 
-val to_important_rule_body : css_prop list -> string
-(** [to_important_rule_body props] formats property-value pairs as a CSS
-    declaration block body with [!important] on each property. Needed for
-    interaction pseudo-class rules to override inline base styles. Returns [""]
-    for an empty list. *)
+val base_class_rule : class_name:string -> css_prop list -> string
+(** [base_class_rule ~class_name props] generates a CSS class rule:
+    [.class_name \{ prop:value; prop:value; \}]. No [!important]. Returns [""]
+    for an empty prop list. *)
+
+val split_css_rules : string -> string list
+(** [split_css_rules css] splits a concatenated CSS string like
+    [".a:hover\{...\}.a:active\{...\}"] into individual rule strings by tracking
+    brace depth. Returns [[]] for an empty string. *)
+
+val normalize_key : string -> string -> string
+(** [normalize_key css class_name] replaces all occurrences of [class_name] in
+    [css] with a fixed placeholder so that structurally identical interactions
+    produce the same cache key regardless of class name. *)
 
 val interaction_rules : class_name:string -> Nopal_style.Interaction.t -> string
 (** [interaction_rules ~class_name interaction] generates CSS pseudo-class rules
-    for the given interaction. Returns a string containing [:hover],
-    [:focus-visible], and/or [:active] rule blocks with [!important]
-    declarations. Precedence is encoded by rule order: hover first, then
+    without [!important]. Pseudo-class selectors ([.class:hover]) have higher
+    specificity than the base class selector ([.class]), so normal cascade
+    handles overrides. Precedence is encoded by rule order: hover first, then
     focused, then pressed. Returns [""] when the interaction has no states. *)

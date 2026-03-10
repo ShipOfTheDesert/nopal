@@ -225,6 +225,20 @@ reference counting for cleanup) would eliminate redundant rules.
 without interaction styles (`Interaction.default`) pay zero cost — no class
 name, no stylesheet rules, no DOM attribute changes.
 
+### Multi-Browser E2E Testing
+
+**Package:** `test/e2e/`
+
+Add Firefox and WebKit Playwright projects to the E2E test configuration. The
+interaction styling redesign (PRD 0029) relies on `CSSStyleSheet.insertRule` /
+`deleteRule` with index tracking. While the CSSOM spec is clear, browser
+implementation differences in rule index shifting after deletion are a known
+risk (see RFC 0030 risk list). Currently only Chromium is tested.
+
+The Playwright config should add `firefox` and `webkit` projects for the
+`kitchen-sink` test suite, particularly for `interaction-styling.spec.ts`.
+This verifies REQ-N4 (cross-browser support).
+
 ## Performance
 
 Performance-related improvements tracked here. None of these are regressions —

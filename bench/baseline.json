@@ -1,54 +1,54 @@
 {
   "version": 1,
-  "timestamp": "2026-03-09T16:52:11.505Z",
+  "timestamp": "2026-03-10T06:08:36.978Z",
   "runner": "local",
   "metrics": {
     "jsfb/create_1000": {
-      "value": 85.70000000018626,
+      "value": 85.5,
       "unit": "ms"
     },
     "jsfb/replace_1000": {
-      "value": 46.60000000055879,
+      "value": 45.80000000447035,
       "unit": "ms"
     },
     "jsfb/partial_update": {
-      "value": 77.5,
+      "value": 78.40000000596046,
       "unit": "ms"
     },
     "jsfb/select_row": {
-      "value": 81.29999999981374,
+      "value": 80,
       "unit": "ms"
     },
     "jsfb/swap_rows": {
-      "value": 42.60000000055879,
+      "value": 44.100000001490116,
       "unit": "ms"
     },
     "jsfb/remove_row": {
-      "value": 78,
+      "value": 81.19999999552965,
       "unit": "ms"
     },
     "jsfb/create_10000": {
-      "value": 329.40000000037253,
+      "value": 332.3999999985099,
       "unit": "ms"
     },
     "jsfb/append_1000": {
-      "value": 103.69999999925494,
+      "value": 92.69999999552965,
       "unit": "ms"
     },
     "jsfb/clear_rows": {
-      "value": 44.59999999962747,
+      "value": 55.399999998509884,
       "unit": "ms"
     },
     "custom/incremental_update_1000": {
-      "value": 36.09999999962747,
+      "value": 40.69999999552965,
       "unit": "ms"
     },
     "custom/message_throughput_10000": {
-      "value": 4.5,
+      "value": 4.299999997019768,
       "unit": "ms"
     },
     "bundle/main_bc_js": {
-      "value": 3606347,
+      "value": 3661832,
       "unit": "bytes"
     }
   }
