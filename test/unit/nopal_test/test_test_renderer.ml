@@ -718,8 +718,7 @@ let styled_text_reconciliation_changes_style () =
   let ts0 = text_style (tree r0) in
   Alcotest.(check bool) "initial has text_style" true (Option.is_some ts0);
   Alcotest.(check bool)
-    "initial font_size is 12"
-    true
+    "initial font_size is 12" true
     (Option.equal Float.equal (Option.get ts0).font_size (Some 12.0));
   Alcotest.(check bool)
     "initial no font_weight" true
@@ -730,8 +729,7 @@ let styled_text_reconciliation_changes_style () =
   let ts1 = text_style (tree r1) in
   Alcotest.(check bool) "toggled has text_style" true (Option.is_some ts1);
   Alcotest.(check bool)
-    "toggled font_size is 24"
-    true
+    "toggled font_size is 24" true
     (Option.equal Float.equal (Option.get ts1).font_size (Some 24.0));
   Alcotest.(check bool)
     "toggled font_weight is Bold" true
