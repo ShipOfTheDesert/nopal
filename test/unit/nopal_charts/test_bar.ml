@@ -303,6 +303,27 @@ let test_all_negative_values () =
         (List.for_all (fun (_, h) -> h > 0.0) rects)
   | None -> Alcotest.fail "expected Draw element"
 
+let rec has_text_with_content content (node : Scene.t) =
+  match node with
+  | Text { content = c; _ } -> String.equal c content
+  | Group { children; _ } ->
+      List.exists (has_text_with_content content) children
+  | _ -> false
+
+let test_category_labels_rendered () =
+  let el = bar_view sample in
+  match extract_draw el with
+  | Some (scene, _, _, _, _) ->
+      (* Each datum's label should appear as a Text node in the scene *)
+      List.iter
+        (fun (lbl, _) ->
+          Alcotest.(check bool)
+            ("has category label " ^ lbl)
+            true
+            (List.exists (has_text_with_content lbl) scene))
+        sample
+  | None -> Alcotest.fail "expected Draw element"
+
 let () =
   Alcotest.run "Bar"
     [
@@ -327,5 +348,7 @@ let () =
             test_mixed_positive_negative;
           Alcotest.test_case "all_negative_values" `Quick
             test_all_negative_values;
+          Alcotest.test_case "category_labels_rendered" `Quick
+            test_category_labels_rendered;
         ] );
     ]

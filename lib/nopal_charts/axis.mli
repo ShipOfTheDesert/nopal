@@ -33,7 +33,9 @@ val render_x :
   chart_y:float ->
   chart_width:float ->
   Nopal_draw.Scene.t list
-(** Renders X axis line, tick marks, and tick labels as scene nodes. *)
+(** Renders X axis line, tick marks, tick labels, and optional axis label as
+    scene nodes. When [config.label] is [Some], a centered label is rendered
+    below the tick labels. *)
 
 val render_y :
   config ->
@@ -43,4 +45,6 @@ val render_y :
   chart_y:float ->
   chart_height:float ->
   Nopal_draw.Scene.t list
-(** Renders Y axis line, tick marks, and tick labels as scene nodes. *)
+(** Renders Y axis line, tick marks, tick labels, and optional axis label as
+    scene nodes. When [config.label] is [Some], a centered label is rendered to
+    the left of the tick labels. *)

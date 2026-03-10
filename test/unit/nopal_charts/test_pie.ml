@@ -172,13 +172,12 @@ let test_donut_hit_map_inner_radius () =
   in
   match extract_draw el with
   | Some (_, Some on_move, _, _, _) -> (
-      (* Hit the exact center of the donut — should NOT match any wedge *)
+      (* Hit the exact center of the donut — should NOT match any wedge.
+         With on_leave provided, a miss returns the leave message. *)
       let msg = on_move { x = 200.0; y = 200.0 } in
       match msg with
-      | Hovered h ->
-          (* Index should be -1 since center is in the donut hole *)
-          Alcotest.(check int) "donut center is not hittable" (-1) h.Hover.index
-      | _ -> Alcotest.fail "expected Hovered message")
+      | Left -> ()
+      | Hovered _ -> Alcotest.fail "donut center should not hit any wedge")
   | Some (_, None, _, _, _) -> Alcotest.fail "expected on_pointer_move handler"
   | None -> Alcotest.fail "expected Draw element"
 

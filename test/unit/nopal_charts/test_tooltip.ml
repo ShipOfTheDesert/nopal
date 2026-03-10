@@ -56,6 +56,23 @@ let test_container_stays_in_bounds_bottom () =
         "tooltip flips up (padding_top < y)" true (pt < 280.0)
   | None -> Alcotest.fail "expected a Box element"
 
+let test_container_stays_in_bounds_corner () =
+  let content = Tooltip.text "tip" in
+  (* Place tooltip near both right and bottom edges simultaneously *)
+  let el =
+    Tooltip.container ~x:380.0 ~y:280.0 ~chart_width:400.0 ~chart_height:300.0
+      content
+  in
+  match get_box_style el with
+  | Some style ->
+      let pl = style.layout.padding_left in
+      let pt = style.layout.padding_top in
+      Alcotest.(check bool)
+        "tooltip flips left (padding_left < x)" true (pl < 380.0);
+      Alcotest.(check bool)
+        "tooltip flips up (padding_top < y)" true (pt < 280.0)
+  | None -> Alcotest.fail "expected a Box element"
+
 let () =
   Alcotest.run "Tooltip"
     [
@@ -69,5 +86,7 @@ let () =
             test_container_stays_in_bounds_right;
           Alcotest.test_case "container_stays_in_bounds_bottom" `Quick
             test_container_stays_in_bounds_bottom;
+          Alcotest.test_case "container_stays_in_bounds_corner" `Quick
+            test_container_stays_in_bounds_corner;
         ] );
     ]

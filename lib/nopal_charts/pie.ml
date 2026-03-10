@@ -13,7 +13,7 @@ let view ~data ~value ~label ~color ~width ~height ?(inner_radius = 0.0)
   in
   match segments with
   | [] -> Nopal_element.Element.draw ~width ~height []
-  | _ -> (
+  | _ ->
       let total =
         List.fold_left (fun acc (_, d) -> acc +. value d) 0.0 segments
       in
@@ -21,17 +21,17 @@ let view ~data ~value ~label ~color ~width ~height ?(inner_radius = 0.0)
       let cy = height /. 2.0 in
       let outer_r = Float.min cx cy *. 0.85 in
       let inner_r = inner_radius in
-      (* Single pass: build scene paths + hit map wedge regions *)
-      let scene_nodes, hit_map =
-        let current_angle = ref 0.0 in
+      (* Single pass: build scene paths + hit map wedge regions.
+         Angle is threaded through the fold accumulator rather than
+         using a mutable ref. *)
+      let scene_nodes, hit_map, _final_angle =
         List.fold_left
-          (fun (nodes, hmap) (orig_idx, datum) ->
+          (fun (nodes, hmap, current_angle) (orig_idx, datum) ->
             let v = value datum in
             let proportion = v /. total in
             let sweep = proportion *. two_pi in
-            let start_a = !current_angle in
+            let start_a = current_angle in
             let end_a = start_a +. sweep in
-            current_angle := end_a;
             (* Compute offset for hovered segment *)
             let offset_x, offset_y =
               match hover with
@@ -81,15 +81,15 @@ let view ~data ~value ~label ~color ~width ~height ?(inner_radius = 0.0)
                 }
             in
             ( List.rev_append label_nodes (path_node :: nodes),
-              Hit_map.add region hmap ))
-          ([], Hit_map.empty) segments
+              Hit_map.add region hmap,
+              end_a ))
+          ([], Hit_map.empty, 0.0) segments
       in
       let scene_nodes = List.rev scene_nodes in
       (* Build on_pointer_move handler *)
       let on_pointer_move =
-        match on_hover with
-        | None -> None
-        | Some handler ->
+        match (on_hover, on_leave) with
+        | Some handler, Some leave_msg ->
             Some
               (fun (pe : Nopal_element.Element.pointer_event) ->
                 match Hit_map.hit_test hit_map ~x:pe.x ~y:pe.y with
@@ -101,14 +101,8 @@ let view ~data ~value ~label ~color ~width ~height ?(inner_radius = 0.0)
                         cursor_x = pe.x;
                         cursor_y = pe.y;
                       }
-                | None ->
-                    handler
-                      {
-                        Hover.index = -1;
-                        series = 0;
-                        cursor_x = pe.x;
-                        cursor_y = pe.y;
-                      })
+                | None -> leave_msg)
+        | _ -> None
       in
       let draw_el =
         Nopal_element.Element.draw ?on_pointer_move ?on_pointer_leave:on_leave
@@ -116,25 +110,14 @@ let view ~data ~value ~label ~color ~width ~height ?(inner_radius = 0.0)
       in
       (* Compose with tooltip if hovered *)
       let n = List.length data in
-      match (hover, format_tooltip) with
-      | Some h, Some fmt when h.Hover.index >= 0 && h.Hover.index < n ->
-          let datum = List.nth data h.Hover.index in
-          let tip = fmt datum in
-          let tip_container =
-            Tooltip.container ~x:h.cursor_x ~y:h.cursor_y ~chart_width:width
-              ~chart_height:height tip
-          in
-          let outer_style =
-            Nopal_style.Style.default
-            |> Nopal_style.Style.with_layout (fun l ->
-                { l with width = Fixed width; height = Fixed height })
-          in
-          Nopal_element.Element.box ~style:outer_style
-            [ draw_el; tip_container ]
-      | _ ->
-          let outer_style =
-            Nopal_style.Style.default
-            |> Nopal_style.Style.with_layout (fun l ->
-                { l with width = Fixed width; height = Fixed height })
-          in
-          Nopal_element.Element.box ~style:outer_style [ draw_el ])
+      let tooltip =
+        match (hover, format_tooltip) with
+        | Some h, Some fmt when h.Hover.index < n ->
+            let datum = List.nth data h.Hover.index in
+            let tip = fmt datum in
+            Some
+              (Tooltip.container ~x:h.cursor_x ~y:h.cursor_y ~chart_width:width
+                 ~chart_height:height tip)
+        | _ -> None
+      in
+      Chart_compose.compose ~draw_el ~width ~height ~tooltip

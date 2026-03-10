@@ -22,15 +22,19 @@ let nice_number v round =
   let exp = Float.floor (Float.log10 v) in
   let frac = v /. (10.0 ** exp) in
   let nice_frac =
-    if round then
-      if frac < 1.5 then 1.0
-      else if frac < 3.0 then 2.0
-      else if frac < 7.0 then 5.0
-      else 10.0
-    else if frac <= 1.0 then 1.0
-    else if frac <= 2.0 then 2.0
-    else if frac <= 5.0 then 5.0
-    else 10.0
+    match round with
+    | true -> (
+        match () with
+        | () when frac < 1.5 -> 1.0
+        | () when frac < 3.0 -> 2.0
+        | () when frac < 7.0 -> 5.0
+        | () -> 10.0)
+    | false -> (
+        match () with
+        | () when frac <= 1.0 -> 1.0
+        | () when frac <= 2.0 -> 2.0
+        | () when frac <= 5.0 -> 5.0
+        | () -> 10.0)
   in
   nice_frac *. (10.0 ** exp)
 
@@ -77,7 +81,9 @@ let axis_stroke =
   Nopal_draw.Paint.stroke ~width:1.0
     (Nopal_draw.Paint.solid (Nopal_draw.Color.rgb ~r:0.2 ~g:0.2 ~b:0.2))
 
-let render_x _config ~ticks ~scale ~chart_x ~chart_y ~chart_width =
+let axis_label_offset = 32.0
+
+let render_x config ~ticks ~scale ~chart_x ~chart_y ~chart_width =
   let axis_line =
     Nopal_draw.Scene.line ~stroke:axis_stroke ~x1:chart_x ~y1:chart_y
       ~x2:(chart_x +. chart_width) ~y2:chart_y ()
@@ -97,9 +103,21 @@ let render_x _config ~ticks ~scale ~chart_x ~chart_y ~chart_width =
         [ tick_line; tick_label ])
       ticks
   in
-  axis_line :: tick_scenes
+  let label_scene =
+    match config.label with
+    | Some lbl ->
+        let center_x = chart_x +. (chart_width /. 2.0) in
+        [
+          Nopal_draw.Scene.text ~font_size:12.0 ~anchor:Middle ~baseline:Top
+            ~x:center_x
+            ~y:(chart_y +. axis_label_offset)
+            lbl;
+        ]
+    | None -> []
+  in
+  (axis_line :: tick_scenes) @ label_scene
 
-let render_y _config ~ticks ~scale ~chart_x ~chart_y ~chart_height =
+let render_y config ~ticks ~scale ~chart_x ~chart_y ~chart_height =
   let axis_line =
     Nopal_draw.Scene.line ~stroke:axis_stroke ~x1:chart_x ~y1:chart_y
       ~x2:chart_x ~y2:(chart_y +. chart_height) ()
@@ -119,4 +137,16 @@ let render_y _config ~ticks ~scale ~chart_x ~chart_y ~chart_height =
         [ tick_line; tick_label ])
       ticks
   in
-  axis_line :: tick_scenes
+  let label_scene =
+    match config.label with
+    | Some lbl ->
+        let center_y = chart_y +. (chart_height /. 2.0) in
+        [
+          Nopal_draw.Scene.text ~font_size:12.0 ~anchor:End_anchor
+            ~baseline:Middle_baseline
+            ~x:(chart_x -. axis_label_offset)
+            ~y:center_y lbl;
+        ]
+    | None -> []
+  in
+  (axis_line :: tick_scenes) @ label_scene

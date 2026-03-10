@@ -154,7 +154,9 @@ let test_hover_vertical_band () =
       match msg with
       | Hovered h ->
           (* Index should be valid (0..2 for 3 data points) *)
-          Alcotest.(check bool) "hover index in range" true (h.Hover.index >= 0)
+          Alcotest.(check bool)
+            "hover index in range" true
+            (h.Hover.index >= 0 && h.Hover.index < List.length sample_data)
       | _ -> Alcotest.fail "expected Hovered message")
   | Some (_, None, _, _, _) -> Alcotest.fail "expected on_pointer_move handler"
   | None -> Alcotest.fail "expected Draw element"

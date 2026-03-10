@@ -44,7 +44,7 @@ let test_entry_count () =
 
 let rec contains_text label (el : _ Element.t) =
   match el with
-  | Text s -> String.equal s label
+  | Text { content; _ } -> String.equal content label
   | Box { children; _ }
   | Row { children; _ }
   | Column { children; _ } ->

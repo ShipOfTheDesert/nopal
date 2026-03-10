@@ -7,7 +7,7 @@ let view ~data ~x ~y ?(radius = fun _ -> default_radius) ~color ~width ~height
     () =
   match data with
   | [] -> Nopal_element.Element.draw ~width ~height []
-  | _ -> (
+  | _ ->
       let n = List.length data in
       let chart_x = padding.left in
       let chart_y = padding.top in
@@ -80,9 +80,8 @@ let view ~data ~x ~y ?(radius = fun _ -> default_radius) ~color ~width ~height
       let all_scene = point_scenes @ x_axis_scene @ y_axis_scene in
       (* Build on_pointer_move handler *)
       let on_pointer_move =
-        match on_hover with
-        | None -> None
-        | Some handler ->
+        match (on_hover, on_leave) with
+        | Some handler, Some leave_msg ->
             Some
               (fun (pe : Nopal_element.Element.pointer_event) ->
                 match Hit_map.hit_test hit_map ~x:pe.x ~y:pe.y with
@@ -94,39 +93,22 @@ let view ~data ~x ~y ?(radius = fun _ -> default_radius) ~color ~width ~height
                         cursor_x = pe.x;
                         cursor_y = pe.y;
                       }
-                | None ->
-                    handler
-                      {
-                        Hover.index = -1;
-                        series = 0;
-                        cursor_x = pe.x;
-                        cursor_y = pe.y;
-                      })
+                | None -> leave_msg)
+        | _ -> None
       in
       let draw_el =
         Nopal_element.Element.draw ?on_pointer_move ?on_pointer_leave:on_leave
           ~width ~height all_scene
       in
       (* Compose with tooltip if hovered *)
-      match (hover, format_tooltip) with
-      | Some h, Some fmt when h.Hover.index >= 0 && h.Hover.index < n ->
-          let datum = List.nth data h.Hover.index in
-          let tip = fmt datum in
-          let tip_container =
-            Tooltip.container ~x:h.cursor_x ~y:h.cursor_y ~chart_width:width
-              ~chart_height:height tip
-          in
-          let outer_style =
-            Nopal_style.Style.default
-            |> Nopal_style.Style.with_layout (fun l ->
-                { l with width = Fixed width; height = Fixed height })
-          in
-          Nopal_element.Element.box ~style:outer_style
-            [ draw_el; tip_container ]
-      | _ ->
-          let outer_style =
-            Nopal_style.Style.default
-            |> Nopal_style.Style.with_layout (fun l ->
-                { l with width = Fixed width; height = Fixed height })
-          in
-          Nopal_element.Element.box ~style:outer_style [ draw_el ])
+      let tooltip =
+        match (hover, format_tooltip) with
+        | Some h, Some fmt when h.Hover.index < n ->
+            let datum = List.nth data h.Hover.index in
+            let tip = fmt datum in
+            Some
+              (Tooltip.container ~x:h.cursor_x ~y:h.cursor_y ~chart_width:width
+                 ~chart_height:height tip)
+        | _ -> None
+      in
+      Chart_compose.compose ~draw_el ~width ~height ~tooltip

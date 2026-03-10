@@ -23,7 +23,7 @@ let view ~series ~x ~width ~height ?(padding = Padding.default)
   in
   match all_data with
   | [] -> Nopal_element.Element.draw ~width ~height []
-  | _ -> (
+  | _ ->
       let chart_x = padding.Padding.left in
       let chart_y = padding.Padding.top in
       let chart_width = width -. padding.left -. padding.right in
@@ -165,9 +165,8 @@ let view ~series ~x ~width ~height ?(padding = Padding.default)
       let all_scene = scene_nodes @ x_axis_scene @ y_axis_scene in
       (* Build on_pointer_move handler *)
       let on_pointer_move =
-        match on_hover with
-        | None -> None
-        | Some handler ->
+        match (on_hover, on_leave) with
+        | Some handler, Some leave_msg ->
             Some
               (fun (pe : Nopal_element.Element.pointer_event) ->
                 match Hit_map.hit_test hit_map ~x:pe.x ~y:pe.y with
@@ -179,48 +178,32 @@ let view ~series ~x ~width ~height ?(padding = Padding.default)
                         cursor_x = pe.x;
                         cursor_y = pe.y;
                       }
-                | None ->
-                    handler
-                      {
-                        Hover.index = -1;
-                        series = 0;
-                        cursor_x = pe.x;
-                        cursor_y = pe.y;
-                      })
+                | None -> leave_msg)
+        | _ -> None
       in
       let draw_el =
         Nopal_element.Element.draw ?on_pointer_move ?on_pointer_leave:on_leave
           ~width ~height all_scene
       in
       (* Compose with tooltip if hovered *)
-      match (hover, format_tooltip) with
-      | Some h, Some fmt when h.Hover.index >= 0 ->
-          (* Gather values from all series at the hovered index *)
-          let entries =
-            List.filter_map
-              (fun (s : _ series) ->
-                if h.Hover.index < List.length s.data then
-                  let datum = List.nth s.data h.Hover.index in
-                  Some (s.label, s.y datum)
-                else None)
-              series
-          in
-          let tip = fmt entries in
-          let tip_container =
-            Tooltip.container ~x:h.cursor_x ~y:h.cursor_y ~chart_width:width
-              ~chart_height:height tip
-          in
-          let outer_style =
-            Nopal_style.Style.default
-            |> Nopal_style.Style.with_layout (fun l ->
-                { l with width = Fixed width; height = Fixed height })
-          in
-          Nopal_element.Element.box ~style:outer_style
-            [ draw_el; tip_container ]
-      | _ ->
-          let outer_style =
-            Nopal_style.Style.default
-            |> Nopal_style.Style.with_layout (fun l ->
-                { l with width = Fixed width; height = Fixed height })
-          in
-          Nopal_element.Element.box ~style:outer_style [ draw_el ])
+      let tooltip =
+        match (hover, format_tooltip) with
+        | Some h, Some fmt when h.Hover.index >= 0 ->
+            (* Gather values from all series at the hovered index *)
+            let entries =
+              List.filter_map
+                (fun (s : _ series) ->
+                  let n_data = List.length s.data in
+                  if h.Hover.index < n_data then
+                    let datum = List.nth s.data h.Hover.index in
+                    Some (s.label, s.y datum)
+                  else None)
+                series
+            in
+            let tip = fmt entries in
+            Some
+              (Tooltip.container ~x:h.cursor_x ~y:h.cursor_y ~chart_width:width
+                 ~chart_height:height tip)
+        | _ -> None
+      in
+      Chart_compose.compose ~draw_el ~width ~height ~tooltip

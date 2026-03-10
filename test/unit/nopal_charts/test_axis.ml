@@ -144,6 +144,56 @@ let test_large_axis_range () =
   Alcotest.(check bool) "min tick covers lower bound" true (min_v <= 0.001);
   Alcotest.(check bool) "max tick covers upper bound" true (max_v >= 1000000.0)
 
+let test_render_x_axis_label () =
+  let cfg = { Axis.default_config with label = Some "Time (s)" } in
+  let ticks = Axis.compute_ticks cfg ~data_min:0.0 ~data_max:100.0 in
+  let scale =
+    Nopal_draw.Scale.create ~domain:(0.0, 100.0) ~range:(0.0, 400.0)
+  in
+  let scenes =
+    Axis.render_x cfg ~ticks ~scale ~chart_x:50.0 ~chart_y:300.0
+      ~chart_width:400.0
+  in
+  Alcotest.(check bool)
+    "x axis contains label text" true
+    (List.exists (has_text_with_content "Time (s)") scenes)
+
+let test_render_y_axis_label () =
+  let cfg = { Axis.default_config with label = Some "Value" } in
+  let ticks = Axis.compute_ticks cfg ~data_min:0.0 ~data_max:100.0 in
+  let scale =
+    Nopal_draw.Scale.create ~domain:(0.0, 100.0) ~range:(300.0, 0.0)
+  in
+  let scenes =
+    Axis.render_y cfg ~ticks ~scale ~chart_x:50.0 ~chart_y:0.0
+      ~chart_height:300.0
+  in
+  Alcotest.(check bool)
+    "y axis contains label text" true
+    (List.exists (has_text_with_content "Value") scenes)
+
+let test_render_x_no_label_when_none () =
+  let cfg = Axis.default_config in
+  let ticks = Axis.compute_ticks cfg ~data_min:0.0 ~data_max:100.0 in
+  let scale =
+    Nopal_draw.Scale.create ~domain:(0.0, 100.0) ~range:(0.0, 400.0)
+  in
+  let scenes =
+    Axis.render_x cfg ~ticks ~scale ~chart_x:50.0 ~chart_y:300.0
+      ~chart_width:400.0
+  in
+  (* Count text nodes — should only be tick labels, no axis label *)
+  let text_count =
+    List.fold_left
+      (fun acc (node : Nopal_draw.Scene.t) ->
+        match node with
+        | Text _ -> acc + 1
+        | _ -> acc)
+      0 scenes
+  in
+  Alcotest.(check int)
+    "text count equals tick count" (List.length ticks) text_count
+
 let () =
   Alcotest.run "Axis"
     [
@@ -172,5 +222,9 @@ let () =
             test_render_y_produces_scenes;
           Alcotest.test_case "x_tick_labels" `Quick test_render_x_tick_labels;
           Alcotest.test_case "y_tick_labels" `Quick test_render_y_tick_labels;
+          Alcotest.test_case "x_axis_label" `Quick test_render_x_axis_label;
+          Alcotest.test_case "y_axis_label" `Quick test_render_y_axis_label;
+          Alcotest.test_case "x_no_label_when_none" `Quick
+            test_render_x_no_label_when_none;
         ] );
     ]

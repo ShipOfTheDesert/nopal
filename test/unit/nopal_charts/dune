@@ -12,7 +12,8 @@
   test_area
   test_pie
   test_scatter
-  test_charts_structural)
+  test_charts_structural
+  test_chart_compose)
  (libraries
   nopal_charts
   nopal_draw

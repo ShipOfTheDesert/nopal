@@ -24,7 +24,9 @@ let test_bar_render_and_hover_simulation () =
       Alcotest.(check bool) "at least one message" true (List.length msgs >= 1);
       match msgs with
       | Hovered h :: _ ->
-          Alcotest.(check bool) "hover index non-negative" true (h.index >= 0)
+          Alcotest.(check bool)
+            "hover index valid" true
+            (h.index >= 0 && h.index < List.length sample)
       | _ -> Alcotest.fail "expected Hovered message")
   | Error (Not_found _) -> Alcotest.fail "canvas not found for pointer_move"
   | Error (No_handler _) -> Alcotest.fail "no pointer_move handler on canvas"

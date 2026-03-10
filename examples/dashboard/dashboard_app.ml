@@ -96,7 +96,7 @@ let view model =
   (* Detail panel: show hovered data point *)
   let detail_text =
     match model.hover with
-    | Some h when h.Hover.index >= 0 && h.Hover.index < List.length data ->
+    | Some h when h.Hover.index < List.length data ->
         let d = List.nth data h.Hover.index in
         Printf.sprintf
           "Selected: %s — Revenue: %.0f, Costs: %.0f, Customers: %.0f" d.month
@@ -201,8 +201,7 @@ let view model =
                     List.map
                       (fun (i, e) ->
                         match model.hover with
-                        | Some h when h.Hover.index >= 0 && h.Hover.index <> i
-                          ->
+                        | Some h when h.Hover.index <> i ->
                             (* Dim non-hovered entries by lerping color toward white *)
                             let dimmed =
                               Nopal_draw.Color.lerp e.Legend.color
