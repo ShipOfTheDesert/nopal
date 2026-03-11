@@ -11,7 +11,10 @@ type 'msg live_node = {
   mutable listeners : Brr.Ev.listener list;
       (* mutable: event listeners are detached and reattached on
      reconciliation when handlers change *)
-  mutable class_id : Style_sheet.class_id option;
+  mutable base_id : Style_sheet.base_id option;
+      (* mutable: base style class for interactive elements, injected/removed
+     during reconciliation when style or interactivity changes *)
+  mutable interaction_id : Style_sheet.interaction_id option;
       (* mutable: interaction style class is injected/removed during
      reconciliation when the element's interaction changes *)
 }
@@ -95,19 +98,47 @@ let interaction_of (el : 'msg Nopal_element.Element.t) =
   | Draw _ ->
       None
 
-let inject_interaction sheet el interaction =
+let add_class el class_name =
+  let cl = Jv.get (Brr.El.to_jv el) "classList" in
+  ignore (Jv.call cl "add" [| Jv.of_string class_name |])
+
+let remove_class el class_name =
+  let cl = Jv.get (Brr.El.to_jv el) "classList" in
+  ignore (Jv.call cl "remove" [| Jv.of_string class_name |])
+
+let inject_base_class sheet el css_props =
+  let bid = Style_sheet.inject_base sheet ~css_props in
+  add_class el (Style_sheet.base_class_name bid);
+  Some bid
+
+let inject_interaction_class sheet el interaction =
   if Nopal_style.Interaction.has_any interaction then
-    match Style_sheet.inject sheet ~interaction with
-    | Ok cid ->
-        let cl = Jv.get (Brr.El.to_jv el) "classList" in
-        ignore
-          (Jv.call cl "add" [| Jv.of_string (Style_sheet.class_name cid) |]);
-        Some cid
+    match Style_sheet.inject_interaction sheet ~interaction with
+    | Ok iid ->
+        add_class el (Style_sheet.interaction_class_name iid);
+        Some iid
     | Error _ ->
         (* Unreachable: the outer has_any guard ensures inject always
            succeeds. Kept for exhaustive result handling. *)
         None
   else None
+
+let apply_styles_for_element ~sheet el (style : Nopal_style.Style.t)
+    (interaction : Nopal_style.Interaction.t) =
+  if Nopal_style.Interaction.has_any interaction then begin
+    let css_props = Style_css.of_style style in
+    let bid =
+      match css_props with
+      | [] -> None
+      | _ -> inject_base_class sheet el css_props
+    in
+    let iid = inject_interaction_class sheet el interaction in
+    (bid, iid)
+  end
+  else begin
+    apply_style el style;
+    (None, None)
+  end
 
 let wire_click ~dispatch el on_click =
   match on_click with
@@ -250,11 +281,12 @@ let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
   | Box { style; interaction; attrs; children } ->
       let el = Brr.El.v (Jstr.v "div") [] in
       apply_container_base_style el;
-      apply_style el style;
+      let base_id, interaction_id =
+        apply_styles_for_element ~sheet el style interaction
+      in
       List.iter
         (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
         attrs;
-      let class_id = inject_interaction sheet el interaction in
       let live_children =
         List.map (create_and_append ~sheet ~dispatch el) children
       in
@@ -264,19 +296,19 @@ let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
           element;
           children = live_children;
           listeners = [];
-          class_id;
+          base_id;
+          interaction_id;
         }
   | Row { style; interaction; attrs; children } ->
       let el = Brr.El.v (Jstr.v "div") [] in
       apply_container_base_style el;
-      (* Set flex-direction before user style so that layout.direction in
-         Style.t can override if the user explicitly sets it. *)
       Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v "row") el;
-      apply_style el style;
+      let base_id, interaction_id =
+        apply_styles_for_element ~sheet el style interaction
+      in
       List.iter
         (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
         attrs;
-      let class_id = inject_interaction sheet el interaction in
       let live_children =
         List.map (create_and_append ~sheet ~dispatch el) children
       in
@@ -286,19 +318,19 @@ let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
           element;
           children = live_children;
           listeners = [];
-          class_id;
+          base_id;
+          interaction_id;
         }
   | Column { style; interaction; attrs; children } ->
       let el = Brr.El.v (Jstr.v "div") [] in
       apply_container_base_style el;
-      (* Set flex-direction before user style so that layout.direction in
-         Style.t can override if the user explicitly sets it. *)
       Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v "column") el;
-      apply_style el style;
+      let base_id, interaction_id =
+        apply_styles_for_element ~sheet el style interaction
+      in
       List.iter
         (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
         attrs;
-      let class_id = inject_interaction sheet el interaction in
       let live_children =
         List.map (create_and_append ~sheet ~dispatch el) children
       in
@@ -308,22 +340,31 @@ let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
           element;
           children = live_children;
           listeners = [];
-          class_id;
+          base_id;
+          interaction_id;
         }
   | Button { style; interaction; attrs; on_click; on_dblclick; child } ->
       let el = Brr.El.v (Jstr.v "button") [] in
-      apply_style el style;
+      let base_id, interaction_id =
+        apply_styles_for_element ~sheet el style interaction
+      in
       List.iter
         (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
         attrs;
-      let class_id = inject_interaction sheet el interaction in
       let live_child = create_and_append ~sheet ~dispatch el child in
       let listeners =
         wire_click ~dispatch el on_click
         @ wire_dblclick ~dispatch el on_dblclick
       in
       Live_node
-        { dom = el; element; children = [ live_child ]; listeners; class_id }
+        {
+          dom = el;
+          element;
+          children = [ live_child ];
+          listeners;
+          base_id;
+          interaction_id;
+        }
   | Input
       {
         style;
@@ -337,24 +378,33 @@ let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
         on_keydown;
       } ->
       let el = Brr.El.v (Jstr.v "input") [] in
-      apply_style el style;
+      let base_id, interaction_id =
+        apply_styles_for_element ~sheet el style interaction
+      in
       Jv.set (Brr.El.to_jv el) "value" (Jv.of_string value);
       Brr.El.set_at (Jstr.v "placeholder") (Some (Jstr.v placeholder)) el;
       List.iter
         (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
         attrs;
-      let class_id = inject_interaction sheet el interaction in
       let listeners =
         wire_input_events ~dispatch el on_change on_submit on_blur on_keydown
       in
-      Live_node { dom = el; element; children = []; listeners; class_id }
+      Live_node
+        { dom = el; element; children = []; listeners; base_id; interaction_id }
   | Image { style; src; alt } ->
       let el = Brr.El.v (Jstr.v "img") [] in
       apply_style el style;
       Brr.El.set_at (Jstr.v "src") (Some (Jstr.v src)) el;
       Brr.El.set_at (Jstr.v "alt") (Some (Jstr.v alt)) el;
       Live_node
-        { dom = el; element; children = []; listeners = []; class_id = None }
+        {
+          dom = el;
+          element;
+          children = [];
+          listeners = [];
+          base_id = None;
+          interaction_id = None;
+        }
   | Scroll { style; child } ->
       let el = Brr.El.v (Jstr.v "div") [] in
       Brr.El.set_inline_style (Jstr.v "overflow") (Jstr.v "auto") el;
@@ -366,7 +416,8 @@ let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
           element;
           children = [ live_child ];
           listeners = [];
-          class_id = None;
+          base_id = None;
+          interaction_id = None;
         }
   | Keyed { key; child } ->
       let live_child = create_live ~sheet ~dispatch child in
@@ -404,7 +455,15 @@ let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
         wire_draw_pointer_events ~dispatch el on_pointer_move on_click
           on_pointer_leave
       in
-      Live_node { dom = el; element; children = []; listeners; class_id = None }
+      Live_node
+        {
+          dom = el;
+          element;
+          children = [];
+          listeners;
+          base_id = None;
+          interaction_id = None;
+        }
 
 and create_and_append ~sheet ~dispatch parent
     (element : 'msg Nopal_element.Element.t) =
@@ -426,10 +485,15 @@ let rec unlisten_tree ~sheet live =
   match live with
   | Live_node n ->
       unlisten_all n.listeners;
-      (match n.class_id with
-      | Some cid ->
-          Style_sheet.remove sheet cid;
-          n.class_id <- None
+      (match n.base_id with
+      | Some bid ->
+          Style_sheet.remove_base sheet bid;
+          n.base_id <- None
+      | None -> ());
+      (match n.interaction_id with
+      | Some iid ->
+          Style_sheet.remove_interaction sheet iid;
+          n.interaction_id <- None
       | None -> ());
       List.iter (unlisten_tree ~sheet) n.children
   | Live_comment _
@@ -531,6 +595,12 @@ let style_of (el : 'msg Nopal_element.Element.t) =
   | Keyed _
   | Draw _ ->
       None
+
+let clear_inline_styles dom css_props =
+  List.iter
+    (fun { Style_css.property; _ } ->
+      Brr.El.set_inline_style (Jstr.v property) (Jstr.v "") dom)
+    css_props
 
 let maybe_apply_style dom old_el new_el =
   let old_style = style_of old_el in
@@ -672,39 +742,121 @@ and reconcile_live ~sheet ~dispatch parent_el (old_live : 'msg live)
       unlisten_tree ~sheet old_live;
       new_live
 
-and maybe_reconcile_interaction ~sheet (old_n : 'msg live_node)
+and maybe_reconcile_styles ~sheet (old_n : 'msg live_node)
     (old_el : 'msg Nopal_element.Element.t)
     (new_el : 'msg Nopal_element.Element.t) =
   let old_ix = interaction_of old_el in
   let new_ix = interaction_of new_el in
-  let changed =
-    match (old_ix, new_ix) with
-    | Some a, Some b -> not (Nopal_style.Interaction.equal a b)
-    | None, None -> false
-    | Some _, None
-    | None, Some _ ->
-        true
+  let old_interactive =
+    match old_ix with
+    | Some ix -> Nopal_style.Interaction.has_any ix
+    | None -> false
   in
-  if changed then begin
-    (* Remove old interaction rules and class *)
-    (match old_n.class_id with
-    | Some cid ->
-        let cl = Jv.get (Brr.El.to_jv old_n.dom) "classList" in
-        ignore
-          (Jv.call cl "remove" [| Jv.of_string (Style_sheet.class_name cid) |]);
-        Style_sheet.remove sheet cid
-    | None -> ());
-    (* Inject new interaction rules *)
+  let new_interactive =
     match new_ix with
-    | Some ix -> old_n.class_id <- inject_interaction sheet old_n.dom ix
-    | None -> old_n.class_id <- None
-  end
+    | Some ix -> Nopal_style.Interaction.has_any ix
+    | None -> false
+  in
+  match (old_interactive, new_interactive) with
+  | true, true ->
+      (* Both interactive: reconcile base class and interaction class *)
+      let old_style = style_of old_el in
+      let new_style = style_of new_el in
+      let style_changed =
+        match (old_style, new_style) with
+        | Some os, Some ns -> not (os == ns)
+        | None, None -> false
+        | Some _, None
+        | None, Some _ ->
+            true
+      in
+      if style_changed then begin
+        (* Remove old base class *)
+        (match old_n.base_id with
+        | Some bid ->
+            remove_class old_n.dom (Style_sheet.base_class_name bid);
+            Style_sheet.remove_base sheet bid;
+            old_n.base_id <- None
+        | None -> ());
+        (* Inject new base class if there are style props *)
+        match new_style with
+        | Some ns ->
+            let css_props = Style_css.of_style ns in
+            old_n.base_id <-
+              (match css_props with
+              | [] -> None
+              | _ -> inject_base_class sheet old_n.dom css_props)
+        | None -> old_n.base_id <- None
+      end;
+      let ix_changed =
+        match (old_ix, new_ix) with
+        | Some a, Some b -> not (Nopal_style.Interaction.equal a b)
+        | None, None -> false
+        | Some _, None
+        | None, Some _ ->
+            true
+      in
+      if ix_changed then begin
+        (match old_n.interaction_id with
+        | Some iid ->
+            remove_class old_n.dom (Style_sheet.interaction_class_name iid);
+            Style_sheet.remove_interaction sheet iid
+        | None -> ());
+        match new_ix with
+        | Some ix ->
+            old_n.interaction_id <- inject_interaction_class sheet old_n.dom ix
+        | None -> old_n.interaction_id <- None
+      end
+  | false, true -> (
+      (* Transition non-interactive → interactive: clear inline styles,
+         inject class-based styles *)
+      let old_style = style_of old_el in
+      (match old_style with
+      | Some os ->
+          let old_props = Style_css.of_style os in
+          clear_inline_styles old_n.dom old_props
+      | None -> ());
+      let new_style = style_of new_el in
+      (match new_style with
+      | Some ns ->
+          let css_props = Style_css.of_style ns in
+          old_n.base_id <-
+            (match css_props with
+            | [] -> None
+            | _ -> inject_base_class sheet old_n.dom css_props)
+      | None -> old_n.base_id <- None);
+      match new_ix with
+      | Some ix ->
+          old_n.interaction_id <- inject_interaction_class sheet old_n.dom ix
+      | None -> old_n.interaction_id <- None)
+  | true, false -> (
+      (* Transition interactive → non-interactive: remove both classes,
+         apply inline styles *)
+      (match old_n.base_id with
+      | Some bid ->
+          remove_class old_n.dom (Style_sheet.base_class_name bid);
+          Style_sheet.remove_base sheet bid;
+          old_n.base_id <- None
+      | None -> ());
+      (match old_n.interaction_id with
+      | Some iid ->
+          remove_class old_n.dom (Style_sheet.interaction_class_name iid);
+          Style_sheet.remove_interaction sheet iid;
+          old_n.interaction_id <- None
+      | None -> ());
+      (* Apply inline styles for non-interactive element *)
+      let new_style = style_of new_el in
+      match new_style with
+      | Some ns -> apply_style old_n.dom ns
+      | None -> ())
+  | false, false ->
+      (* Both non-interactive: inline style reconciliation *)
+      maybe_apply_style old_n.dom old_el new_el
 
 and reconcile_node ~sheet ~dispatch (old_n : 'msg live_node)
     (new_el : 'msg Nopal_element.Element.t) =
   let el = old_n.dom in
-  maybe_apply_style el old_n.element new_el;
-  maybe_reconcile_interaction ~sheet old_n old_n.element new_el;
+  maybe_reconcile_styles ~sheet old_n old_n.element new_el;
   (match new_el with
   | Box { children; _ }
   | Row { children; _ }

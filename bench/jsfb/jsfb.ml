@@ -150,7 +150,7 @@ let view_row selected (r : row) =
          E.button ~on_click:(Remove r.id) (E.text "x");
        ])
 
-let view model =
+let view _vp model =
   E.column
     [
       E.box

@@ -1,4 +1,4 @@
 (tests
- (names test_nopal_runtime)
+ (names test_nopal_runtime test_runtime_viewport)
  (package nopal_runtime)
  (libraries nopal_runtime nopal_mvu nopal_element lwd alcotest))

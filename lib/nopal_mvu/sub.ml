@@ -8,6 +8,7 @@ type 'msg t =
   | On_keyup of { key : string; f : string -> 'msg }
   | On_resize of { key : string; f : int -> int -> 'msg }
   | On_visibility_change of { key : string; f : bool -> 'msg }
+  | On_viewport_change of { key : string; f : Nopal_element.Viewport.t -> 'msg }
   | Custom of { key : string; setup : 'msg dispatch -> unit -> unit }
 
 let none = None
@@ -17,6 +18,7 @@ let on_keydown key f = On_keydown { key; f }
 let on_keyup key f = On_keyup { key; f }
 let on_resize key f = On_resize { key; f }
 let on_visibility_change key f = On_visibility_change { key; f }
+let on_viewport_change key f = On_viewport_change { key; f }
 let custom key setup = Custom { key; setup }
 
 let rec keys sub =
@@ -37,6 +39,7 @@ let rec keys sub =
   | On_keyup { key; _ } -> [ key ]
   | On_resize { key; _ } -> [ key ]
   | On_visibility_change { key; _ } -> [ key ]
+  | On_viewport_change { key; _ } -> [ key ]
   | Custom { key; _ } -> [ key ]
 
 let rec map f sub =
@@ -49,6 +52,8 @@ let rec map f sub =
   | On_resize { key; f = g } -> On_resize { key; f = (fun w h -> f (g w h)) }
   | On_visibility_change { key; f = g } ->
       On_visibility_change { key; f = (fun v -> f (g v)) }
+  | On_viewport_change { key; f = g } ->
+      On_viewport_change { key; f = (fun vp -> f (g vp)) }
   | Custom { key; setup } ->
       Custom
         { key; setup = (fun dispatch -> setup (fun msg -> dispatch (f msg))) }
@@ -61,6 +66,7 @@ let extract_every = function
   | On_keyup _
   | On_resize _
   | On_visibility_change _
+  | On_viewport_change _
   | Custom _ ->
       Option.none
 
@@ -72,6 +78,7 @@ let extract_on_keydown = function
   | On_keyup _
   | On_resize _
   | On_visibility_change _
+  | On_viewport_change _
   | Custom _ ->
       Option.none
 
@@ -83,6 +90,7 @@ let extract_on_keyup = function
   | On_keydown _
   | On_resize _
   | On_visibility_change _
+  | On_viewport_change _
   | Custom _ ->
       Option.none
 
@@ -94,6 +102,7 @@ let extract_on_resize = function
   | On_keydown _
   | On_keyup _
   | On_visibility_change _
+  | On_viewport_change _
   | Custom _ ->
       Option.none
 
@@ -105,6 +114,19 @@ let extract_on_visibility_change = function
   | On_keydown _
   | On_keyup _
   | On_resize _
+  | On_viewport_change _
+  | Custom _ ->
+      Option.none
+
+let extract_on_viewport_change = function
+  | On_viewport_change { f; _ } -> Some f
+  | None
+  | Batch _
+  | Every _
+  | On_keydown _
+  | On_keyup _
+  | On_resize _
+  | On_visibility_change _
   | Custom _ ->
       Option.none
 
@@ -116,7 +138,8 @@ let extract_custom = function
   | On_keydown _
   | On_keyup _
   | On_resize _
-  | On_visibility_change _ ->
+  | On_visibility_change _
+  | On_viewport_change _ ->
       Option.none
 
 let rec extract_customs sub =
@@ -128,5 +151,19 @@ let rec extract_customs sub =
   | On_keydown _
   | On_keyup _
   | On_resize _
-  | On_visibility_change _ ->
+  | On_visibility_change _
+  | On_viewport_change _ ->
+      []
+
+let rec extract_on_viewport_changes sub =
+  match sub with
+  | None -> []
+  | Batch subs -> List.concat_map extract_on_viewport_changes subs
+  | On_viewport_change { key; f } -> [ (key, f) ]
+  | Every _
+  | On_keydown _
+  | On_keyup _
+  | On_resize _
+  | On_visibility_change _
+  | Custom _ ->
       []

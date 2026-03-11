@@ -21,7 +21,7 @@ let make_todo ?(completed = false) id title = { id; title; completed }
 
 let test_empty_hides_main_and_footer () =
   let model = model_with [] in
-  let rendered = R.render (view model) in
+  let rendered = R.render (view Nopal_element.Viewport.desktop model) in
   let tree = R.tree rendered in
   (* With no todos, there should be no main section or footer *)
   let main = R.find (By_attr ("data-section", "main")) tree in
@@ -31,14 +31,14 @@ let test_empty_hides_main_and_footer () =
 
 let test_header_input_present () =
   let model = model_with [] in
-  let rendered = R.render (view model) in
+  let rendered = R.render (view Nopal_element.Viewport.desktop model) in
   let tree = R.tree rendered in
   let input_node = R.find (By_tag "input") tree in
   Alcotest.(check bool) "input present" true (Option.is_some input_node)
 
 let test_add_todo_via_submit () =
   let model = model_with [] in
-  let rendered = R.render (view model) in
+  let rendered = R.render (view Nopal_element.Viewport.desktop model) in
   let result = R.submit (By_tag "input") rendered in
   Alcotest.(check bool) "submit succeeds" true (Result.is_ok result);
   let msgs = R.messages rendered in
@@ -49,7 +49,7 @@ let test_add_todo_via_submit () =
 
 let test_todo_items_keyed () =
   let model = model_with [ make_todo 1 "A"; make_todo 2 "B" ] in
-  let rendered = R.render (view model) in
+  let rendered = R.render (view Nopal_element.Viewport.desktop model) in
   let tree = R.tree rendered in
   let keyed1 = R.find (By_attr ("key", "todo-1")) tree in
   let keyed2 = R.find (By_attr ("key", "todo-2")) tree in
@@ -58,7 +58,7 @@ let test_todo_items_keyed () =
 
 let test_toggle_click () =
   let model = model_with [ make_todo 1 "Task" ] in
-  let rendered = R.render (view model) in
+  let rendered = R.render (view Nopal_element.Viewport.desktop model) in
   let result = R.click (By_attr ("data-action", "toggle-1")) rendered in
   Alcotest.(check bool) "click succeeds" true (Result.is_ok result);
   let msgs = R.messages rendered in
@@ -68,7 +68,7 @@ let test_toggle_click () =
 
 let test_delete_click () =
   let model = model_with [ make_todo 1 "Task" ] in
-  let rendered = R.render (view model) in
+  let rendered = R.render (view Nopal_element.Viewport.desktop model) in
   let result = R.click (By_attr ("data-action", "delete-1")) rendered in
   Alcotest.(check bool) "click succeeds" true (Result.is_ok result);
   let msgs = R.messages rendered in
@@ -78,7 +78,7 @@ let test_delete_click () =
 
 let test_dblclick_enters_editing () =
   let model = model_with [ make_todo 1 "Task" ] in
-  let rendered = R.render (view model) in
+  let rendered = R.render (view Nopal_element.Viewport.desktop model) in
   let result = R.dblclick (By_attr ("data-action", "edit-1")) rendered in
   Alcotest.(check bool) "dblclick succeeds" true (Result.is_ok result);
   let msgs = R.messages rendered in
@@ -92,7 +92,7 @@ let test_edit_blur_saves () =
       ~edit_state:(Some { id = 1; text = "Editing"; original = "Task" })
       [ make_todo 1 "Task" ]
   in
-  let rendered = R.render (view model) in
+  let rendered = R.render (view Nopal_element.Viewport.desktop model) in
   let result = R.blur (By_attr ("data-action", "edit-input")) rendered in
   Alcotest.(check bool) "blur succeeds" true (Result.is_ok result);
   let msgs = R.messages rendered in
@@ -106,7 +106,7 @@ let test_edit_escape_cancels () =
       ~edit_state:(Some { id = 1; text = "Editing"; original = "Task" })
       [ make_todo 1 "Task" ]
   in
-  let rendered = R.render (view model) in
+  let rendered = R.render (view Nopal_element.Viewport.desktop model) in
   let result =
     R.keydown (By_attr ("data-action", "edit-input")) "Escape" rendered
   in
@@ -118,7 +118,7 @@ let test_edit_escape_cancels () =
 
 let test_toggle_all_click () =
   let model = model_with [ make_todo 1 "A"; make_todo 2 "B" ] in
-  let rendered = R.render (view model) in
+  let rendered = R.render (view Nopal_element.Viewport.desktop model) in
   let result = R.click (By_attr ("data-action", "toggle-all")) rendered in
   Alcotest.(check bool) "click succeeds" true (Result.is_ok result);
   let msgs = R.messages rendered in
@@ -128,7 +128,7 @@ let test_toggle_all_click () =
 
 let test_filter_links () =
   let model = model_with [ make_todo 1 "Task" ] in
-  let rendered = R.render (view model) in
+  let rendered = R.render (view Nopal_element.Viewport.desktop model) in
   let tree = R.tree rendered in
   let all_link = R.find (By_text "All") tree in
   let active_link = R.find (By_text "Active") tree in
@@ -139,7 +139,7 @@ let test_filter_links () =
 
 let test_active_filter_highlighted () =
   let model = model_with ~filter:Active [ make_todo 1 "Task" ] in
-  let rendered = R.render (view model) in
+  let rendered = R.render (view Nopal_element.Viewport.desktop model) in
   let tree = R.tree rendered in
   let active_link = R.find (By_attr ("data-selected", "true")) tree in
   Alcotest.(check bool)
@@ -153,7 +153,7 @@ let test_active_filter_highlighted () =
 
 let test_items_left_count () =
   let model = model_with [ make_todo 1 "A"; make_todo ~completed:true 2 "B" ] in
-  let rendered = R.render (view model) in
+  let rendered = R.render (view Nopal_element.Viewport.desktop model) in
   let tree = R.tree rendered in
   let count_text = R.find (By_attr ("data-section", "todo-count")) tree in
   Alcotest.(check bool) "count present" true (Option.is_some count_text);
@@ -165,14 +165,14 @@ let test_items_left_count () =
 
 let test_clear_completed_visible () =
   let model = model_with [ make_todo ~completed:true 1 "Done" ] in
-  let rendered = R.render (view model) in
+  let rendered = R.render (view Nopal_element.Viewport.desktop model) in
   let tree = R.tree rendered in
   let clear = R.find (By_text "Clear completed") tree in
   Alcotest.(check bool) "clear completed visible" true (Option.is_some clear)
 
 let test_clear_completed_hidden () =
   let model = model_with [ make_todo 1 "Active" ] in
-  let rendered = R.render (view model) in
+  let rendered = R.render (view Nopal_element.Viewport.desktop model) in
   let tree = R.tree rendered in
   let clear = R.find (By_text "Clear completed") tree in
   Alcotest.(check bool) "clear completed hidden" true (Option.is_none clear)
@@ -183,7 +183,7 @@ let test_editing_mode () =
       ~edit_state:(Some { id = 1; text = "Edit text"; original = "Task" })
       [ make_todo 1 "Task" ]
   in
-  let rendered = R.render (view model) in
+  let rendered = R.render (view Nopal_element.Viewport.desktop model) in
   let tree = R.tree rendered in
   let edit_input = R.find (By_attr ("data-action", "edit-input")) tree in
   Alcotest.(check bool) "edit input present" true (Option.is_some edit_input);

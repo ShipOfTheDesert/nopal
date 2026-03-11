@@ -106,7 +106,7 @@ let update _model msg =
   | ChartHovered h -> ({ hover = Some h }, Nopal_mvu.Cmd.none)
   | ChartLeft -> ({ hover = None }, Nopal_mvu.Cmd.none)
 
-let view model =
+let view _vp model =
   let chart_w = 380.0 in
   let chart_h = 220.0 in
   (* Detail panel: show hovered data point *)

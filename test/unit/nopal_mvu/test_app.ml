@@ -18,7 +18,7 @@ struct
     | `Decrement -> (model - 1, Cmd.none)
     | `Reset -> (0, Cmd.none)
 
-  let view _model = Nopal_element.Element.Empty
+  let view _vp _model = Nopal_element.Element.Empty
   let subscriptions _model = Sub.none
 end
 
@@ -30,7 +30,7 @@ let app_module_roundtrip () =
   Alcotest.(check int) "init cmd dispatches nothing" 0 (List.length !msgs);
   let model', _cmd' = Counter.update model `Increment in
   Alcotest.(check int) "update increments" 1 model';
-  let elem = Counter.view model in
+  let elem = Counter.view Nopal_element.Viewport.desktop model in
   Alcotest.(check bool)
     "view returns Empty" true
     (match elem with
@@ -58,7 +58,7 @@ let app_init_with_cmd () =
 
     let init () = (0, Cmd.batch [ Cmd.none; Cmd.none ])
     let update model _msg = (model + 1, Cmd.none)
-    let view _model = Nopal_element.Element.Empty
+    let view _vp _model = Nopal_element.Element.Empty
     let subscriptions _model = Sub.none
   end in
   let model, cmd = App.init () in
@@ -82,7 +82,7 @@ let app_update_produces_cmd () =
       | `Add s -> (s :: model, Cmd.perform (fun dispatch -> dispatch `Added))
       | `Added -> (model, Cmd.none)
 
-    let view _model = Nopal_element.Element.Empty
+    let view _vp _model = Nopal_element.Element.Empty
     let subscriptions _model = Sub.none
   end in
   let model, _ = App.init () in

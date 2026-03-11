@@ -111,7 +111,7 @@ let update _model msg =
       ({ chart_element = el }, Nopal_mvu.Cmd.none)
   | Clear -> ({ chart_element = E.empty }, Nopal_mvu.Cmd.none)
 
-let view model =
+let view _vp model =
   E.column
     ~attrs:[ ("id", "chart-bench") ]
     [

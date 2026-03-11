@@ -54,7 +54,7 @@ struct
     let new_model = model + msg in
     (new_model, Nopal_mvu.Cmd.none)
 
-  let view model = Nopal_element.Element.text (string_of_int model)
+  let view _vp model = Nopal_element.Element.text (string_of_int model)
   let subscriptions _model = Nopal_mvu.Sub.none
 end
 
@@ -108,7 +108,7 @@ let test_queued_dispatch_no_recursion () =
       decr current_depth;
       (new_model, cmd)
 
-    let view model = Nopal_element.Element.text (string_of_int model)
+    let view _vp model = Nopal_element.Element.text (string_of_int model)
     let subscriptions _model = Nopal_mvu.Sub.none
   end in
   let module R2 = Nopal_runtime.Runtime.Make (Reentrant_app) in
@@ -144,7 +144,7 @@ let test_view_not_called_during_update () =
       in_update := false;
       result
 
-    let view model =
+    let view _vp model =
       incr view_count;
       if !in_update then view_during_update := true;
       Nopal_element.Element.text (string_of_int model)
@@ -189,7 +189,7 @@ let test_cmd_perform_and_task () =
           ] )
 
     let update model msg = (model + msg, Nopal_mvu.Cmd.none)
-    let view model = Nopal_element.Element.text (string_of_int model)
+    let view _vp model = Nopal_element.Element.text (string_of_int model)
     let subscriptions _model = Nopal_mvu.Sub.none
   end in
   let module R4 = Nopal_runtime.Runtime.Make (Cmd_app) in
@@ -209,7 +209,7 @@ let test_cmd_after_uses_scheduler () =
 
     let init () = (0, Nopal_mvu.Cmd.after 500 99)
     let update _model msg = (msg, Nopal_mvu.Cmd.none)
-    let view model = Nopal_element.Element.text (string_of_int model)
+    let view _vp model = Nopal_element.Element.text (string_of_int model)
     let subscriptions _model = Nopal_mvu.Sub.none
   end in
   let module R5 = Nopal_runtime.Runtime.Make (After_app) in
@@ -232,7 +232,7 @@ let test_cmd_after_rejected_after_shutdown () =
 
     let init () = (0, Nopal_mvu.Cmd.after 1000 42)
     let update _model msg = (msg, Nopal_mvu.Cmd.none)
-    let view model = Nopal_element.Element.text (string_of_int model)
+    let view _vp model = Nopal_element.Element.text (string_of_int model)
     let subscriptions _model = Nopal_mvu.Sub.none
   end in
   let module R7 = Nopal_runtime.Runtime.Make (After_shutdown_app) in
@@ -255,7 +255,7 @@ let test_subscription_dispatches_during_refresh () =
 
     let init () = (0, Nopal_mvu.Cmd.none)
     let update model msg = (model + msg, Nopal_mvu.Cmd.none)
-    let view model = Nopal_element.Element.text (string_of_int model)
+    let view _vp model = Nopal_element.Element.text (string_of_int model)
 
     let subscriptions model =
       if model >= 0 then
@@ -282,7 +282,7 @@ let test_shutdown () =
 
     let init () = (0, Nopal_mvu.Cmd.none)
     let update model msg = (model + msg, Nopal_mvu.Cmd.none)
-    let view model = Nopal_element.Element.text (string_of_int model)
+    let view _vp model = Nopal_element.Element.text (string_of_int model)
 
     let subscriptions _model =
       Nopal_mvu.Sub.custom "alive" (fun _dispatch ->
@@ -314,7 +314,7 @@ let test_view_equals_all_element_variants () =
     let init () = (0, Nopal_mvu.Cmd.none)
     let update _model msg = (msg, Nopal_mvu.Cmd.none)
 
-    let view model =
+    let view _vp model =
       match model with
       | 0 -> Nopal_element.Element.text "hello"
       | 1 -> Nopal_element.Element.empty

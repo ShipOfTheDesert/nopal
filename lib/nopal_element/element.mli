@@ -159,6 +159,29 @@ val map : ('a -> 'b) -> 'a t -> 'b t
 (** [map f element] transforms all messages in [element] from type ['a] to type
     ['b]. Used for embedding child components with different message types. *)
 
+(** {1 Responsive combinators} *)
+
+val responsive :
+  Viewport.t ->
+  compact:'msg t ->
+  ?medium:'msg t ->
+  expanded:'msg t ->
+  unit ->
+  'msg t
+(** [responsive vp ~compact ?medium ~expanded ()] selects a subtree based on
+    [vp]'s size class. When [~medium] is omitted, Compact and Medium both use
+    the [~compact] branch. *)
+
+val responsive_style :
+  Viewport.t ->
+  compact:Nopal_style.Style.t ->
+  ?medium:Nopal_style.Style.t ->
+  expanded:Nopal_style.Style.t ->
+  unit ->
+  Nopal_style.Style.t
+(** [responsive_style vp ~compact ?medium ~expanded ()] selects a style based on
+    [vp]'s size class. Same fallback semantics as [responsive]. *)
+
 (** {1 Comparison} *)
 
 val equal : 'msg t -> 'msg t -> bool

@@ -134,7 +134,7 @@ let reset_interaction =
   in
   { Interaction.default with hover = Some hover }
 
-let view model =
+let view _vp model =
   Element.column ~style:page_style
     [
       Element.column ~style:card_style
