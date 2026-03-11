@@ -4,3 +4,5 @@
     has zero platform dependencies and compiles on native OCaml. *)
 
 module Element = Element
+module Size_class = Size_class
+module Viewport = Viewport

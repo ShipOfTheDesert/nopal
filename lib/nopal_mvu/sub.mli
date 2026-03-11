@@ -32,6 +32,10 @@ val on_visibility_change : string -> (bool -> 'msg) -> 'msg t
 (** [on_visibility_change key f] subscribes to document visibility changes. [f]
     receives [true] when visible. *)
 
+val on_viewport_change : string -> (Nopal_element.Viewport.t -> 'msg) -> 'msg t
+(** [on_viewport_change key f] subscribes to viewport changes. [f] receives the
+    new viewport. *)
+
 val custom : string -> ('msg dispatch -> unit -> unit) -> 'msg t
 (** [custom key setup] creates an arbitrary subscription. [setup] receives a
     dispatch function and returns a cleanup function. *)
@@ -64,6 +68,12 @@ val extract_on_visibility_change : 'msg t -> (bool -> 'msg) option
     [on_visibility_change] subscription. Returns [None] if [sub] is not an
     [on_visibility_change]. *)
 
+val extract_on_viewport_change :
+  'msg t -> (Nopal_element.Viewport.t -> 'msg) option
+(** [extract_on_viewport_change sub] extracts the callback from an
+    [on_viewport_change] subscription. Returns [None] if [sub] is not an
+    [on_viewport_change]. *)
+
 val extract_custom : 'msg t -> ('msg dispatch -> unit -> unit) option
 (** [extract_custom sub] extracts the setup function from a [custom]
     subscription. Returns [None] if [sub] is not a [custom]. *)
@@ -71,3 +81,9 @@ val extract_custom : 'msg t -> ('msg dispatch -> unit -> unit) option
 val extract_customs : 'msg t -> (string * ('msg dispatch -> unit -> unit)) list
 (** [extract_customs sub] flattens [sub] and returns all [custom] entries as
     [(key, setup)] pairs. Traverses [batch] nodes recursively. *)
+
+val extract_on_viewport_changes :
+  'msg t -> (string * (Nopal_element.Viewport.t -> 'msg)) list
+(** [extract_on_viewport_changes sub] flattens [sub] and returns all
+    [on_viewport_change] entries as [(key, f)] pairs. Traverses [batch] nodes
+    recursively. *)

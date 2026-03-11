@@ -57,7 +57,7 @@ let count_text =
   |> Text.font_weight Font.Bold
   |> Text.font_family System_ui
 
-let view model =
+let view _vp model =
   Element.row ~style:row_style
     [
       Element.button ~style:button_style ~interaction:button_interaction

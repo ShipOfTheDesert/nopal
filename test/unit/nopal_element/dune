@@ -9,3 +9,19 @@
 (test
  (name test_draw_element)
  (libraries nopal_element nopal_style nopal_draw alcotest))
+
+(test
+ (name test_size_class)
+ (libraries nopal_element alcotest))
+
+(test
+ (name test_viewport)
+ (libraries nopal_element alcotest))
+
+(test
+ (name test_responsive_combinators)
+ (libraries nopal_element nopal_style alcotest))
+
+(test
+ (name test_responsive_structural)
+ (libraries nopal_element nopal_style nopal_test alcotest))

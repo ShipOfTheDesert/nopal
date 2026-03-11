@@ -6,6 +6,6 @@ module type S = sig
 
   val init : unit -> model * msg Cmd.t
   val update : model -> msg -> model * msg Cmd.t
-  val view : model -> msg Nopal_element.Element.t
+  val view : Nopal_element.Viewport.t -> model -> msg Nopal_element.Element.t
   val subscriptions : model -> msg Sub.t
 end

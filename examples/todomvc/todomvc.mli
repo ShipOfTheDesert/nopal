@@ -67,7 +67,7 @@ val update : (module Storage) -> model -> msg -> model * msg Nopal_mvu.Cmd.t
 (** [update storage model msg] applies a message to the model, persisting
     changes to storage when todos are mutated. *)
 
-val view : model -> msg Nopal_element.Element.t
+val view : Nopal_element.Viewport.t -> model -> msg Nopal_element.Element.t
 (** [view model] returns the element tree for the current model state. *)
 
 val subscriptions : model -> msg Nopal_mvu.Sub.t

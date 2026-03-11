@@ -3,6 +3,8 @@ module Make (A : Nopal_mvu.App.S) = struct
 
   type t = {
     model_var : A.model Lwd.var;
+    viewport_var : Nopal_element.Viewport.t Lwd.var;
+        (* mutable: external input updated by platform, monotonic-ish lifecycle *)
     view_lwd : A.msg Nopal_element.Element.t Lwd.t;
     init_cmd : A.msg Nopal_mvu.Cmd.t;
     sub_mgr : A.msg Sub_manager.t;
@@ -23,9 +25,11 @@ module Make (A : Nopal_mvu.App.S) = struct
   let create ?(schedule_after = fun _ms _f -> ()) () =
     let init_model, init_cmd = A.init () in
     let model_var = Lwd.var init_model in
+    let viewport_var = Lwd.var Nopal_element.Viewport.desktop in
     {
       model_var;
-      view_lwd = Lwd.map ~f:A.view (Lwd.get model_var);
+      viewport_var;
+      view_lwd = Lwd.map2 (Lwd.get viewport_var) (Lwd.get model_var) ~f:A.view;
       init_cmd;
       sub_mgr = Sub_manager.create ();
       queue = Queue.create ();
@@ -36,6 +40,7 @@ module Make (A : Nopal_mvu.App.S) = struct
 
   let model rt = Lwd.peek rt.model_var
   let view rt = rt.view_lwd
+  let viewport rt = Lwd.peek rt.viewport_var
 
   (* Call graph for the dispatch loop (mutual recursion):
      dispatch -> process_queue -> drain -> execute_cmd -> dispatch (queued)
@@ -111,4 +116,13 @@ module Make (A : Nopal_mvu.App.S) = struct
     | Shut_down -> invalid_arg "Runtime: already shut down");
     rt.lifecycle <- Shut_down;
     Sub_manager.stop_all rt.sub_mgr
+
+  let set_viewport rt vp =
+    if Nopal_element.Viewport.equal (Lwd.peek rt.viewport_var) vp then ()
+    else (
+      Lwd.set rt.viewport_var vp;
+      let m = model rt in
+      let subs = A.subscriptions m in
+      let vp_subs = Nopal_mvu.Sub.extract_on_viewport_changes subs in
+      List.iter (fun (_key, f) -> dispatch rt (f vp)) vp_subs)
 end
