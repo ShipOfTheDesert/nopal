@@ -28,6 +28,15 @@ type 'msg draw_handler_entry = {
   on_wheel : (Nopal_element.Element.wheel_event -> 'msg) option;
 }
 
+type 'msg box_handler_entry = {
+  box_path : int list;
+  on_pointer_move : (Nopal_element.Element.pointer_event -> 'msg) option;
+  on_pointer_leave : 'msg option;
+  on_pointer_down : (Nopal_element.Element.pointer_event -> 'msg) option;
+  on_pointer_up : (Nopal_element.Element.pointer_event -> 'msg) option;
+  on_wheel : (Nopal_element.Element.wheel_event -> 'msg) option;
+}
+
 type 'msg rendered = {
   tree : node;
   msgs : 'msg list ref;
@@ -35,16 +44,47 @@ type 'msg rendered = {
      in multi-step interaction tests (PRD Decision 2) *)
   handlers : 'msg handler_entry list;
   draw_handlers : 'msg draw_handler_entry list;
+  box_handlers : 'msg box_handler_entry list;
 }
 
 let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
   let handlers = ref [] in
   let draw_handlers = ref [] in
+  let box_handlers = ref [] in
   let rec go rev_path (el : 'msg Nopal_element.Element.t) : node =
     match el with
     | Empty -> Empty
     | Text { content; text_style } -> Text { content; text_style }
-    | Box { style = _; interaction; attrs; children; _ } ->
+    | Box
+        {
+          style = _;
+          interaction;
+          attrs;
+          children;
+          on_pointer_move;
+          on_pointer_leave;
+          on_pointer_down;
+          on_pointer_up;
+          on_wheel;
+        } ->
+        let has_handler =
+          Option.is_some on_pointer_move
+          || Option.is_some on_pointer_leave
+          || Option.is_some on_pointer_down
+          || Option.is_some on_pointer_up
+          || Option.is_some on_wheel
+        in
+        if has_handler then
+          box_handlers :=
+            {
+              box_path = List.rev rev_path;
+              on_pointer_move;
+              on_pointer_leave;
+              on_pointer_down;
+              on_pointer_up;
+              on_wheel;
+            }
+            :: !box_handlers;
         Element
           {
             tag = "box";
@@ -181,7 +221,13 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
     List.mapi (fun i c -> go (i :: rev_path) c) children
   in
   let tree = go [] element in
-  { tree; msgs = ref []; handlers = !handlers; draw_handlers = !draw_handlers }
+  {
+    tree;
+    msgs = ref [];
+    handlers = !handlers;
+    draw_handlers = !draw_handlers;
+    box_handlers = !box_handlers;
+  }
 
 let tree r = r.tree
 let messages r = List.rev !(r.msgs)
@@ -612,6 +658,90 @@ let draw_wheel sel ~delta_y ~x ~y r =
   let tag = tag_of_node found in
   let* handler =
     find_draw_handler_by_path path r.draw_handlers
+    |> Option.to_result ~none:(No_handler { tag; event = "wheel" })
+  in
+  match handler.on_wheel with
+  | None -> Error (No_handler { tag; event = "wheel" })
+  | Some f ->
+      r.msgs := f { Nopal_element.Element.delta_y; x; y } :: !(r.msgs);
+      Ok ()
+
+let find_box_handler_by_path path box_handlers =
+  List.find_opt (fun h -> h.box_path = path) box_handlers
+
+let box_pointer_move sel ~x ~y r =
+  let* path, found =
+    resolve_path sel r.tree |> Option.to_result ~none:(Not_found sel)
+  in
+  let tag = tag_of_node found in
+  let* handler =
+    find_box_handler_by_path path r.box_handlers
+    |> Option.to_result ~none:(No_handler { tag; event = "pointer_move" })
+  in
+  match handler.on_pointer_move with
+  | None -> Error (No_handler { tag; event = "pointer_move" })
+  | Some f ->
+      r.msgs :=
+        f { Nopal_element.Element.x; y; client_x = x; client_y = y }
+        :: !(r.msgs);
+      Ok ()
+
+let box_pointer_leave sel r =
+  let* path, found =
+    resolve_path sel r.tree |> Option.to_result ~none:(Not_found sel)
+  in
+  let tag = tag_of_node found in
+  let* handler =
+    find_box_handler_by_path path r.box_handlers
+    |> Option.to_result ~none:(No_handler { tag; event = "pointer_leave" })
+  in
+  match handler.on_pointer_leave with
+  | None -> Error (No_handler { tag; event = "pointer_leave" })
+  | Some msg ->
+      r.msgs := msg :: !(r.msgs);
+      Ok ()
+
+let box_pointer_down sel ~x ~y r =
+  let* path, found =
+    resolve_path sel r.tree |> Option.to_result ~none:(Not_found sel)
+  in
+  let tag = tag_of_node found in
+  let* handler =
+    find_box_handler_by_path path r.box_handlers
+    |> Option.to_result ~none:(No_handler { tag; event = "pointer_down" })
+  in
+  match handler.on_pointer_down with
+  | None -> Error (No_handler { tag; event = "pointer_down" })
+  | Some f ->
+      r.msgs :=
+        f { Nopal_element.Element.x; y; client_x = x; client_y = y }
+        :: !(r.msgs);
+      Ok ()
+
+let box_pointer_up sel ~x ~y r =
+  let* path, found =
+    resolve_path sel r.tree |> Option.to_result ~none:(Not_found sel)
+  in
+  let tag = tag_of_node found in
+  let* handler =
+    find_box_handler_by_path path r.box_handlers
+    |> Option.to_result ~none:(No_handler { tag; event = "pointer_up" })
+  in
+  match handler.on_pointer_up with
+  | None -> Error (No_handler { tag; event = "pointer_up" })
+  | Some f ->
+      r.msgs :=
+        f { Nopal_element.Element.x; y; client_x = x; client_y = y }
+        :: !(r.msgs);
+      Ok ()
+
+let box_wheel sel ~delta_y ~x ~y r =
+  let* path, found =
+    resolve_path sel r.tree |> Option.to_result ~none:(Not_found sel)
+  in
+  let tag = tag_of_node found in
+  let* handler =
+    find_box_handler_by_path path r.box_handlers
     |> Option.to_result ~none:(No_handler { tag; event = "wheel" })
   in
   match handler.on_wheel with

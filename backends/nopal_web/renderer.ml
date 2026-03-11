@@ -229,8 +229,8 @@ let pointer_event_of_mouse ev el =
   Nopal_element.Element.
     { x = client_x -. rect_left; y = client_y -. rect_top; client_x; client_y }
 
-let wire_draw_pointer_events ~dispatch el on_pointer_move on_click
-    on_pointer_leave on_pointer_down on_pointer_up on_wheel =
+let wire_pointer_events ~dispatch el ?on_pointer_move ?on_click
+    ?on_pointer_leave ?on_pointer_down ?on_pointer_up ?on_wheel () =
   let move_l =
     match on_pointer_move with
     | None -> []
@@ -319,83 +319,15 @@ let wire_draw_pointer_events ~dispatch el on_pointer_move on_click
   in
   move_l @ click_l @ leave_l @ down_l @ up_l @ wheel_l
 
+let wire_draw_pointer_events ~dispatch el on_pointer_move on_click
+    on_pointer_leave on_pointer_down on_pointer_up on_wheel =
+  wire_pointer_events ~dispatch el ?on_pointer_move ?on_click ?on_pointer_leave
+    ?on_pointer_down ?on_pointer_up ?on_wheel ()
+
 let wire_box_pointer_events ~dispatch el on_pointer_move on_pointer_leave
     on_pointer_down on_pointer_up on_wheel =
-  let move_l =
-    match on_pointer_move with
-    | None -> []
-    | Some f ->
-        [
-          Brr.Ev.listen Brr.Ev.pointermove
-            (fun ev ->
-              let pe = pointer_event_of_mouse ev el in
-              dispatch (f pe))
-            (Brr.El.as_target el);
-        ]
-  in
-  let leave_l =
-    match on_pointer_leave with
-    | None -> []
-    | Some msg ->
-        [
-          Brr.Ev.listen Brr.Ev.pointerleave
-            (fun _ev -> dispatch msg)
-            (Brr.El.as_target el);
-        ]
-  in
-  let down_l =
-    match on_pointer_down with
-    | None -> []
-    | Some f ->
-        [
-          Brr.Ev.listen Brr.Ev.pointerdown
-            (fun ev ->
-              let pe = pointer_event_of_mouse ev el in
-              dispatch (f pe))
-            (Brr.El.as_target el);
-        ]
-  in
-  let up_l =
-    match on_pointer_up with
-    | None -> []
-    | Some f ->
-        [
-          Brr.Ev.listen Brr.Ev.pointerup
-            (fun ev ->
-              let pe = pointer_event_of_mouse ev el in
-              dispatch (f pe))
-            (Brr.El.as_target el);
-        ]
-  in
-  let wheel_l =
-    match on_wheel with
-    | None -> []
-    | Some f ->
-        [
-          Brr.Ev.listen Brr.Ev.wheel
-            (fun ev ->
-              Brr.Ev.prevent_default ev;
-              let rect =
-                Jv.call (Brr.El.to_jv el) "getBoundingClientRect" [||]
-              in
-              let client_x = Jv.Float.get (Brr.Ev.to_jv ev) "clientX" in
-              let client_y = Jv.Float.get (Brr.Ev.to_jv ev) "clientY" in
-              let rect_left = Jv.Float.get rect "left" in
-              let rect_top = Jv.Float.get rect "top" in
-              let delta_y = Jv.Float.get (Brr.Ev.to_jv ev) "deltaY" in
-              let we =
-                Nopal_element.Element.
-                  {
-                    delta_y;
-                    x = client_x -. rect_left;
-                    y = client_y -. rect_top;
-                  }
-              in
-              dispatch (f we))
-            (Brr.El.as_target el);
-        ]
-  in
-  move_l @ leave_l @ down_l @ up_l @ wheel_l
+  wire_pointer_events ~dispatch el ?on_pointer_move ?on_pointer_leave
+    ?on_pointer_down ?on_pointer_up ?on_wheel ()
 
 let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
     'msg live =

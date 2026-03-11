@@ -182,6 +182,46 @@ val draw_wheel :
     matching [selector], invokes its [on_wheel] handler with the given delta and
     coordinates, and appends the resulting message. *)
 
+(** {2 Box pointer/wheel events} *)
+
+val box_pointer_move :
+  selector -> x:float -> y:float -> 'msg rendered -> (unit, error) result
+(** [box_pointer_move selector ~x ~y rendered] finds the first box element
+    matching [selector], invokes its [on_pointer_move] handler with the given
+    coordinates, and appends the resulting message. Returns
+    [Error (Not_found selector)] if no element matches, [Error (No_handler ...)]
+    if the element has no pointer_move handler. *)
+
+val box_pointer_leave : selector -> 'msg rendered -> (unit, error) result
+(** [box_pointer_leave selector rendered] finds the first box element matching
+    [selector], invokes its [on_pointer_leave] handler, and appends the
+    resulting message. Returns [Error (Not_found selector)] if no element
+    matches, [Error (No_handler ...)] if the element has no pointer_leave
+    handler. *)
+
+val box_pointer_down :
+  selector -> x:float -> y:float -> 'msg rendered -> (unit, error) result
+(** [box_pointer_down selector ~x ~y rendered] finds the first box element
+    matching [selector], invokes its [on_pointer_down] handler with the given
+    coordinates, and appends the resulting message. *)
+
+val box_pointer_up :
+  selector -> x:float -> y:float -> 'msg rendered -> (unit, error) result
+(** [box_pointer_up selector ~x ~y rendered] finds the first box element
+    matching [selector], invokes its [on_pointer_up] handler with the given
+    coordinates, and appends the resulting message. *)
+
+val box_wheel :
+  selector ->
+  delta_y:float ->
+  x:float ->
+  y:float ->
+  'msg rendered ->
+  (unit, error) result
+(** [box_wheel selector ~delta_y ~x ~y rendered] finds the first box element
+    matching [selector], invokes its [on_wheel] handler with the given delta and
+    coordinates, and appends the resulting message. *)
+
 (** {1 MVU loop} *)
 
 val run_app :

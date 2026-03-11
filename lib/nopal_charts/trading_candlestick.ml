@@ -124,7 +124,6 @@ let view ~data ~x ~open_ ~high ~low ~close ~width ~height
       in
       let all_scene = candle_scenes @ x_axis_scene @ y_axis_scene in
       (* Build on_pointer_move handler *)
-      let n_points = List.length visible_data in
       let on_pointer_move =
         match (on_hover, on_leave) with
         | Some handler, Some leave_msg ->
@@ -147,11 +146,12 @@ let view ~data ~x ~open_ ~high ~low ~close ~width ~height
           ~width ~height all_scene
       in
       (* Compose with tooltip if hovered *)
+      let visible_arr = Array.of_list visible_data in
       let tooltip =
         match (hover, format_tooltip) with
-        | Some h, Some fmt when h.Hover.index >= 0 && h.Hover.index < n_points
-          ->
-            let datum = List.nth visible_data h.Hover.index in
+        | Some h, Some fmt
+          when h.Hover.index >= 0 && h.Hover.index < Array.length visible_arr ->
+            let datum = visible_arr.(h.Hover.index) in
             let tip =
               fmt h.Hover.index (open_ datum) (high datum) (low datum)
                 (close datum)

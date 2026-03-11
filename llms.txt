@@ -153,7 +153,7 @@ Element.text : string -> 'msg Element.t                          (* plain text *
 Element.styled_text : text_style:Text.t -> string -> 'msg Element.t
 
 (* Layout containers — Box supports pointer + wheel events for pan/zoom *)
-type pointer_event = { x : float; y : float }
+type pointer_event = { x : float; y : float; client_x : float; client_y : float }
 type wheel_event = { delta_y : float; x : float; y : float }
 
 Element.box    : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
@@ -179,7 +179,9 @@ Element.keyed : string -> 'msg Element.t -> 'msg Element.t
 
 (* 2D canvas drawing *)
 Element.draw : ?on_pointer_move:(pointer_event -> 'msg) -> ?on_click:(pointer_event -> 'msg)
-  -> ?on_pointer_leave:'msg -> ?cursor:Cursor.t -> ?aria_label:string
+  -> ?on_pointer_leave:'msg -> ?on_pointer_down:(pointer_event -> 'msg)
+  -> ?on_pointer_up:(pointer_event -> 'msg) -> ?on_wheel:(wheel_event -> 'msg)
+  -> ?cursor:Cursor.t -> ?aria_label:string
   -> width:float -> height:float -> Scene.t list -> 'msg Element.t
 
 (* Message transform for component embedding *)
@@ -308,33 +310,40 @@ Composable interactive charts built on `nopal_draw`:
 Bar.view : data:'a list -> label:('a -> string) -> value:('a -> float)
   -> color:('a -> Color.t) -> ?x:('a -> float) -> width:float -> height:float
   -> ?padding:Padding.t -> ?x_axis:Axis.config -> ?y_axis:Axis.config
-  -> ?format_tooltip:('a -> string) -> ?on_hover:(Hover.t -> 'msg)
+  -> ?format_tooltip:('a -> 'msg Element.t) -> ?on_hover:(Hover.t -> 'msg)
   -> ?on_leave:'msg -> ?hover:Hover.t -> ?domain_window:Domain_window.t
   -> unit -> 'msg Element.t
 
 (* Line chart — ?domain_window clips data with buffer=1, rescales Y *)
 Line.view : series:'a Line.series list -> x:('a -> float) -> width:float -> height:float
   -> ?padding:Padding.t -> ?x_axis:Axis.config -> ?y_axis:Axis.config
-  -> ?format_tooltip:((string * float) list -> string)
+  -> ?format_tooltip:((string * float) list -> 'msg Element.t)
   -> ?on_hover:(Hover.t -> 'msg) -> ?on_leave:'msg -> ?hover:Hover.t
-  -> ?domain_window:Domain_window.t -> unit -> 'msg Element.t
+  -> ?domain_window:Domain_window.t
+  -> ?on_pointer_down:(Element.pointer_event -> 'msg)
+  -> ?on_pointer_up:(Element.pointer_event -> 'msg)
+  -> ?on_wheel:(Element.wheel_event -> 'msg)
+  -> unit -> 'msg Element.t
 
 (* Area chart — Stacked | Overlapping modes; ?domain_window clips with buffer=1 *)
 Area.view : series:'a Area.series list -> x:('a -> float) -> width:float -> height:float
   -> ?mode:Area.mode -> ?padding:Padding.t -> ?x_axis:Axis.config -> ?y_axis:Axis.config
-  -> ?format_tooltip:((string * float) list -> string)
+  -> ?format_tooltip:((string * float) list -> 'msg Element.t)
   -> ?on_hover:(Hover.t -> 'msg) -> ?on_leave:'msg -> ?hover:Hover.t
   -> ?domain_window:Domain_window.t -> unit -> 'msg Element.t
 
 (* Pie/donut chart — inner_radius 0.0 = pie, >0.0 = donut *)
 Pie.view : data:'a list -> value:('a -> float) -> label:('a -> string)
-  -> color:('a -> Color.t) -> ?inner_radius:float -> ...
+  -> color:('a -> Color.t) -> width:float -> height:float
+  -> ?inner_radius:float -> ?label_threshold:float
+  -> ?format_tooltip:('a -> 'msg Element.t) -> ?on_hover:(Hover.t -> 'msg)
+  -> ?on_leave:'msg -> ?hover:Hover.t -> unit -> 'msg Element.t
 
 (* Scatter/bubble chart — ?domain_window clips data with buffer=0 *)
 Scatter.view : data:'a list -> x:('a -> float) -> y:('a -> float)
   -> ?radius:('a -> float) -> color:('a -> Color.t) -> width:float -> height:float
   -> ?padding:Padding.t -> ?x_axis:Axis.config -> ?y_axis:Axis.config
-  -> ?format_tooltip:('a -> string) -> ?on_hover:(Hover.t -> 'msg)
+  -> ?format_tooltip:('a -> 'msg Element.t) -> ?on_hover:(Hover.t -> 'msg)
   -> ?on_leave:'msg -> ?hover:Hover.t -> ?domain_window:Domain_window.t
   -> unit -> 'msg Element.t
 
@@ -356,7 +365,7 @@ Heat_map.view : data:'a list -> row:('a -> int) -> col:('a -> int)
   -> ?row_labels:string list -> ?col_labels:string list
   -> scale:Color_scale.t -> width:float -> height:float
   -> ?padding:Padding.t
-  -> ?format_tooltip:('a -> string)
+  -> ?format_tooltip:('a -> 'msg Element.t)
   -> ?on_hover:(Hover.t -> 'msg) -> ?on_leave:'msg -> ?hover:Hover.t
   -> unit -> 'msg Element.t
 ```
@@ -380,7 +389,7 @@ Trading.Candlestick.view : data:'a list -> x:('a -> float)
   -> width:float -> height:float -> ?padding:Padding.t
   -> ?bullish_color:Color.t -> ?bearish_color:Color.t
   -> ?x_axis:Axis.config -> ?y_axis:Axis.config
-  -> ?format_tooltip:(int -> float -> float -> float -> float -> string)
+  -> ?format_tooltip:(int -> float -> float -> float -> float -> 'msg Element.t)
   -> ?on_hover:(Hover.t -> 'msg) -> ?on_leave:'msg -> ?hover:Hover.t
   -> ?domain_window:Domain_window.t -> unit -> 'msg Element.t
 (* Bullish (close > open) and bearish candles use distinct colors.
@@ -393,7 +402,7 @@ Trading.Candlestick.view : data:'a list -> x:('a -> float)
 Trading.Drawdown.view : data:'a list -> x:('a -> float) -> y:('a -> float)
   -> width:float -> height:float -> ?padding:Padding.t
   -> ?fill_color:Color.t -> ?x_axis:Axis.config -> ?y_axis:Axis.config
-  -> ?format_tooltip:(int -> float -> string)
+  -> ?format_tooltip:(int -> float -> 'msg Element.t)
   -> ?on_hover:(Hover.t -> 'msg) -> ?on_leave:'msg -> ?hover:Hover.t
   -> ?domain_window:Domain_window.t -> unit -> 'msg Element.t
 (* Y values should be <= 0.0 (drawdown percentages). Y domain: [min_drawdown, 0.0].
@@ -566,6 +575,10 @@ Test_renderer.input        : selector -> string -> 'msg rendered -> (unit, error
 Test_renderer.submit       : selector -> 'msg rendered -> (unit, error) result
 Test_renderer.dblclick     : selector -> 'msg rendered -> (unit, error) result
 Test_renderer.pointer_move : selector -> x:float -> y:float -> 'msg rendered -> (unit, error) result
+Test_renderer.pointer_leave : selector -> 'msg rendered -> (unit, error) result
+Test_renderer.pointer_down : selector -> x:float -> y:float -> 'msg rendered -> (unit, error) result
+Test_renderer.pointer_up   : selector -> x:float -> y:float -> 'msg rendered -> (unit, error) result
+Test_renderer.draw_wheel   : selector -> delta_y:float -> x:float -> y:float -> 'msg rendered -> (unit, error) result
 
 (* Full MVU loop testing *)
 Test_renderer.run_app :

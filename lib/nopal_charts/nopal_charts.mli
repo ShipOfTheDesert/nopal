@@ -1,4 +1,9 @@
-(** Nopal Charts — composable, interactive chart library for Nopal. *)
+(** Nopal Charts — composable, interactive chart library for Nopal.
+
+    {b Warning}: Opening this module will shadow {!Nopal_element.Viewport}. This
+    module defines its own [Viewport] submodule which takes precedence. If you
+    need the viewport type from Nopal_element, use the qualified name
+    [Nopal_element.Viewport] or avoid opening this module. *)
 
 module Area = Area
 module Chart_pane = Chart_pane

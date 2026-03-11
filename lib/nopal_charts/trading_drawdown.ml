@@ -135,11 +135,12 @@ let view ~data ~x ~y ~width ~height ?(padding = Padding.default) ?fill_color
           ~width ~height all_scene
       in
       (* Compose with tooltip if hovered *)
+      let visible_arr = Array.of_list visible_data in
       let tooltip =
         match (hover, format_tooltip) with
-        | Some h, Some fmt when h.Hover.index >= 0 && h.Hover.index < n_points
-          ->
-            let datum = List.nth visible_data h.Hover.index in
+        | Some h, Some fmt
+          when h.Hover.index >= 0 && h.Hover.index < Array.length visible_arr ->
+            let datum = visible_arr.(h.Hover.index) in
             let value = y datum in
             let tip = fmt h.Hover.index value in
             Some

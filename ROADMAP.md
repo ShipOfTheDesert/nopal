@@ -225,6 +225,18 @@ reference counting for cleanup) would eliminate redundant rules.
 without interaction styles (`Interaction.default`) pay zero cost — no class
 name, no stylesheet rules, no DOM attribute changes.
 
+### Multi-Pane Wheel Zoom in Kitchen Sink
+
+**Package:** `examples/kitchen_sink/`
+
+The multi-pane synchronized chart layout in the kitchen sink demonstrates
+drag-to-pan but does not wire an `~on_wheel` handler to `Chart_pane.view`.
+Add wheel-to-zoom support to the multi-pane demo so that scrolling inside
+any pane zooms all panes via the shared `Domain_window.t`. The E2E test
+"multi-pane synchronized zoom" currently only asserts that rendering does
+not crash — update it to verify that the domain window actually changes
+after a wheel event.
+
 ### Multi-Browser E2E Testing
 
 **Package:** `test/e2e/`
