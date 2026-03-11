@@ -120,7 +120,7 @@ state; `update` advances animations via a tick message. This keeps all state
 visible and testable — `nopal_test` can advance animations via the virtual
 clock without a real timer.
 
-### Trading and Financial Chart Extensions (`nopal_charts`)
+### Trading and Financial Chart Extensions (`nopal_charts`) [x]
 
 **Package:** `nopal_charts` (extension)
 **Depends on:** `nopal_charts`, `nopal_draw`
@@ -179,7 +179,7 @@ The extension should provide:
 All extensions must compile on native OCaml without js_of_ocaml (same
 constraint as `nopal_charts` itself).
 
-### Redesign Interaction Styling Architecture
+### Redesign Interaction Styling Architecture [x]
 
 **Packages:** `nopal_style`, `nopal_web` (`style_sheet.ml`, `style_css.ml`, `renderer.ml`)
 

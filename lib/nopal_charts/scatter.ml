@@ -4,7 +4,13 @@ let hover_scale = 1.5
 let view ~data ~x ~y ?(radius = fun _ -> default_radius) ~color ~width ~height
     ?(padding = Padding.default) ?(x_axis = Axis.default_config)
     ?(y_axis = Axis.default_config) ?format_tooltip ?on_hover ?on_leave ?hover
-    () =
+    ?domain_window () =
+  (* Apply domain window clipping if provided *)
+  let data =
+    match domain_window with
+    | Some window -> Viewport.clip ~x ~data ~window ~buffer:0
+    | None -> data
+  in
   match data with
   | [] -> Nopal_element.Element.draw ~width ~height []
   | _ ->

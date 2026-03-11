@@ -16,7 +16,9 @@ nopal_element   ← Element.t DSL — no platform deps
 nopal_style     ← Typed layout/paint — no platform deps
 nopal_router    ← Type-safe bidirectional routing — no platform deps
 nopal_draw      ← 2D drawing DSL (Color, Paint, Path, Scene, Scale)
-nopal_charts    ← Composable interactive charts (Bar, Line, Area, Pie, Scatter, Sparkline)
+nopal_charts    ← Composable interactive charts (Bar, Line, Area, Pie, Scatter, Sparkline,
+                   Heat_map, Trading.Candlestick, Trading.Drawdown, Chart_pane,
+                   Color_scale, Domain_window, Viewport, Downsample, Snap)
 nopal_runtime   ← Lwd reactive integration + MVU loop
 nopal_test      ← Pure OCaml test renderer — no js_of_ocaml
 nopal_web       ← js_of_ocaml + Brr DOM renderer (only browser-dependent package)
@@ -296,26 +298,39 @@ Scale.invert : Scale.t -> float -> float
 Composable interactive charts built on `nopal_draw`:
 
 ```ocaml
-(* Bar chart *)
+(* Bar chart — ?domain_window clips data when ?x is also provided *)
 Bar.view : data:'a list -> label:('a -> string) -> value:('a -> float)
-  -> color:('a -> Color.t) -> width:float -> height:float
+  -> color:('a -> Color.t) -> ?x:('a -> float) -> width:float -> height:float
   -> ?padding:Padding.t -> ?x_axis:Axis.config -> ?y_axis:Axis.config
   -> ?format_tooltip:('a -> 'msg Element.t) -> ?on_hover:(Hover.t -> 'msg)
-  -> ?on_leave:'msg -> ?hover:Hover.t option -> unit -> 'msg Element.t
+  -> ?on_leave:'msg -> ?hover:Hover.t -> ?domain_window:Domain_window.t
+  -> unit -> 'msg Element.t
 
-(* Line chart *)
-Line.view : series:'a Line.series list -> x:('a -> float) -> width:float -> height:float -> ...
+(* Line chart — ?domain_window clips data with buffer=1, rescales Y *)
+Line.view : series:'a Line.series list -> x:('a -> float) -> width:float -> height:float
+  -> ?padding:Padding.t -> ?x_axis:Axis.config -> ?y_axis:Axis.config
+  -> ?format_tooltip:((string * float) list -> 'msg Element.t)
+  -> ?on_hover:(Hover.t -> 'msg) -> ?on_leave:'msg -> ?hover:Hover.t
+  -> ?domain_window:Domain_window.t -> unit -> 'msg Element.t
 
-(* Area chart — Stacked | Overlapping modes *)
-Area.view : series:'a Area.series list -> x:('a -> float) -> ?mode:Area.mode -> ...
+(* Area chart — Stacked | Overlapping modes; ?domain_window clips with buffer=1 *)
+Area.view : series:'a Area.series list -> x:('a -> float) -> width:float -> height:float
+  -> ?mode:Area.mode -> ?padding:Padding.t -> ?x_axis:Axis.config -> ?y_axis:Axis.config
+  -> ?format_tooltip:((string * float) list -> 'msg Element.t)
+  -> ?on_hover:(Hover.t -> 'msg) -> ?on_leave:'msg -> ?hover:Hover.t
+  -> ?domain_window:Domain_window.t -> unit -> 'msg Element.t
 
 (* Pie/donut chart — inner_radius 0.0 = pie, >0.0 = donut *)
 Pie.view : data:'a list -> value:('a -> float) -> label:('a -> string)
   -> color:('a -> Color.t) -> ?inner_radius:float -> ...
 
-(* Scatter/bubble chart *)
+(* Scatter/bubble chart — ?domain_window clips data with buffer=0 *)
 Scatter.view : data:'a list -> x:('a -> float) -> y:('a -> float)
-  -> ?radius:('a -> float) -> color:('a -> Color.t) -> ...
+  -> ?radius:('a -> float) -> color:('a -> Color.t) -> width:float -> height:float
+  -> ?padding:Padding.t -> ?x_axis:Axis.config -> ?y_axis:Axis.config
+  -> ?format_tooltip:('a -> 'msg Element.t) -> ?on_hover:(Hover.t -> 'msg)
+  -> ?on_leave:'msg -> ?hover:Hover.t -> ?domain_window:Domain_window.t
+  -> unit -> 'msg Element.t
 
 (* Sparkline — minimal inline chart *)
 Sparkline.view : data:float list -> width:float -> height:float
@@ -323,6 +338,156 @@ Sparkline.view : data:float list -> width:float -> height:float
 ```
 
 Chart hover state: `Hover.t = { index: int; series: int; cursor_x: float; cursor_y: float }`
+
+#### Heat Map
+
+Renders a 2D grid of colored cells using `Color_scale`. Uses the accessor
+pattern for API consistency with other chart types:
+
+```ocaml
+Heat_map.view : data:'a list -> row:('a -> int) -> col:('a -> int)
+  -> value:('a -> float) -> row_count:int -> col_count:int
+  -> ?row_labels:string list -> ?col_labels:string list
+  -> scale:Color_scale.t -> width:float -> height:float
+  -> ?padding:Padding.t
+  -> ?format_tooltip:('a -> 'msg Element.t)
+  -> ?on_hover:(Hover.t -> 'msg) -> ?on_leave:'msg -> ?hover:Hover.t
+  -> unit -> 'msg Element.t
+```
+
+#### Trading Namespace
+
+Convenient grouping of trading-specific chart types:
+
+```ocaml
+module Trading : sig
+  module Candlestick = Trading_candlestick
+  module Drawdown = Trading_drawdown
+end
+```
+
+**Candlestick chart** — OHLC candles with wicks:
+
+```ocaml
+Trading.Candlestick.view : data:'a list -> x:('a -> float)
+  -> open_:('a -> float) -> high:('a -> float) -> low:('a -> float) -> close:('a -> float)
+  -> width:float -> height:float -> ?padding:Padding.t
+  -> ?bullish_color:Color.t -> ?bearish_color:Color.t
+  -> ?x_axis:Axis.config -> ?y_axis:Axis.config
+  -> ?format_tooltip:(int -> float -> float -> float -> float -> 'msg Element.t)
+  -> ?on_hover:(Hover.t -> 'msg) -> ?on_leave:'msg -> ?hover:Hover.t
+  -> ?domain_window:Domain_window.t -> unit -> 'msg Element.t
+(* Bullish (close > open) and bearish candles use distinct colors.
+   format_tooltip receives index and OHLC values. Clips via Viewport with buffer=0. *)
+```
+
+**Drawdown chart** — inverted area from 0% baseline downward:
+
+```ocaml
+Trading.Drawdown.view : data:'a list -> x:('a -> float) -> y:('a -> float)
+  -> width:float -> height:float -> ?padding:Padding.t
+  -> ?fill_color:Color.t -> ?x_axis:Axis.config -> ?y_axis:Axis.config
+  -> ?format_tooltip:(int -> float -> 'msg Element.t)
+  -> ?on_hover:(Hover.t -> 'msg) -> ?on_leave:'msg -> ?hover:Hover.t
+  -> ?domain_window:Domain_window.t -> unit -> 'msg Element.t
+(* Y values should be <= 0.0 (drawdown percentages). Y domain: [min_drawdown, 0.0].
+   fill_color defaults to semi-transparent red. Clips via Viewport with buffer=1. *)
+```
+
+#### Color Scale
+
+Maps data values to colors via interpolation:
+
+```ocaml
+Color_scale.sequential : low:Color.t -> high:Color.t -> Color_scale.t
+Color_scale.diverging : low:Color.t -> mid:Color.t -> high:Color.t
+  -> ?midpoint:float -> unit -> Color_scale.t
+Color_scale.apply : Color_scale.t -> min:float -> max:float -> float -> Color.t
+(* Values outside [min, max] are clamped. Diverging midpoint defaults to 0.0. *)
+```
+
+#### Domain Window
+
+Visible X-axis range for pan/zoom:
+
+```ocaml
+type Domain_window.t = { x_min : float; x_max : float }
+
+Domain_window.create : x_min:float -> x_max:float -> Domain_window.t
+Domain_window.equal  : Domain_window.t -> Domain_window.t -> bool
+Domain_window.width  : Domain_window.t -> float
+Domain_window.pan    : Domain_window.t -> delta:float -> Domain_window.t
+Domain_window.zoom   : Domain_window.t -> center:float -> factor:float -> Domain_window.t
+(* zoom factor < 1.0 zooms in, > 1.0 zooms out. Center maintains relative position. *)
+```
+
+#### Chart Pane
+
+Multi-pane synchronized layout:
+
+```ocaml
+type 'msg Chart_pane.pane = {
+  height_ratio : float;
+  chart : Domain_window.t -> 'msg Element.t;
+  y_axis : Axis.config option;
+}
+
+Chart_pane.pane : height_ratio:float -> ?y_axis:Axis.config
+  -> (Domain_window.t -> 'msg Element.t) -> 'msg Chart_pane.pane
+
+Chart_pane.view : panes:'msg Chart_pane.pane list -> domain_window:Domain_window.t
+  -> width:float -> height:float -> ?on_pan:(float -> 'msg)
+  -> ?on_zoom:(float -> float -> 'msg) -> unit -> 'msg Element.t
+(* Panes are vertically stacked; height_ratios normalized to sum to 1.0.
+   on_pan emits horizontal drag delta. on_zoom emits (center, factor). *)
+```
+
+#### Viewport
+
+Clips data to visible domain window:
+
+```ocaml
+Viewport.clip : x:('a -> float) -> data:'a list -> window:Domain_window.t
+  -> buffer:int -> 'a list
+Viewport.clip_sorted : x:('a -> float) -> data:'a array -> window:Domain_window.t
+  -> buffer:int -> 'a array
+(* buffer=1 for line/area (path continuity), buffer=0 for bar/scatter.
+   clip_sorted uses binary search — O(log n) vs O(n). *)
+```
+
+#### Downsample (LTTB)
+
+Reduces large datasets while preserving visual shape:
+
+```ocaml
+Downsample.lttb : x:('a -> float) -> y:('a -> float) -> data:'a array
+  -> target:int -> 'a array
+Downsample.should_downsample : data_length:int -> pixel_width:float -> bool
+Downsample.target_for_width  : pixel_width:float -> int
+(* Threshold: 3x pixels. Target: 2x pixels. First/last points always preserved. *)
+```
+
+#### Snap
+
+Find nearest data point for crosshair/tooltip:
+
+```ocaml
+Snap.nearest_index : x:('a -> float) -> data:'a list -> target:float -> int option
+Snap.nearest_index_sorted : x:('a -> float) -> data:'a array -> target:float -> int option
+(* nearest_index_sorted uses binary search — O(log n). Returns None for empty data. *)
+```
+
+#### Hit Map
+
+Hit regions now include `Band_region` for vertical-band snapping:
+
+```ocaml
+type Hit_map.region =
+  | Rect_region of { x; y; w; h; hit }
+  | Circle_region of { cx; cy; r; hit }
+  | Wedge_region of { cx; cy; inner_r; outer_r; start_angle; end_angle; hit }
+  | Band_region of { x; w; hit }    (* vertical band, full chart height *)
+```
 
 ### Test Renderer (`nopal_test`)
 
@@ -393,7 +558,9 @@ lib/
   nopal_style/       — Style.t, Text.t, Interaction.t, Cursor.t
   nopal_router/      — Router.t, Platform.S
   nopal_draw/        — Color, Paint, Path, Scene, Transform, Scale
-  nopal_charts/      — Bar, Line, Area, Pie, Scatter, Sparkline
+  nopal_charts/      — Bar, Line, Area, Pie, Scatter, Sparkline, Heat_map,
+                       Trading.Candlestick, Trading.Drawdown, Chart_pane,
+                       Color_scale, Domain_window, Viewport, Downsample, Snap
   nopal_runtime/     — Lwd integration + MVU loop
   nopal_test/        — Pure OCaml test renderer
 backends/

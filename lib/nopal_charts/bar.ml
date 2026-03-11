@@ -4,9 +4,16 @@ let category_label_offset = 16.0
 let lighten (c : Nopal_draw.Color.t) =
   Nopal_draw.Color.lerp c Nopal_draw.Color.white 0.3
 
-let view ~data ~label ~value ~color ~width ~height ?(padding = Padding.default)
-    ?(x_axis = Axis.default_config) ?(y_axis = Axis.default_config)
-    ?format_tooltip ?on_hover ?on_leave ?hover () =
+let view ~data ~label ~value ~color ?x ~width ~height
+    ?(padding = Padding.default) ?(x_axis = Axis.default_config)
+    ?(y_axis = Axis.default_config) ?format_tooltip ?on_hover ?on_leave ?hover
+    ?domain_window () =
+  (* Apply domain window clipping if provided *)
+  let data =
+    match (domain_window, x) with
+    | Some window, Some x_fn -> Viewport.clip ~x:x_fn ~data ~window ~buffer:0
+    | _ -> data
+  in
   match data with
   | [] -> Nopal_element.Element.draw ~width ~height []
   | _ ->

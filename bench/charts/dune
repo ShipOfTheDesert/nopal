@@ -1,0 +1,11 @@
+(library
+ (name charts_bench)
+ (modules charts_bench)
+ (libraries nopal_mvu nopal_element nopal_style nopal_charts nopal_draw))
+
+(executable
+ (name main)
+ (modules main)
+ (libraries charts_bench nopal_web nopal_runtime lwd brr)
+ (modes js)
+ (js_of_ocaml))

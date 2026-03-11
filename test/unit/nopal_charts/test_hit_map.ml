@@ -248,6 +248,46 @@ let test_multiple_rects_non_overlapping () =
     "gap between rects" None
     (Hit_map.hit_test m ~x:15.0 ~y:15.0)
 
+let test_band_hit_inside () =
+  let m =
+    Hit_map.empty
+    |> Hit_map.add
+         (Hit_map.Band_region
+            { x = 10.0; w = 20.0; hit = { index = 3; series = 0 } })
+  in
+  (* Band ignores Y — any Y value within X range should hit *)
+  Alcotest.(check hit_option)
+    "inside band hits"
+    (Some { Hit_map.index = 3; series = 0 })
+    (Hit_map.hit_test m ~x:15.0 ~y:999.0)
+
+let test_band_hit_outside () =
+  let m =
+    Hit_map.empty
+    |> Hit_map.add
+         (Hit_map.Band_region
+            { x = 10.0; w = 20.0; hit = { index = 3; series = 0 } })
+  in
+  Alcotest.(check hit_option)
+    "outside band misses" None
+    (Hit_map.hit_test m ~x:5.0 ~y:15.0)
+
+let test_band_hit_edge () =
+  let m =
+    Hit_map.empty
+    |> Hit_map.add
+         (Hit_map.Band_region
+            { x = 10.0; w = 20.0; hit = { index = 3; series = 0 } })
+  in
+  Alcotest.(check hit_option)
+    "edge of band hits"
+    (Some { Hit_map.index = 3; series = 0 })
+    (Hit_map.hit_test m ~x:10.0 ~y:0.0);
+  Alcotest.(check hit_option)
+    "right edge of band hits"
+    (Some { Hit_map.index = 3; series = 0 })
+    (Hit_map.hit_test m ~x:30.0 ~y:0.0)
+
 let test_equal_hit () =
   let a = { Hit_map.index = 0; series = 1 } in
   let b = { Hit_map.index = 0; series = 1 } in
@@ -274,6 +314,9 @@ let () =
             test_wedge_hit_inside_inner_radius;
           Alcotest.test_case "wedge hit outside angle" `Quick
             test_wedge_hit_outside_angle;
+          Alcotest.test_case "band hit inside" `Quick test_band_hit_inside;
+          Alcotest.test_case "band hit outside" `Quick test_band_hit_outside;
+          Alcotest.test_case "band hit edge" `Quick test_band_hit_edge;
           Alcotest.test_case "topmost priority" `Quick test_topmost_priority;
           Alcotest.test_case "multiple rects non-overlapping" `Quick
             test_multiple_rects_non_overlapping;

@@ -18,6 +18,7 @@ type region =
       end_angle : float;
       hit : hit;
     }
+  | Band_region of { x : float; w : float; hit : hit }
 
 type t
 

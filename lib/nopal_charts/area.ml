@@ -12,7 +12,17 @@ let series ~label ~color ~y data = { data; y; color; label }
 let view ~series ~x ~width ~height ?(mode = Overlapping)
     ?(padding = Padding.default) ?(x_axis = Axis.default_config)
     ?(y_axis = Axis.default_config) ?format_tooltip ?on_hover ?on_leave ?hover
-    () =
+    ?domain_window () =
+  (* Apply domain window clipping if provided *)
+  let series =
+    match domain_window with
+    | Some window ->
+        List.map
+          (fun (s : _ series) ->
+            { s with data = Viewport.clip ~x ~data:s.data ~window ~buffer:1 })
+          series
+    | None -> series
+  in
   (* Flatten all data across series to check emptiness *)
   let all_data =
     List.concat_map

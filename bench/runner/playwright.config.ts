@@ -14,10 +14,18 @@ export default defineConfig({
       use: { browserName: "chromium" },
     },
   ],
-  webServer: {
-    command:
-      "cd ../.. && opam exec -- dune build && cp bench/jsfb/index.html _build/default/bench/jsfb/ && npx serve -l 3001 _build/default/bench/jsfb",
-    port: 3001,
-    reuseExistingServer: !process.env.CI,
-  },
+  webServer: [
+    {
+      command:
+        "cd ../.. && opam exec -- dune build && cp bench/jsfb/index.html _build/default/bench/jsfb/ && npx serve -l 3001 _build/default/bench/jsfb",
+      port: 3001,
+      reuseExistingServer: !process.env.CI,
+    },
+    {
+      command:
+        "cd ../.. && cp bench/charts/index.html _build/default/bench/charts/ && npx serve -l 3002 _build/default/bench/charts",
+      port: 3002,
+      reuseExistingServer: !process.env.CI,
+    },
+  ],
 });

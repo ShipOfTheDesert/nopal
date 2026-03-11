@@ -20,6 +20,7 @@ val view :
   ?on_hover:(Hover.t -> 'msg) ->
   ?on_leave:'msg ->
   ?hover:Hover.t ->
+  ?domain_window:Domain_window.t ->
   unit ->
   'msg Nopal_element.Element.t
 (** [view ~data ~x ~y ~color ~width ~height ()] renders an interactive scatter
