@@ -16,15 +16,16 @@ val mount :
     [env(safe-area-inset-{top,right,bottom,left})] values into JS-readable form,
     reads them once, and passes them to the viewport. For safe area insets to
     report non-zero values on devices with hardware obstructions (e.g. iPhone
-    notch), the page must include
-    {v <meta name="viewport" content="viewport-fit=cover"> v}.
+    notch), the page must include:
+
+    {v <meta name="viewport" content="viewport-fit=cover"> v}
 
     A [ResizeObserver] on [target] triggers viewport updates. The observer uses
     [target] as a resize trigger but reads dimensions from
-    [window.innerWidth]/[window.innerHeight], so the viewport always reflects the
-    full browser window regardless of the target element's own size. This is
-    correct when [target] fills the viewport (the expected usage). If [target] is
-    embedded in a larger page and does not resize with the window, viewport
+    [window.innerWidth]/[window.innerHeight], so the viewport always reflects
+    the full browser window regardless of the target element's own size. This is
+    correct when [target] fills the viewport (the expected usage). If [target]
+    is embedded in a larger page and does not resize with the window, viewport
     updates may not fire.
 
     This is the only function application code calls from [nopal_web]. It wires
