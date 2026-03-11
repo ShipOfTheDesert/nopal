@@ -30,9 +30,9 @@ val add : region -> t -> t
     priority in hit testing (topmost wins). *)
 
 val hit_test : t -> x:float -> y:float -> hit option
-(** [hit_test t ~x ~y] returns the topmost region containing the point
-    [(x, y)], or [None] if no region matches. Traverses regions in reverse
-    insertion order. *)
+(** [hit_test t ~x ~y] returns the topmost region containing the point [(x, y)],
+    or [None] if no region matches. Traverses regions in reverse insertion
+    order. *)
 
 val equal_hit : hit -> hit -> bool
 (** Structural equality on {!hit} values. *)

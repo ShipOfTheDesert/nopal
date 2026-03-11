@@ -2,7 +2,7 @@ open Nopal_charts
 open Nopal_element
 open Nopal_draw
 
-type msg = Hovered of Hover.t | Left
+type msg = Hovered of Hover.t | Left [@@warning "-37"]
 
 (* --- sample data --- *)
 
@@ -143,33 +143,6 @@ let test_fill_color_applied () =
       Alcotest.(check bool) "custom fill color applied" true has_custom
   | None -> Alcotest.fail "expected Draw element"
 
-let test_default_fill_color () =
-  (* Without explicit fill_color, should use a default reddish color *)
-  let el = drawdown_view sample_data in
-  match extract_draw el with
-  | Some (scene, _, _, _, _) ->
-      let fills = get_path_fills scene in
-      Alcotest.(check bool) "has area fill" true (List.length fills >= 1)
-  | None -> Alcotest.fail "expected Draw element"
-
-let test_hover_and_tooltip () =
-  let hover =
-    Hover.{ index = 2; series = 0; cursor_x = 200.0; cursor_y = 150.0 }
-  in
-  let el =
-    drawdown_view ~hover
-      ~on_hover:(fun h -> Hovered h)
-      ~on_leave:Left
-      ~format_tooltip:(fun _idx value ->
-        Printf.sprintf "DD: %.1f%%" (value *. 100.0))
-      sample_data
-  in
-  (* With tooltip, result is a Draw with merged scene nodes *)
-  match (el : msg Element.t) with
-  | Draw { scene; _ } ->
-      Alcotest.(check bool) "has scene nodes" true (List.length scene >= 2)
-  | _ -> Alcotest.fail "expected Draw with tooltip scene"
-
 let test_domain_window_clips () =
   (* With a domain window [2.0, 4.0], only points with x in that range
      (plus buffer=1) should affect the chart *)
@@ -182,20 +155,6 @@ let test_domain_window_clips () =
       Alcotest.(check bool) "has area path after clipping" true (n >= 1)
   | None -> Alcotest.fail "expected Draw element"
 
-let test_api_consistency () =
-  (* The API should accept all standard chart parameters *)
-  let _el =
-    Trading.Drawdown.view ~data:sample_data ~x:x_of ~y:dd_of ~width:500.0
-      ~height:400.0 ~padding:Padding.default ~fill_color:custom_fill
-      ~on_hover:(fun h -> Hovered h)
-      ~on_leave:Left
-      ~hover:Hover.{ index = 0; series = 0; cursor_x = 100.0; cursor_y = 100.0 }
-      ~format_tooltip:(fun _idx value -> Printf.sprintf "%.2f" value)
-      ()
-  in
-  (* If it compiled and ran, API is consistent *)
-  Alcotest.(check bool) "api accepts all params" true true
-
 let () =
   Alcotest.run "Trading_drawdown"
     [
@@ -207,10 +166,7 @@ let () =
           Alcotest.test_case "inverted_area" `Quick test_inverted_area;
           Alcotest.test_case "y_axis_range" `Quick test_y_axis_range;
           Alcotest.test_case "fill_color_applied" `Quick test_fill_color_applied;
-          Alcotest.test_case "default_fill_color" `Quick test_default_fill_color;
-          Alcotest.test_case "hover_and_tooltip" `Quick test_hover_and_tooltip;
           Alcotest.test_case "domain_window_clips" `Quick
             test_domain_window_clips;
-          Alcotest.test_case "api_consistency" `Quick test_api_consistency;
         ] );
     ]

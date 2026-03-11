@@ -77,7 +77,7 @@ let test_lttb_preserves_valleys () =
   in
   let result = Downsample.lttb ~x:x_of ~y:y_of ~data ~target:10 in
   let has_valley =
-    Array.exists (fun (_x, y) -> Float.abs (y -. (-100.0)) < 1e-6) result
+    Array.exists (fun (_x, y) -> Float.abs (y -. -100.0) < 1e-6) result
   in
   Alcotest.(check bool) "valley retained" true has_valley
 

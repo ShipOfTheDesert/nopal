@@ -31,7 +31,7 @@ val view :
   ?padding:Padding.t ->
   ?x_axis:Axis.config ->
   ?y_axis:Axis.config ->
-  ?format_tooltip:((string * float) list -> string) ->
+  ?format_tooltip:((string * float) list -> 'msg Nopal_element.Element.t) ->
   ?on_hover:(Hover.t -> 'msg) ->
   ?on_leave:'msg ->
   ?hover:Hover.t ->

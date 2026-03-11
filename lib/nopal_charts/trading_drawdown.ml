@@ -130,17 +130,21 @@ let view ~data ~x ~y ~width ~height ?(padding = Padding.default) ?fill_color
                 | None -> leave_msg)
         | _ -> None
       in
-      (* Build tooltip scene if hovered *)
-      let tooltip_scene =
+      let draw_el =
+        Nopal_element.Element.draw ?on_pointer_move ?on_pointer_leave:on_leave
+          ~width ~height all_scene
+      in
+      (* Compose with tooltip if hovered *)
+      let tooltip =
         match (hover, format_tooltip) with
         | Some h, Some fmt when h.Hover.index >= 0 && h.Hover.index < n_points
           ->
             let datum = List.nth visible_data h.Hover.index in
             let value = y datum in
             let tip = fmt h.Hover.index value in
-            Tooltip.scene ~x:h.cursor_x ~y:h.cursor_y ~chart_width:width
-              ~chart_height:height tip
-        | _ -> []
+            Some
+              (Tooltip.container ~x:h.cursor_x ~y:h.cursor_y ~chart_width:width
+                 ~chart_height:height tip)
+        | _ -> None
       in
-      Chart_compose.compose ~scene:all_scene ~tooltip_scene ~width ~height
-        ?on_pointer_move ?on_pointer_leave:on_leave ()
+      Chart_compose.compose ~draw_el ~width ~height ~tooltip

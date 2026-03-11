@@ -19,7 +19,7 @@ val view :
   width:float ->
   height:float ->
   ?padding:Padding.t ->
-  ?format_tooltip:('a -> string) ->
+  ?format_tooltip:('a -> 'msg Nopal_element.Element.t) ->
   ?on_hover:(Hover.t -> 'msg) ->
   ?on_leave:'msg ->
   ?hover:Hover.t ->

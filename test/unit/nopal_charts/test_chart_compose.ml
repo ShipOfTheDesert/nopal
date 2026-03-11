@@ -10,48 +10,45 @@ let sample_scene =
       ~x:0.0 ~y:0.0 ~w:100.0 ~h:100.0 ();
   ]
 
-let test_compose_without_tooltip () =
-  let el =
-    Chart_compose.compose ~scene:sample_scene ~tooltip_scene:[] ~width:400.0
-      ~height:300.0 ()
-  in
-  match (el : msg Element.t) with
-  | Draw { scene; _ } ->
-      Alcotest.(check int) "scene has original nodes" 1 (List.length scene)
-  | _ -> Alcotest.fail "expected Draw element"
-
 let test_compose_with_tooltip () =
-  let tip_scene =
-    Tooltip.scene ~x:50.0 ~y:50.0 ~chart_width:400.0 ~chart_height:300.0 "hello"
+  let draw_el = Element.draw ~width:400.0 ~height:300.0 sample_scene in
+  let tooltip =
+    Some
+      (Tooltip.container ~x:50.0 ~y:50.0 ~chart_width:400.0 ~chart_height:300.0
+         (Tooltip.text "hello"))
   in
-  let el =
-    Chart_compose.compose ~scene:sample_scene ~tooltip_scene:tip_scene
-      ~width:400.0 ~height:300.0 ()
-  in
+  let el = Chart_compose.compose ~draw_el ~width:400.0 ~height:300.0 ~tooltip in
   match (el : msg Element.t) with
-  | Draw { scene; _ } ->
-      (* original scene + tooltip scene nodes *)
-      Alcotest.(check bool) "merged scene" true (List.length scene > 1)
-  | _ -> Alcotest.fail "expected Draw element"
+  | Box { children; _ } ->
+      (* Should have both draw and tooltip children *)
+      Alcotest.(check bool) "has children" true (List.length children >= 2)
+  | _ -> Alcotest.fail "expected Box element"
 
 let test_compose_dimensions () =
+  let draw_el = Element.draw ~width:400.0 ~height:300.0 sample_scene in
   let el =
-    Chart_compose.compose ~scene:sample_scene ~tooltip_scene:[] ~width:400.0
-      ~height:300.0 ()
+    Chart_compose.compose ~draw_el ~width:400.0 ~height:300.0 ~tooltip:None
   in
   match (el : msg Element.t) with
-  | Draw { width; height; _ } ->
-      Alcotest.(check (float 0.01)) "width" 400.0 width;
-      Alcotest.(check (float 0.01)) "height" 300.0 height
-  | _ -> Alcotest.fail "expected Draw element"
+  | Box { style = _; children; _ } ->
+      (* The draw child should preserve dimensions *)
+      let has_draw =
+        List.exists
+          (fun (child : msg Element.t) ->
+            match child with
+            | Draw { width; height; _ } ->
+                Float.equal width 400.0 && Float.equal height 300.0
+            | _ -> false)
+          children
+      in
+      Alcotest.(check bool) "draw child with correct dimensions" true has_draw
+  | _ -> Alcotest.fail "expected Box element"
 
 let () =
   Alcotest.run "Chart_compose"
     [
       ( "compose",
         [
-          Alcotest.test_case "without_tooltip" `Quick
-            test_compose_without_tooltip;
           Alcotest.test_case "with_tooltip" `Quick test_compose_with_tooltip;
           Alcotest.test_case "dimensions" `Quick test_compose_dimensions;
         ] );

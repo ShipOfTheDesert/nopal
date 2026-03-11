@@ -199,8 +199,12 @@ let view ~series ~x ~width ~height ?(padding = Padding.default)
                 | None -> leave_msg)
         | _ -> None
       in
-      (* Build tooltip scene if hovered *)
-      let tooltip_scene =
+      let draw_el =
+        Nopal_element.Element.draw ?on_pointer_move ?on_pointer_leave:on_leave
+          ?on_pointer_down ?on_pointer_up ?on_wheel ~width ~height all_scene
+      in
+      (* Compose with tooltip if hovered *)
+      let tooltip =
         match (hover, format_tooltip) with
         | Some h, Some fmt when h.Hover.index >= 0 ->
             (* Gather values from all series at the hovered index *)
@@ -215,10 +219,9 @@ let view ~series ~x ~width ~height ?(padding = Padding.default)
                 series
             in
             let tip = fmt entries in
-            Tooltip.scene ~x:h.cursor_x ~y:h.cursor_y ~chart_width:width
-              ~chart_height:height tip
-        | _ -> []
+            Some
+              (Tooltip.container ~x:h.cursor_x ~y:h.cursor_y ~chart_width:width
+                 ~chart_height:height tip)
+        | _ -> None
       in
-      Chart_compose.compose ~scene:all_scene ~tooltip_scene ~width ~height
-        ?on_pointer_move ?on_pointer_leave:on_leave ?on_pointer_down
-        ?on_pointer_up ?on_wheel ()
+      Chart_compose.compose ~draw_el ~width ~height ~tooltip
