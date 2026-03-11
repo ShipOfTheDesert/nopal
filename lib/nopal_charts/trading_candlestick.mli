@@ -19,8 +19,7 @@ val view :
   ?bearish_color:Nopal_draw.Color.t ->
   ?x_axis:Axis.config ->
   ?y_axis:Axis.config ->
-  ?format_tooltip:
-    (int -> float -> float -> float -> float -> 'msg Nopal_element.Element.t) ->
+  ?format_tooltip:(int -> float -> float -> float -> float -> string) ->
   ?on_hover:(Hover.t -> 'msg) ->
   ?on_leave:'msg ->
   ?hover:Hover.t ->

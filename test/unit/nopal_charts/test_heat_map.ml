@@ -227,7 +227,9 @@ let test_hit_map_rect_count () =
   match extract_draw el with
   | Some (_, Some on_move, _, _, _) ->
       (* The handler should be callable *)
-      let _msg = on_move { x = 200.0; y = 150.0 } in
+      let _msg =
+        on_move { x = 200.0; y = 150.0; client_x = 200.0; client_y = 150.0 }
+      in
       ()
   | Some (_, None, _, _, _) -> Alcotest.fail "expected on_pointer_move handler"
   | None -> Alcotest.fail "expected Draw element"
@@ -238,15 +240,14 @@ let test_tooltip_shows_cell_value () =
   in
   let el =
     heat_map_view ~hover
-      ~format_tooltip:(fun d ->
-        Element.text (Printf.sprintf "R%d C%d: %.1f" d.r d.c d.v))
+      ~format_tooltip:(fun d -> Printf.sprintf "R%d C%d: %.1f" d.r d.c d.v)
       sample_data
   in
-  (* When hover + format_tooltip, result should be Box (with tooltip) not just Draw *)
+  (* With tooltip, result is a Draw with merged scene nodes *)
   match (el : msg Element.t) with
-  | Box { children; _ } ->
-      Alcotest.(check bool) "has children" true (List.length children >= 2)
-  | _ -> Alcotest.fail "expected Box with tooltip"
+  | Draw { scene; _ } ->
+      Alcotest.(check bool) "has scene nodes" true (List.length scene >= 2)
+  | _ -> Alcotest.fail "expected Draw with tooltip scene"
 
 let () =
   Alcotest.run "Heat_map"

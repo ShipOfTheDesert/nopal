@@ -73,6 +73,29 @@ let test_zoom_center_preserved () =
   Alcotest.check dw_approx_testable "center preserved after zoom" expected
     zoomed
 
+let test_clamp_within_bounds () =
+  let w = Domain_window.create ~x_min:10.0 ~x_max:20.0 in
+  let clamped = Domain_window.clamp ~data_min:0.0 ~data_max:100.0 w in
+  Alcotest.check dw_testable "within bounds unchanged" w clamped
+
+let test_clamp_past_left () =
+  let w = Domain_window.create ~x_min:(-5.0) ~x_max:5.0 in
+  let clamped = Domain_window.clamp ~data_min:0.0 ~data_max:100.0 w in
+  let expected = Domain_window.create ~x_min:0.0 ~x_max:10.0 in
+  Alcotest.check dw_testable "shifted to data_min" expected clamped
+
+let test_clamp_past_right () =
+  let w = Domain_window.create ~x_min:95.0 ~x_max:105.0 in
+  let clamped = Domain_window.clamp ~data_min:0.0 ~data_max:100.0 w in
+  let expected = Domain_window.create ~x_min:90.0 ~x_max:100.0 in
+  Alcotest.check dw_testable "shifted to data_max" expected clamped
+
+let test_clamp_wider_than_data () =
+  let w = Domain_window.create ~x_min:(-50.0) ~x_max:150.0 in
+  let clamped = Domain_window.clamp ~data_min:0.0 ~data_max:100.0 w in
+  let expected = Domain_window.create ~x_min:0.0 ~x_max:100.0 in
+  Alcotest.check dw_testable "snapped to data range" expected clamped
+
 let () =
   Alcotest.run "Domain_window"
     [
@@ -94,5 +117,12 @@ let () =
           Alcotest.test_case "out" `Quick test_zoom_out;
           Alcotest.test_case "center preserved" `Quick
             test_zoom_center_preserved;
+        ] );
+      ( "clamp",
+        [
+          Alcotest.test_case "within bounds" `Quick test_clamp_within_bounds;
+          Alcotest.test_case "past left" `Quick test_clamp_past_left;
+          Alcotest.test_case "past right" `Quick test_clamp_past_right;
+          Alcotest.test_case "wider than data" `Quick test_clamp_wider_than_data;
         ] );
     ]

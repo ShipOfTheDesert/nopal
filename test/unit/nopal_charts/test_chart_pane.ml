@@ -2,53 +2,20 @@ open Nopal_charts
 open Nopal_element
 open Nopal_style
 
-type msg = Pan of float | Zoom of float * float
+type msg =
+  | PointerDown of float
+  | PointerMove of float
+  | PointerUp
+  | PointerLeave
+[@@warning "-37"]
 
 (* --- helpers --- *)
 
 let window = Domain_window.create ~x_min:0.0 ~x_max:10.0
-let dummy_chart _dw = Element.draw ~width:400.0 ~height:100.0 []
+let dummy_chart _dw ~width ~height = Element.draw ~width ~height []
 let make_pane ratio chart = Chart_pane.pane ~height_ratio:ratio chart
 
-(** Extract all Box children recursively to find Column elements. *)
-let rec find_column (el : msg Element.t) : msg Element.t list option =
-  match el with
-  | Column { children; _ } -> Some children
-  | Box { children; _ } -> List.find_map find_column children
-  | _ -> None
-
-(** Extract the overlay Draw element (direct child of outermost Box). *)
-let find_overlay_draw (el : msg Element.t) =
-  match el with
-  | Box { children; _ } ->
-      List.find_map
-        (fun (child : msg Element.t) ->
-          match child with
-          | Draw
-              {
-                on_pointer_move;
-                on_click;
-                on_pointer_leave;
-                cursor;
-                width;
-                height;
-                scene;
-                aria_label;
-              } ->
-              Some
-                ( on_pointer_move,
-                  on_click,
-                  on_pointer_leave,
-                  cursor,
-                  width,
-                  height,
-                  scene,
-                  aria_label )
-          | _ -> None)
-        children
-  | _ -> None
-
-(** Extract children of a Column element. *)
+(** Extract children of a Column element, searching through Box wrappers. *)
 let get_column_children (el : msg Element.t) =
   match el with
   | Column { children; _ } -> Some children
@@ -78,12 +45,10 @@ let test_single_pane () =
       ~panes:[ make_pane 1.0 dummy_chart ]
       ~domain_window:window ~width:400.0 ~height:300.0 ()
   in
-  (* A single pane should render. The column should have one child. *)
   match get_column_children el with
   | Some children ->
       Alcotest.(check int) "one pane child" 1 (List.length children)
   | None -> (
-      (* If no on_pan/on_zoom, result may be a plain Column *)
       match el with
       | Column { children; _ } ->
           Alcotest.(check int) "one pane child" 1 (List.length children)
@@ -126,7 +91,6 @@ let test_three_panes_custom_ratio () =
       let h3 = get_fixed_height p3 in
       match (h1, h2, h3) with
       | Some h1, Some h2, Some h3 ->
-          (* 0.6/1.0 * 300 = 180, 0.2/1.0 * 300 = 60 *)
           Alcotest.(check (float 0.01)) "pane 1 height (60%)" 180.0 h1;
           Alcotest.(check (float 0.01)) "pane 2 height (20%)" 60.0 h2;
           Alcotest.(check (float 0.01)) "pane 3 height (20%)" 60.0 h3
@@ -137,9 +101,9 @@ let test_three_panes_custom_ratio () =
 
 let test_domain_window_passed () =
   let received_window = ref None in
-  let chart dw =
+  let chart dw ~width ~height =
     received_window := Some dw;
-    Element.draw ~width:400.0 ~height:100.0 []
+    Element.draw ~width ~height []
   in
   let _el =
     Chart_pane.view
@@ -159,57 +123,46 @@ let test_produces_column_layout () =
       ~panes:[ make_pane 1.0 dummy_chart; make_pane 1.0 dummy_chart ]
       ~domain_window:window ~width:400.0 ~height:300.0 ()
   in
-  let has_column = find_column el in
+  let has_column = get_column_children el in
   Alcotest.(check bool) "has Column layout" true (Option.is_some has_column)
 
-let test_pan_event_emitted () =
+let test_pointer_down_on_box () =
   let el =
     Chart_pane.view
       ~panes:[ make_pane 1.0 dummy_chart ]
       ~domain_window:window ~width:400.0 ~height:300.0
-      ~on_pan:(fun delta -> Pan delta)
+      ~on_pointer_down:(fun pe -> PointerDown pe.x)
       ()
   in
-  (* When on_pan is provided, there should be a Draw overlay with on_pointer_move *)
-  match find_overlay_draw el with
-  | Some (on_pointer_move, _on_click, _on_leave, _cursor, _w, _h, _scene, _aria)
-    -> (
-      match on_pointer_move with
-      | Some handler -> (
-          let msg = handler { Element.x = 150.0; y = 100.0 } in
-          match msg with
-          | Pan x -> Alcotest.(check (float 0.01)) "pan x position" 150.0 x
-          | _ -> Alcotest.fail "expected Pan message")
-      | None -> Alcotest.fail "expected on_pointer_move handler")
-  | None -> Alcotest.fail "expected Draw overlay for pan interaction"
+  match el with
+  | Box { on_pointer_down = Some handler; _ } -> (
+      let msg =
+        handler
+          { Element.x = 150.0; y = 100.0; client_x = 150.0; client_y = 100.0 }
+      in
+      match msg with
+      | PointerDown x -> Alcotest.(check (float 0.01)) "pointer down x" 150.0 x
+      | _ -> Alcotest.fail "expected PointerDown message")
+  | _ -> Alcotest.fail "expected Box with on_pointer_down handler"
 
-let test_zoom_event_emitted () =
+let test_pointer_leave_on_box () =
   let el =
     Chart_pane.view
       ~panes:[ make_pane 1.0 dummy_chart ]
       ~domain_window:window ~width:400.0 ~height:300.0
-      ~on_zoom:(fun center factor -> Zoom (center, factor))
-      ()
+      ~on_pointer_leave:PointerLeave ()
   in
-  (* When on_zoom is provided, there should be a Draw overlay with on_click *)
-  match find_overlay_draw el with
-  | Some (_on_pointer_move, on_click, _on_leave, _cursor, _w, _h, _scene, _aria)
-    -> (
-      match on_click with
-      | Some handler -> (
-          let msg = handler { Element.x = 200.0; y = 100.0 } in
-          match msg with
-          | Zoom (center, _factor) ->
-              Alcotest.(check (float 0.01)) "zoom center" 200.0 center
-          | _ -> Alcotest.fail "expected Zoom message")
-      | None -> Alcotest.fail "expected on_click handler for zoom")
-  | None -> Alcotest.fail "expected Draw overlay for zoom interaction"
+  match el with
+  | Box { on_pointer_leave = Some msg; _ } -> (
+      match msg with
+      | PointerLeave -> Alcotest.(check pass) "got PointerLeave" () ()
+      | _ -> Alcotest.fail "expected PointerLeave message")
+  | _ -> Alcotest.fail "expected Box with on_pointer_leave"
 
 let test_pane_constructor () =
   let p = Chart_pane.pane ~height_ratio:0.75 dummy_chart in
   Alcotest.(check (float 0.01)) "height_ratio" 0.75 p.height_ratio;
   Alcotest.(check bool) "y_axis is None" true (Option.is_none p.y_axis);
-  (* Verify chart function works *)
   let _el = p.chart window in
   Alcotest.(check pass) "chart function callable" () ()
 
@@ -226,8 +179,10 @@ let () =
             test_domain_window_passed;
           Alcotest.test_case "produces_column_layout" `Quick
             test_produces_column_layout;
-          Alcotest.test_case "pan_event_emitted" `Quick test_pan_event_emitted;
-          Alcotest.test_case "zoom_event_emitted" `Quick test_zoom_event_emitted;
+          Alcotest.test_case "pointer_down_on_box" `Quick
+            test_pointer_down_on_box;
+          Alcotest.test_case "pointer_leave_on_box" `Quick
+            test_pointer_leave_on_box;
           Alcotest.test_case "pane_constructor" `Quick test_pane_constructor;
         ] );
     ]

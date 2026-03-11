@@ -16,8 +16,16 @@ let extract_draw (el : _ Element.t) =
   | Draw d -> Some d.scene
   | _ -> None
 
-let count_nodes pred (scene : Scene.t list) =
-  List.fold_left (fun acc node -> if pred node then acc + 1 else acc) 0 scene
+let rec count_nodes pred (scene : Scene.t list) =
+  List.fold_left
+    (fun acc (node : Scene.t) ->
+      let acc = if pred node then acc + 1 else acc in
+      match node with
+      | Clip { children; _ }
+      | Group { children; _ } ->
+          acc + count_nodes pred children
+      | _ -> acc)
+    0 scene
 
 let is_polyline (node : Scene.t) =
   match node with
@@ -93,11 +101,14 @@ let test_line_domain_window () =
       Alcotest.(check int) "clipped has polyline" 1 clipped_polylines;
       Alcotest.(check int) "full has polyline" 1 full_polylines;
       (* The clipped polyline should have fewer points *)
-      let get_polyline_points scene =
+      let rec get_polyline_points scene =
         List.find_map
           (fun (node : Scene.t) ->
             match node with
             | Polyline { points; _ } -> Some (List.length points)
+            | Clip { children; _ }
+            | Group { children; _ } ->
+                get_polyline_points children
             | _ -> None)
           scene
       in
@@ -124,14 +135,18 @@ let test_line_y_rescale () =
       Alcotest.(check int) "has polyline" 1 polylines;
       (* Extract polyline points — Y values should span the full chart area
          since they are rescaled to visible range *)
-      let points =
+      let rec find_polyline_points scene =
         List.find_map
           (fun (node : Scene.t) ->
             match node with
             | Polyline { points; _ } -> Some points
+            | Clip { children; _ }
+            | Group { children; _ } ->
+                find_polyline_points children
             | _ -> None)
-          sc
+          scene
       in
+      let points = find_polyline_points sc in
       match points with
       | Some pts ->
           let ys = List.map snd pts in
@@ -221,14 +236,18 @@ let test_no_domain_window_unchanged () =
   let scene = extract_draw el in
   match scene with
   | Some sc ->
-      let points =
+      let rec find_polyline_count scene =
         List.find_map
           (fun (node : Scene.t) ->
             match node with
             | Polyline { points; _ } -> Some (List.length points)
+            | Clip { children; _ }
+            | Group { children; _ } ->
+                find_polyline_count children
             | _ -> None)
-          sc
+          scene
       in
+      let points = find_polyline_count sc in
       Alcotest.(check (option int)) "all 10 points rendered" (Some 10) points
   | None -> Alcotest.fail "expected Draw element"
 

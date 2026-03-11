@@ -1,13 +1,18 @@
-val text : string -> 'msg Nopal_element.Element.t
-(** Simple text tooltip content. Renders as a styled Text element with default
-    tooltip appearance (dark background, white text, padding). *)
+(** Tooltip rendering as canvas scene nodes.
 
-val container :
+    Tooltips are drawn directly on the chart canvas, avoiding DOM flex-layout
+    issues. Position is automatically flipped to stay within chart bounds. *)
+
+val text : string -> string
+(** Identity — provided for API compatibility. [text s] returns [s]. *)
+
+val scene :
   x:float ->
   y:float ->
   chart_width:float ->
   chart_height:float ->
-  'msg Nopal_element.Element.t ->
-  'msg Nopal_element.Element.t
-(** Wraps tooltip content in an absolutely-positioned container near (x, y).
-    Flips position to stay within chart bounds. REQ-F11. *)
+  string ->
+  Nopal_draw.Scene.t list
+(** [scene ~x ~y ~chart_width ~chart_height content] renders a tooltip near
+    [(x, y)] as canvas scene nodes. The tooltip is flipped to stay within the
+    chart bounds. *)

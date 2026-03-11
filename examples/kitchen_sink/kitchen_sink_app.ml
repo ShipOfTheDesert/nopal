@@ -65,7 +65,10 @@ type model = {
   scatter_hover : Hover.t option;
   heat_map_hover : Hover.t option;
   trading_hover : Hover.t option;
-  domain_window : Domain_window.t;
+  pane_domain_window : Domain_window.t;
+  pane_drag_start_x : float option;
+  line_domain_window : Domain_window.t;
+  line_drag_start_x : float option;
 }
 
 (* Messages *)
@@ -91,8 +94,17 @@ type msg =
   | HeatMapLeft
   | TradingHovered of Hover.t
   | TradingLeft
-  | Pan of float
-  | Zoom of float * float
+  | PanePointerDown of float
+  | PanePointerMove of float
+  | PanePointerUp
+  | PanePointerLeave
+  | LinePointerDown of float
+  | LinePointerMove of float
+  | LinePointerUp
+  | LinePointerLeave
+  | LineWheelZoom of Nopal_element.Element.wheel_event
+  | ZoomIn
+  | ZoomOut
 
 let init () =
   let sub_counter, sub_cmd = Sub_counter.init () in
@@ -111,9 +123,15 @@ let init () =
       scatter_hover = None;
       heat_map_hover = None;
       trading_hover = None;
-      domain_window = Domain_window.create ~x_min:0.0 ~x_max:50.0;
+      pane_domain_window = Domain_window.create ~x_min:0.0 ~x_max:9.0;
+      pane_drag_start_x = None;
+      line_domain_window = Domain_window.create ~x_min:0.0 ~x_max:100.0;
+      line_drag_start_x = None;
     },
     Nopal_mvu.Cmd.map (fun m -> SubCounterMsg m) sub_cmd )
+
+let clamp_pane_dw dw = Domain_window.clamp ~data_min:0.0 ~data_max:9.0 dw
+let clamp_line_dw dw = Domain_window.clamp ~data_min:0.0 ~data_max:999.0 dw
 
 let update model = function
   | ButtonClicked ->
@@ -175,12 +193,72 @@ let update model = function
   | TradingHovered h ->
       ({ model with trading_hover = Some h }, Nopal_mvu.Cmd.none)
   | TradingLeft -> ({ model with trading_hover = None }, Nopal_mvu.Cmd.none)
-  | Pan delta ->
-      let dw = Domain_window.pan model.domain_window ~delta in
-      ({ model with domain_window = dw }, Nopal_mvu.Cmd.none)
-  | Zoom (center, factor) ->
-      let dw = Domain_window.zoom model.domain_window ~center ~factor in
-      ({ model with domain_window = dw }, Nopal_mvu.Cmd.none)
+  | PanePointerDown x ->
+      ({ model with pane_drag_start_x = Some x }, Nopal_mvu.Cmd.none)
+  | PanePointerMove x -> (
+      match model.pane_drag_start_x with
+      | None -> (model, Nopal_mvu.Cmd.none)
+      | Some last_x ->
+          let chart_w = 400.0 in
+          let px_delta = x -. last_x in
+          let scale = Domain_window.width model.pane_domain_window /. chart_w in
+          let delta = -.(px_delta *. scale) in
+          let dw =
+            Domain_window.pan model.pane_domain_window ~delta |> clamp_pane_dw
+          in
+          ( { model with pane_domain_window = dw; pane_drag_start_x = Some x },
+            Nopal_mvu.Cmd.none ))
+  | PanePointerUp ->
+      ({ model with pane_drag_start_x = None }, Nopal_mvu.Cmd.none)
+  | PanePointerLeave ->
+      ({ model with pane_drag_start_x = None }, Nopal_mvu.Cmd.none)
+  | LinePointerDown x ->
+      ({ model with line_drag_start_x = Some x }, Nopal_mvu.Cmd.none)
+  | LinePointerMove x -> (
+      match model.line_drag_start_x with
+      | None -> (model, Nopal_mvu.Cmd.none)
+      | Some last_x ->
+          let chart_w = 400.0 *. 1.5 in
+          let px_delta = x -. last_x in
+          let scale = Domain_window.width model.line_domain_window /. chart_w in
+          let delta = -.(px_delta *. scale) in
+          let dw =
+            Domain_window.pan model.line_domain_window ~delta |> clamp_line_dw
+          in
+          ( { model with line_domain_window = dw; line_drag_start_x = Some x },
+            Nopal_mvu.Cmd.none ))
+  | LinePointerUp ->
+      ({ model with line_drag_start_x = None }, Nopal_mvu.Cmd.none)
+  | LinePointerLeave ->
+      ({ model with line_drag_start_x = None }, Nopal_mvu.Cmd.none)
+  | LineWheelZoom we ->
+      let dw = model.line_domain_window in
+      let center = (dw.x_min +. dw.x_max) /. 2.0 in
+      let factor = if we.delta_y > 0.0 then 1.2 else 1.0 /. 1.2 in
+      let dw' = Domain_window.zoom dw ~center ~factor in
+      let dw' =
+        if Domain_window.width dw' >= 999.0 then
+          Domain_window.create ~x_min:0.0 ~x_max:999.0
+        else if Domain_window.width dw' < 5.0 then dw
+        else dw'
+      in
+      ({ model with line_domain_window = dw' }, Nopal_mvu.Cmd.none)
+  | ZoomIn ->
+      let dw = model.line_domain_window in
+      let center = (dw.x_min +. dw.x_max) /. 2.0 in
+      let dw' = Domain_window.zoom dw ~center ~factor:0.5 in
+      let dw' = if Domain_window.width dw' < 5.0 then dw else dw' in
+      ({ model with line_domain_window = dw' }, Nopal_mvu.Cmd.none)
+  | ZoomOut ->
+      let dw = model.line_domain_window in
+      let center = (dw.x_min +. dw.x_max) /. 2.0 in
+      let dw' = Domain_window.zoom dw ~center ~factor:2.0 in
+      let dw' =
+        if Domain_window.width dw' >= 999.0 then
+          Domain_window.create ~x_min:0.0 ~x_max:999.0
+        else dw'
+      in
+      ({ model with line_domain_window = dw' }, Nopal_mvu.Cmd.none)
 
 (* Section wrapper (REQ-F10) *)
 let view_section title children =
@@ -1480,41 +1558,55 @@ let view_chart_extensions model =
               Chart_pane.view
                 ~panes:
                   [
-                    Chart_pane.pane ~height_ratio:0.6 (fun dw ->
+                    Chart_pane.pane ~height_ratio:0.6 (fun dw ~width ~height ->
                         Trading.Candlestick.view ~data:ohlc_data
                           ~x:(fun (x, _, _, _, _, _) -> x)
                           ~open_:(fun (_, o, _, _, _, _) -> o)
                           ~high:(fun (_, _, h, _, _, _) -> h)
                           ~low:(fun (_, _, _, l, _, _) -> l)
                           ~close:(fun (_, _, _, _, c, _) -> c)
-                          ~width:chart_w ~height:1.0 ~domain_window:dw
-                          ~on_hover:(fun h -> TradingHovered h)
-                          ~on_leave:TradingLeft ?hover:model.trading_hover ());
-                    Chart_pane.pane ~height_ratio:0.2 (fun dw ->
+                          ~width ~height ~domain_window:dw ());
+                    Chart_pane.pane ~height_ratio:0.2 (fun dw ~width ~height ->
                         Bar.view ~data:volume_data
                           ~x:(fun (x, _) -> x)
                           ~label:(fun (x, _) -> Printf.sprintf "%.0f" x)
                           ~value:(fun (_, v) -> v)
                           ~color:(fun _ -> cat.(5))
-                          ~width:chart_w ~height:1.0 ~domain_window:dw ());
-                    Chart_pane.pane ~height_ratio:0.2 (fun dw ->
+                          ~width ~height ~domain_window:dw ());
+                    Chart_pane.pane ~height_ratio:0.2 (fun dw ~width ~height ->
                         Trading.Drawdown.view ~data:drawdown_data
                           ~x:(fun (x, _) -> x)
                           ~y:(fun (_, y) -> y)
-                          ~width:chart_w ~height:1.0 ~domain_window:dw ());
+                          ~width ~height ~domain_window:dw ());
                   ]
-                ~domain_window:model.domain_window ~width:chart_w
+                ~domain_window:model.pane_domain_window ~width:chart_w
                 ~height:(chart_h *. 2.0)
-                ~on_pan:(fun delta -> Pan delta)
-                ~on_zoom:(fun center factor -> Zoom (center, factor))
-                ();
+                ~on_pointer_down:(fun pe -> PanePointerDown pe.client_x)
+                ~on_pointer_move:(fun pe -> PanePointerMove pe.client_x)
+                ~on_pointer_up:(fun _pe -> PanePointerUp)
+                ~on_pointer_leave:PanePointerLeave ();
             ];
-          (* Standalone line chart with pan/zoom and 1k data points *)
-          Element.text "Line chart with pan/zoom (1,000 data points):";
+          (* Standalone line chart with drag-to-pan, wheel-to-zoom, and buttons *)
+          Element.text
+            "Line chart with pan/zoom (1,000 data points \xe2\x80\x94 drag to \
+             pan, scroll to zoom, or use +/- buttons):";
           Element.row ~style:row_style
             [
               Element.box
+                ~style:
+                  (Style.default
+                  |> Style.with_layout (fun l ->
+                      {
+                        l with
+                        width = Fixed (chart_w *. 1.5);
+                        height = Fixed chart_h;
+                      }))
                 ~attrs:[ ("data-testid", "panzoom-line-chart") ]
+                ~on_pointer_down:(fun pe -> LinePointerDown pe.client_x)
+                ~on_pointer_move:(fun pe -> LinePointerMove pe.client_x)
+                ~on_pointer_up:(fun _pe -> LinePointerUp)
+                ~on_pointer_leave:LinePointerLeave
+                ~on_wheel:(fun we -> LineWheelZoom we)
                 [
                   Line.view
                     ~series:
@@ -1525,9 +1617,21 @@ let view_chart_extensions model =
                       ]
                     ~x:(fun (x, _) -> x)
                     ~width:(chart_w *. 1.5) ~height:chart_h
-                    ~domain_window:model.domain_window
+                    ~domain_window:model.line_domain_window
                     ~on_hover:(fun h -> ChartHovered h)
                     ~on_leave:ChartLeft ?hover:model.chart_hover ();
+                ];
+              Element.column
+                ~style:
+                  (Style.default
+                  |> Style.with_layout (fun l -> { l with gap = 8.0 }))
+                [
+                  Element.button ~on_click:ZoomIn
+                    ~attrs:[ ("data-testid", "zoom-in-btn") ]
+                    (Element.text "+");
+                  Element.button ~on_click:ZoomOut
+                    ~attrs:[ ("data-testid", "zoom-out-btn") ]
+                    (Element.text "-");
                 ];
             ];
         ];

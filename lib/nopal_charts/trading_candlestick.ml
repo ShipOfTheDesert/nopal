@@ -46,7 +46,9 @@ let view ~data ~x ~open_ ~high ~low ~close ~width ~height
         Axis.compute_domain y_axis_cfg ~data_min:data_y_min ~data_max:data_y_max
       in
       let x_lo, x_hi =
-        Axis.compute_domain x_axis ~data_min:x_min ~data_max:x_max
+        match domain_window with
+        | Some window -> (window.x_min, window.x_max)
+        | None -> Axis.compute_domain x_axis ~data_min:x_min ~data_max:x_max
       in
       let x_scale =
         Nopal_draw.Scale.create ~domain:(x_lo, x_hi)
@@ -140,12 +142,8 @@ let view ~data ~x ~open_ ~high ~low ~close ~width ~height
                 | None -> leave_msg)
         | _ -> None
       in
-      let draw_el =
-        Nopal_element.Element.draw ?on_pointer_move ?on_pointer_leave:on_leave
-          ~width ~height all_scene
-      in
-      (* Compose with tooltip if hovered *)
-      let tooltip =
+      (* Build tooltip scene if hovered *)
+      let tooltip_scene =
         match (hover, format_tooltip) with
         | Some h, Some fmt when h.Hover.index >= 0 && h.Hover.index < n_points
           ->
@@ -154,9 +152,9 @@ let view ~data ~x ~open_ ~high ~low ~close ~width ~height
               fmt h.Hover.index (open_ datum) (high datum) (low datum)
                 (close datum)
             in
-            Some
-              (Tooltip.container ~x:h.cursor_x ~y:h.cursor_y ~chart_width:width
-                 ~chart_height:height tip)
-        | _ -> None
+            Tooltip.scene ~x:h.cursor_x ~y:h.cursor_y ~chart_width:width
+              ~chart_height:height tip
+        | _ -> []
       in
-      Chart_compose.compose ~draw_el ~width ~height ~tooltip
+      Chart_compose.compose ~scene:all_scene ~tooltip_scene ~width ~height
+        ?on_pointer_move ?on_pointer_leave:on_leave ()

@@ -181,7 +181,7 @@ let test_hover_covers_wick_range () =
     candle_view ~hover
       ~on_hover:(fun h -> Hovered h)
       ~on_leave:Left
-      ~format_tooltip:(fun _idx _o _h _l _c -> Element.text "tooltip")
+      ~format_tooltip:(fun _idx _o _h _l _c -> "tooltip")
       sample_data
   in
   match extract_draw el with
@@ -202,15 +202,15 @@ let test_tooltip_shows_ohlc () =
       ~on_leave:Left
       ~format_tooltip:(fun _idx o h l c ->
         tooltip_called := true;
-        Element.text (Printf.sprintf "O:%.0f H:%.0f L:%.0f C:%.0f" o h l c))
+        Printf.sprintf "O:%.0f H:%.0f L:%.0f C:%.0f" o h l c)
       sample_data
   in
-  (* Should be a Box with tooltip child *)
+  (* With tooltip, result is a Draw with merged scene nodes *)
   match (el : msg Element.t) with
-  | Box { children; _ } ->
-      Alcotest.(check bool) "has children" true (List.length children >= 2);
+  | Draw { scene; _ } ->
+      Alcotest.(check bool) "has scene nodes" true (List.length scene >= 2);
       Alcotest.(check bool) "tooltip formatter called" true !tooltip_called
-  | _ -> Alcotest.fail "expected Box with tooltip"
+  | _ -> Alcotest.fail "expected Draw with tooltip scene"
 
 let test_default_colors () =
   (* Without explicit colors, should still produce colored rects *)

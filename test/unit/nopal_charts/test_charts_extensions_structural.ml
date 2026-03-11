@@ -67,11 +67,11 @@ let drawdown_element () =
 
 let chart_pane_element () =
   let p1 =
-    Chart_pane.pane ~height_ratio:0.6 (fun _dw ->
+    Chart_pane.pane ~height_ratio:0.6 (fun _dw ~width:_ ~height:_ ->
         Nopal_element.Element.text "pane1")
   in
   let p2 =
-    Chart_pane.pane ~height_ratio:0.4 (fun _dw ->
+    Chart_pane.pane ~height_ratio:0.4 (fun _dw ~width:_ ~height:_ ->
         Nopal_element.Element.text "pane2")
   in
   let dw = Domain_window.create ~x_min:0.0 ~x_max:10.0 in

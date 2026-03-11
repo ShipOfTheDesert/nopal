@@ -115,7 +115,9 @@ let test_hover_vertical_band () =
   let el = area_view ~on_hover:(fun h -> Hovered h) ~on_leave:Left () in
   match extract_draw el with
   | Some (_, Some on_move, _, _, _) -> (
-      let msg = on_move { x = 200.0; y = 150.0 } in
+      let msg =
+        on_move { x = 200.0; y = 150.0; client_x = 200.0; client_y = 150.0 }
+      in
       match msg with
       | Hovered h ->
           Alcotest.(check bool)

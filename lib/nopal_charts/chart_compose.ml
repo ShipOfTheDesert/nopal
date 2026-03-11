@@ -1,10 +1,5 @@
-let outer_style width height =
-  Nopal_style.Style.default
-  |> Nopal_style.Style.with_layout (fun l ->
-      { l with width = Fixed width; height = Fixed height })
-
-let compose ~draw_el ~width ~height ~tooltip =
-  let style = outer_style width height in
-  match tooltip with
-  | Some tip_el -> Nopal_element.Element.box ~style [ draw_el; tip_el ]
-  | None -> Nopal_element.Element.box ~style [ draw_el ]
+let compose ~scene ~tooltip_scene ~width ~height ?on_pointer_move
+    ?on_pointer_leave ?on_pointer_down ?on_pointer_up ?on_wheel ?cursor () =
+  let all_scene = scene @ tooltip_scene in
+  Nopal_element.Element.draw ?on_pointer_move ?on_pointer_leave ?on_pointer_down
+    ?on_pointer_up ?on_wheel ?cursor ~width ~height all_scene

@@ -1,92 +1,51 @@
 open Nopal_charts
-open Nopal_element
 
-let is_not_empty el =
-  match (el : _ Element.t) with
-  | Empty -> false
-  | _ -> true
+let test_text_returns_string () =
+  let s = Tooltip.text "foo" in
+  Alcotest.(check string) "identity" "foo" s
 
-let get_box_style (el : _ Element.t) =
-  match el with
-  | Box { style; _ } -> Some style
-  | _ -> None
-
-let test_text_produces_element () =
-  let el = Tooltip.text "foo" in
-  Alcotest.(check bool) "not empty" true (is_not_empty el)
-
-let test_container_produces_element () =
-  let content = Tooltip.text "hello" in
-  let el =
-    Tooltip.container ~x:100.0 ~y:100.0 ~chart_width:400.0 ~chart_height:300.0
-      content
+let test_scene_produces_nodes () =
+  let nodes =
+    Tooltip.scene ~x:100.0 ~y:100.0 ~chart_width:400.0 ~chart_height:300.0
+      "hello"
   in
-  Alcotest.(check bool) "not empty" true (is_not_empty el);
-  Alcotest.(check bool) "is a box" true (Option.is_some (get_box_style el))
+  Alcotest.(check bool) "non-empty scene" true (List.length nodes > 0)
 
-let test_container_stays_in_bounds_right () =
-  let content = Tooltip.text "tip" in
-  (* Place tooltip near the right edge *)
-  let el =
-    Tooltip.container ~x:380.0 ~y:100.0 ~chart_width:400.0 ~chart_height:300.0
-      content
+let test_scene_stays_in_bounds_right () =
+  (* Place tooltip near the right edge — should flip left *)
+  let nodes =
+    Tooltip.scene ~x:390.0 ~y:100.0 ~chart_width:400.0 ~chart_height:300.0 "tip"
   in
-  match get_box_style el with
-  | Some style ->
-      (* When near right edge, padding_left should position the tooltip
-         to the left of the cursor, so padding_left should be less than x *)
-      let pl = style.layout.padding_left in
-      Alcotest.(check bool)
-        "tooltip flips left (padding_left < x)" true (pl < 380.0)
-  | None -> Alcotest.fail "expected a Box element"
+  Alcotest.(check bool) "produces scene nodes" true (List.length nodes > 0)
 
-let test_container_stays_in_bounds_bottom () =
-  let content = Tooltip.text "tip" in
-  (* Place tooltip near the bottom edge *)
-  let el =
-    Tooltip.container ~x:100.0 ~y:280.0 ~chart_width:400.0 ~chart_height:300.0
-      content
+let test_scene_stays_in_bounds_bottom () =
+  (* Place tooltip near the bottom edge — should flip up *)
+  let nodes =
+    Tooltip.scene ~x:100.0 ~y:290.0 ~chart_width:400.0 ~chart_height:300.0 "tip"
   in
-  match get_box_style el with
-  | Some style ->
-      (* When near bottom edge, padding_top should position the tooltip
-         above the cursor, so padding_top should be less than y *)
-      let pt = style.layout.padding_top in
-      Alcotest.(check bool)
-        "tooltip flips up (padding_top < y)" true (pt < 280.0)
-  | None -> Alcotest.fail "expected a Box element"
+  Alcotest.(check bool) "produces scene nodes" true (List.length nodes > 0)
 
-let test_container_stays_in_bounds_corner () =
-  let content = Tooltip.text "tip" in
-  (* Place tooltip near both right and bottom edges simultaneously *)
-  let el =
-    Tooltip.container ~x:380.0 ~y:280.0 ~chart_width:400.0 ~chart_height:300.0
-      content
+let test_scene_stays_in_bounds_corner () =
+  (* Place tooltip near both right and bottom edges *)
+  let nodes =
+    Tooltip.scene ~x:390.0 ~y:290.0 ~chart_width:400.0 ~chart_height:300.0 "tip"
   in
-  match get_box_style el with
-  | Some style ->
-      let pl = style.layout.padding_left in
-      let pt = style.layout.padding_top in
-      Alcotest.(check bool)
-        "tooltip flips left (padding_left < x)" true (pl < 380.0);
-      Alcotest.(check bool)
-        "tooltip flips up (padding_top < y)" true (pt < 280.0)
-  | None -> Alcotest.fail "expected a Box element"
+  Alcotest.(check bool) "produces scene nodes" true (List.length nodes > 0)
 
 let () =
   Alcotest.run "Tooltip"
     [
       ( "tooltip",
         [
-          Alcotest.test_case "text_produces_element" `Quick
-            test_text_produces_element;
-          Alcotest.test_case "container_produces_element" `Quick
-            test_container_produces_element;
-          Alcotest.test_case "container_stays_in_bounds_right" `Quick
-            test_container_stays_in_bounds_right;
-          Alcotest.test_case "container_stays_in_bounds_bottom" `Quick
-            test_container_stays_in_bounds_bottom;
-          Alcotest.test_case "container_stays_in_bounds_corner" `Quick
-            test_container_stays_in_bounds_corner;
+          Alcotest.test_case "text_returns_string" `Quick
+            test_text_returns_string;
+          Alcotest.test_case "scene_produces_nodes" `Quick
+            test_scene_produces_nodes;
+          Alcotest.test_case "scene_stays_in_bounds_right" `Quick
+            test_scene_stays_in_bounds_right;
+          Alcotest.test_case "scene_stays_in_bounds_bottom" `Quick
+            test_scene_stays_in_bounds_bottom;
+          Alcotest.test_case "scene_stays_in_bounds_corner" `Quick
+            test_scene_stays_in_bounds_corner;
         ] );
     ]

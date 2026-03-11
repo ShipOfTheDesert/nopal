@@ -7,7 +7,7 @@ val view :
   height:float ->
   ?inner_radius:float ->
   ?label_threshold:float ->
-  ?format_tooltip:('a -> 'msg Nopal_element.Element.t) ->
+  ?format_tooltip:('a -> string) ->
   ?on_hover:(Hover.t -> 'msg) ->
   ?on_leave:'msg ->
   ?hover:Hover.t ->

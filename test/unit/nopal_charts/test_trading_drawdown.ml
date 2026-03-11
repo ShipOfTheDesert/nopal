@@ -161,14 +161,14 @@ let test_hover_and_tooltip () =
       ~on_hover:(fun h -> Hovered h)
       ~on_leave:Left
       ~format_tooltip:(fun _idx value ->
-        Element.text (Printf.sprintf "DD: %.1f%%" (value *. 100.0)))
+        Printf.sprintf "DD: %.1f%%" (value *. 100.0))
       sample_data
   in
-  (* Should be a Box with tooltip *)
+  (* With tooltip, result is a Draw with merged scene nodes *)
   match (el : msg Element.t) with
-  | Box { children; _ } ->
-      Alcotest.(check bool) "has children" true (List.length children >= 2)
-  | _ -> Alcotest.fail "expected Box with tooltip"
+  | Draw { scene; _ } ->
+      Alcotest.(check bool) "has scene nodes" true (List.length scene >= 2)
+  | _ -> Alcotest.fail "expected Draw with tooltip scene"
 
 let test_domain_window_clips () =
   (* With a domain window [2.0, 4.0], only points with x in that range
@@ -190,8 +190,7 @@ let test_api_consistency () =
       ~on_hover:(fun h -> Hovered h)
       ~on_leave:Left
       ~hover:Hover.{ index = 0; series = 0; cursor_x = 100.0; cursor_y = 100.0 }
-      ~format_tooltip:(fun _idx value ->
-        Element.text (Printf.sprintf "%.2f" value))
+      ~format_tooltip:(fun _idx value -> Printf.sprintf "%.2f" value)
       ()
   in
   (* If it compiled and ran, API is consistent *)

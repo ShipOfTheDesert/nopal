@@ -15,7 +15,7 @@ val view :
   ?fill_color:Nopal_draw.Color.t ->
   ?x_axis:Axis.config ->
   ?y_axis:Axis.config ->
-  ?format_tooltip:(int -> float -> 'msg Nopal_element.Element.t) ->
+  ?format_tooltip:(int -> float -> string) ->
   ?on_hover:(Hover.t -> 'msg) ->
   ?on_leave:'msg ->
   ?hover:Hover.t ->

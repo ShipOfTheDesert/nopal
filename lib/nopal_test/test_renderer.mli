@@ -159,6 +159,29 @@ val pointer_leave : selector -> 'msg rendered -> (unit, error) result
     matches, [Error (No_handler ...)] if the element has no pointer_leave
     handler. *)
 
+val pointer_down :
+  selector -> x:float -> y:float -> 'msg rendered -> (unit, error) result
+(** [pointer_down selector ~x ~y rendered] finds the first canvas element
+    matching [selector], invokes its [on_pointer_down] handler with the given
+    coordinates, and appends the resulting message. *)
+
+val pointer_up :
+  selector -> x:float -> y:float -> 'msg rendered -> (unit, error) result
+(** [pointer_up selector ~x ~y rendered] finds the first canvas element matching
+    [selector], invokes its [on_pointer_up] handler with the given coordinates,
+    and appends the resulting message. *)
+
+val draw_wheel :
+  selector ->
+  delta_y:float ->
+  x:float ->
+  y:float ->
+  'msg rendered ->
+  (unit, error) result
+(** [draw_wheel selector ~delta_y ~x ~y rendered] finds the first canvas element
+    matching [selector], invokes its [on_wheel] handler with the given delta and
+    coordinates, and appends the resulting message. *)
+
 (** {1 MVU loop} *)
 
 val run_app :

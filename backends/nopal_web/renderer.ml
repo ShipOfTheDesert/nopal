@@ -226,10 +226,11 @@ let pointer_event_of_mouse ev el =
   let client_y = Jv.Float.get (Brr.Ev.to_jv ev) "clientY" in
   let rect_left = Jv.Float.get rect "left" in
   let rect_top = Jv.Float.get rect "top" in
-  { Nopal_element.Element.x = client_x -. rect_left; y = client_y -. rect_top }
+  Nopal_element.Element.
+    { x = client_x -. rect_left; y = client_y -. rect_top; client_x; client_y }
 
 let wire_draw_pointer_events ~dispatch el on_pointer_move on_click
-    on_pointer_leave =
+    on_pointer_leave on_pointer_down on_pointer_up on_wheel =
   let move_l =
     match on_pointer_move with
     | None -> []
@@ -264,7 +265,137 @@ let wire_draw_pointer_events ~dispatch el on_pointer_move on_click
             (Brr.El.as_target el);
         ]
   in
-  move_l @ click_l @ leave_l
+  let down_l =
+    match on_pointer_down with
+    | None -> []
+    | Some f ->
+        [
+          Brr.Ev.listen Brr.Ev.pointerdown
+            (fun ev ->
+              let pe = pointer_event_of_mouse ev el in
+              dispatch (f pe))
+            (Brr.El.as_target el);
+        ]
+  in
+  let up_l =
+    match on_pointer_up with
+    | None -> []
+    | Some f ->
+        [
+          Brr.Ev.listen Brr.Ev.pointerup
+            (fun ev ->
+              let pe = pointer_event_of_mouse ev el in
+              dispatch (f pe))
+            (Brr.El.as_target el);
+        ]
+  in
+  let wheel_l =
+    match on_wheel with
+    | None -> []
+    | Some f ->
+        [
+          Brr.Ev.listen Brr.Ev.wheel
+            (fun ev ->
+              Brr.Ev.prevent_default ev;
+              let rect =
+                Jv.call (Brr.El.to_jv el) "getBoundingClientRect" [||]
+              in
+              let client_x = Jv.Float.get (Brr.Ev.to_jv ev) "clientX" in
+              let client_y = Jv.Float.get (Brr.Ev.to_jv ev) "clientY" in
+              let rect_left = Jv.Float.get rect "left" in
+              let rect_top = Jv.Float.get rect "top" in
+              let delta_y = Jv.Float.get (Brr.Ev.to_jv ev) "deltaY" in
+              let we =
+                Nopal_element.Element.
+                  {
+                    delta_y;
+                    x = client_x -. rect_left;
+                    y = client_y -. rect_top;
+                  }
+              in
+              dispatch (f we))
+            (Brr.El.as_target el);
+        ]
+  in
+  move_l @ click_l @ leave_l @ down_l @ up_l @ wheel_l
+
+let wire_box_pointer_events ~dispatch el on_pointer_move on_pointer_leave
+    on_pointer_down on_pointer_up on_wheel =
+  let move_l =
+    match on_pointer_move with
+    | None -> []
+    | Some f ->
+        [
+          Brr.Ev.listen Brr.Ev.pointermove
+            (fun ev ->
+              let pe = pointer_event_of_mouse ev el in
+              dispatch (f pe))
+            (Brr.El.as_target el);
+        ]
+  in
+  let leave_l =
+    match on_pointer_leave with
+    | None -> []
+    | Some msg ->
+        [
+          Brr.Ev.listen Brr.Ev.pointerleave
+            (fun _ev -> dispatch msg)
+            (Brr.El.as_target el);
+        ]
+  in
+  let down_l =
+    match on_pointer_down with
+    | None -> []
+    | Some f ->
+        [
+          Brr.Ev.listen Brr.Ev.pointerdown
+            (fun ev ->
+              let pe = pointer_event_of_mouse ev el in
+              dispatch (f pe))
+            (Brr.El.as_target el);
+        ]
+  in
+  let up_l =
+    match on_pointer_up with
+    | None -> []
+    | Some f ->
+        [
+          Brr.Ev.listen Brr.Ev.pointerup
+            (fun ev ->
+              let pe = pointer_event_of_mouse ev el in
+              dispatch (f pe))
+            (Brr.El.as_target el);
+        ]
+  in
+  let wheel_l =
+    match on_wheel with
+    | None -> []
+    | Some f ->
+        [
+          Brr.Ev.listen Brr.Ev.wheel
+            (fun ev ->
+              Brr.Ev.prevent_default ev;
+              let rect =
+                Jv.call (Brr.El.to_jv el) "getBoundingClientRect" [||]
+              in
+              let client_x = Jv.Float.get (Brr.Ev.to_jv ev) "clientX" in
+              let client_y = Jv.Float.get (Brr.Ev.to_jv ev) "clientY" in
+              let rect_left = Jv.Float.get rect "left" in
+              let rect_top = Jv.Float.get rect "top" in
+              let delta_y = Jv.Float.get (Brr.Ev.to_jv ev) "deltaY" in
+              let we =
+                Nopal_element.Element.
+                  {
+                    delta_y;
+                    x = client_x -. rect_left;
+                    y = client_y -. rect_top;
+                  }
+              in
+              dispatch (f we))
+            (Brr.El.as_target el);
+        ]
+  in
+  move_l @ leave_l @ down_l @ up_l @ wheel_l
 
 let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
     'msg live =
@@ -278,9 +409,30 @@ let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
       let el = Brr.El.v (Jstr.v "span") [ Brr.El.txt (Jstr.v s) ] in
       let text_css_props = apply_text_style el text_style in
       Live_text { text_dom = el; text = s; text_style; text_css_props }
-  | Box { style; interaction; attrs; children } ->
+  | Box
+      {
+        style;
+        interaction;
+        attrs;
+        children;
+        on_pointer_move;
+        on_pointer_leave;
+        on_pointer_down;
+        on_pointer_up;
+        on_wheel;
+      } ->
       let el = Brr.El.v (Jstr.v "div") [] in
       apply_container_base_style el;
+      (* Box must set flex-direction inline: CSS default is "row" but Nopal's
+         default is Column_dir.  Row and Column already set direction inline;
+         Box needs the same treatment so the style's direction is honoured
+         even when the rest of the layout matches the Nopal default. *)
+      let dir =
+        match style.layout.direction with
+        | Nopal_style.Style.Column_dir -> "column"
+        | Nopal_style.Style.Row_dir -> "row"
+      in
+      Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v dir) el;
       let base_id, interaction_id =
         apply_styles_for_element ~sheet el style interaction
       in
@@ -290,12 +442,16 @@ let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
       let live_children =
         List.map (create_and_append ~sheet ~dispatch el) children
       in
+      let listeners =
+        wire_box_pointer_events ~dispatch el on_pointer_move on_pointer_leave
+          on_pointer_down on_pointer_up on_wheel
+      in
       Live_node
         {
           dom = el;
           element;
           children = live_children;
-          listeners = [];
+          listeners;
           base_id;
           interaction_id;
         }
@@ -438,6 +594,9 @@ let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
         on_pointer_move;
         on_click;
         on_pointer_leave;
+        on_pointer_down;
+        on_pointer_up;
+        on_wheel;
         cursor;
         aria_label;
       } ->
@@ -453,7 +612,7 @@ let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
       Canvas_renderer.render ctx scene;
       let listeners =
         wire_draw_pointer_events ~dispatch el on_pointer_move on_click
-          on_pointer_leave
+          on_pointer_leave on_pointer_down on_pointer_up on_wheel
       in
       Live_node
         {
@@ -858,7 +1017,31 @@ and reconcile_node ~sheet ~dispatch (old_n : 'msg live_node)
   let el = old_n.dom in
   maybe_reconcile_styles ~sheet old_n old_n.element new_el;
   (match new_el with
-  | Box { children; _ }
+  | Box
+      {
+        style;
+        children;
+        on_pointer_move;
+        on_pointer_leave;
+        on_pointer_down;
+        on_pointer_up;
+        on_wheel;
+        _;
+      } ->
+      maybe_apply_attrs el old_n.element new_el;
+      (* Keep inline flex-direction in sync with the style's direction. *)
+      let dir =
+        match style.layout.direction with
+        | Nopal_style.Style.Column_dir -> "column"
+        | Nopal_style.Style.Row_dir -> "row"
+      in
+      Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v dir) el;
+      unlisten_all old_n.listeners;
+      old_n.listeners <-
+        wire_box_pointer_events ~dispatch el on_pointer_move on_pointer_leave
+          on_pointer_down on_pointer_up on_wheel;
+      old_n.children <-
+        reconcile_children ~sheet ~dispatch el old_n.children children
   | Row { children; _ }
   | Column { children; _ } ->
       maybe_apply_attrs el old_n.element new_el;
@@ -926,6 +1109,9 @@ and reconcile_node ~sheet ~dispatch (old_n : 'msg live_node)
         on_pointer_move;
         on_click;
         on_pointer_leave;
+        on_pointer_down;
+        on_pointer_up;
+        on_wheel;
         cursor;
         aria_label;
       } ->
@@ -957,7 +1143,7 @@ and reconcile_node ~sheet ~dispatch (old_n : 'msg live_node)
       unlisten_all old_n.listeners;
       old_n.listeners <-
         wire_draw_pointer_events ~dispatch el on_pointer_move on_click
-          on_pointer_leave
+          on_pointer_leave on_pointer_down on_pointer_up on_wheel
   | Empty
   | Text _
   | Keyed _ ->

@@ -71,8 +71,10 @@ let test_draw_with_callbacks () =
           aria_label = Some "chart";
           _;
         } -> (
-        let m = f { Element.x = 10.; y = 20. } in
-        let c = g { Element.x = 5.; y = 15. } in
+        let m =
+          f { Element.x = 10.; y = 20.; client_x = 10.; client_y = 20. }
+        in
+        let c = g { Element.x = 5.; y = 15.; client_x = 5.; client_y = 15. } in
         match (m, c) with
         | Moved (10., 20.), Clicked (5., 15.) -> true
         | Moved _, _
@@ -107,7 +109,7 @@ let test_draw_map () =
     | Element.Draw
         { on_pointer_move = Some f; on_pointer_leave = Some (Wrapped Left); _ }
       -> (
-        match f { Element.x = 1.; y = 2. } with
+        match f { Element.x = 1.; y = 2.; client_x = 1.; client_y = 2. } with
         | Wrapped (Moved (1., 2.)) -> true
         | Wrapped (Moved _ | Clicked _ | Left) -> false)
     | Element.Empty

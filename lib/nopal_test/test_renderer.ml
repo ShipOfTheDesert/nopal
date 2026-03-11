@@ -23,6 +23,9 @@ type 'msg draw_handler_entry = {
   on_pointer_move : (Nopal_element.Element.pointer_event -> 'msg) option;
   on_pointer_click : (Nopal_element.Element.pointer_event -> 'msg) option;
   on_pointer_leave : 'msg option;
+  on_pointer_down : (Nopal_element.Element.pointer_event -> 'msg) option;
+  on_pointer_up : (Nopal_element.Element.pointer_event -> 'msg) option;
+  on_wheel : (Nopal_element.Element.wheel_event -> 'msg) option;
 }
 
 type 'msg rendered = {
@@ -41,7 +44,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
     match el with
     | Empty -> Empty
     | Text { content; text_style } -> Text { content; text_style }
-    | Box { style = _; interaction; attrs; children } ->
+    | Box { style = _; interaction; attrs; children; _ } ->
         Element
           {
             tag = "box";
@@ -139,14 +142,27 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             interaction = Nopal_style.Interaction.default;
           }
     | Draw
-        { width; height; scene; on_pointer_move; on_click; on_pointer_leave; _ }
-      ->
+        {
+          width;
+          height;
+          scene;
+          on_pointer_move;
+          on_click;
+          on_pointer_leave;
+          on_pointer_down;
+          on_pointer_up;
+          on_wheel;
+          _;
+        } ->
         draw_handlers :=
           {
             draw_path = List.rev rev_path;
             on_pointer_move;
             on_pointer_click = on_click;
             on_pointer_leave;
+            on_pointer_down;
+            on_pointer_up;
+            on_wheel;
           }
           :: !draw_handlers;
         Element
@@ -518,7 +534,9 @@ let pointer_move sel ~x ~y r =
   match handler.on_pointer_move with
   | None -> Error (No_handler { tag; event = "pointer_move" })
   | Some f ->
-      r.msgs := f { Nopal_element.Element.x; y } :: !(r.msgs);
+      r.msgs :=
+        f { Nopal_element.Element.x; y; client_x = x; client_y = y }
+        :: !(r.msgs);
       Ok ()
 
 let pointer_click sel ~x ~y r =
@@ -533,7 +551,9 @@ let pointer_click sel ~x ~y r =
   match handler.on_pointer_click with
   | None -> Error (No_handler { tag; event = "pointer_click" })
   | Some f ->
-      r.msgs := f { Nopal_element.Element.x; y } :: !(r.msgs);
+      r.msgs :=
+        f { Nopal_element.Element.x; y; client_x = x; client_y = y }
+        :: !(r.msgs);
       Ok ()
 
 let pointer_leave sel r =
@@ -549,6 +569,55 @@ let pointer_leave sel r =
   | None -> Error (No_handler { tag; event = "pointer_leave" })
   | Some msg ->
       r.msgs := msg :: !(r.msgs);
+      Ok ()
+
+let pointer_down sel ~x ~y r =
+  let* path, found =
+    resolve_path sel r.tree |> Option.to_result ~none:(Not_found sel)
+  in
+  let tag = tag_of_node found in
+  let* handler =
+    find_draw_handler_by_path path r.draw_handlers
+    |> Option.to_result ~none:(No_handler { tag; event = "pointer_down" })
+  in
+  match handler.on_pointer_down with
+  | None -> Error (No_handler { tag; event = "pointer_down" })
+  | Some f ->
+      r.msgs :=
+        f { Nopal_element.Element.x; y; client_x = x; client_y = y }
+        :: !(r.msgs);
+      Ok ()
+
+let pointer_up sel ~x ~y r =
+  let* path, found =
+    resolve_path sel r.tree |> Option.to_result ~none:(Not_found sel)
+  in
+  let tag = tag_of_node found in
+  let* handler =
+    find_draw_handler_by_path path r.draw_handlers
+    |> Option.to_result ~none:(No_handler { tag; event = "pointer_up" })
+  in
+  match handler.on_pointer_up with
+  | None -> Error (No_handler { tag; event = "pointer_up" })
+  | Some f ->
+      r.msgs :=
+        f { Nopal_element.Element.x; y; client_x = x; client_y = y }
+        :: !(r.msgs);
+      Ok ()
+
+let draw_wheel sel ~delta_y ~x ~y r =
+  let* path, found =
+    resolve_path sel r.tree |> Option.to_result ~none:(Not_found sel)
+  in
+  let tag = tag_of_node found in
+  let* handler =
+    find_draw_handler_by_path path r.draw_handlers
+    |> Option.to_result ~none:(No_handler { tag; event = "wheel" })
+  in
+  match handler.on_wheel with
+  | None -> Error (No_handler { tag; event = "wheel" })
+  | Some f ->
+      r.msgs := f { Nopal_element.Element.delta_y; x; y } :: !(r.msgs);
       Ok ()
 
 let run_app ~init ~update ~view ?(viewport = Nopal_element.Viewport.desktop)

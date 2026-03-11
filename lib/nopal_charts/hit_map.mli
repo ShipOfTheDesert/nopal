@@ -23,6 +23,16 @@ type region =
 type t
 
 val empty : t
+(** The empty hit map with no regions. *)
+
 val add : region -> t -> t
+(** [add region t] adds [region] to the hit map. Regions added later take
+    priority in hit testing (topmost wins). *)
+
 val hit_test : t -> x:float -> y:float -> hit option
+(** [hit_test t ~x ~y] returns the topmost region containing the point
+    [(x, y)], or [None] if no region matches. Traverses regions in reverse
+    insertion order. *)
+
 val equal_hit : hit -> hit -> bool
+(** Structural equality on {!hit} values. *)

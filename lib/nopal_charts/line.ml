@@ -14,7 +14,8 @@ let series ?(smooth = false) ?(area_fill = false) ?(show_points = false) ~label
 
 let view ~series ~x ~width ~height ?(padding = Padding.default)
     ?(x_axis = Axis.default_config) ?(y_axis = Axis.default_config)
-    ?format_tooltip ?on_hover ?on_leave ?hover ?domain_window () =
+    ?format_tooltip ?on_hover ?on_leave ?hover ?domain_window ?on_pointer_down
+    ?on_pointer_up ?on_wheel () =
   (* Apply domain window clipping if provided *)
   let series =
     match domain_window with
@@ -49,7 +50,9 @@ let view ~series ~x ~width ~height ?(padding = Padding.default)
         Axis.compute_domain y_axis ~data_min:data_y_min ~data_max:data_y_max
       in
       let x_lo, x_hi =
-        Axis.compute_domain x_axis ~data_min:x_min ~data_max:x_max
+        match domain_window with
+        | Some window -> (window.x_min, window.x_max)
+        | None -> Axis.compute_domain x_axis ~data_min:x_min ~data_max:x_max
       in
       let x_scale =
         Nopal_draw.Scale.create ~domain:(x_lo, x_hi)
@@ -172,7 +175,12 @@ let view ~series ~x ~width ~height ?(padding = Padding.default)
         Axis.render_y y_axis ~ticks:y_ticks ~scale:y_scale ~chart_x ~chart_y
           ~chart_height
       in
-      let all_scene = scene_nodes @ x_axis_scene @ y_axis_scene in
+      let clip_shape =
+        Nopal_draw.Scene.rect ~x:chart_x ~y:chart_y ~w:chart_width
+          ~h:chart_height ()
+      in
+      let clipped_data = Nopal_draw.Scene.clip ~shape:clip_shape scene_nodes in
+      let all_scene = [ clipped_data ] @ x_axis_scene @ y_axis_scene in
       (* Build on_pointer_move handler *)
       let on_pointer_move =
         match (on_hover, on_leave) with
@@ -191,12 +199,8 @@ let view ~series ~x ~width ~height ?(padding = Padding.default)
                 | None -> leave_msg)
         | _ -> None
       in
-      let draw_el =
-        Nopal_element.Element.draw ?on_pointer_move ?on_pointer_leave:on_leave
-          ~width ~height all_scene
-      in
-      (* Compose with tooltip if hovered *)
-      let tooltip =
+      (* Build tooltip scene if hovered *)
+      let tooltip_scene =
         match (hover, format_tooltip) with
         | Some h, Some fmt when h.Hover.index >= 0 ->
             (* Gather values from all series at the hovered index *)
@@ -211,9 +215,10 @@ let view ~series ~x ~width ~height ?(padding = Padding.default)
                 series
             in
             let tip = fmt entries in
-            Some
-              (Tooltip.container ~x:h.cursor_x ~y:h.cursor_y ~chart_width:width
-                 ~chart_height:height tip)
-        | _ -> None
+            Tooltip.scene ~x:h.cursor_x ~y:h.cursor_y ~chart_width:width
+              ~chart_height:height tip
+        | _ -> []
       in
-      Chart_compose.compose ~draw_el ~width ~height ~tooltip
+      Chart_compose.compose ~scene:all_scene ~tooltip_scene ~width ~height
+        ?on_pointer_move ?on_pointer_leave:on_leave ?on_pointer_down
+        ?on_pointer_up ?on_wheel ()

@@ -191,7 +191,9 @@ let test_hit_map_rect_count () =
   match extract_draw el with
   | Some (_, Some on_move, _, _, _) ->
       (* The handler should be present *)
-      let _msg = on_move { x = 100.0; y = 150.0 } in
+      let _msg =
+        on_move { x = 100.0; y = 150.0; client_x = 100.0; client_y = 150.0 }
+      in
       (* If we got here, the handler is wired correctly *)
       ()
   | Some (_, None, _, _, _) -> Alcotest.fail "expected on_pointer_move handler"
@@ -245,12 +247,10 @@ let test_custom_tooltip () =
     Tooltip.text (Printf.sprintf "Custom: %s = %.0f" (fst datum) (snd datum))
   in
   let el = bar_view ~hover ~format_tooltip sample in
+  (* Tooltip is now merged into canvas scene nodes *)
   match (el : msg Element.t) with
-  | Box { children; _ } ->
-      (* Should have both Draw and tooltip container children *)
-      Alcotest.(check bool)
-        "has multiple children" true
-        (List.length children >= 2)
+  | Draw { scene; _ } ->
+      Alcotest.(check bool) "has scene nodes" true (List.length scene >= 2)
   | _ ->
       (* Even if structured differently, the element should exist *)
       ()

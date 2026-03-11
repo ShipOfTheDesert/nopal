@@ -6,9 +6,8 @@ let lighten (c : Nopal_draw.Color.t) =
 let view ~data ~row ~col ~value ~row_count ~col_count ?(row_labels = [])
     ?(col_labels = []) ~scale ~width ~height ?(padding = Padding.default)
     ?format_tooltip ?on_hover ?on_leave ?hover () =
-  match row_count with
-  | 0 -> Nopal_element.Element.draw ~width ~height []
-  | _ when col_count = 0 -> Nopal_element.Element.draw ~width ~height []
+  match (row_count, col_count) with
+  | (0, _) | (_, 0) -> Nopal_element.Element.draw ~width ~height []
   | _ ->
       let chart_x = padding.left in
       let chart_y = padding.top in
@@ -107,23 +106,19 @@ let view ~data ~row ~col ~value ~row_count ~col_count ?(row_labels = [])
                 | None -> leave_msg)
         | _ -> None
       in
-      let draw_el =
-        Nopal_element.Element.draw ?on_pointer_move ?on_pointer_leave:on_leave
-          ~width ~height all_scene
-      in
-      (* Compose with tooltip if hovered *)
+      (* Build tooltip scene if hovered *)
       let total_cells = row_count * col_count in
-      let tooltip =
+      let tooltip_scene =
         match (hover, format_tooltip) with
         | Some h, Some fmt when h.Hover.index < total_cells -> (
             let idx = h.Hover.index in
             match Hashtbl.find_opt datum_by_idx idx with
             | Some datum ->
                 let tip = fmt datum in
-                Some
-                  (Tooltip.container ~x:h.cursor_x ~y:h.cursor_y
-                     ~chart_width:width ~chart_height:height tip)
-            | None -> None)
-        | _ -> None
+                Tooltip.scene ~x:h.cursor_x ~y:h.cursor_y ~chart_width:width
+                  ~chart_height:height tip
+            | None -> [])
+        | _ -> []
       in
-      Chart_compose.compose ~draw_el ~width ~height ~tooltip
+      Chart_compose.compose ~scene:all_scene ~tooltip_scene ~width ~height
+        ?on_pointer_move ?on_pointer_leave:on_leave ()

@@ -137,7 +137,7 @@ let of_style (style : t) =
       let acc =
         match layout.direction with
         | Row_dir -> add acc "flex-direction" "row"
-        | Column_dir -> acc
+        | Column_dir -> add acc "flex-direction" "column"
       in
       let acc =
         match layout.main_align with

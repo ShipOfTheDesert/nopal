@@ -47,6 +47,11 @@ let test_box_creates_div () =
         interaction = Nopal_style.Interaction.default;
         attrs = [];
         children = [ Text { content = "a"; text_style = None } ];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
@@ -317,6 +322,11 @@ let test_style_applied_as_inline () =
         interaction = Nopal_style.Interaction.default;
         attrs = [];
         children = [];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
@@ -352,6 +362,11 @@ let test_reconcile_same_variant_reuses_node () =
         interaction = Nopal_style.Interaction.default;
         attrs = [];
         children = [ Text { content = "a"; text_style = None } ];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -363,6 +378,11 @@ let test_reconcile_same_variant_reuses_node () =
         interaction = Nopal_style.Interaction.default;
         attrs = [];
         children = [ Text { content = "b"; text_style = None } ];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
@@ -405,6 +425,11 @@ let test_reconcile_children_append () =
         interaction = Nopal_style.Interaction.default;
         attrs = [];
         children = [ Text { content = "a"; text_style = None } ];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -422,6 +447,11 @@ let test_reconcile_children_append () =
             Text { content = "a"; text_style = None };
             Text { content = "b"; text_style = None };
           ];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
@@ -443,6 +473,11 @@ let test_reconcile_children_remove () =
             Text { content = "a"; text_style = None };
             Text { content = "b"; text_style = None };
           ];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -456,6 +491,11 @@ let test_reconcile_children_remove () =
         interaction = Nopal_style.Interaction.default;
         attrs = [];
         children = [ Text { content = "a"; text_style = None } ];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
@@ -477,6 +517,11 @@ let test_reconcile_children_reuse_by_position () =
             Text { content = "a"; text_style = None };
             Text { content = "b"; text_style = None };
           ];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -495,6 +540,11 @@ let test_reconcile_children_reuse_by_position () =
             Text { content = "c"; text_style = None };
             Text { content = "d"; text_style = None };
           ];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
@@ -525,6 +575,11 @@ let test_keyed_reorder_reuses_nodes () =
             Keyed
               { key = "b"; child = Text { content = "B"; text_style = None } };
           ];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -546,6 +601,11 @@ let test_keyed_reorder_reuses_nodes () =
             Keyed
               { key = "a"; child = Text { content = "A"; text_style = None } };
           ];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
@@ -571,6 +631,11 @@ let test_keyed_add_new_key () =
             Keyed
               { key = "a"; child = Text { content = "A"; text_style = None } };
           ];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -590,6 +655,11 @@ let test_keyed_add_new_key () =
             Keyed
               { key = "b"; child = Text { content = "B"; text_style = None } };
           ];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
@@ -620,6 +690,11 @@ let test_keyed_remove_key () =
             Keyed
               { key = "b"; child = Text { content = "B"; text_style = None } };
           ];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -637,6 +712,11 @@ let test_keyed_remove_key () =
             Keyed
               { key = "a"; child = Text { content = "A"; text_style = None } };
           ];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
@@ -679,6 +759,11 @@ let test_keyed_stable_node_identity () =
             Keyed
               { key = "y"; child = Text { content = "Y"; text_style = None } };
           ];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -714,6 +799,11 @@ let test_keyed_stable_node_identity () =
                     };
               };
           ];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
@@ -793,6 +883,11 @@ let test_reconcile_box_skips_unchanged_attrs () =
         interaction = Nopal_style.Interaction.default;
         attrs = [ ("data-id", "x") ];
         children = [];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -805,6 +900,11 @@ let test_reconcile_box_skips_unchanged_attrs () =
         interaction = Nopal_style.Interaction.default;
         attrs = [ ("data-id", "x") ];
         children = [];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
@@ -821,6 +921,11 @@ let test_reconcile_box_updates_changed_attrs () =
         interaction = Nopal_style.Interaction.default;
         attrs = [ ("data-id", "x") ];
         children = [];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -833,6 +938,11 @@ let test_reconcile_box_updates_changed_attrs () =
         interaction = Nopal_style.Interaction.default;
         attrs = [ ("data-id", "y") ];
         children = [];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
@@ -853,6 +963,11 @@ let test_reconcile_box_removes_stale_attrs () =
         interaction = Nopal_style.Interaction.default;
         attrs = [ ("data-id", "x"); ("data-extra", "y") ];
         children = [];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -870,6 +985,11 @@ let test_reconcile_box_removes_stale_attrs () =
         interaction = Nopal_style.Interaction.default;
         attrs = [ ("data-id", "x") ];
         children = [];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
@@ -1114,6 +1234,11 @@ let test_recursive_unlisten_on_remove () =
                 child = Text { content = "inner"; text_style = None };
               };
           ];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -1170,6 +1295,11 @@ let test_reconcile_interaction_inject_on_change () =
         interaction = Nopal_style.Interaction.default;
         attrs = [];
         children = [];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -1182,6 +1312,11 @@ let test_reconcile_interaction_inject_on_change () =
         interaction = hover_interaction;
         attrs = [];
         children = [];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
@@ -1201,6 +1336,11 @@ let test_reconcile_interaction_remove_on_change () =
         interaction = hover_interaction;
         attrs = [];
         children = [];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -1213,6 +1353,11 @@ let test_reconcile_interaction_remove_on_change () =
         interaction = Nopal_style.Interaction.default;
         attrs = [];
         children = [];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
@@ -1229,6 +1374,11 @@ let test_reconcile_interaction_replace_on_change () =
         interaction = hover_interaction;
         attrs = [];
         children = [];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -1241,6 +1391,11 @@ let test_reconcile_interaction_replace_on_change () =
         interaction = hover_pressed_interaction;
         attrs = [];
         children = [];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
@@ -1259,6 +1414,11 @@ let test_reconcile_interaction_skips_unchanged () =
         interaction = hover_interaction;
         attrs = [];
         children = [];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -1271,6 +1431,11 @@ let test_reconcile_interaction_skips_unchanged () =
         interaction = hover_interaction;
         attrs = [];
         children = [];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;

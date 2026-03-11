@@ -152,8 +152,14 @@ Element.empty                                                    (* renders noth
 Element.text : string -> 'msg Element.t                          (* plain text *)
 Element.styled_text : text_style:Text.t -> string -> 'msg Element.t
 
-(* Layout containers *)
-Element.box    : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list -> 'msg Element.t list -> 'msg Element.t
+(* Layout containers — Box supports pointer + wheel events for pan/zoom *)
+type pointer_event = { x : float; y : float }
+type wheel_event = { delta_y : float; x : float; y : float }
+
+Element.box    : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
+  -> ?on_pointer_move:(pointer_event -> 'msg) -> ?on_pointer_leave:'msg
+  -> ?on_pointer_down:(pointer_event -> 'msg) -> ?on_pointer_up:(pointer_event -> 'msg)
+  -> ?on_wheel:(wheel_event -> 'msg) -> 'msg Element.t list -> 'msg Element.t
 Element.row    : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list -> 'msg Element.t list -> 'msg Element.t
 Element.column : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list -> 'msg Element.t list -> 'msg Element.t
 
@@ -302,21 +308,21 @@ Composable interactive charts built on `nopal_draw`:
 Bar.view : data:'a list -> label:('a -> string) -> value:('a -> float)
   -> color:('a -> Color.t) -> ?x:('a -> float) -> width:float -> height:float
   -> ?padding:Padding.t -> ?x_axis:Axis.config -> ?y_axis:Axis.config
-  -> ?format_tooltip:('a -> 'msg Element.t) -> ?on_hover:(Hover.t -> 'msg)
+  -> ?format_tooltip:('a -> string) -> ?on_hover:(Hover.t -> 'msg)
   -> ?on_leave:'msg -> ?hover:Hover.t -> ?domain_window:Domain_window.t
   -> unit -> 'msg Element.t
 
 (* Line chart — ?domain_window clips data with buffer=1, rescales Y *)
 Line.view : series:'a Line.series list -> x:('a -> float) -> width:float -> height:float
   -> ?padding:Padding.t -> ?x_axis:Axis.config -> ?y_axis:Axis.config
-  -> ?format_tooltip:((string * float) list -> 'msg Element.t)
+  -> ?format_tooltip:((string * float) list -> string)
   -> ?on_hover:(Hover.t -> 'msg) -> ?on_leave:'msg -> ?hover:Hover.t
   -> ?domain_window:Domain_window.t -> unit -> 'msg Element.t
 
 (* Area chart — Stacked | Overlapping modes; ?domain_window clips with buffer=1 *)
 Area.view : series:'a Area.series list -> x:('a -> float) -> width:float -> height:float
   -> ?mode:Area.mode -> ?padding:Padding.t -> ?x_axis:Axis.config -> ?y_axis:Axis.config
-  -> ?format_tooltip:((string * float) list -> 'msg Element.t)
+  -> ?format_tooltip:((string * float) list -> string)
   -> ?on_hover:(Hover.t -> 'msg) -> ?on_leave:'msg -> ?hover:Hover.t
   -> ?domain_window:Domain_window.t -> unit -> 'msg Element.t
 
@@ -328,7 +334,7 @@ Pie.view : data:'a list -> value:('a -> float) -> label:('a -> string)
 Scatter.view : data:'a list -> x:('a -> float) -> y:('a -> float)
   -> ?radius:('a -> float) -> color:('a -> Color.t) -> width:float -> height:float
   -> ?padding:Padding.t -> ?x_axis:Axis.config -> ?y_axis:Axis.config
-  -> ?format_tooltip:('a -> 'msg Element.t) -> ?on_hover:(Hover.t -> 'msg)
+  -> ?format_tooltip:('a -> string) -> ?on_hover:(Hover.t -> 'msg)
   -> ?on_leave:'msg -> ?hover:Hover.t -> ?domain_window:Domain_window.t
   -> unit -> 'msg Element.t
 
@@ -350,7 +356,7 @@ Heat_map.view : data:'a list -> row:('a -> int) -> col:('a -> int)
   -> ?row_labels:string list -> ?col_labels:string list
   -> scale:Color_scale.t -> width:float -> height:float
   -> ?padding:Padding.t
-  -> ?format_tooltip:('a -> 'msg Element.t)
+  -> ?format_tooltip:('a -> string)
   -> ?on_hover:(Hover.t -> 'msg) -> ?on_leave:'msg -> ?hover:Hover.t
   -> unit -> 'msg Element.t
 ```
@@ -374,7 +380,7 @@ Trading.Candlestick.view : data:'a list -> x:('a -> float)
   -> width:float -> height:float -> ?padding:Padding.t
   -> ?bullish_color:Color.t -> ?bearish_color:Color.t
   -> ?x_axis:Axis.config -> ?y_axis:Axis.config
-  -> ?format_tooltip:(int -> float -> float -> float -> float -> 'msg Element.t)
+  -> ?format_tooltip:(int -> float -> float -> float -> float -> string)
   -> ?on_hover:(Hover.t -> 'msg) -> ?on_leave:'msg -> ?hover:Hover.t
   -> ?domain_window:Domain_window.t -> unit -> 'msg Element.t
 (* Bullish (close > open) and bearish candles use distinct colors.
@@ -387,7 +393,7 @@ Trading.Candlestick.view : data:'a list -> x:('a -> float)
 Trading.Drawdown.view : data:'a list -> x:('a -> float) -> y:('a -> float)
   -> width:float -> height:float -> ?padding:Padding.t
   -> ?fill_color:Color.t -> ?x_axis:Axis.config -> ?y_axis:Axis.config
-  -> ?format_tooltip:(int -> float -> 'msg Element.t)
+  -> ?format_tooltip:(int -> float -> string)
   -> ?on_hover:(Hover.t -> 'msg) -> ?on_leave:'msg -> ?hover:Hover.t
   -> ?domain_window:Domain_window.t -> unit -> 'msg Element.t
 (* Y values should be <= 0.0 (drawdown percentages). Y domain: [min_drawdown, 0.0].
@@ -419,6 +425,45 @@ Domain_window.width  : Domain_window.t -> float
 Domain_window.pan    : Domain_window.t -> delta:float -> Domain_window.t
 Domain_window.zoom   : Domain_window.t -> center:float -> factor:float -> Domain_window.t
 (* zoom factor < 1.0 zooms in, > 1.0 zooms out. Center maintains relative position. *)
+
+Domain_window.clamp  : data_min:float -> data_max:float -> Domain_window.t -> Domain_window.t
+(* IMPORTANT: pan/zoom do NOT clamp. Always pipe through clamp after every
+   pan/zoom to prevent the window from sliding past the data range:
+     Domain_window.pan dw ~delta |> Domain_window.clamp ~data_min:0.0 ~data_max:999.0
+   Without clamp, the chart will go blank when the user drags past the data. *)
+```
+
+Typical pan/zoom update pattern (drag-to-pan + wheel-to-zoom + button zoom):
+
+```ocaml
+(* In your model: domain_window : Domain_window.t; drag_start_x : float option *)
+let clamp_dw dw = Domain_window.clamp ~data_min:0.0 ~data_max:999.0 dw
+
+(* Drag to pan *)
+| PointerDown x -> ({ model with drag_start_x = Some x }, Cmd.none)
+| PointerMove x ->
+    (match model.drag_start_x with
+     | None -> (model, Cmd.none)
+     | Some last_x ->
+         let scale = Domain_window.width model.domain_window /. chart_w in
+         let delta = -.(( x -. last_x) *. scale) in
+         let dw = Domain_window.pan model.domain_window ~delta |> clamp_dw in
+         ({ model with domain_window = dw; drag_start_x = Some x }, Cmd.none))
+| PointerUp | PointerLeave -> ({ model with drag_start_x = None }, Cmd.none)
+
+(* Wheel to zoom — on_wheel:(fun we -> WheelZoom we) *)
+| WheelZoom we ->
+    let frac = we.x /. chart_w in
+    let center = dw.x_min +. (frac *. Domain_window.width dw) in
+    let factor = if we.delta_y > 0.0 then 1.2 else 1.0 /. 1.2 in
+    let dw' = Domain_window.zoom dw ~center ~factor |> clamp_dw in
+    ({ model with domain_window = dw' }, Cmd.none)
+
+(* Button zoom — zooms around center *)
+| ZoomIn ->
+    let center = (dw.x_min +. dw.x_max) /. 2.0 in
+    let dw' = Domain_window.zoom dw ~center ~factor:0.5 |> clamp_dw in
+    ({ model with domain_window = dw' }, Cmd.none)
 ```
 
 #### Chart Pane
@@ -428,18 +473,26 @@ Multi-pane synchronized layout:
 ```ocaml
 type 'msg Chart_pane.pane = {
   height_ratio : float;
-  chart : Domain_window.t -> 'msg Element.t;
+  chart : Domain_window.t -> width:float -> height:float -> 'msg Element.t;
   y_axis : Axis.config option;
 }
 
 Chart_pane.pane : height_ratio:float -> ?y_axis:Axis.config
-  -> (Domain_window.t -> 'msg Element.t) -> 'msg Chart_pane.pane
+  -> (Domain_window.t -> width:float -> height:float -> 'msg Element.t)
+  -> 'msg Chart_pane.pane
 
 Chart_pane.view : panes:'msg Chart_pane.pane list -> domain_window:Domain_window.t
-  -> width:float -> height:float -> ?on_pan:(float -> 'msg)
-  -> ?on_zoom:(float -> float -> 'msg) -> unit -> 'msg Element.t
+  -> width:float -> height:float
+  -> ?on_pointer_down:(Element.pointer_event -> 'msg)
+  -> ?on_pointer_move:(Element.pointer_event -> 'msg)
+  -> ?on_pointer_up:(Element.pointer_event -> 'msg)
+  -> ?on_pointer_leave:'msg
+  -> ?on_wheel:(Element.wheel_event -> 'msg)
+  -> unit -> 'msg Element.t
 (* Panes are vertically stacked; height_ratios normalized to sum to 1.0.
-   on_pan emits horizontal drag delta. on_zoom emits (center, factor). *)
+   Each pane's chart function receives the shared domain_window plus the
+   computed pixel width and height. Raw pointer/wheel events are forwarded
+   so the caller can implement pan/zoom in their update function. *)
 ```
 
 #### Viewport
