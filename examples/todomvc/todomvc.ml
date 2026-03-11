@@ -602,7 +602,7 @@ let view_footer model =
   in
   E.column ~style:footer_style ~attrs:[ ("data-section", "footer") ] children
 
-let view model =
+let view _vp model =
   E.column ~style:page_style
     [
       E.column ~style:card_style

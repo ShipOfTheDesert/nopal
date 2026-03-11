@@ -1079,7 +1079,7 @@ module Delayed_app = struct
         ({ model with triggered = true }, Nopal_mvu.Cmd.after 10 Delayed)
     | Delayed -> ({ model with delayed = true }, Nopal_mvu.Cmd.none)
 
-  let view _model = Nopal_element.Element.Empty
+  let view _vp _model = Nopal_element.Element.Empty
   let subscriptions _model = Nopal_mvu.Sub.none
 end
 
@@ -1292,6 +1292,31 @@ let test_keyed_empty_has_no_data_key () =
      since it has no data-key attribute. *)
   Alcotest.(check int) "comment nodeType" 8 (node_type node)
 
+let test_parse_css_px_integer () =
+  Alcotest.(check int) "42" 42 (Nopal_web.parse_css_px "42")
+
+let test_parse_css_px_integer_px () =
+  Alcotest.(check int) "42px" 42 (Nopal_web.parse_css_px "42px")
+
+let test_parse_css_px_fractional_px () =
+  Alcotest.(check int)
+    "44.5px truncates to 44" 44
+    (Nopal_web.parse_css_px "44.5px")
+
+let test_parse_css_px_zero () =
+  Alcotest.(check int) "0px" 0 (Nopal_web.parse_css_px "0px")
+
+let test_parse_css_px_empty () =
+  Alcotest.(check int) "empty string" 0 (Nopal_web.parse_css_px "")
+
+let test_parse_css_px_whitespace () =
+  Alcotest.(check int)
+    "whitespace padded" 44
+    (Nopal_web.parse_css_px "  44px  ")
+
+let test_parse_css_px_garbage () =
+  Alcotest.(check int) "garbage returns 0" 0 (Nopal_web.parse_css_px "abc")
+
 let () =
   Alcotest.run "nopal_web"
     [
@@ -1402,5 +1427,16 @@ let () =
             test_reconcile_interaction_replace_on_change;
           Alcotest.test_case "skip injection when unchanged" `Quick
             test_reconcile_interaction_skips_unchanged;
+        ] );
+      ( "parse_css_px",
+        [
+          Alcotest.test_case "integer" `Quick test_parse_css_px_integer;
+          Alcotest.test_case "integer px" `Quick test_parse_css_px_integer_px;
+          Alcotest.test_case "fractional px" `Quick
+            test_parse_css_px_fractional_px;
+          Alcotest.test_case "zero" `Quick test_parse_css_px_zero;
+          Alcotest.test_case "empty" `Quick test_parse_css_px_empty;
+          Alcotest.test_case "whitespace" `Quick test_parse_css_px_whitespace;
+          Alcotest.test_case "garbage" `Quick test_parse_css_px_garbage;
         ] );
     ]

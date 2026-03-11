@@ -27,7 +27,7 @@ let error_testable =
     ( = )
 
 let test_click_increment () =
-  let r = render (view { count = 0 }) in
+  let r = render (view Nopal_element.Viewport.desktop { count = 0 }) in
   (* The first button in the counter view is "+" *)
   let result = click (By_tag "button") r in
   Alcotest.(check (result unit error_testable)) "click succeeds" (Ok ()) result;

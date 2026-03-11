@@ -551,7 +551,8 @@ let pointer_leave sel r =
       r.msgs := msg :: !(r.msgs);
       Ok ()
 
-let run_app ~init ~update ~view msgs =
+let run_app ~init ~update ~view ?(viewport = Nopal_element.Viewport.desktop)
+    msgs =
   let model, _cmd = init () in
   let final_model =
     List.fold_left
@@ -560,4 +561,4 @@ let run_app ~init ~update ~view msgs =
         m')
       model msgs
   in
-  (final_model, render (view final_model))
+  (final_model, render (view viewport final_model))

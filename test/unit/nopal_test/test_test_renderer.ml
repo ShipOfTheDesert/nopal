@@ -568,7 +568,7 @@ let counter_update model msg =
   | Increment -> (model + 1, Nopal_mvu.Cmd.none)
   | Decrement -> (model - 1, Nopal_mvu.Cmd.none)
 
-let counter_view model =
+let counter_view _vp model =
   E.box
     [
       E.text (string_of_int model);
@@ -705,7 +705,7 @@ let styled_text_reconciliation_changes_style () =
     match msg with
     | Ts_toggle -> (true, Nopal_mvu.Cmd.none)
   in
-  let view model =
+  let view _vp model =
     if model then
       E.styled_text
         ~text_style:(T.default |> T.font_size 24.0 |> T.font_weight F.Bold)
@@ -741,7 +741,7 @@ let styled_text_reconciliation_removes_style () =
     match msg with
     | Ts_toggle -> (true, Nopal_mvu.Cmd.none)
   in
-  let view model =
+  let view _vp model =
     if model then E.text "plain"
     else E.styled_text ~text_style:(T.default |> T.font_size 16.0) "styled"
   in

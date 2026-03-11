@@ -44,6 +44,14 @@ module Make (A : Nopal_mvu.App.S) : sig
   (** The reactive element tree. Backends subscribe to this via [Lwd.root] /
       [Lwd.quick_sample]. Recomputes whenever the model changes. *)
 
+  val viewport : t -> Nopal_element.Viewport.t
+  (** The current viewport. Defaults to {!Nopal_element.Viewport.desktop}. *)
+
+  val set_viewport : t -> Nopal_element.Viewport.t -> unit
+  (** Update the viewport. If the new viewport is equal to the current one, this
+      is a no-op (no rerender). Otherwise, the reactive view recomputes and any
+      [on_viewport_change] subscriptions fire. *)
+
   val shutdown : t -> unit
   (** Stop all subscriptions and reject further dispatches. Transitions from
       [Running] to [Shut_down].

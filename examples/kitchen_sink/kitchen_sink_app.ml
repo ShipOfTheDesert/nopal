@@ -777,13 +777,13 @@ let view_interaction_states model =
     ]
 
 (* Section 10: Map / Composition (REQ-F9) *)
-let view_composition model =
+let view_composition vp model =
   view_section "Map / Composition"
     [
       Element.text "Sub-counter composed via Element.map:";
       Element.map
         (fun m -> SubCounterMsg m)
-        (Sub_counter.view model.sub_counter);
+        (Sub_counter.view vp model.sub_counter);
     ]
 
 (* Section 10: 2D Drawing (REQ-F13) *)
@@ -1256,8 +1256,222 @@ let view_charts model =
         ];
     ]
 
+(* Section 12: Responsive Design (REQ-F11) *)
+let view_responsive vp _model =
+  (* Nav vs sidebar: bottom nav on compact, sidebar on expanded *)
+  let nav_or_sidebar =
+    Element.responsive vp
+      ~compact:
+        (Element.row
+           ~style:
+             (Style.default
+             |> Style.with_layout (fun l ->
+                 { l with gap = 16.0; main_align = Space_between }
+                 |> Style.padding_all 12.0)
+             |> Style.with_paint (fun p ->
+                 { p with background = Some bg_muted }))
+           ~attrs:[ ("data-testid", "bottom-nav") ]
+           [ Element.text "Home"; Element.text "Search"; Element.text "Menu" ])
+      ~expanded:
+        (Element.column
+           ~style:
+             (Style.default
+             |> Style.with_layout (fun l ->
+                 { l with gap = 12.0; width = Fixed 200.0 }
+                 |> Style.padding_all 16.0)
+             |> Style.with_paint (fun p ->
+                 {
+                   p with
+                   background = Some bg_muted;
+                   border =
+                     Some
+                       {
+                         width = 1.0;
+                         style = Solid;
+                         color = border_light;
+                         radius = 8.0;
+                       };
+                 }))
+           ~attrs:[ ("data-testid", "sidebar") ]
+           [
+             Element.text "Home"; Element.text "Search"; Element.text "Settings";
+           ])
+      ()
+  in
+  (* Collapsing grid: 3 columns → 2 → 1 *)
+  let grid_item_style =
+    Style.default
+    |> Style.with_layout (fun l ->
+        { l with width = Fill } |> Style.padding_all 16.0)
+    |> Style.with_paint (fun p ->
+        {
+          p with
+          background = Some bg_muted;
+          border =
+            Some
+              { width = 1.0; style = Solid; color = border_light; radius = 6.0 };
+        })
+  in
+  let grid_item label =
+    Element.box ~style:grid_item_style
+      ~attrs:[ ("data-testid", "grid-item") ]
+      [ Element.text label ]
+  in
+  let grid =
+    Element.responsive vp
+      ~compact:
+        (Element.column
+           ~style:
+             (Style.default |> Style.with_layout (fun l -> { l with gap = 8.0 }))
+           ~attrs:[ ("data-testid", "grid-1col") ]
+           [ grid_item "A"; grid_item "B"; grid_item "C" ])
+      ~medium:
+        (Element.column
+           ~style:
+             (Style.default |> Style.with_layout (fun l -> { l with gap = 8.0 }))
+           ~attrs:[ ("data-testid", "grid-2col") ]
+           [
+             Element.row
+               ~style:
+                 (Style.default
+                 |> Style.with_layout (fun l -> { l with gap = 8.0 }))
+               [ grid_item "A"; grid_item "B" ];
+             Element.row
+               ~style:
+                 (Style.default
+                 |> Style.with_layout (fun l -> { l with gap = 8.0 }))
+               [ grid_item "C" ];
+           ])
+      ~expanded:
+        (Element.row
+           ~style:
+             (Style.default |> Style.with_layout (fun l -> { l with gap = 8.0 }))
+           ~attrs:[ ("data-testid", "grid-3col") ]
+           [ grid_item "A"; grid_item "B"; grid_item "C" ])
+      ()
+  in
+  (* Typography/spacing scaling via responsive_style *)
+  let title_text_style =
+    Element.responsive_style vp
+      ~compact:
+        (Style.default |> Style.with_text (fun t -> t |> Text.font_size 1.2))
+      ~expanded:
+        (Style.default |> Style.with_text (fun t -> t |> Text.font_size 1.8))
+      ()
+  in
+  let section_padding =
+    Element.responsive_style vp
+      ~compact:
+        (Style.default
+        |> Style.with_layout (fun l -> l |> Style.padding_all 12.0))
+      ~expanded:
+        (Style.default
+        |> Style.with_layout (fun l -> l |> Style.padding_all 24.0))
+      ()
+  in
+  let scaled_text =
+    Element.box ~style:section_padding
+      ~attrs:[ ("data-testid", "responsive-text") ]
+      [
+        Element.box ~style:title_text_style
+          [ Element.text "Responsive typography" ];
+        Element.text "Padding and font size scale with viewport.";
+      ]
+  in
+  (* Live viewport info panel *)
+  let size_class_str =
+    match Viewport.size_class vp with
+    | Size_class.Compact -> "Compact"
+    | Size_class.Medium -> "Medium"
+    | Size_class.Expanded -> "Expanded"
+  in
+  let orientation_str =
+    match Viewport.orientation vp with
+    | Viewport.Portrait -> "Portrait"
+    | Viewport.Landscape -> "Landscape"
+  in
+  let viewport_info =
+    Element.column
+      ~style:
+        (Style.default
+        |> Style.with_layout (fun l ->
+            { l with gap = 4.0 } |> Style.padding_all 12.0)
+        |> Style.with_paint (fun p ->
+            {
+              p with
+              background = Some (Style.hex "#e8f4fd");
+              border =
+                Some
+                  {
+                    width = 1.0;
+                    style = Solid;
+                    color = Style.hex "#b3d9f2";
+                    radius = 8.0;
+                  };
+            }))
+      ~attrs:[ ("data-testid", "viewport-info") ]
+      [
+        Element.styled_text
+          ~text_style:(Text.default |> Text.font_weight Font.Bold)
+          "Viewport Info";
+        Element.text ("Width: " ^ string_of_int (Viewport.width vp) ^ "px");
+        Element.text ("Height: " ^ string_of_int (Viewport.height vp) ^ "px");
+        Element.text ("Class: " ^ size_class_str);
+        Element.text ("Orientation: " ^ orientation_str);
+      ]
+  in
+  (* Safe area visualization *)
+  let safe = Viewport.safe_area vp in
+  let inset_row label value =
+    Element.row
+      ~style:
+        (Style.default
+        |> Style.with_layout (fun l ->
+            { l with gap = 8.0; main_align = Space_between }))
+      [
+        Element.styled_text
+          ~text_style:(Text.default |> Text.font_weight Font.Medium)
+          label;
+        Element.styled_text
+          ~text_style:(Text.default |> Text.font_family Monospace)
+          (string_of_int value ^ "px");
+      ]
+  in
+  let safe_area_viz =
+    Element.column
+      ~style:
+        (Style.default
+        |> Style.with_layout (fun l ->
+            { l with gap = 4.0 } |> Style.padding_all 12.0)
+        |> Style.with_paint (fun p ->
+            {
+              p with
+              background = Some (Style.hex "#fef3e2");
+              border =
+                Some
+                  {
+                    width = 1.0;
+                    style = Solid;
+                    color = Style.hex "#f0d4a0";
+                    radius = 8.0;
+                  };
+            }))
+      ~attrs:[ ("data-testid", "safe-area-viz") ]
+      [
+        Element.styled_text
+          ~text_style:(Text.default |> Text.font_weight Font.Bold)
+          "Safe Area Insets";
+        inset_row "Top" (Viewport.safe_area_top safe);
+        inset_row "Right" (Viewport.safe_area_right safe);
+        inset_row "Bottom" (Viewport.safe_area_bottom safe);
+        inset_row "Left" (Viewport.safe_area_left safe);
+      ]
+  in
+  view_section "Responsive Design"
+    [ nav_or_sidebar; grid; scaled_text; viewport_info; safe_area_viz ]
+
 (* Main view — all sections in a scrollable column (REQ-F10, REQ-F12) *)
-let view model =
+let view vp model =
   Element.scroll
     (Element.column ~style:page_style
        [
@@ -1276,9 +1490,10 @@ let view model =
          view_keyed model;
          view_nested model;
          view_interaction_states model;
-         view_composition model;
+         view_composition vp model;
          view_draw model;
          view_charts model;
+         view_responsive vp model;
        ])
 
 let subscriptions _model = Nopal_mvu.Sub.none

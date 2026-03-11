@@ -164,10 +164,13 @@ val pointer_leave : selector -> 'msg rendered -> (unit, error) result
 val run_app :
   init:(unit -> 'model * 'msg Nopal_mvu.Cmd.t) ->
   update:('model -> 'msg -> 'model * 'msg Nopal_mvu.Cmd.t) ->
-  view:('model -> 'msg Nopal_element.Element.t) ->
+  view:(Nopal_element.Viewport.t -> 'model -> 'msg Nopal_element.Element.t) ->
+  ?viewport:Nopal_element.Viewport.t ->
   'msg list ->
   'model * 'msg rendered
-(** [run_app ~init ~update ~view msgs] runs a minimal MVU loop: calls [init] to
-    get the initial model (ignoring the command), folds [update] over [msgs]
-    (ignoring commands), calls [view] on the final model, and renders the
-    result. Returns the final model and the rendered output. *)
+(** [run_app ~init ~update ~view ?viewport msgs] runs a minimal MVU loop: calls
+    [init] to get the initial model (ignoring the command), folds [update] over
+    [msgs] (ignoring commands), calls [view viewport] on the final model, and
+    renders the result. [viewport] defaults to
+    {!Nopal_element.Viewport.desktop}. Returns the final model and the rendered
+    output. *)

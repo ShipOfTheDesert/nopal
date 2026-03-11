@@ -182,6 +182,24 @@ let rec map f = function
           aria_label;
         }
 
+let responsive vp ~compact ?medium ~expanded () =
+  match Viewport.size_class vp with
+  | Size_class.Compact -> compact
+  | Size_class.Medium -> (
+      match medium with
+      | Some m -> m
+      | None -> compact)
+  | Size_class.Expanded -> expanded
+
+let responsive_style vp ~compact ?medium ~expanded () =
+  match Viewport.size_class vp with
+  | Size_class.Compact -> compact
+  | Size_class.Medium -> (
+      match medium with
+      | Some m -> m
+      | None -> compact)
+  | Size_class.Expanded -> expanded
+
 let equal_attrs a1 a2 =
   List.equal
     (fun (k1, v1) (k2, v2) -> String.equal k1 k2 && String.equal v1 v2)

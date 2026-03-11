@@ -26,7 +26,7 @@ let test_reset () =
   Alcotest.(check int) "count reset to zero" 0 model'.count
 
 let test_view_structure () =
-  let r = render (view { count = 5 }) in
+  let r = render (view Nopal_element.Viewport.desktop { count = 5 }) in
   let t = tree r in
   (* Top-level is a column *)
   (match t with
