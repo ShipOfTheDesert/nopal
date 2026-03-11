@@ -38,6 +38,10 @@ val view :
   ?on_hover:(Hover.t -> 'msg) ->
   ?on_leave:'msg ->
   ?hover:Hover.t ->
+  ?domain_window:Domain_window.t ->
+  ?on_pointer_down:(Nopal_element.Element.pointer_event -> 'msg) ->
+  ?on_pointer_up:(Nopal_element.Element.pointer_event -> 'msg) ->
+  ?on_wheel:(Nopal_element.Element.wheel_event -> 'msg) ->
   unit ->
   'msg Nopal_element.Element.t
 (** [view ~series ~x ~width ~height ()] renders a multi-series line chart. Hover

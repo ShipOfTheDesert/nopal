@@ -121,7 +121,9 @@ let test_hit_map_circle_regions () =
   match extract_draw el with
   | Some (_, Some on_move, _, _, _) ->
       (* The handler should be present and callable *)
-      let _msg = on_move { x = 200.0; y = 150.0 } in
+      let _msg =
+        on_move { x = 200.0; y = 150.0; client_x = 200.0; client_y = 150.0 }
+      in
       ()
   | Some (_, None, _, _, _) -> Alcotest.fail "expected on_pointer_move handler"
   | None -> Alcotest.fail "expected Draw element"
@@ -143,7 +145,9 @@ let test_topmost_overlap () =
   in
   match extract_draw el with
   | Some (_, Some on_move, _, _, _) -> (
-      let msg = on_move { x = 380.0; y = 40.0 } in
+      let msg =
+        on_move { x = 380.0; y = 40.0; client_x = 380.0; client_y = 40.0 }
+      in
       match msg with
       | Hovered h ->
           (* Hit map traverses in reverse, so index 2 (last drawn) wins *)

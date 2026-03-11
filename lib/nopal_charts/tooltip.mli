@@ -10,4 +10,4 @@ val container :
   'msg Nopal_element.Element.t ->
   'msg Nopal_element.Element.t
 (** Wraps tooltip content in an absolutely-positioned container near (x, y).
-    Flips position to stay within chart bounds. REQ-F11. *)
+    Flips position to stay within chart bounds. *)

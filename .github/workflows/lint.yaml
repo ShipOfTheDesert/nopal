@@ -36,7 +36,7 @@ jobs:
           timeout_minutes: 10
           max_attempts: 5
           command: |
-            opam install -y odoc
+            opam install -y odoc.3.1.0
 
       - uses: ocaml/setup-ocaml/lint-doc@v3
 
@@ -60,7 +60,7 @@ jobs:
           timeout_minutes: 10
           max_attempts: 5
           command: |
-            opam install -y ocamlformat
+            opam install -y ocamlformat.0.28.1
 
       - uses: ocaml/setup-ocaml/lint-fmt@v3
 

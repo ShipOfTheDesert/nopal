@@ -154,7 +154,9 @@ let test_hit_map_wedge_regions () =
   match extract_draw el with
   | Some (_, Some on_move, _, _, _) ->
       (* Hit the center-right of the chart where a wedge should be *)
-      let _msg = on_move { x = 300.0; y = 200.0 } in
+      let _msg =
+        on_move { x = 300.0; y = 200.0; client_x = 300.0; client_y = 200.0 }
+      in
       (* If we got here, wedge hit testing is wired *)
       ()
   | Some (_, None, _, _, _) -> Alcotest.fail "expected on_pointer_move handler"
@@ -174,7 +176,9 @@ let test_donut_hit_map_inner_radius () =
   | Some (_, Some on_move, _, _, _) -> (
       (* Hit the exact center of the donut — should NOT match any wedge.
          With on_leave provided, a miss returns the leave message. *)
-      let msg = on_move { x = 200.0; y = 200.0 } in
+      let msg =
+        on_move { x = 200.0; y = 200.0; client_x = 200.0; client_y = 200.0 }
+      in
       match msg with
       | Left -> ()
       | Hovered _ -> Alcotest.fail "donut center should not hit any wedge")

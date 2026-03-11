@@ -63,6 +63,12 @@ type model = {
   chart_hover : Hover.t option;
   pie_hover : Hover.t option;
   scatter_hover : Hover.t option;
+  heat_map_hover : Hover.t option;
+  trading_hover : Hover.t option;
+  pane_domain_window : Domain_window.t;
+  pane_drag_start_x : float option;
+  line_domain_window : Domain_window.t;
+  line_drag_start_x : float option;
 }
 
 (* Messages *)
@@ -84,6 +90,21 @@ type msg =
   | PieLeft
   | ScatterHovered of Hover.t
   | ScatterLeft
+  | HeatMapHovered of Hover.t
+  | HeatMapLeft
+  | TradingHovered of Hover.t
+  | TradingLeft
+  | PanePointerDown of float
+  | PanePointerMove of float
+  | PanePointerUp
+  | PanePointerLeave
+  | LinePointerDown of float
+  | LinePointerMove of float
+  | LinePointerUp
+  | LinePointerLeave
+  | LineWheelZoom of Nopal_element.Element.wheel_event
+  | ZoomIn
+  | ZoomOut
 
 let init () =
   let sub_counter, sub_cmd = Sub_counter.init () in
@@ -100,8 +121,17 @@ let init () =
       chart_hover = None;
       pie_hover = None;
       scatter_hover = None;
+      heat_map_hover = None;
+      trading_hover = None;
+      pane_domain_window = Domain_window.create ~x_min:0.0 ~x_max:9.0;
+      pane_drag_start_x = None;
+      line_domain_window = Domain_window.create ~x_min:0.0 ~x_max:100.0;
+      line_drag_start_x = None;
     },
     Nopal_mvu.Cmd.map (fun m -> SubCounterMsg m) sub_cmd )
+
+let clamp_pane_dw dw = Domain_window.clamp ~data_min:0.0 ~data_max:9.0 dw
+let clamp_line_dw dw = Domain_window.clamp ~data_min:0.0 ~data_max:999.0 dw
 
 let update model = function
   | ButtonClicked ->
@@ -157,6 +187,78 @@ let update model = function
   | ScatterHovered h ->
       ({ model with scatter_hover = Some h }, Nopal_mvu.Cmd.none)
   | ScatterLeft -> ({ model with scatter_hover = None }, Nopal_mvu.Cmd.none)
+  | HeatMapHovered h ->
+      ({ model with heat_map_hover = Some h }, Nopal_mvu.Cmd.none)
+  | HeatMapLeft -> ({ model with heat_map_hover = None }, Nopal_mvu.Cmd.none)
+  | TradingHovered h ->
+      ({ model with trading_hover = Some h }, Nopal_mvu.Cmd.none)
+  | TradingLeft -> ({ model with trading_hover = None }, Nopal_mvu.Cmd.none)
+  | PanePointerDown x ->
+      ({ model with pane_drag_start_x = Some x }, Nopal_mvu.Cmd.none)
+  | PanePointerMove x -> (
+      match model.pane_drag_start_x with
+      | None -> (model, Nopal_mvu.Cmd.none)
+      | Some last_x ->
+          let chart_w = 400.0 in
+          let px_delta = x -. last_x in
+          let scale = Domain_window.width model.pane_domain_window /. chart_w in
+          let delta = -.(px_delta *. scale) in
+          let dw =
+            Domain_window.pan model.pane_domain_window ~delta |> clamp_pane_dw
+          in
+          ( { model with pane_domain_window = dw; pane_drag_start_x = Some x },
+            Nopal_mvu.Cmd.none ))
+  | PanePointerUp ->
+      ({ model with pane_drag_start_x = None }, Nopal_mvu.Cmd.none)
+  | PanePointerLeave ->
+      ({ model with pane_drag_start_x = None }, Nopal_mvu.Cmd.none)
+  | LinePointerDown x ->
+      ({ model with line_drag_start_x = Some x }, Nopal_mvu.Cmd.none)
+  | LinePointerMove x -> (
+      match model.line_drag_start_x with
+      | None -> (model, Nopal_mvu.Cmd.none)
+      | Some last_x ->
+          let chart_w = 400.0 *. 1.5 in
+          let px_delta = x -. last_x in
+          let scale = Domain_window.width model.line_domain_window /. chart_w in
+          let delta = -.(px_delta *. scale) in
+          let dw =
+            Domain_window.pan model.line_domain_window ~delta |> clamp_line_dw
+          in
+          ( { model with line_domain_window = dw; line_drag_start_x = Some x },
+            Nopal_mvu.Cmd.none ))
+  | LinePointerUp ->
+      ({ model with line_drag_start_x = None }, Nopal_mvu.Cmd.none)
+  | LinePointerLeave ->
+      ({ model with line_drag_start_x = None }, Nopal_mvu.Cmd.none)
+  | LineWheelZoom we ->
+      let dw = model.line_domain_window in
+      let center = (dw.x_min +. dw.x_max) /. 2.0 in
+      let factor = if we.delta_y > 0.0 then 1.2 else 1.0 /. 1.2 in
+      let dw' = Domain_window.zoom dw ~center ~factor in
+      let dw' =
+        if Domain_window.width dw' >= 999.0 then
+          Domain_window.create ~x_min:0.0 ~x_max:999.0
+        else if Domain_window.width dw' < 5.0 then dw
+        else dw'
+      in
+      ({ model with line_domain_window = dw' }, Nopal_mvu.Cmd.none)
+  | ZoomIn ->
+      let dw = model.line_domain_window in
+      let center = (dw.x_min +. dw.x_max) /. 2.0 in
+      let dw' = Domain_window.zoom dw ~center ~factor:0.5 in
+      let dw' = if Domain_window.width dw' < 5.0 then dw else dw' in
+      ({ model with line_domain_window = dw' }, Nopal_mvu.Cmd.none)
+  | ZoomOut ->
+      let dw = model.line_domain_window in
+      let center = (dw.x_min +. dw.x_max) /. 2.0 in
+      let dw' = Domain_window.zoom dw ~center ~factor:2.0 in
+      let dw' =
+        if Domain_window.width dw' >= 999.0 then
+          Domain_window.create ~x_min:0.0 ~x_max:999.0
+        else dw'
+      in
+      ({ model with line_domain_window = dw' }, Nopal_mvu.Cmd.none)
 
 (* Section wrapper (REQ-F10) *)
 let view_section title children =
@@ -1256,8 +1358,288 @@ let view_charts model =
         ];
     ]
 
-(* Section 12: Responsive Design (REQ-F11) *)
+(* Section 13: Chart Extensions (heat map, trading, multi-pane, pan/zoom) *)
+let view_chart_extensions model =
+  let chart_w = 400.0 in
+  let chart_h = 250.0 in
+  let cat = Color.categorical in
+  (* Heat map data: P&L by hour (rows) × day (cols), sequential scale *)
+  let pnl_row_labels = [ "9am"; "10am"; "11am"; "12pm" ] in
+  let pnl_col_labels = [ "Mon"; "Tue"; "Wed"; "Thu"; "Fri" ] in
+  let pnl_data =
+    [
+      (0, 0, 1.2);
+      (0, 1, 3.5);
+      (0, 2, 0.8);
+      (0, 3, 2.1);
+      (0, 4, 4.0);
+      (1, 0, 2.0);
+      (1, 1, 1.5);
+      (1, 2, 3.2);
+      (1, 3, 0.5);
+      (1, 4, 2.8);
+      (2, 0, 0.3);
+      (2, 1, 2.9);
+      (2, 2, 4.1);
+      (2, 3, 1.7);
+      (2, 4, 3.3);
+      (3, 0, 3.8);
+      (3, 1, 0.6);
+      (3, 2, 1.9);
+      (3, 3, 4.5);
+      (3, 4, 2.2);
+    ]
+  in
+  let pnl_scale =
+    Color_scale.sequential
+      ~low:(Nopal_draw.Color.rgba ~r:1.0 ~g:1.0 ~b:0.88 ~a:1.0)
+      ~high:(Nopal_draw.Color.rgba ~r:0.0 ~g:0.39 ~b:0.0 ~a:1.0)
+  in
+  (* Heat map data: correlation matrix, diverging scale *)
+  let corr_labels = [ "SPY"; "QQQ"; "TLT"; "GLD" ] in
+  let corr_data =
+    [
+      (0, 0, 1.0);
+      (0, 1, 0.8);
+      (0, 2, -0.3);
+      (0, 3, 0.1);
+      (1, 0, 0.8);
+      (1, 1, 1.0);
+      (1, 2, -0.5);
+      (1, 3, 0.2);
+      (2, 0, -0.3);
+      (2, 1, -0.5);
+      (2, 2, 1.0);
+      (2, 3, 0.6);
+      (3, 0, 0.1);
+      (3, 1, 0.2);
+      (3, 2, 0.6);
+      (3, 3, 1.0);
+    ]
+  in
+  let corr_scale =
+    Color_scale.diverging
+      ~low:(Nopal_draw.Color.rgba ~r:0.7 ~g:0.09 ~b:0.17 ~a:1.0)
+      ~mid:(Nopal_draw.Color.rgba ~r:1.0 ~g:1.0 ~b:1.0 ~a:1.0)
+      ~high:(Nopal_draw.Color.rgba ~r:0.13 ~g:0.4 ~b:0.67 ~a:1.0)
+      ()
+  in
+  (* Candlestick OHLC sample data *)
+  let ohlc_data =
+    [
+      (0.0, 100.0, 105.0, 98.0, 103.0, 50000.0);
+      (1.0, 103.0, 108.0, 101.0, 106.0, 62000.0);
+      (2.0, 106.0, 107.0, 99.0, 100.0, 45000.0);
+      (3.0, 100.0, 104.0, 97.0, 102.0, 55000.0);
+      (4.0, 102.0, 110.0, 101.0, 109.0, 71000.0);
+      (5.0, 109.0, 112.0, 106.0, 107.0, 48000.0);
+      (6.0, 107.0, 108.0, 100.0, 101.0, 53000.0);
+      (7.0, 101.0, 106.0, 99.0, 105.0, 60000.0);
+      (8.0, 105.0, 111.0, 104.0, 110.0, 68000.0);
+      (9.0, 110.0, 113.0, 108.0, 112.0, 75000.0);
+    ]
+  in
+  (* Drawdown data (cumulative max drawdown %) *)
+  let drawdown_data =
+    [
+      (0.0, 0.0);
+      (1.0, -2.0);
+      (2.0, -5.0);
+      (3.0, -3.0);
+      (4.0, -1.0);
+      (5.0, 0.0);
+      (6.0, -4.0);
+      (7.0, -8.0);
+      (8.0, -6.0);
+      (9.0, -2.0);
+    ]
+  in
+  (* Volume data for bar chart pane *)
+  let volume_data = List.map (fun (x, _, _, _, _, vol) -> (x, vol)) ohlc_data in
+  (* 1k data points for pan/zoom line chart *)
+  let panzoom_data =
+    List.init 1000 (fun i ->
+        let x = Float.of_int i in
+        let y =
+          50.0
+          +. (30.0 *. sin (x *. 0.05))
+          +. (10.0 *. sin (x *. 0.13))
+          +. (5.0 *. cos (x *. 0.31))
+        in
+        (x, y))
+  in
+  let row_style =
+    Style.default |> Style.with_layout (fun l -> { l with gap = 16.0 })
+  in
+  Element.column ~style:section_style
+    ~attrs:[ ("data-section", "chart-extensions") ]
+    [
+      Element.text "Chart Extensions";
+      Element.column ~style:section_body_style
+        [
+          (* Heat map — sequential scale (P&L by hour × day) *)
+          Element.text "Heat map (sequential scale — P&L by hour × day):";
+          Element.box
+            ~attrs:[ ("data-testid", "heat-map-sequential") ]
+            [
+              Heat_map.view ~data:pnl_data
+                ~row:(fun (r, _, _) -> r)
+                ~col:(fun (_, c, _) -> c)
+                ~value:(fun (_, _, v) -> v)
+                ~row_count:4 ~col_count:5 ~row_labels:pnl_row_labels
+                ~col_labels:pnl_col_labels ~scale:pnl_scale ~width:chart_w
+                ~height:chart_h
+                ~format_tooltip:(fun (r, c, v) ->
+                  Tooltip.text
+                    (Printf.sprintf "%s %s: $%.1fk"
+                       (List.nth pnl_row_labels r)
+                       (List.nth pnl_col_labels c)
+                       v))
+                ~on_hover:(fun h -> HeatMapHovered h)
+                ~on_leave:HeatMapLeft ?hover:model.heat_map_hover ();
+            ];
+          (* Heat map — diverging scale (correlation matrix) *)
+          Element.text "Heat map (diverging scale — correlation matrix):";
+          Element.box
+            ~attrs:[ ("data-testid", "heat-map-diverging") ]
+            [
+              Heat_map.view ~data:corr_data
+                ~row:(fun (r, _, _) -> r)
+                ~col:(fun (_, c, _) -> c)
+                ~value:(fun (_, _, v) -> v)
+                ~row_count:4 ~col_count:4 ~row_labels:corr_labels
+                ~col_labels:corr_labels ~scale:corr_scale ~width:chart_w
+                ~height:chart_h
+                ~format_tooltip:(fun (r, c, v) ->
+                  Tooltip.text
+                    (Printf.sprintf "%s vs %s: %.2f" (List.nth corr_labels r)
+                       (List.nth corr_labels c) v))
+                ~on_hover:(fun h -> HeatMapHovered h)
+                ~on_leave:HeatMapLeft ?hover:model.heat_map_hover ();
+            ];
+          (* Candlestick chart *)
+          Element.text "Candlestick chart (OHLC):";
+          Element.box
+            ~attrs:[ ("data-testid", "candlestick-chart") ]
+            [
+              Trading.Candlestick.view ~data:ohlc_data
+                ~x:(fun (x, _, _, _, _, _) -> x)
+                ~open_:(fun (_, o, _, _, _, _) -> o)
+                ~high:(fun (_, _, h, _, _, _) -> h)
+                ~low:(fun (_, _, _, l, _, _) -> l)
+                ~close:(fun (_, _, _, _, c, _) -> c)
+                ~width:chart_w ~height:chart_h
+                ~format_tooltip:(fun _i o h l c ->
+                  Tooltip.text
+                    (Printf.sprintf "O:%.0f H:%.0f L:%.0f C:%.0f" o h l c))
+                ~on_hover:(fun h -> TradingHovered h)
+                ~on_leave:TradingLeft ?hover:model.trading_hover ();
+            ];
+          (* Drawdown chart *)
+          Element.text "Drawdown chart:";
+          Element.box
+            ~attrs:[ ("data-testid", "drawdown-chart") ]
+            [
+              Trading.Drawdown.view ~data:drawdown_data
+                ~x:(fun (x, _) -> x)
+                ~y:(fun (_, y) -> y)
+                ~width:chart_w ~height:chart_h
+                ~format_tooltip:(fun _i dd ->
+                  Tooltip.text (Printf.sprintf "Drawdown: %.1f%%" dd))
+                ~on_hover:(fun h -> TradingHovered h)
+                ~on_leave:TradingLeft ?hover:model.trading_hover ();
+            ];
+          (* Multi-pane layout: candlestick (60%) + volume bar (20%) + drawdown (20%) *)
+          Element.text
+            "Multi-pane layout (candlestick + volume + drawdown, synchronized):";
+          Element.box
+            ~attrs:[ ("data-testid", "multi-pane-chart") ]
+            [
+              Chart_pane.view
+                ~panes:
+                  [
+                    Chart_pane.pane ~height_ratio:0.6 (fun dw ~width ~height ->
+                        Trading.Candlestick.view ~data:ohlc_data
+                          ~x:(fun (x, _, _, _, _, _) -> x)
+                          ~open_:(fun (_, o, _, _, _, _) -> o)
+                          ~high:(fun (_, _, h, _, _, _) -> h)
+                          ~low:(fun (_, _, _, l, _, _) -> l)
+                          ~close:(fun (_, _, _, _, c, _) -> c)
+                          ~width ~height ~domain_window:dw ());
+                    Chart_pane.pane ~height_ratio:0.2 (fun dw ~width ~height ->
+                        Bar.view ~data:volume_data
+                          ~x:(fun (x, _) -> x)
+                          ~label:(fun (x, _) -> Printf.sprintf "%.0f" x)
+                          ~value:(fun (_, v) -> v)
+                          ~color:(fun _ -> cat.(5))
+                          ~width ~height ~domain_window:dw ());
+                    Chart_pane.pane ~height_ratio:0.2 (fun dw ~width ~height ->
+                        Trading.Drawdown.view ~data:drawdown_data
+                          ~x:(fun (x, _) -> x)
+                          ~y:(fun (_, y) -> y)
+                          ~width ~height ~domain_window:dw ());
+                  ]
+                ~domain_window:model.pane_domain_window ~width:chart_w
+                ~height:(chart_h *. 2.0)
+                ~on_pointer_down:(fun pe -> PanePointerDown pe.client_x)
+                ~on_pointer_move:(fun pe -> PanePointerMove pe.client_x)
+                ~on_pointer_up:(fun _pe -> PanePointerUp)
+                ~on_pointer_leave:PanePointerLeave ();
+            ];
+          (* Standalone line chart with drag-to-pan, wheel-to-zoom, and buttons *)
+          Element.text
+            "Line chart with pan/zoom (1,000 data points \xe2\x80\x94 drag to \
+             pan, scroll to zoom, or use +/- buttons):";
+          Element.row ~style:row_style
+            [
+              Element.box
+                ~style:
+                  (Style.default
+                  |> Style.with_layout (fun l ->
+                      {
+                        l with
+                        width = Fixed (chart_w *. 1.5);
+                        height = Fixed chart_h;
+                      }))
+                ~attrs:[ ("data-testid", "panzoom-line-chart") ]
+                ~on_pointer_down:(fun pe -> LinePointerDown pe.client_x)
+                ~on_pointer_move:(fun pe -> LinePointerMove pe.client_x)
+                ~on_pointer_up:(fun _pe -> LinePointerUp)
+                ~on_pointer_leave:LinePointerLeave
+                ~on_wheel:(fun we -> LineWheelZoom we)
+                [
+                  Line.view
+                    ~series:
+                      [
+                        Line.series ~smooth:true ~label:"Signal" ~color:cat.(1)
+                          ~y:(fun (_, y) -> y)
+                          panzoom_data;
+                      ]
+                    ~x:(fun (x, _) -> x)
+                    ~width:(chart_w *. 1.5) ~height:chart_h
+                    ~domain_window:model.line_domain_window
+                    ~on_hover:(fun h -> ChartHovered h)
+                    ~on_leave:ChartLeft ?hover:model.chart_hover ();
+                ];
+              Element.column
+                ~style:
+                  (Style.default
+                  |> Style.with_layout (fun l -> { l with gap = 8.0 }))
+                [
+                  Element.button ~on_click:ZoomIn
+                    ~attrs:[ ("data-testid", "zoom-in-btn") ]
+                    (Element.text "+");
+                  Element.button ~on_click:ZoomOut
+                    ~attrs:[ ("data-testid", "zoom-out-btn") ]
+                    (Element.text "-");
+                ];
+            ];
+        ];
+    ]
+
+(* Section 14: Responsive Design (REQ-F11) *)
 let view_responsive vp _model =
+  let module Viewport = Nopal_element.Viewport in
   (* Nav vs sidebar: bottom nav on compact, sidebar on expanded *)
   let nav_or_sidebar =
     Element.responsive vp
@@ -1493,6 +1875,7 @@ let view vp model =
          view_composition vp model;
          view_draw model;
          view_charts model;
+         view_chart_extensions model;
          view_responsive vp model;
        ])
 

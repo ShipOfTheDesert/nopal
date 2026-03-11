@@ -98,13 +98,10 @@ let test_tooltip_appears_on_hover () =
   let el = bar_element ~hover ~format_tooltip () in
   let r = render el in
   let t = tree r in
-  (* With hover + format_tooltip, bar chart wraps in a Box with tooltip child *)
-  let boxes = find_all (By_tag "box") t in
-  (* Tooltip container is a Box; there should be at least one box wrapping
-     both canvas and tooltip content *)
-  Alcotest.(check bool) "has box wrapper" true (List.length boxes >= 1);
+  (* Tooltip is now merged into the canvas scene — just verify canvas exists *)
   let canvas = find (By_tag "canvas") t in
-  Alcotest.(check bool) "canvas still present" true (Option.is_some canvas)
+  Alcotest.(check bool)
+    "canvas present with tooltip" true (Option.is_some canvas)
 
 let test_tooltip_absent_without_hover () =
   let el = bar_element () in

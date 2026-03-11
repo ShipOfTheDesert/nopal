@@ -50,6 +50,15 @@ function main() {
     };
   }
 
+  // Read charts results
+  const chartsResults = readJsonFile(path.join(RESULTS_DIR, "charts.json"));
+  for (const r of chartsResults) {
+    metrics[`charts/${r.name}`] = {
+      value: r.median ?? r.value ?? 0,
+      unit: r.unit,
+    };
+  }
+
   // Read bundle results
   const bundleResults = readJsonFile(path.join(RESULTS_DIR, "bundle.json"));
   for (const r of bundleResults) {

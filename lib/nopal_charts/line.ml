@@ -14,7 +14,18 @@ let series ?(smooth = false) ?(area_fill = false) ?(show_points = false) ~label
 
 let view ~series ~x ~width ~height ?(padding = Padding.default)
     ?(x_axis = Axis.default_config) ?(y_axis = Axis.default_config)
-    ?format_tooltip ?on_hover ?on_leave ?hover () =
+    ?format_tooltip ?on_hover ?on_leave ?hover ?domain_window ?on_pointer_down
+    ?on_pointer_up ?on_wheel () =
+  (* Apply domain window clipping if provided *)
+  let series =
+    match domain_window with
+    | Some window ->
+        List.map
+          (fun (s : _ series) ->
+            { s with data = Viewport.clip ~x ~data:s.data ~window ~buffer:1 })
+          series
+    | None -> series
+  in
   (* Flatten all data across series to check emptiness *)
   let all_data =
     List.concat_map
@@ -39,7 +50,9 @@ let view ~series ~x ~width ~height ?(padding = Padding.default)
         Axis.compute_domain y_axis ~data_min:data_y_min ~data_max:data_y_max
       in
       let x_lo, x_hi =
-        Axis.compute_domain x_axis ~data_min:x_min ~data_max:x_max
+        match domain_window with
+        | Some window -> (window.x_min, window.x_max)
+        | None -> Axis.compute_domain x_axis ~data_min:x_min ~data_max:x_max
       in
       let x_scale =
         Nopal_draw.Scale.create ~domain:(x_lo, x_hi)
@@ -162,7 +175,12 @@ let view ~series ~x ~width ~height ?(padding = Padding.default)
         Axis.render_y y_axis ~ticks:y_ticks ~scale:y_scale ~chart_x ~chart_y
           ~chart_height
       in
-      let all_scene = scene_nodes @ x_axis_scene @ y_axis_scene in
+      let clip_shape =
+        Nopal_draw.Scene.rect ~x:chart_x ~y:chart_y ~w:chart_width
+          ~h:chart_height ()
+      in
+      let clipped_data = Nopal_draw.Scene.clip ~shape:clip_shape scene_nodes in
+      let all_scene = [ clipped_data ] @ x_axis_scene @ y_axis_scene in
       (* Build on_pointer_move handler *)
       let on_pointer_move =
         match (on_hover, on_leave) with
@@ -183,7 +201,7 @@ let view ~series ~x ~width ~height ?(padding = Padding.default)
       in
       let draw_el =
         Nopal_element.Element.draw ?on_pointer_move ?on_pointer_leave:on_leave
-          ~width ~height all_scene
+          ?on_pointer_down ?on_pointer_up ?on_wheel ~width ~height all_scene
       in
       (* Compose with tooltip if hovered *)
       let tooltip =

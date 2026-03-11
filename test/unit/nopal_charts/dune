@@ -13,7 +13,18 @@
   test_pie
   test_scatter
   test_charts_structural
-  test_chart_compose)
+  test_chart_compose
+  test_color_scale
+  test_domain_window
+  test_viewport
+  test_snap
+  test_downsample
+  test_heat_map
+  test_trading_drawdown
+  test_trading_candlestick
+  test_chart_pane
+  test_domain_window_integration
+  test_charts_extensions_structural)
  (libraries
   nopal_charts
   nopal_draw

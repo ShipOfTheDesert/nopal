@@ -5,8 +5,18 @@
     is exposed (not abstract) so that renderers can exhaustively pattern-match
     on all constructors. *)
 
-type pointer_event = { x : float; y : float }
-(** Canvas-local pointer coordinates. *)
+type pointer_event = {
+  x : float;
+  y : float;
+  client_x : float;
+  client_y : float;
+}
+(** Pointer coordinates. [x]/[y] are element-local (for hit testing and zoom
+    center). [client_x]/[client_y] are viewport-relative (stable across
+    re-renders — use these for drag delta computation). *)
+
+type wheel_event = { delta_y : float; x : float; y : float }
+(** Wheel event with scroll delta and element-local coordinates. *)
 
 type 'msg t =
   | Empty
@@ -16,6 +26,11 @@ type 'msg t =
       interaction : Nopal_style.Interaction.t;
       attrs : (string * string) list;
       children : 'msg t list;
+      on_pointer_move : (pointer_event -> 'msg) option;
+      on_pointer_leave : 'msg option;
+      on_pointer_down : (pointer_event -> 'msg) option;
+      on_pointer_up : (pointer_event -> 'msg) option;
+      on_wheel : (wheel_event -> 'msg) option;
     }
   | Row of {
       style : Nopal_style.Style.t;
@@ -58,6 +73,9 @@ type 'msg t =
       on_pointer_move : (pointer_event -> 'msg) option;
       on_click : (pointer_event -> 'msg) option;
       on_pointer_leave : 'msg option;
+      on_pointer_down : (pointer_event -> 'msg) option;
+      on_pointer_up : (pointer_event -> 'msg) option;
+      on_wheel : (wheel_event -> 'msg) option;
       cursor : Nopal_style.Cursor.t option;
       aria_label : string option;
     }
@@ -80,6 +98,11 @@ val box :
   ?style:Nopal_style.Style.t ->
   ?interaction:Nopal_style.Interaction.t ->
   ?attrs:(string * string) list ->
+  ?on_pointer_move:(pointer_event -> 'msg) ->
+  ?on_pointer_leave:'msg ->
+  ?on_pointer_down:(pointer_event -> 'msg) ->
+  ?on_pointer_up:(pointer_event -> 'msg) ->
+  ?on_wheel:(wheel_event -> 'msg) ->
   'msg t list ->
   'msg t
 (** A generic container. Children are laid out according to backend defaults.
@@ -143,6 +166,9 @@ val draw :
   ?on_pointer_move:(pointer_event -> 'msg) ->
   ?on_click:(pointer_event -> 'msg) ->
   ?on_pointer_leave:'msg ->
+  ?on_pointer_down:(pointer_event -> 'msg) ->
+  ?on_pointer_up:(pointer_event -> 'msg) ->
+  ?on_wheel:(wheel_event -> 'msg) ->
   ?cursor:Nopal_style.Cursor.t ->
   ?aria_label:string ->
   width:float ->

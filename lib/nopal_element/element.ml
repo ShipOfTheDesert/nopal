@@ -1,4 +1,11 @@
-type pointer_event = { x : float; y : float }
+type pointer_event = {
+  x : float;
+  y : float;
+  client_x : float;
+  client_y : float;
+}
+
+type wheel_event = { delta_y : float; x : float; y : float }
 
 type 'msg t =
   | Empty
@@ -8,6 +15,11 @@ type 'msg t =
       interaction : Nopal_style.Interaction.t;
       attrs : (string * string) list;
       children : 'msg t list;
+      on_pointer_move : (pointer_event -> 'msg) option;
+      on_pointer_leave : 'msg option;
+      on_pointer_down : (pointer_event -> 'msg) option;
+      on_pointer_up : (pointer_event -> 'msg) option;
+      on_wheel : (wheel_event -> 'msg) option;
     }
   | Row of {
       style : Nopal_style.Style.t;
@@ -50,6 +62,9 @@ type 'msg t =
       on_pointer_move : (pointer_event -> 'msg) option;
       on_click : (pointer_event -> 'msg) option;
       on_pointer_leave : 'msg option;
+      on_pointer_down : (pointer_event -> 'msg) option;
+      on_pointer_up : (pointer_event -> 'msg) option;
+      on_wheel : (wheel_event -> 'msg) option;
       cursor : Nopal_style.Cursor.t option;
       aria_label : string option;
     }
@@ -61,8 +76,21 @@ let styled_text ~text_style s =
   Text { content = s; text_style = Some text_style }
 
 let box ?(style = Nopal_style.Style.empty)
-    ?(interaction = Nopal_style.Interaction.default) ?(attrs = []) children =
-  Box { style; interaction; attrs; children }
+    ?(interaction = Nopal_style.Interaction.default) ?(attrs = [])
+    ?on_pointer_move ?on_pointer_leave ?on_pointer_down ?on_pointer_up ?on_wheel
+    children =
+  Box
+    {
+      style;
+      interaction;
+      attrs;
+      children;
+      on_pointer_move;
+      on_pointer_leave;
+      on_pointer_down;
+      on_pointer_up;
+      on_wheel;
+    }
 
 let row ?(style = Nopal_style.Style.empty)
     ?(interaction = Nopal_style.Interaction.default) ?(attrs = []) children =
@@ -99,8 +127,8 @@ let image ?(style = Nopal_style.Style.empty) ~src ~alt () =
 let scroll ?(style = Nopal_style.Style.empty) child = Scroll { style; child }
 let keyed key child = Keyed { key; child }
 
-let draw ?on_pointer_move ?on_click ?on_pointer_leave ?cursor ?aria_label ~width
-    ~height scene =
+let draw ?on_pointer_move ?on_click ?on_pointer_leave ?on_pointer_down
+    ?on_pointer_up ?on_wheel ?cursor ?aria_label ~width ~height scene =
   Draw
     {
       width;
@@ -109,6 +137,9 @@ let draw ?on_pointer_move ?on_click ?on_pointer_leave ?cursor ?aria_label ~width
       on_pointer_move;
       on_click;
       on_pointer_leave;
+      on_pointer_down;
+      on_pointer_up;
+      on_wheel;
       cursor;
       aria_label;
     }
@@ -116,8 +147,30 @@ let draw ?on_pointer_move ?on_click ?on_pointer_leave ?cursor ?aria_label ~width
 let rec map f = function
   | Empty -> Empty
   | Text { content; text_style } -> Text { content; text_style }
-  | Box { style; interaction; attrs; children } ->
-      Box { style; interaction; attrs; children = List.map (map f) children }
+  | Box
+      {
+        style;
+        interaction;
+        attrs;
+        children;
+        on_pointer_move;
+        on_pointer_leave;
+        on_pointer_down;
+        on_pointer_up;
+        on_wheel;
+      } ->
+      Box
+        {
+          style;
+          interaction;
+          attrs;
+          children = List.map (map f) children;
+          on_pointer_move = Option.map (fun g pe -> f (g pe)) on_pointer_move;
+          on_pointer_leave = Option.map f on_pointer_leave;
+          on_pointer_down = Option.map (fun g pe -> f (g pe)) on_pointer_down;
+          on_pointer_up = Option.map (fun g pe -> f (g pe)) on_pointer_up;
+          on_wheel = Option.map (fun g we -> f (g we)) on_wheel;
+        }
   | Row { style; interaction; attrs; children } ->
       Row { style; interaction; attrs; children = List.map (map f) children }
   | Column { style; interaction; attrs; children } ->
@@ -167,6 +220,9 @@ let rec map f = function
         on_pointer_move;
         on_click;
         on_pointer_leave;
+        on_pointer_down;
+        on_pointer_up;
+        on_wheel;
         cursor;
         aria_label;
       } ->
@@ -178,6 +234,9 @@ let rec map f = function
           on_pointer_move = Option.map (fun g pe -> f (g pe)) on_pointer_move;
           on_click = Option.map (fun g pe -> f (g pe)) on_click;
           on_pointer_leave = Option.map f on_pointer_leave;
+          on_pointer_down = Option.map (fun g pe -> f (g pe)) on_pointer_down;
+          on_pointer_up = Option.map (fun g pe -> f (g pe)) on_pointer_up;
+          on_wheel = Option.map (fun g we -> f (g we)) on_wheel;
           cursor;
           aria_label;
         }
@@ -211,8 +270,39 @@ let rec equal a b =
   | ( Text { content = c1; text_style = ts1 },
       Text { content = c2; text_style = ts2 } ) ->
       String.equal c1 c2 && Option.equal Nopal_style.Text.equal ts1 ts2
-  | ( Box { style = s1; interaction = i1; attrs = a1; children = c1 },
-      Box { style = s2; interaction = i2; attrs = a2; children = c2 } )
+  | ( Box
+        {
+          style = s1;
+          interaction = i1;
+          attrs = a1;
+          children = c1;
+          on_pointer_move = pm1;
+          on_pointer_leave = pl1;
+          on_pointer_down = pd1;
+          on_pointer_up = pu1;
+          on_wheel = w1;
+        },
+      Box
+        {
+          style = s2;
+          interaction = i2;
+          attrs = a2;
+          children = c2;
+          on_pointer_move = pm2;
+          on_pointer_leave = pl2;
+          on_pointer_down = pd2;
+          on_pointer_up = pu2;
+          on_wheel = w2;
+        } ) ->
+      Nopal_style.Style.equal s1 s2
+      && Nopal_style.Interaction.equal i1 i2
+      && equal_attrs a1 a2
+      && equal_children c1 c2
+      && Option.equal ( == ) pm1 pm2
+      && Option.equal ( = ) pl1 pl2
+      && Option.equal ( == ) pd1 pd2
+      && Option.equal ( == ) pu1 pu2
+      && Option.equal ( == ) w1 w2
   | ( Row { style = s1; interaction = i1; attrs = a1; children = c1 },
       Row { style = s2; interaction = i2; attrs = a2; children = c2 } )
   | ( Column { style = s1; interaction = i1; attrs = a1; children = c1 },
@@ -297,6 +387,9 @@ let rec equal a b =
           on_pointer_move = _;
           on_click = _;
           on_pointer_leave = _;
+          on_pointer_down = _;
+          on_pointer_up = _;
+          on_wheel = _;
         },
       Draw
         {
@@ -308,6 +401,9 @@ let rec equal a b =
           on_pointer_move = _;
           on_click = _;
           on_pointer_leave = _;
+          on_pointer_down = _;
+          on_pointer_up = _;
+          on_wheel = _;
         } ) ->
       Float.equal w1 w2
       && Float.equal h1 h2

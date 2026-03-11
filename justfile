@@ -1,4 +1,7 @@
-default: build test fmt lint
+default: build build-native test fmt lint e2e
+
+# Fast check — no e2e, no lint-doc (slow odoc build)
+fast: build build-native test fmt lint-fmt lint-opam
 
 build:
     opam exec -- dune build

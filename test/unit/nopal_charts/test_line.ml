@@ -43,8 +43,16 @@ let extract_draw (el : msg Element.t) =
       Some (d.scene, d.on_pointer_move, d.on_pointer_leave, d.width, d.height)
   | _ -> None
 
-let count_nodes pred (scene : Scene.t list) =
-  List.fold_left (fun acc node -> if pred node then acc + 1 else acc) 0 scene
+let rec count_nodes pred (scene : Scene.t list) =
+  List.fold_left
+    (fun acc (node : Scene.t) ->
+      let acc = if pred node then acc + 1 else acc in
+      match node with
+      | Clip { children; _ }
+      | Group { children; _ } ->
+          acc + count_nodes pred children
+      | _ -> acc)
+    0 scene
 
 let is_polyline (node : Scene.t) =
   match node with
@@ -61,7 +69,7 @@ let is_circle (node : Scene.t) =
   | Circle _ -> true
   | _ -> false
 
-let has_filled_path (scene : Scene.t list) =
+let rec has_filled_path (scene : Scene.t list) =
   List.exists
     (fun (node : Scene.t) ->
       match node with
@@ -69,6 +77,9 @@ let has_filled_path (scene : Scene.t list) =
           match fill with
           | Solid _ -> true
           | _ -> false)
+      | Clip { children; _ }
+      | Group { children; _ } ->
+          has_filled_path children
       | _ -> false)
     scene
 
@@ -150,7 +161,9 @@ let test_hover_vertical_band () =
   match extract_draw el with
   | Some (_, Some on_move, _, _, _) -> (
       (* Pointer move in the chart area should produce a hover message *)
-      let msg = on_move { x = 200.0; y = 150.0 } in
+      let msg =
+        on_move { x = 200.0; y = 150.0; client_x = 200.0; client_y = 150.0 }
+      in
       match msg with
       | Hovered h ->
           (* Index should be valid (0..2 for 3 data points) *)

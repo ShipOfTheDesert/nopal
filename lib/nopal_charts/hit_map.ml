@@ -12,6 +12,7 @@ type region =
       end_angle : float;
       hit : hit;
     }
+  | Band_region of { x : float; w : float; hit : hit }
 
 (* Regions stored in reverse draw order (most recent first) via cons.
    hit_test scans front-to-back, so the last-added region is tested first
@@ -57,6 +58,8 @@ let test_region ~x ~y region =
       if point_in_wedge ~x ~y ~cx ~cy ~inner_r ~outer_r ~start_angle ~end_angle
       then Some hit
       else None
+  | Band_region { x = bx; w = bw; hit } ->
+      if x >= bx && x <= bx +. bw then Some hit else None
 
 let hit_test t ~x ~y = List.find_map (test_region ~x ~y) t
 let equal_hit a b = a.index = b.index && a.series = b.series
