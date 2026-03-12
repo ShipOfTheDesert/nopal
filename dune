@@ -1,0 +1,5 @@
+(env
+ (release
+  (js_of_ocaml
+   (flags --opt 3)
+   (build_runtime_flags --opt 3))))

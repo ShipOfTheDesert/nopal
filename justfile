@@ -66,7 +66,10 @@ serve-dashboard: build
 
 # Site — assemble examples mini-site into dist/
 
-site: build
+build-release:
+    DUNE_PROFILE=release opam exec -- dune build
+
+site: build-release
     #!/usr/bin/env bash
     set -euo pipefail
     rm -rf dist
