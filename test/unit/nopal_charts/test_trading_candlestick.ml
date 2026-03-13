@@ -41,24 +41,7 @@ let candle_view ?bullish_color ?bearish_color ?on_hover ?on_leave ?hover
     ~low:low_of ~close:close_of ~width:400.0 ~height:300.0 ?bullish_color
     ?bearish_color ?on_hover ?on_leave ?hover ?format_tooltip ?domain_window ()
 
-let extract_draw (el : msg Element.t) =
-  match el with
-  | Box { children; _ } ->
-      List.find_map
-        (fun (child : msg Element.t) ->
-          match child with
-          | Draw d ->
-              Some
-                ( d.scene,
-                  d.on_pointer_move,
-                  d.on_pointer_leave,
-                  d.width,
-                  d.height )
-          | _ -> None)
-        children
-  | Draw d ->
-      Some (d.scene, d.on_pointer_move, d.on_pointer_leave, d.width, d.height)
-  | _ -> None
+let extract_draw = Chart_test_helpers.extract_draw
 
 let count_rects (scene : Scene.t list) =
   List.fold_left

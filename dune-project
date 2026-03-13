@@ -39,6 +39,17 @@
   ocaml))
 
 (package
+ (name nopal_scene)
+ (synopsis "Pure scene description types for Nopal")
+ (depends
+  (alcotest
+   (and
+    (>= 1.9.1)
+    :with-test))
+  ocaml
+  nopal_style))
+
+(package
  (name nopal_draw)
  (synopsis "2D drawing DSL for Nopal")
  (depends
@@ -47,6 +58,7 @@
     (>= 1.9.1)
     :with-test))
   ocaml
+  nopal_scene
   nopal_style))
 
 (package
@@ -58,6 +70,7 @@
     (>= 1.9.1)
     :with-test))
   ocaml
+  nopal_scene
   nopal_style))
 
 (package

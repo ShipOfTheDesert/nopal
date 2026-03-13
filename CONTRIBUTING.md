@@ -70,8 +70,10 @@ boundaries — not convention.
 
 ```
 nopal_mvu          ← no UI deps, no platform deps
-nopal_element      ← no platform deps, no browser types
+nopal_element      ← depends on scene + style, no platform deps, no browser types
 nopal_style        ← no platform deps
+nopal_scene        ← depends on style, no platform deps (Color, Paint, Transform, Path, Scene)
+nopal_draw         ← depends on scene + style (Scale + higher-level Path algorithms)
 nopal_router       ← no platform deps
 nopal_runtime      ← depends on mvu + element + lwd
 nopal_web          ← depends on runtime + brr + js_of_ocaml

@@ -1,4 +1,4 @@
 (library
  (name nopal_draw)
  (public_name nopal_draw)
- (libraries nopal_style))
+ (libraries nopal_scene nopal_style))

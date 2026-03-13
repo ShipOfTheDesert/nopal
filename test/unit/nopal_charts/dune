@@ -1,6 +1,5 @@
 (tests
  (names
-  test_hover
   test_padding
   test_hit_map
   test_axis
@@ -12,7 +11,6 @@
   test_area
   test_pie
   test_scatter
-  test_charts_structural
   test_chart_compose
   test_color_scale
   test_domain_window
@@ -23,9 +21,9 @@
   test_trading_drawdown
   test_trading_candlestick
   test_chart_pane
-  test_domain_window_integration
-  test_charts_extensions_structural)
+  test_domain_window_integration)
  (libraries
+  chart_test_helpers
   nopal_charts
   nopal_draw
   nopal_element

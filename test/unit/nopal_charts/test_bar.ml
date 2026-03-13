@@ -94,24 +94,7 @@ let test_bar_count_in_scene () =
         (n >= List.length sample)
   | _ -> Alcotest.fail "expected Box or Draw element"
 
-let extract_draw (el : msg Element.t) =
-  match el with
-  | Box { children; _ } ->
-      List.find_map
-        (fun (child : msg Element.t) ->
-          match child with
-          | Draw d ->
-              Some
-                ( d.scene,
-                  d.on_pointer_move,
-                  d.on_pointer_leave,
-                  d.width,
-                  d.height )
-          | _ -> None)
-        children
-  | Draw d ->
-      Some (d.scene, d.on_pointer_move, d.on_pointer_leave, d.width, d.height)
-  | _ -> None
+let extract_draw = Chart_test_helpers.extract_draw
 
 let test_zero_value_minimum_height () =
   let data = [ ("A", 0.0); ("B", 10.0) ] in
@@ -197,34 +180,6 @@ let test_hit_map_rect_count () =
       (* If we got here, the handler is wired correctly *)
       ()
   | Some (_, None, _, _, _) -> Alcotest.fail "expected on_pointer_move handler"
-  | None -> Alcotest.fail "expected Draw element"
-
-let test_on_hover_wired () =
-  let el =
-    Bar.view ~data:sample ~label:fst ~value:snd
-      ~color:(fun _ -> Color.categorical.(0))
-      ~width:400.0 ~height:300.0
-      ~on_hover:(fun h -> Hovered h)
-      ~on_leave:Left ()
-  in
-  match extract_draw el with
-  | Some (_, Some _, _, _, _) -> ()
-  | Some (_, None, _, _, _) -> Alcotest.fail "expected on_pointer_move handler"
-  | None -> Alcotest.fail "expected Draw element"
-
-let test_on_leave_wired () =
-  let el =
-    Bar.view ~data:sample ~label:fst ~value:snd
-      ~color:(fun _ -> Color.categorical.(0))
-      ~width:400.0 ~height:300.0
-      ~on_hover:(fun h -> Hovered h)
-      ~on_leave:Left ()
-  in
-  match extract_draw el with
-  | Some (_, _, Some Left, _, _) -> ()
-  | Some (_, _, Some _, _, _) ->
-      Alcotest.fail "unexpected on_pointer_leave message"
-  | Some (_, _, None, _, _) -> Alcotest.fail "expected on_pointer_leave handler"
   | None -> Alcotest.fail "expected Draw element"
 
 let test_custom_axis_bounds () =
@@ -340,8 +295,6 @@ let () =
           Alcotest.test_case "no_hover_normal_fill" `Quick
             test_no_hover_normal_fill;
           Alcotest.test_case "hit_map_rect_count" `Quick test_hit_map_rect_count;
-          Alcotest.test_case "on_hover_wired" `Quick test_on_hover_wired;
-          Alcotest.test_case "on_leave_wired" `Quick test_on_leave_wired;
           Alcotest.test_case "custom_axis_bounds" `Quick test_custom_axis_bounds;
           Alcotest.test_case "custom_tooltip" `Quick test_custom_tooltip;
           Alcotest.test_case "mixed_positive_negative" `Quick

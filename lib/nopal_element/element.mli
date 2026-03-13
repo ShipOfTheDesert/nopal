@@ -69,7 +69,7 @@ type 'msg t =
   | Draw of {
       width : float;
       height : float;
-      scene : Nopal_draw.Scene.t list;
+      scene : Nopal_scene.Scene.t list;
       on_pointer_move : (pointer_event -> 'msg) option;
       on_click : (pointer_event -> 'msg) option;
       on_pointer_leave : 'msg option;
@@ -173,7 +173,7 @@ val draw :
   ?aria_label:string ->
   width:float ->
   height:float ->
-  Nopal_draw.Scene.t list ->
+  Nopal_scene.Scene.t list ->
   'msg t
 (** [draw ~width ~height scene] creates a 2D drawing canvas element. The scene
     list describes shapes rendered onto the canvas. Optional pointer callbacks

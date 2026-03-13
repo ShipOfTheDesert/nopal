@@ -5,6 +5,7 @@
   nopal_runtime
   nopal_element
   nopal_style
+  nopal_scene
   nopal_draw
   nopal_mvu
   nopal_router

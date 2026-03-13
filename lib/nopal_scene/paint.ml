@@ -62,11 +62,7 @@ let stroke ?(width = 1.0) ?(dash = []) ?(dash_offset = 0.0) ?(line_cap = Butt)
 let equal_gradient_stop a b =
   Float.equal a.offset b.offset && Color.equal a.color b.color
 
-let rec equal_stop_lists a b =
-  match (a, b) with
-  | [], [] -> true
-  | x :: xs, y :: ys -> equal_gradient_stop x y && equal_stop_lists xs ys
-  | _, _ -> false
+let equal_stop_lists a b = List.equal equal_gradient_stop a b
 
 let equal a b =
   match (a, b) with

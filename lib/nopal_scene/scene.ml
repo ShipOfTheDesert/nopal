@@ -181,14 +181,6 @@ let equal_text_baseline a b =
   | Alphabetic, _ ->
       false
 
-let equal_opt f a b =
-  match (a, b) with
-  | None, None -> true
-  | Some a, Some b -> f a b
-  | None, Some _
-  | Some _, None ->
-      false
-
 let equal_points a b =
   List.length a = List.length b
   && List.for_all2
@@ -205,20 +197,20 @@ let rec equal a b =
       && Float.equal a.rx b.rx
       && Float.equal a.ry b.ry
       && Paint.equal a.fill b.fill
-      && equal_opt Paint.equal_stroke a.stroke b.stroke
+      && Option.equal Paint.equal_stroke a.stroke b.stroke
   | Circle a, Circle b ->
       Float.equal a.cx b.cx
       && Float.equal a.cy b.cy
       && Float.equal a.r b.r
       && Paint.equal a.fill b.fill
-      && equal_opt Paint.equal_stroke a.stroke b.stroke
+      && Option.equal Paint.equal_stroke a.stroke b.stroke
   | Ellipse a, Ellipse b ->
       Float.equal a.cx b.cx
       && Float.equal a.cy b.cy
       && Float.equal a.rx b.rx
       && Float.equal a.ry b.ry
       && Paint.equal a.fill b.fill
-      && equal_opt Paint.equal_stroke a.stroke b.stroke
+      && Option.equal Paint.equal_stroke a.stroke b.stroke
   | Line a, Line b ->
       Float.equal a.x1 b.x1
       && Float.equal a.y1 b.y1
@@ -229,11 +221,11 @@ let rec equal a b =
       List.length a.segments = List.length b.segments
       && List.for_all2 Path.equal_segment a.segments b.segments
       && Paint.equal a.fill b.fill
-      && equal_opt Paint.equal_stroke a.stroke b.stroke
+      && Option.equal Paint.equal_stroke a.stroke b.stroke
   | Polygon a, Polygon b ->
       equal_points a.points b.points
       && Paint.equal a.fill b.fill
-      && equal_opt Paint.equal_stroke a.stroke b.stroke
+      && Option.equal Paint.equal_stroke a.stroke b.stroke
   | Polyline a, Polyline b ->
       equal_points a.points b.points && Paint.equal_stroke a.stroke b.stroke
   | Text a, Text b ->
