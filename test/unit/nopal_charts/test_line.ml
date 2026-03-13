@@ -24,24 +24,7 @@ let line_view ?(series = [ series_a ]) ?on_hover ?on_leave ?hover
   Line.view ~series ~x:fst ~width:400.0 ~height:300.0 ?on_hover ?on_leave ?hover
     ?format_tooltip ()
 
-let extract_draw (el : msg Element.t) =
-  match el with
-  | Box { children; _ } ->
-      List.find_map
-        (fun (child : msg Element.t) ->
-          match child with
-          | Draw d ->
-              Some
-                ( d.scene,
-                  d.on_pointer_move,
-                  d.on_pointer_leave,
-                  d.width,
-                  d.height )
-          | _ -> None)
-        children
-  | Draw d ->
-      Some (d.scene, d.on_pointer_move, d.on_pointer_leave, d.width, d.height)
-  | _ -> None
+let extract_draw = Chart_test_helpers.extract_draw
 
 let rec count_nodes pred (scene : Scene.t list) =
   List.fold_left

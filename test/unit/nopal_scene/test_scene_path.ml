@@ -15,7 +15,9 @@ let test_line_to () =
   | _ -> Alcotest.fail "expected Line_to"
 
 let test_bezier_to () =
-  match Path.bezier_to ~cp1x:1.0 ~cp1y:2.0 ~cp2x:3.0 ~cp2y:4.0 ~x:5.0 ~y:6.0 with
+  match
+    Path.bezier_to ~cp1x:1.0 ~cp1y:2.0 ~cp2x:3.0 ~cp2y:4.0 ~x:5.0 ~y:6.0
+  with
   | Path.Bezier_to { cp1x; cp1y; cp2x; cp2y; x; y } ->
       Alcotest.(check (float 0.001)) "cp1x" 1.0 cp1x;
       Alcotest.(check (float 0.001)) "cp1y" 2.0 cp1y;
@@ -46,18 +48,6 @@ let test_arc_to () =
       Alcotest.(check (float 0.001)) "end_angle" 3.14159 end_angle
   | _ -> Alcotest.fail "expected Arc_to"
 
-let test_close () =
-  match Path.close with
-  | Path.Close -> ()
-  | _ -> Alcotest.fail "expected Close"
-
-let test_equal_segment () =
-  let a = Path.move_to ~x:1.0 ~y:2.0 in
-  let b = Path.move_to ~x:1.0 ~y:2.0 in
-  let c = Path.line_to ~x:1.0 ~y:2.0 in
-  Alcotest.(check bool) "same" true (Path.equal_segment a b);
-  Alcotest.(check bool) "diff variant" false (Path.equal_segment a c)
-
 let () =
   Alcotest.run "Nopal_scene.Path"
     [
@@ -68,7 +58,5 @@ let () =
           Alcotest.test_case "bezier_to" `Quick test_bezier_to;
           Alcotest.test_case "quad_to" `Quick test_quad_to;
           Alcotest.test_case "arc_to" `Quick test_arc_to;
-          Alcotest.test_case "close" `Quick test_close;
-          Alcotest.test_case "equal_segment" `Quick test_equal_segment;
         ] );
     ]

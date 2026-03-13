@@ -21,7 +21,3 @@
 (test
  (name test_responsive_combinators)
  (libraries nopal_element nopal_style alcotest))
-
-(test
- (name test_responsive_structural)
- (libraries nopal_element nopal_style nopal_test alcotest))

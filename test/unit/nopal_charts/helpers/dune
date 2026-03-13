@@ -1,0 +1,3 @@
+(library
+ (name chart_test_helpers)
+ (libraries nopal_element nopal_scene))
