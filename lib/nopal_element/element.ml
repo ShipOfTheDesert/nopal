@@ -58,7 +58,7 @@ type 'msg t =
   | Draw of {
       width : float;
       height : float;
-      scene : Nopal_draw.Scene.t list;
+      scene : Nopal_scene.Scene.t list;
       on_pointer_move : (pointer_event -> 'msg) option;
       on_click : (pointer_event -> 'msg) option;
       on_pointer_leave : 'msg option;
@@ -407,7 +407,7 @@ let rec equal a b =
         } ) ->
       Float.equal w1 w2
       && Float.equal h1 h2
-      && List.equal Nopal_draw.Scene.equal s1 s2
+      && List.equal Nopal_scene.Scene.equal s1 s2
       && Option.equal Nopal_style.Cursor.equal c1 c2
       && Option.equal String.equal al1 al2
   | ( ( Empty | Text _ | Box _ | Row _ | Column _ | Button _ | Input _ | Image _

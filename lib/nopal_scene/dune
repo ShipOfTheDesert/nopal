@@ -1,0 +1,4 @@
+(library
+ (name nopal_scene)
+ (public_name nopal_scene)
+ (libraries nopal_style))

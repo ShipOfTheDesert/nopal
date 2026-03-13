@@ -8,7 +8,7 @@
 
 (test
  (name test_draw_element)
- (libraries nopal_element nopal_style nopal_draw alcotest))
+ (libraries nopal_element nopal_style nopal_scene alcotest))
 
 (test
  (name test_size_class)

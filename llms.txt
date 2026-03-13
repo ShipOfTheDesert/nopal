@@ -15,7 +15,8 @@ nopal_mvu       ← MVU core (Cmd, Sub, App) — no UI or platform deps
 nopal_element   ← Element.t DSL — no platform deps
 nopal_style     ← Typed layout/paint — no platform deps
 nopal_router    ← Type-safe bidirectional routing — no platform deps
-nopal_draw      ← 2D drawing DSL (Color, Paint, Path, Scene, Scale)
+nopal_scene     ← Pure scene types (Color, Paint, Transform, Path segments, Scene) — no platform deps
+nopal_draw      ← 2D drawing DSL (Scale + higher-level Path algorithms) — depends on nopal_scene
 nopal_charts    ← Composable interactive charts (Bar, Line, Area, Pie, Scatter, Sparkline,
                    Heat_map, Trading.Candlestick, Trading.Drawdown, Chart_pane,
                    Color_scale, Domain_window, Viewport, Downsample, Snap)
@@ -265,9 +266,19 @@ Router.back     : 'route Router.t -> 'msg Cmd.t                (* go back *)
 Router.on_navigate : 'route Router.t -> ('route -> 'msg) -> 'msg Sub.t  (* subscribe *)
 ```
 
+### Scene Types (`nopal_scene`)
+
+Pure scene description types used by `Element.draw` and `nopal_draw`. No platform dependencies.
+`nopal_element` depends on `nopal_scene` (not `nopal_draw`), keeping the element DSL free of drawing algorithms.
+
+```ocaml
+(* Re-exports: Color, Paint, Transform, Path (segment types + builders), Scene *)
+(* These are also available via Nopal_draw.Color, Nopal_draw.Scene, etc. *)
+```
+
 ### 2D Drawing (`nopal_draw`)
 
-Vector graphics DSL for `Element.draw`:
+Higher-level drawing utilities built on `nopal_scene`. Re-exports all `nopal_scene` modules for convenience:
 
 ```ocaml
 (* Colors — float 0.0-1.0 range *)
@@ -623,7 +634,8 @@ lib/
   nopal_element/     — Element.t DSL — zero platform deps
   nopal_style/       — Style.t, Text.t, Interaction.t, Cursor.t
   nopal_router/      — Router.t, Platform.S
-  nopal_draw/        — Color, Paint, Path, Scene, Transform, Scale
+  nopal_scene/       — Pure scene types: Color, Paint, Transform, Path, Scene
+  nopal_draw/        — Scale + higher-level Path algorithms (re-exports nopal_scene)
   nopal_charts/      — Bar, Line, Area, Pie, Scatter, Sparkline, Heat_map,
                        Trading.Candlestick, Trading.Drawdown, Chart_pane,
                        Color_scale, Domain_window, Viewport, Downsample, Snap

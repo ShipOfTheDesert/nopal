@@ -2,7 +2,7 @@ open Nopal_element
 
 type msg = Moved of float * float | Clicked of float * float | Left
 
-let scene = [ Nopal_draw.Scene.rect ~x:0. ~y:0. ~w:100. ~h:50. () ]
+let scene = [ Nopal_scene.Scene.rect ~x:0. ~y:0. ~w:100. ~h:50. () ]
 
 let test_draw_builder () =
   let el = Element.draw ~width:200. ~height:100. scene in
