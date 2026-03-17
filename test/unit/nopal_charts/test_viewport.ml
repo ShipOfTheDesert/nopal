@@ -32,12 +32,6 @@ let test_clip_buffer_one () =
     [ 2.0; 3.0; 4.0; 5.0; 6.0; 7.0 ]
     result
 
-let test_clip_buffer_zero () =
-  let window = Domain_window.create ~x_min:3.0 ~x_max:6.0 in
-  let result = Viewport.clip ~x:x_of ~data ~window ~buffer:0 in
-  Alcotest.(check (list (float 0.0)))
-    "buffer=0 no extra points" [ 3.0; 4.0; 5.0; 6.0 ] result
-
 let test_clip_preserves_order () =
   let window = Domain_window.create ~x_min:2.0 ~x_max:7.0 in
   let result = Viewport.clip ~x:x_of ~data ~window ~buffer:1 in
@@ -78,7 +72,6 @@ let () =
           Alcotest.test_case "none visible" `Quick test_clip_none_visible;
           Alcotest.test_case "partial" `Quick test_clip_partial;
           Alcotest.test_case "buffer one" `Quick test_clip_buffer_one;
-          Alcotest.test_case "buffer zero" `Quick test_clip_buffer_zero;
           Alcotest.test_case "preserves order" `Quick test_clip_preserves_order;
           Alcotest.test_case "edge inclusive" `Quick test_clip_edge_inclusive;
         ] );

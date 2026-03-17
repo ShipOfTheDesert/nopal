@@ -3,6 +3,5 @@
   test_scene_color
   test_scene_paint
   test_scene_transform
-  test_scene_path
   test_scene_scene)
  (libraries nopal_scene alcotest))

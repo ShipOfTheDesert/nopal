@@ -3,6 +3,9 @@ import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "./tests",
   testMatch: "todomvc.spec.ts",
+  // 4 workers avoids overwhelming headless Chromium on systems without
+  // a display server, where requestAnimationFrame is already degraded.
+  workers: 4,
   use: {
     headless: true,
   },
