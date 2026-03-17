@@ -37,9 +37,7 @@ let test_get_returns_cmd () =
   match !results with
   | [ Got (Error (Nopal_http.Network_error msg)) ] ->
       Alcotest.(check string)
-        "error mentions url"
-        "no HTTP backend: https://example.com"
-        msg
+        "error mentions url" "no HTTP backend: https://example.com" msg
   | _ -> Alcotest.fail "expected exactly one Got (Error (Network_error _))"
 
 let () =
