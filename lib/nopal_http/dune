@@ -1,0 +1,4 @@
+(library
+ (name nopal_http)
+ (public_name nopal_http)
+ (libraries nopal_mvu))

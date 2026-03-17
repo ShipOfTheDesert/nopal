@@ -135,6 +135,17 @@
   nopal_style))
 
 (package
+ (name nopal_http)
+ (synopsis "Pure HTTP types for Nopal")
+ (depends
+  (alcotest
+   (and
+    (>= 1.9.1)
+    :with-test))
+  ocaml
+  nopal_mvu))
+
+(package
  (name nopal_web)
  (synopsis "Web renderer backend for Nopal")
  (depends
