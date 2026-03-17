@@ -26,6 +26,7 @@ Unit tests live under `test/unit/` and are organized per package:
 
 ```
 test/unit/nopal_element/    # Element.t constructors, map, equal, events
+test/unit/nopal_http/       # HTTP type construction + Cmd pipeline
 test/unit/nopal_test/       # test_renderer simulation (click, blur, keydown…)
 test/unit/nopal_web/        # web renderer reconciliation
 test/unit/todomvc/          # TodoMVC model + structural view tests
@@ -74,6 +75,7 @@ nopal_element      ← depends on scene + style, no platform deps, no browser ty
 nopal_style        ← no platform deps
 nopal_scene        ← depends on style, no platform deps (Color, Paint, Transform, Path, Scene)
 nopal_draw         ← depends on scene + style (Scale + higher-level Path algorithms)
+nopal_http         ← depends on mvu, no platform deps
 nopal_router       ← no platform deps
 nopal_runtime      ← depends on mvu + element + lwd
 nopal_web          ← depends on runtime + brr + js_of_ocaml
