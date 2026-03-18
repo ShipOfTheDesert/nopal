@@ -40,6 +40,32 @@ let test_get_returns_cmd () =
         "error mentions url" "no HTTP backend: https://example.com" msg
   | _ -> Alcotest.fail "expected exactly one Got (Error (Network_error _))"
 
+let test_register_backend () =
+  let results = ref [] in
+  let dispatch msg = results := msg :: !results in
+  Fun.protect
+    ~finally:(fun () -> Nopal_http.register_backend Nopal_http.default_backend)
+    (fun () ->
+      (* Register a custom backend that always succeeds *)
+      Nopal_http.register_backend
+        {
+          Nopal_http.get =
+            (fun _url on_result ->
+              Nopal_mvu.Cmd.task (fun dispatch ->
+                  dispatch
+                    (on_result
+                       (Ok { Nopal_http.status = 200; body = "custom" }))));
+        };
+      let cmd =
+        Nopal_http.get "https://example.com" (fun outcome -> Got outcome)
+      in
+      Nopal_mvu.Cmd.execute dispatch cmd;
+      match !results with
+      | [ Got (Ok { status; body; _ }) ] ->
+          Alcotest.(check int) "status from custom backend" 200 status;
+          Alcotest.(check string) "body from custom backend" "custom" body
+      | _ -> Alcotest.fail "expected exactly one Got (Ok _)")
+
 let () =
   Alcotest.run "nopal_http"
     [
@@ -52,5 +78,7 @@ let () =
           Alcotest.test_case "outcome ok" `Quick test_outcome_ok;
           Alcotest.test_case "outcome error" `Quick test_outcome_error;
           Alcotest.test_case "get returns cmd" `Quick test_get_returns_cmd;
+          Alcotest.test_case "register_backend overrides get" `Quick
+            test_register_backend;
         ] );
     ]
