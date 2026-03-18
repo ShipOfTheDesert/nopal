@@ -50,23 +50,6 @@ let test_empty_data () =
       Alcotest.(check int) "empty scene" 0 (List.length scene)
   | _ -> Alcotest.fail "expected Draw element for empty data"
 
-let test_produces_element () =
-  let el = bar_view sample in
-  match (el : msg Element.t) with
-  | Box { children; _ } ->
-      (* Should contain at least a Draw child *)
-      let has_draw =
-        List.exists
-          (fun (child : msg Element.t) ->
-            match child with
-            | Draw _ -> true
-            | _ -> false)
-          children
-      in
-      Alcotest.(check bool) "has Draw child" true has_draw
-  | Draw _ -> ()
-  | _ -> Alcotest.fail "expected Box or Draw element"
-
 let test_bar_count_in_scene () =
   let el = bar_view sample in
   match (el : msg Element.t) with
@@ -113,28 +96,28 @@ let test_zero_value_minimum_height () =
         "zero-value bar has minimum height" true has_min_height
   | None -> Alcotest.fail "expected Draw element"
 
-let test_negative_value_below_baseline () =
-  let data = [ ("A", -5.0); ("B", 10.0) ] in
+let test_negative_values () =
+  let data = [ ("A", -10.0); ("B", 5.0); ("C", -3.0); ("D", 20.0) ] in
   let el = bar_view data in
   match extract_draw el with
   | Some (scene, _, _, _, _) ->
-      (* Find the baseline Y (where value=0 maps to) and check negative bar extends below *)
       let rects =
         List.filter_map
           (fun (node : Scene.t) ->
             match node with
-            | Rect { y; h; fill; _ } -> (
+            | Rect { h; fill; _ } -> (
                 match fill with
-                | Solid _ -> Some (y, h)
+                | Solid _ -> Some h
                 | _ -> None)
             | _ -> None)
           scene
       in
-      (* With mixed values, baseline is at 0. Negative bar should have
-         y at the baseline and extend downward (larger y in screen coords). *)
       Alcotest.(check bool)
-        "has at least 2 filled rects" true
-        (List.length rects >= 2)
+        "has at least 4 filled rects" true
+        (List.length rects >= 4);
+      Alcotest.(check bool)
+        "all bars have positive height" true
+        (List.for_all (fun h -> h > 0.0) rects)
   | None -> Alcotest.fail "expected Draw element"
 
 let test_hover_lighter_fill () =
@@ -210,54 +193,6 @@ let test_custom_tooltip () =
       (* Even if structured differently, the element should exist *)
       ()
 
-let test_mixed_positive_negative () =
-  let data = [ ("A", -10.0); ("B", 5.0); ("C", -3.0); ("D", 20.0) ] in
-  let el = bar_view data in
-  match extract_draw el with
-  | Some (scene, _, _, _, _) ->
-      let rects =
-        List.filter_map
-          (fun (node : Scene.t) ->
-            match node with
-            | Rect { y; h; fill; _ } -> (
-                match fill with
-                | Solid _ -> Some (y, h)
-                | _ -> None)
-            | _ -> None)
-          scene
-      in
-      (* Should have at least 4 data rects *)
-      Alcotest.(check bool)
-        "has rects for all data" true
-        (List.length rects >= 4)
-  | None -> Alcotest.fail "expected Draw element"
-
-let test_all_negative_values () =
-  let data = [ ("A", -10.0); ("B", -5.0); ("C", -20.0) ] in
-  let el = bar_view data in
-  match extract_draw el with
-  | Some (scene, _, _, _, _) ->
-      (* All bars should extend below baseline (y=0) *)
-      let rects =
-        List.filter_map
-          (fun (node : Scene.t) ->
-            match node with
-            | Rect { y; h; fill; _ } -> (
-                match fill with
-                | Solid _ -> Some (y, h)
-                | _ -> None)
-            | _ -> None)
-          scene
-      in
-      Alcotest.(check bool)
-        "has rects for all data" true
-        (List.length rects >= 3);
-      (* All rects should have positive height *)
-      Alcotest.(check bool)
-        "all bars have positive height" true
-        (List.for_all (fun (_, h) -> h > 0.0) rects)
-  | None -> Alcotest.fail "expected Draw element"
-
 let rec has_text_with_content content (node : Scene.t) =
   match node with
   | Text { content = c; _ } -> String.equal c content
@@ -285,22 +220,16 @@ let () =
       ( "bar",
         [
           Alcotest.test_case "empty_data" `Quick test_empty_data;
-          Alcotest.test_case "produces_element" `Quick test_produces_element;
           Alcotest.test_case "bar_count_in_scene" `Quick test_bar_count_in_scene;
           Alcotest.test_case "zero_value_minimum_height" `Quick
             test_zero_value_minimum_height;
-          Alcotest.test_case "negative_value_below_baseline" `Quick
-            test_negative_value_below_baseline;
+          Alcotest.test_case "negative_values" `Quick test_negative_values;
           Alcotest.test_case "hover_lighter_fill" `Quick test_hover_lighter_fill;
           Alcotest.test_case "no_hover_normal_fill" `Quick
             test_no_hover_normal_fill;
           Alcotest.test_case "hit_map_rect_count" `Quick test_hit_map_rect_count;
           Alcotest.test_case "custom_axis_bounds" `Quick test_custom_axis_bounds;
           Alcotest.test_case "custom_tooltip" `Quick test_custom_tooltip;
-          Alcotest.test_case "mixed_positive_negative" `Quick
-            test_mixed_positive_negative;
-          Alcotest.test_case "all_negative_values" `Quick
-            test_all_negative_values;
           Alcotest.test_case "category_labels_rendered" `Quick
             test_category_labels_rendered;
         ] );

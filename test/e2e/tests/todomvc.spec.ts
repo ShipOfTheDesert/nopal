@@ -20,11 +20,10 @@ function todoDelete(id: number) {
 
 const EDIT_INPUT = 'input[data-action="edit-input"]';
 
-test.beforeEach(async ({ page }) => {
-  // Clear localStorage and navigate fresh
-  await page.goto("/todomvc/");
-  await page.evaluate(() => localStorage.clear());
-  await page.reload({ waitUntil: "load" });
+test.beforeEach(async ({ context, page }) => {
+  // Each Playwright test gets a fresh browser context, so localStorage
+  // is already empty — no explicit clear or reload needed.
+  await page.goto("/todomvc/", { waitUntil: "load" });
   // Wait for the Nopal app to mount and render the header input
   await page.waitForFunction(
     (sel) => document.querySelector(sel) !== null,
@@ -38,7 +37,11 @@ test("add a new todo", async ({ page }) => {
   await input.fill("Buy milk");
   await input.press("Enter");
 
-  // Verify todo appears
+  // Verify todo appears. Use click to wait for the element since
+  // headless Chromium without a display server can delay the first
+  // requestAnimationFrame, and click's actionability check handles
+  // this more reliably than toHaveText's polling.
+  await page.click(todoLabel(1), { trial: true });
   await expect(page.locator(todoLabel(1))).toHaveText("Buy milk");
 
   // Verify input is cleared

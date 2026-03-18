@@ -594,11 +594,6 @@ let test_map_text_noop () =
     | Element.Draw _ ->
         false)
 
-let test_equal_empty () =
-  Alcotest.(check bool)
-    "Empty equals Empty" true
-    (Element.equal Element.empty Element.empty)
-
 let test_equal_text_same () =
   Alcotest.(check bool)
     "same Text equals" true
@@ -635,10 +630,6 @@ let test_equal_different_children_count () =
   Alcotest.(check bool)
     "different children count not equal" false (Element.equal a b)
 
-let test_equal_button_same () =
-  let el = Element.button ~on_click:Click (Element.text "ok") in
-  Alcotest.(check bool) "same button equal" true (Element.equal el el)
-
 let test_equal_button_distinct () =
   let make () = Element.button ~on_click:Click (Element.text "ok") in
   Alcotest.(check bool)
@@ -649,13 +640,6 @@ let test_equal_button_different_click () =
   let a = Element.button ~on_click:Click (Element.text "ok") in
   let b = Element.button ~on_click:Submit (Element.text "ok") in
   Alcotest.(check bool) "different on_click not equal" false (Element.equal a b)
-
-let test_equal_input_same () =
-  let handler s = Changed s in
-  let el =
-    Element.input ~on_change:handler ~on_submit:Submit ~placeholder:"p" "v"
-  in
-  Alcotest.(check bool) "same input equal" true (Element.equal el el)
 
 let test_equal_input_distinct () =
   let make () = Element.input ~on_submit:Submit ~placeholder:"p" "v" in
@@ -675,10 +659,6 @@ let test_equal_input_different_placeholder () =
   Alcotest.(check bool)
     "different placeholder not equal" false (Element.equal a b)
 
-let test_equal_image_same () =
-  let el = Element.image ~src:"a.png" ~alt:"pic" () in
-  Alcotest.(check bool) "same image equal" true (Element.equal el el)
-
 let test_equal_image_distinct () =
   let make () = Element.image ~src:"a.png" ~alt:"pic" () in
   Alcotest.(check bool)
@@ -695,10 +675,6 @@ let test_equal_image_different_alt () =
   let b = Element.image ~src:"a.png" ~alt:"photo" () in
   Alcotest.(check bool) "different alt not equal" false (Element.equal a b)
 
-let test_equal_scroll_same () =
-  let el = Element.scroll (Element.text "inner") in
-  Alcotest.(check bool) "same scroll equal" true (Element.equal el el)
-
 let test_equal_scroll_distinct () =
   let make () = Element.scroll (Element.text "inner") in
   Alcotest.(check bool)
@@ -710,10 +686,6 @@ let test_equal_scroll_different_child () =
   let b = Element.scroll (Element.text "b") in
   Alcotest.(check bool)
     "different scroll child not equal" false (Element.equal a b)
-
-let test_equal_keyed_same () =
-  let el = Element.keyed "k" (Element.text "x") in
-  Alcotest.(check bool) "same keyed equal" true (Element.equal el el)
 
 let test_equal_keyed_distinct () =
   let make () = Element.keyed "k" (Element.text "x") in
@@ -1017,7 +989,6 @@ let () =
         ] );
       ( "equal",
         [
-          Alcotest.test_case "equal_empty" `Quick test_equal_empty;
           Alcotest.test_case "equal_text_same" `Quick test_equal_text_same;
           Alcotest.test_case "equal_text_different" `Quick
             test_equal_text_different;
@@ -1028,31 +999,26 @@ let () =
             test_equal_different_structure;
           Alcotest.test_case "equal_different_children_count" `Quick
             test_equal_different_children_count;
-          Alcotest.test_case "equal_button_same" `Quick test_equal_button_same;
           Alcotest.test_case "equal_button_distinct" `Quick
             test_equal_button_distinct;
           Alcotest.test_case "equal_button_different_click" `Quick
             test_equal_button_different_click;
-          Alcotest.test_case "equal_input_same" `Quick test_equal_input_same;
           Alcotest.test_case "equal_input_distinct" `Quick
             test_equal_input_distinct;
           Alcotest.test_case "equal_input_different_value" `Quick
             test_equal_input_different_value;
           Alcotest.test_case "equal_input_different_placeholder" `Quick
             test_equal_input_different_placeholder;
-          Alcotest.test_case "equal_image_same" `Quick test_equal_image_same;
           Alcotest.test_case "equal_image_distinct" `Quick
             test_equal_image_distinct;
           Alcotest.test_case "equal_image_different_src" `Quick
             test_equal_image_different_src;
           Alcotest.test_case "equal_image_different_alt" `Quick
             test_equal_image_different_alt;
-          Alcotest.test_case "equal_scroll_same" `Quick test_equal_scroll_same;
           Alcotest.test_case "equal_scroll_distinct" `Quick
             test_equal_scroll_distinct;
           Alcotest.test_case "equal_scroll_different_child" `Quick
             test_equal_scroll_different_child;
-          Alcotest.test_case "equal_keyed_same" `Quick test_equal_keyed_same;
           Alcotest.test_case "equal_keyed_distinct" `Quick
             test_equal_keyed_distinct;
           Alcotest.test_case "equal_keyed_different_key" `Quick

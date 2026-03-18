@@ -146,6 +146,20 @@
   nopal_mvu))
 
 (package
+ (name nopal_http_web)
+ (synopsis "Web HTTP backend for Nopal")
+ (depends
+  (alcotest
+   (and
+    (>= 1.9.1)
+    :with-test))
+  ocaml
+  nopal_http
+  nopal_mvu
+  brr
+  js_of_ocaml))
+
+(package
  (name nopal_web)
  (synopsis "Web renderer backend for Nopal")
  (depends

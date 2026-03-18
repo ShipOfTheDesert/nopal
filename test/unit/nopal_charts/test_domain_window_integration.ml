@@ -5,47 +5,15 @@ open Nopal_draw
 (* --- helpers --- *)
 
 let extract_draw (el : _ Element.t) =
-  match el with
-  | Box { children; _ } ->
-      List.find_map
-        (fun (child : _ Element.t) ->
-          match child with
-          | Draw d -> Some d.scene
-          | _ -> None)
-        children
-  | Draw d -> Some d.scene
-  | _ -> None
+  match Chart_test_helpers.extract_draw el with
+  | Some (scene, _, _, _, _) -> Some scene
+  | None -> None
 
-let rec count_nodes pred (scene : Scene.t list) =
-  List.fold_left
-    (fun acc (node : Scene.t) ->
-      let acc = if pred node then acc + 1 else acc in
-      match node with
-      | Clip { children; _ }
-      | Group { children; _ } ->
-          acc + count_nodes pred children
-      | _ -> acc)
-    0 scene
-
-let is_polyline (node : Scene.t) =
-  match node with
-  | Polyline _ -> true
-  | _ -> false
-
-let is_rect (node : Scene.t) =
-  match node with
-  | Rect _ -> true
-  | _ -> false
-
-let is_circle (node : Scene.t) =
-  match node with
-  | Circle _ -> true
-  | _ -> false
-
-let is_path (node : Scene.t) =
-  match node with
-  | Path _ -> true
-  | _ -> false
+let count_nodes = Chart_test_helpers.count_nodes
+let is_polyline = Chart_test_helpers.is_polyline
+let is_path = Chart_test_helpers.is_path
+let is_circle = Chart_test_helpers.is_circle
+let is_rect = Chart_test_helpers.is_rect
 
 (* 10 data points spanning x = 0..9 *)
 let line_data =
