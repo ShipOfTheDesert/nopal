@@ -78,14 +78,29 @@ test("clicking send shows loading then result", async ({ page }) => {
     { timeout: 10000 }
   );
 
+  // Intercept the POST request to control timing — ensures loading state is
+  // observable before the response arrives.
+  let fulfill: (() => void) | null = null;
+  await page.route("**/post", (route) => {
+    fulfill = () =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ nopal: true }),
+      });
+  });
+
   const postBtn = page.locator(POST_BTN);
   await postBtn.click();
 
-  // Should show loading state
+  // Loading state is guaranteed visible because the response is held
   const status = page.locator(POST_STATUS);
   await expect(status).toContainText("Loading");
 
-  // Should eventually show result (success or error — both prove the MVU loop works)
+  // Release the response
+  fulfill!();
+
+  // Should eventually show result
   const outcome = page.locator(`${POST_RESULT}, ${POST_ERROR}`);
   await expect(outcome).toBeVisible({ timeout: 10000 });
 });
