@@ -1,18 +1,27 @@
 type response = { status : int; body : string }
 type error = Network_error of string
 type outcome = (response, error) result
+type meth = GET | POST
+
+type request = {
+  meth : meth;
+  url : string;
+  headers : (string * string) list;
+  body : string;
+}
 
 type backend = {
-  get : 'msg. string -> (outcome -> 'msg) -> 'msg Nopal_mvu.Cmd.t;
+  send : 'msg. request -> (outcome -> 'msg) -> 'msg Nopal_mvu.Cmd.t;
 }
 
 let default_backend =
   {
-    get =
-      (fun url on_result ->
+    send =
+      (fun request on_result ->
         Nopal_mvu.Cmd.task (fun dispatch ->
             dispatch
-              (on_result (Error (Network_error ("no HTTP backend: " ^ url))))));
+              (on_result
+                 (Error (Network_error ("no HTTP backend: " ^ request.url))))));
   }
 
 (* Mutable: backend registration allows platform-specific HTTP implementations
@@ -20,4 +29,10 @@ let default_backend =
    code to a specific backend. *)
 let current_backend = ref default_backend
 let register_backend b = current_backend := b
-let get url on_result = !current_backend.get url on_result
+let send request on_result = !current_backend.send request on_result
+
+let get ?(headers = []) url on_result =
+  send { meth = GET; url; headers; body = "" } on_result
+
+let post url ?(headers = []) ~body on_result =
+  send { meth = POST; url; headers; body } on_result

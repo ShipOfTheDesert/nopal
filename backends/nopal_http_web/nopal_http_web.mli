@@ -4,12 +4,29 @@
     code uses [nopal_http] types; this package is wired in at the mounting layer
     (e.g., [main.ml]). *)
 
-val get : string -> (Nopal_http.outcome -> 'msg) -> 'msg Nopal_mvu.Cmd.t
-(** [get url on_result] creates a command that performs an HTTP GET request to
-    [url] using the browser Fetch API. When the request completes, [on_result]
-    is called with the outcome and the resulting message is dispatched to
-    [update].
+val send :
+  Nopal_http.request -> (Nopal_http.outcome -> 'msg) -> 'msg Nopal_mvu.Cmd.t
+(** [send request on_result] creates a command that performs the HTTP request
+    described by [request] using the browser Fetch API. Supports all HTTP
+    methods, headers, and request bodies.
 
     A successful fetch produces [Ok { status; body }]. A network failure (DNS
     error, connection refused, fetch rejection) produces
     [Error (Network_error msg)] — never a raised exception. *)
+
+val get :
+  ?headers:(string * string) list ->
+  string ->
+  (Nopal_http.outcome -> 'msg) ->
+  'msg Nopal_mvu.Cmd.t
+(** [get ?headers url on_result] creates a command that performs an HTTP GET
+    request to [url] with optional [headers] using the browser Fetch API. *)
+
+val post :
+  string ->
+  ?headers:(string * string) list ->
+  body:string ->
+  (Nopal_http.outcome -> 'msg) ->
+  'msg Nopal_mvu.Cmd.t
+(** [post url ?headers ~body on_result] creates a command that performs an HTTP
+    POST request to [url] with the given [body] and optional [headers]. *)

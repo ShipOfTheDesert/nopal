@@ -22,6 +22,8 @@ let msg_pp fmt msg =
   match msg with
   | FetchClicked -> Format.fprintf fmt "FetchClicked"
   | FetchResult _ -> Format.fprintf fmt "FetchResult _"
+  | PostClicked -> Format.fprintf fmt "PostClicked"
+  | PostResult _ -> Format.fprintf fmt "PostResult _"
   | ButtonClicked
   | InputChanged _
   | SubmitInputChanged _
@@ -130,6 +132,68 @@ let test_click_fetch_dispatches_msg () =
   Alcotest.(check (list msg_testable))
     "dispatches FetchClicked" [ FetchClicked ] (messages r)
 
+let test_view_http_post_idle () =
+  let model = { (idle_model ()) with post_state = Idle } in
+  let r = render (view_http_post model) in
+  let t = tree r in
+  let section = find (By_attr ("data-section", "http-post")) t in
+  Alcotest.(check bool) "http-post section exists" true (Option.is_some section);
+  let btn = find (By_attr ("data-testid", "post-btn")) t in
+  Alcotest.(check bool) "post button exists" true (Option.is_some btn);
+  let idle = find (By_attr ("data-testid", "post-idle")) t in
+  Alcotest.(check bool) "idle placeholder exists" true (Option.is_some idle);
+  let loading = find (By_text "Loading") t in
+  Alcotest.(check bool) "no loading text" true (Option.is_none loading)
+
+let test_view_http_post_loading () =
+  let model = { (idle_model ()) with post_state = Loading } in
+  let r = render (view_http_post model) in
+  let t = tree r in
+  let loading = find (By_attr ("data-testid", "post-status")) t in
+  Alcotest.(check bool) "status element exists" true (Option.is_some loading);
+  let status_text =
+    match loading with
+    | Some node -> text_content node
+    | None -> ""
+  in
+  Alcotest.(check string) "shows loading" "Loading\u{2026}" status_text
+
+let test_view_http_post_success () =
+  let model =
+    { (idle_model ()) with post_state = Success "post response body" }
+  in
+  let r = render (view_http_post model) in
+  let t = tree r in
+  let result = find (By_attr ("data-testid", "post-result")) t in
+  Alcotest.(check bool) "result element exists" true (Option.is_some result);
+  let result_text =
+    match result with
+    | Some node -> text_content node
+    | None -> ""
+  in
+  Alcotest.(check string) "shows response body" "post response body" result_text
+
+let test_view_http_post_error () =
+  let model = { (idle_model ()) with post_state = Errored "post failed" } in
+  let r = render (view_http_post model) in
+  let t = tree r in
+  let err = find (By_attr ("data-testid", "post-error")) t in
+  Alcotest.(check bool) "error element exists" true (Option.is_some err);
+  let err_text =
+    match err with
+    | Some node -> text_content node
+    | None -> ""
+  in
+  Alcotest.(check string) "shows error" "post failed" err_text
+
+let test_click_post_dispatches_msg () =
+  let model = idle_model () in
+  let r = render (view_http_post model) in
+  let result = click (By_attr ("data-testid", "post-btn")) r in
+  Alcotest.(check (result unit error_testable)) "click succeeds" (Ok ()) result;
+  Alcotest.(check (list msg_testable))
+    "dispatches PostClicked" [ PostClicked ] (messages r)
+
 let () =
   Alcotest.run "kitchen_sink_http"
     [
@@ -141,5 +205,16 @@ let () =
           Alcotest.test_case "error state" `Quick test_view_http_error;
           Alcotest.test_case "click dispatches FetchClicked" `Quick
             test_click_fetch_dispatches_msg;
+        ] );
+      ( "http_post_section",
+        [
+          Alcotest.test_case "post idle state" `Quick test_view_http_post_idle;
+          Alcotest.test_case "post loading state" `Quick
+            test_view_http_post_loading;
+          Alcotest.test_case "post success state" `Quick
+            test_view_http_post_success;
+          Alcotest.test_case "post error state" `Quick test_view_http_post_error;
+          Alcotest.test_case "click dispatches PostClicked" `Quick
+            test_click_post_dispatches_msg;
         ] );
     ]
