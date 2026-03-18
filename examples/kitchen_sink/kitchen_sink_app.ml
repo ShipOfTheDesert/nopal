@@ -49,6 +49,9 @@ let page_style =
       { l with gap = 20.0 } |> Style.padding 32.0 32.0 32.0 32.0)
   |> Style.with_paint (fun p -> { p with background = Some bg_page })
 
+(* HTTP state *)
+type http_state = Idle | Loading | Success of string | Errored of string
+
 (* Model *)
 type model = {
   button_clicks : int;
@@ -69,6 +72,7 @@ type model = {
   pane_drag_start_x : float option;
   line_domain_window : Domain_window.t;
   line_drag_start_x : float option;
+  http_state : http_state;
 }
 
 (* Messages *)
@@ -105,6 +109,8 @@ type msg =
   | LineWheelZoom of Nopal_element.Element.wheel_event
   | ZoomIn
   | ZoomOut
+  | FetchClicked
+  | FetchResult of Nopal_http.outcome
 
 let init () =
   let sub_counter, sub_cmd = Sub_counter.init () in
@@ -127,6 +133,7 @@ let init () =
       pane_drag_start_x = None;
       line_domain_window = Domain_window.create ~x_min:0.0 ~x_max:100.0;
       line_drag_start_x = None;
+      http_state = Idle;
     },
     Nopal_mvu.Cmd.map (fun m -> SubCounterMsg m) sub_cmd )
 
@@ -259,10 +266,18 @@ let update model = function
         else dw'
       in
       ({ model with line_domain_window = dw' }, Nopal_mvu.Cmd.none)
+  | FetchClicked ->
+      ( { model with http_state = Loading },
+        Nopal_http.get "https://jsonplaceholder.typicode.com/todos/1" (fun o ->
+            FetchResult o) )
+  | FetchResult (Ok { body; _ }) ->
+      ({ model with http_state = Success body }, Nopal_mvu.Cmd.none)
+  | FetchResult (Error (Network_error msg)) ->
+      ({ model with http_state = Errored msg }, Nopal_mvu.Cmd.none)
 
 (* Section wrapper (REQ-F10) *)
-let view_section title children =
-  Element.column ~style:section_style
+let view_section ?(attrs = []) title children =
+  Element.column ~style:section_style ~attrs
     [ Element.text title; Element.column ~style:section_body_style children ]
 
 (* Section 1: Typography *)
@@ -1852,6 +1867,41 @@ let view_responsive vp _model =
   view_section "Responsive Design"
     [ nav_or_sidebar; grid; scaled_text; viewport_info; safe_area_viz ]
 
+(* Section: HTTP *)
+let view_http model =
+  let status_display =
+    match model.http_state with
+    | Idle ->
+        Element.box
+          ~attrs:[ ("data-testid", "http-idle") ]
+          [ Element.text "Click Fetch to load data" ]
+    | Loading ->
+        Element.box
+          ~attrs:[ ("data-testid", "http-status") ]
+          [ Element.text "Loading\u{2026}" ]
+    | Success body ->
+        Element.box
+          ~attrs:[ ("data-testid", "http-result") ]
+          [ Element.text body ]
+    | Errored msg ->
+        Element.box
+          ~attrs:[ ("data-testid", "http-error") ]
+          [ Element.text msg ]
+  in
+  let fetch_btn_style =
+    Style.default
+    |> Style.with_layout (fun l -> l |> Style.padding 6.0 16.0 6.0 16.0)
+  in
+  view_section
+    ~attrs:[ ("data-section", "http") ]
+    "HTTP"
+    [
+      Element.button ~style:fetch_btn_style
+        ~attrs:[ ("data-testid", "fetch-btn") ]
+        ~on_click:FetchClicked (Element.text "Fetch");
+      status_display;
+    ]
+
 (* Main view — all sections in a scrollable column (REQ-F10, REQ-F12) *)
 let view vp model =
   Element.scroll
@@ -1877,6 +1927,7 @@ let view vp model =
          view_charts model;
          view_chart_extensions model;
          view_responsive vp model;
+         view_http model;
        ])
 
 let subscriptions _model = Nopal_mvu.Sub.none

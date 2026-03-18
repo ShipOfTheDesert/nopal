@@ -1,11 +1,17 @@
 (library
  (name kitchen_sink_app)
  (modules kitchen_sink_app sub_counter)
- (libraries nopal_element nopal_mvu nopal_style nopal_draw nopal_charts))
+ (libraries
+  nopal_element
+  nopal_mvu
+  nopal_style
+  nopal_draw
+  nopal_charts
+  nopal_http))
 
 (executable
  (name main)
  (modules main)
- (libraries kitchen_sink_app nopal_runtime nopal_web brr)
+ (libraries kitchen_sink_app nopal_runtime nopal_web nopal_http_web brr)
  (modes js)
  (js_of_ocaml))
