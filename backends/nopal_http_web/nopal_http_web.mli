@@ -10,8 +10,8 @@ val send :
     described by [request] using the browser Fetch API. Supports all HTTP
     methods, headers, and request bodies.
 
-    A successful fetch produces [Ok { status; body }]. A network failure (DNS
-    error, connection refused, fetch rejection) produces
+    A successful fetch produces [Ok { status; body; headers }]. A network
+    failure (DNS error, connection refused, fetch rejection) produces
     [Error (Network_error msg)] — never a raised exception. *)
 
 val get :
@@ -30,3 +30,30 @@ val post :
   'msg Nopal_mvu.Cmd.t
 (** [post url ?headers ~body on_result] creates a command that performs an HTTP
     POST request to [url] with the given [body] and optional [headers]. *)
+
+val put :
+  string ->
+  ?headers:(string * string) list ->
+  body:string ->
+  (Nopal_http.outcome -> 'msg) ->
+  'msg Nopal_mvu.Cmd.t
+(** [put url ?headers ~body on_result] creates a command that performs an HTTP
+    PUT request to [url] with the given [body] and optional [headers]. *)
+
+val delete_ :
+  ?body:string ->
+  ?headers:(string * string) list ->
+  string ->
+  (Nopal_http.outcome -> 'msg) ->
+  'msg Nopal_mvu.Cmd.t
+(** [delete_ ?body ?headers url on_result] creates a command that performs an
+    HTTP DELETE request to [url] with an optional [body] and [headers]. *)
+
+val patch :
+  string ->
+  ?headers:(string * string) list ->
+  body:string ->
+  (Nopal_http.outcome -> 'msg) ->
+  'msg Nopal_mvu.Cmd.t
+(** [patch url ?headers ~body on_result] creates a command that performs an HTTP
+    PATCH request to [url] with the given [body] and optional [headers]. *)

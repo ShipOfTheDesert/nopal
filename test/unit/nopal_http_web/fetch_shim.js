@@ -9,6 +9,10 @@
 // POST / request with init:
 //   method, headers, and body from the init object are echoed back as JSON
 //   in the response body, so tests can verify they were sent correctly.
+//
+// Response headers (all routes except network-error):
+//   content-type: application/json
+//   x-request-id: test-123
 
 // setTimeout(0) trampoline: runs callback after all microtasks have flushed.
 // Used by tests to defer assertions until Fetch Promise chains complete.
@@ -36,13 +40,15 @@ globalThis._flush = function (cb) { setTimeout(cb, 0); };
     }
 
     if (url.indexOf("body-error") !== -1) {
+      var bodyErrHeaders = new Map();
+      bodyErrHeaders.set("content-type", "text/plain");
       return Promise.resolve({
         status: 200,
         ok: true,
         text: function () {
           return Promise.reject(new TypeError("body read failed"));
         },
-        headers: new Map(),
+        headers: bodyErrHeaders,
       });
     }
 
@@ -73,13 +79,19 @@ globalThis._flush = function (cb) { setTimeout(cb, 0); };
       });
     }
 
+    // Build response headers — a Map that mimics the Headers API.
+    // Include standard headers so tests can verify header extraction.
+    var respHeaders = new Map();
+    respHeaders.set("content-type", "application/json");
+    respHeaders.set("x-request-id", "test-123");
+
     return Promise.resolve({
       status: status,
       ok: ok,
       text: function () {
         return Promise.resolve(body);
       },
-      headers: new Map(),
+      headers: respHeaders,
     });
   };
 })();
