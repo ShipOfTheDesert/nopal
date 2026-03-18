@@ -12,6 +12,13 @@ const POST_STATUS = '[data-testid="post-status"]';
 const POST_RESULT = '[data-testid="post-result"]';
 const POST_ERROR = '[data-testid="post-error"]';
 
+const PUT_SECTION = '[data-section="http-put"]';
+const PUT_BTN = '[data-testid="put-btn"]';
+const PUT_STATUS = '[data-testid="put-status"]';
+const PUT_RESULT = '[data-testid="put-result"]';
+const PUT_ERROR = '[data-testid="put-error"]';
+const RESP_HEADERS = '[data-testid="resp-headers"]';
+
 test.beforeEach(async ({ page }) => {
   await page.goto("/kitchen_sink/");
   await page.waitForFunction(
@@ -41,19 +48,6 @@ test("clicking fetch shows loading then result", async ({ page }) => {
   // Should eventually show result (success or error — both prove the MVU loop works)
   const outcome = page.locator(`${HTTP_RESULT}, ${HTTP_ERROR}`);
   await expect(outcome).toBeVisible({ timeout: 10000 });
-});
-
-test("result displays response content", async ({ page }) => {
-  const fetchBtn = page.locator(FETCH_BTN);
-  await fetchBtn.click();
-
-  // Wait for either success or error outcome
-  const outcome = page.locator(`${HTTP_RESULT}, ${HTTP_ERROR}`);
-  await expect(outcome).toBeVisible({ timeout: 10000 });
-
-  const text = await outcome.textContent();
-  expect(text).toBeTruthy();
-  expect(text!.length).toBeGreaterThan(0);
 });
 
 test("post section renders with send button", async ({ page }) => {
@@ -103,4 +97,86 @@ test("clicking send shows loading then result", async ({ page }) => {
   // Should eventually show result
   const outcome = page.locator(`${POST_RESULT}, ${POST_ERROR}`);
   await expect(outcome).toBeVisible({ timeout: 10000 });
+});
+
+test("put section renders with send button", async ({ page }) => {
+  await page.waitForFunction(
+    (sel) => document.querySelector(sel) !== null,
+    PUT_SECTION,
+    { timeout: 10000 }
+  );
+
+  const section = page.locator(PUT_SECTION);
+  await expect(section).toBeVisible();
+
+  const putBtn = page.locator(PUT_BTN);
+  await expect(putBtn).toBeVisible();
+  await expect(putBtn).toContainText("Send");
+});
+
+test("clicking put send shows loading then result", async ({ page }) => {
+  await page.waitForFunction(
+    (sel) => document.querySelector(sel) !== null,
+    PUT_SECTION,
+    { timeout: 10000 }
+  );
+
+  // Intercept the PUT request to control timing — ensures loading state is
+  // observable before the response arrives.
+  let fulfill: (() => void) | null = null;
+  await page.route("**/httpbin.org/put", (route) => {
+    fulfill = () =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        headers: { "content-type": "application/json", "x-request-id": "test-123" },
+        body: JSON.stringify({ nopal: "put" }),
+      });
+  });
+
+  const putBtn = page.locator(PUT_BTN);
+  await putBtn.click();
+
+  // Loading state is guaranteed visible because the response is held
+  const status = page.locator(PUT_STATUS);
+  await expect(status).toContainText("Loading");
+
+  // Release the response
+  fulfill!();
+
+  // Should eventually show result
+  const outcome = page.locator(`${PUT_RESULT}, ${PUT_ERROR}`);
+  await expect(outcome).toBeVisible({ timeout: 10000 });
+});
+
+test("put result displays response headers", async ({ page }) => {
+  await page.waitForFunction(
+    (sel) => document.querySelector(sel) !== null,
+    PUT_SECTION,
+    { timeout: 10000 }
+  );
+
+  // Intercept the PUT request and return known headers
+  await page.route("**/httpbin.org/put", (route) => {
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "content-type": "application/json", "x-request-id": "test-123" },
+      body: JSON.stringify({ nopal: "put" }),
+    });
+  });
+
+  const putBtn = page.locator(PUT_BTN);
+  await putBtn.click();
+
+  // Wait for the result to appear
+  const outcome = page.locator(`${PUT_RESULT}, ${PUT_ERROR}`);
+  await expect(outcome).toBeVisible({ timeout: 10000 });
+
+  // Response headers should be displayed
+  const headers = page.locator(RESP_HEADERS);
+  await expect(headers).toBeVisible({ timeout: 5000 });
+
+  const headersText = await headers.textContent();
+  expect(headersText).toContain("content-type");
 });

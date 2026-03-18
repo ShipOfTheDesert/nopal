@@ -1,7 +1,12 @@
-type response = { status : int; body : string }
+type response = {
+  status : int;
+  body : string;
+  headers : (string * string) list;
+}
+
 type error = Network_error of string
 type outcome = (response, error) result
-type meth = GET | POST
+type meth = GET | POST | PUT | DELETE | PATCH
 
 type request = {
   meth : meth;
@@ -36,3 +41,12 @@ let get ?(headers = []) url on_result =
 
 let post url ?(headers = []) ~body on_result =
   send { meth = POST; url; headers; body } on_result
+
+let put url ?(headers = []) ~body on_result =
+  send { meth = PUT; url; headers; body } on_result
+
+let delete_ ?(body = "") ?(headers = []) url on_result =
+  send { meth = DELETE; url; headers; body } on_result
+
+let patch url ?(headers = []) ~body on_result =
+  send { meth = PATCH; url; headers; body } on_result

@@ -24,6 +24,8 @@ let msg_pp fmt msg =
   | FetchResult _ -> Format.fprintf fmt "FetchResult _"
   | PostClicked -> Format.fprintf fmt "PostClicked"
   | PostResult _ -> Format.fprintf fmt "PostResult _"
+  | PutClicked -> Format.fprintf fmt "PutClicked"
+  | PutResult _ -> Format.fprintf fmt "PutResult _"
   | ButtonClicked
   | InputChanged _
   | SubmitInputChanged _
@@ -64,92 +66,69 @@ let idle_model () =
   let m, _ = init () in
   { m with http_state = Idle }
 
-let test_view_http_idle () =
-  let model = idle_model () in
-  let r = render (view_http model) in
-  let t = tree r in
-  (* Section has data-section="http" *)
-  let section = find (By_attr ("data-section", "http")) t in
-  Alcotest.(check bool) "http section exists" true (Option.is_some section);
-  (* Has a fetch button *)
-  let btn = find (By_attr ("data-testid", "fetch-btn")) t in
-  Alcotest.(check bool) "fetch button exists" true (Option.is_some btn);
-  (* Idle placeholder text *)
-  let idle = find (By_attr ("data-testid", "http-idle")) t in
-  Alcotest.(check bool) "idle placeholder exists" true (Option.is_some idle);
-  (* No loading or result text in idle *)
-  let loading = find (By_text "Loading") t in
-  Alcotest.(check bool) "no loading text" true (Option.is_none loading)
+(* Parameterised view-state tests for each HTTP section *)
+type section_config = {
+  label : string;
+  view_fn : model -> msg Nopal_element.Element.t;
+  set_state : model -> http_state -> model;
+  section_attr : string;
+  prefix : string;
+  click_msg : msg;
+}
 
-let test_view_http_loading () =
-  let model = { (idle_model ()) with http_state = Loading } in
-  let r = render (view_http model) in
-  let t = tree r in
-  let loading = find (By_attr ("data-testid", "http-status")) t in
-  Alcotest.(check bool) "status element exists" true (Option.is_some loading);
-  let status_text =
-    match loading with
-    | Some node -> text_content node
-    | None -> ""
-  in
-  Alcotest.(check string) "shows loading" "Loading…" status_text
+let http_section =
+  {
+    label = "http";
+    view_fn = view_http;
+    set_state = (fun m s -> { m with http_state = s });
+    section_attr = "http";
+    prefix = "http";
+    click_msg = FetchClicked;
+  }
 
-let test_view_http_success () =
-  let model =
-    { (idle_model ()) with http_state = Success "response body here" }
-  in
-  let r = render (view_http model) in
-  let t = tree r in
-  let result = find (By_attr ("data-testid", "http-result")) t in
-  Alcotest.(check bool) "result element exists" true (Option.is_some result);
-  let result_text =
-    match result with
-    | Some node -> text_content node
-    | None -> ""
-  in
-  Alcotest.(check string) "shows response body" "response body here" result_text
+let post_section =
+  {
+    label = "http_post";
+    view_fn = view_http_post;
+    set_state = (fun m s -> { m with post_state = s });
+    section_attr = "http-post";
+    prefix = "post";
+    click_msg = PostClicked;
+  }
 
-let test_view_http_error () =
-  let model =
-    { (idle_model ()) with http_state = Errored "connection refused" }
-  in
-  let r = render (view_http model) in
-  let t = tree r in
-  let err = find (By_attr ("data-testid", "http-error")) t in
-  Alcotest.(check bool) "error element exists" true (Option.is_some err);
-  let err_text =
-    match err with
-    | Some node -> text_content node
-    | None -> ""
-  in
-  Alcotest.(check string) "shows error" "connection refused" err_text
+let put_section =
+  {
+    label = "http_put";
+    view_fn = view_http_put;
+    set_state = (fun m s -> { m with put_state = s });
+    section_attr = "http-put";
+    prefix = "put";
+    click_msg = PutClicked;
+  }
 
-let test_click_fetch_dispatches_msg () =
-  let model = idle_model () in
-  let r = render (view_http model) in
-  let result = click (By_attr ("data-testid", "fetch-btn")) r in
-  Alcotest.(check (result unit error_testable)) "click succeeds" (Ok ()) result;
-  Alcotest.(check (list msg_testable))
-    "dispatches FetchClicked" [ FetchClicked ] (messages r)
-
-let test_view_http_post_idle () =
-  let model = { (idle_model ()) with post_state = Idle } in
-  let r = render (view_http_post model) in
+let test_idle cfg () =
+  let model = cfg.set_state (idle_model ()) Idle in
+  let r = render (cfg.view_fn model) in
   let t = tree r in
-  let section = find (By_attr ("data-section", "http-post")) t in
-  Alcotest.(check bool) "http-post section exists" true (Option.is_some section);
-  let btn = find (By_attr ("data-testid", "post-btn")) t in
-  Alcotest.(check bool) "post button exists" true (Option.is_some btn);
-  let idle = find (By_attr ("data-testid", "post-idle")) t in
+  let section = find (By_attr ("data-section", cfg.section_attr)) t in
+  Alcotest.(check bool) "section exists" true (Option.is_some section);
+  let btn_id = cfg.prefix ^ "-btn" in
+  let btn =
+    match cfg.prefix with
+    | "http" -> find (By_attr ("data-testid", "fetch-btn")) t
+    | _ -> find (By_attr ("data-testid", btn_id)) t
+  in
+  Alcotest.(check bool) "button exists" true (Option.is_some btn);
+  let idle = find (By_attr ("data-testid", cfg.prefix ^ "-idle")) t in
   Alcotest.(check bool) "idle placeholder exists" true (Option.is_some idle);
   let loading = find (By_text "Loading") t in
   Alcotest.(check bool) "no loading text" true (Option.is_none loading)
 
-let test_view_http_post_loading () =
-  let model = { (idle_model ()) with post_state = Loading } in
-  let r = render (view_http_post model) in
+let test_loading cfg () =
+  let model = cfg.set_state (idle_model ()) Loading in
+  let r = render (cfg.view_fn model) in
   let t = tree r in
-  let loading = find (By_attr ("data-testid", "post-status")) t in
+  let loading = find (By_attr ("data-testid", cfg.prefix ^ "-status")) t in
   Alcotest.(check bool) "status element exists" true (Option.is_some loading);
   let status_text =
     match loading with
@@ -158,63 +137,100 @@ let test_view_http_post_loading () =
   in
   Alcotest.(check string) "shows loading" "Loading\u{2026}" status_text
 
-let test_view_http_post_success () =
-  let model =
-    { (idle_model ()) with post_state = Success "post response body" }
-  in
-  let r = render (view_http_post model) in
+let test_success cfg () =
+  let model = cfg.set_state (idle_model ()) (Success "response body here") in
+  let r = render (cfg.view_fn model) in
   let t = tree r in
-  let result = find (By_attr ("data-testid", "post-result")) t in
+  let result = find (By_attr ("data-testid", cfg.prefix ^ "-result")) t in
   Alcotest.(check bool) "result element exists" true (Option.is_some result);
   let result_text =
     match result with
     | Some node -> text_content node
     | None -> ""
   in
-  Alcotest.(check string) "shows response body" "post response body" result_text
+  Alcotest.(check string) "shows response body" "response body here" result_text
 
-let test_view_http_post_error () =
-  let model = { (idle_model ()) with post_state = Errored "post failed" } in
-  let r = render (view_http_post model) in
+let test_error cfg () =
+  let model = cfg.set_state (idle_model ()) (Errored "connection refused") in
+  let r = render (cfg.view_fn model) in
   let t = tree r in
-  let err = find (By_attr ("data-testid", "post-error")) t in
+  let err = find (By_attr ("data-testid", cfg.prefix ^ "-error")) t in
   Alcotest.(check bool) "error element exists" true (Option.is_some err);
   let err_text =
     match err with
     | Some node -> text_content node
     | None -> ""
   in
-  Alcotest.(check string) "shows error" "post failed" err_text
+  Alcotest.(check string) "shows error" "connection refused" err_text
 
-let test_click_post_dispatches_msg () =
+let test_click cfg () =
   let model = idle_model () in
-  let r = render (view_http_post model) in
-  let result = click (By_attr ("data-testid", "post-btn")) r in
+  let r = render (cfg.view_fn model) in
+  let btn_id =
+    match cfg.prefix with
+    | "http" -> "fetch-btn"
+    | _ -> cfg.prefix ^ "-btn"
+  in
+  let result = click (By_attr ("data-testid", btn_id)) r in
   Alcotest.(check (result unit error_testable)) "click succeeds" (Ok ()) result;
   Alcotest.(check (list msg_testable))
-    "dispatches PostClicked" [ PostClicked ] (messages r)
+    ("dispatches " ^ cfg.label)
+    [ cfg.click_msg ] (messages r)
+
+let section_tests cfg =
+  ( cfg.label ^ "_section",
+    [
+      Alcotest.test_case "idle state" `Quick (test_idle cfg);
+      Alcotest.test_case "loading state" `Quick (test_loading cfg);
+      Alcotest.test_case "success state" `Quick (test_success cfg);
+      Alcotest.test_case "error state" `Quick (test_error cfg);
+      Alcotest.test_case "click dispatches msg" `Quick (test_click cfg);
+    ] )
+
+let test_view_http_put_shows_headers () =
+  let model =
+    {
+      (idle_model ()) with
+      put_state = Success "body";
+      resp_headers =
+        [ ("content-type", "application/json"); ("x-request-id", "abc-123") ];
+    }
+  in
+  let r = render (view_http_put model) in
+  let t = tree r in
+  let headers_el = find (By_attr ("data-testid", "resp-headers")) t in
+  Alcotest.(check bool)
+    "headers element exists" true
+    (Option.is_some headers_el);
+  let headers_text =
+    match headers_el with
+    | Some node -> text_content node
+    | None -> ""
+  in
+  let contains_substr s sub =
+    let slen = String.length s in
+    let sublen = String.length sub in
+    if sublen > slen then false
+    else
+      let found = ref false in
+      for i = 0 to slen - sublen do
+        if String.sub s i sublen = sub then found := true
+      done;
+      !found
+  in
+  Alcotest.(check bool)
+    "shows content-type header" true
+    (contains_substr headers_text "application/json")
 
 let () =
   Alcotest.run "kitchen_sink_http"
     [
-      ( "http_section",
+      section_tests http_section;
+      section_tests post_section;
+      section_tests put_section;
+      ( "http_put_extras",
         [
-          Alcotest.test_case "idle state" `Quick test_view_http_idle;
-          Alcotest.test_case "loading state" `Quick test_view_http_loading;
-          Alcotest.test_case "success state" `Quick test_view_http_success;
-          Alcotest.test_case "error state" `Quick test_view_http_error;
-          Alcotest.test_case "click dispatches FetchClicked" `Quick
-            test_click_fetch_dispatches_msg;
-        ] );
-      ( "http_post_section",
-        [
-          Alcotest.test_case "post idle state" `Quick test_view_http_post_idle;
-          Alcotest.test_case "post loading state" `Quick
-            test_view_http_post_loading;
-          Alcotest.test_case "post success state" `Quick
-            test_view_http_post_success;
-          Alcotest.test_case "post error state" `Quick test_view_http_post_error;
-          Alcotest.test_case "click dispatches PostClicked" `Quick
-            test_click_post_dispatches_msg;
+          Alcotest.test_case "put shows response headers" `Quick
+            test_view_http_put_shows_headers;
         ] );
     ]

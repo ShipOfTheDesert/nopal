@@ -74,6 +74,8 @@ type model = {
   line_drag_start_x : float option;
   http_state : http_state;
   post_state : http_state;
+  put_state : http_state;
+  resp_headers : (string * string) list;
 }
 
 (* Messages *)
@@ -114,6 +116,8 @@ type msg =
   | FetchResult of Nopal_http.outcome
   | PostClicked
   | PostResult of Nopal_http.outcome
+  | PutClicked
+  | PutResult of Nopal_http.outcome
 
 let init () =
   let sub_counter, sub_cmd = Sub_counter.init () in
@@ -138,6 +142,8 @@ let init () =
       line_drag_start_x = None;
       http_state = Idle;
       post_state = Idle;
+      put_state = Idle;
+      resp_headers = [];
     },
     Nopal_mvu.Cmd.map (fun m -> SubCounterMsg m) sub_cmd )
 
@@ -288,6 +294,18 @@ let update model = function
       ({ model with post_state = Success body }, Nopal_mvu.Cmd.none)
   | PostResult (Error (Network_error msg)) ->
       ({ model with post_state = Errored msg }, Nopal_mvu.Cmd.none)
+  | PutClicked ->
+      ( { model with put_state = Loading },
+        Nopal_http.put "https://httpbin.org/put"
+          ~headers:[ ("Content-Type", "application/json") ]
+          ~body:{|{"nopal":"put"}|}
+          (fun o -> PutResult o) )
+  | PutResult (Ok { body; headers; _ }) ->
+      ( { model with put_state = Success body; resp_headers = headers },
+        Nopal_mvu.Cmd.none )
+  | PutResult (Error (Network_error msg)) ->
+      ( { model with put_state = Errored msg; resp_headers = [] },
+        Nopal_mvu.Cmd.none )
 
 (* Section wrapper (REQ-F10) *)
 let view_section ?(attrs = []) title children =
@@ -1950,6 +1968,50 @@ let view_http_post model =
       status_display;
     ]
 
+let view_http_put model =
+  let status_display =
+    match model.put_state with
+    | Idle ->
+        Element.box
+          ~attrs:[ ("data-testid", "put-idle") ]
+          [ Element.text "Click Send to put data" ]
+    | Loading ->
+        Element.box
+          ~attrs:[ ("data-testid", "put-status") ]
+          [ Element.text "Loading\u{2026}" ]
+    | Success body ->
+        Element.box
+          ~attrs:[ ("data-testid", "put-result") ]
+          [ Element.text body ]
+    | Errored msg ->
+        Element.box ~attrs:[ ("data-testid", "put-error") ] [ Element.text msg ]
+  in
+  let headers_display =
+    match model.resp_headers with
+    | [] -> Element.empty
+    | hdrs ->
+        let header_text =
+          hdrs |> List.map (fun (k, v) -> k ^ ": " ^ v) |> String.concat ", "
+        in
+        Element.box
+          ~attrs:[ ("data-testid", "resp-headers") ]
+          [ Element.text header_text ]
+  in
+  let put_btn_style =
+    Style.default
+    |> Style.with_layout (fun l -> l |> Style.padding 6.0 16.0 6.0 16.0)
+  in
+  view_section
+    ~attrs:[ ("data-section", "http-put") ]
+    "HTTP PUT"
+    [
+      Element.button ~style:put_btn_style
+        ~attrs:[ ("data-testid", "put-btn") ]
+        ~on_click:PutClicked (Element.text "Send");
+      status_display;
+      headers_display;
+    ]
+
 (* Main view — all sections in a scrollable column (REQ-F10, REQ-F12) *)
 let view vp model =
   Element.scroll
@@ -1977,6 +2039,7 @@ let view vp model =
          view_responsive vp model;
          view_http model;
          view_http_post model;
+         view_http_put model;
        ])
 
 let subscriptions _model = Nopal_mvu.Sub.none
