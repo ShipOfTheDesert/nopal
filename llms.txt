@@ -20,9 +20,11 @@ nopal_draw      ← 2D drawing DSL (Scale + higher-level Path algorithms) — de
 nopal_charts    ← Composable interactive charts (Bar, Line, Area, Pie, Scatter, Sparkline,
                    Heat_map, Trading.Candlestick, Trading.Drawdown, Chart_pane,
                    Color_scale, Domain_window, Viewport, Downsample, Snap)
+nopal_http      ← Pure HTTP types + backend abstraction — no platform deps
 nopal_runtime   ← Lwd reactive integration + MVU loop
 nopal_test      ← Pure OCaml test renderer — no js_of_ocaml
 nopal_web       ← js_of_ocaml + Brr DOM renderer (only browser-dependent package)
+nopal_http_web  ← Browser Fetch API backend for nopal_http — js_of_ocaml + Brr
 ```
 
 Critical boundary: `nopal_element`, `nopal_style`, `nopal_test`, `nopal_router` must compile on native OCaml without js_of_ocaml. Application view code never imports `nopal_web` or `Brr`.
@@ -562,6 +564,62 @@ type Hit_map.region =
   | Band_region of { x; w; hit }    (* vertical band, full chart height *)
 ```
 
+### HTTP (`nopal_http`)
+
+Pure HTTP types and backend abstraction. Application code uses these types in `update`; platform backends provide the actual network implementation.
+
+```ocaml
+(* Response and error types *)
+type response = { status : int; body : string }
+type error = Network_error of string
+type outcome = (response, error) result
+
+(* Backend abstraction — set once at startup *)
+type backend = { get : 'msg. string -> (outcome -> 'msg) -> 'msg Cmd.t }
+
+val default_backend : backend                (* always dispatches Network_error *)
+val register_backend : backend -> unit        (* call at startup before mounting *)
+
+(* HTTP commands — return Cmd.t for MVU integration *)
+val get : string -> (outcome -> 'msg) -> 'msg Cmd.t
+(* get url on_result — performs GET, dispatches on_result with outcome *)
+```
+
+Usage pattern in `main.ml`:
+
+```ocaml
+(* Register the web backend before mounting *)
+let () =
+  Nopal_http.register_backend { get = Nopal_http_web.get };
+  Nopal_web.mount (module My_app) target
+```
+
+Usage in `update`:
+
+```ocaml
+type msg = FetchData | GotData of Nopal_http.outcome
+
+let update model = function
+  | FetchData ->
+      (model, Nopal_http.get "https://api.example.com/data" (fun r -> GotData r))
+  | GotData (Ok { status = 200; body }) ->
+      ({ model with data = parse body }, Cmd.none)
+  | GotData (Ok { status; _ }) ->
+      ({ model with error = Some (Printf.sprintf "HTTP %d" status) }, Cmd.none)
+  | GotData (Error (Network_error msg)) ->
+      ({ model with error = Some msg }, Cmd.none)
+```
+
+### HTTP Web Backend (`nopal_http_web`)
+
+Browser Fetch API implementation. Only used in `main.ml` to register the backend.
+
+```ocaml
+val get : string -> (Nopal_http.outcome -> 'msg) -> 'msg Cmd.t
+(* Performs GET via browser Fetch API. Network failures produce
+   Error (Network_error msg) — never a raised exception. *)
+```
+
 ### Test Renderer (`nopal_test`)
 
 Pure OCaml structural testing without a browser:
@@ -639,10 +697,12 @@ lib/
   nopal_charts/      — Bar, Line, Area, Pie, Scatter, Sparkline, Heat_map,
                        Trading.Candlestick, Trading.Drawdown, Chart_pane,
                        Color_scale, Domain_window, Viewport, Downsample, Snap
+  nopal_http/        — Pure HTTP types + backend abstraction
   nopal_runtime/     — Lwd integration + MVU loop
   nopal_test/        — Pure OCaml test renderer
 backends/
   nopal_web/         — js_of_ocaml + Brr DOM renderer
+  nopal_http_web/    — Browser Fetch API backend for nopal_http
 examples/
   counter/           — Hello world
   todomvc/           — Complex app with routing & localStorage
