@@ -1,5 +1,5 @@
 let () =
-  Nopal_http.register_backend { Nopal_http.get = Nopal_http_web.get };
+  Nopal_http.register_backend { Nopal_http.send = Nopal_http_web.send };
   let open Brr in
   let target =
     match Document.find_el_by_id G.document (Jstr.v "app") with

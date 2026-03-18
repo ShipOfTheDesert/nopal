@@ -1,6 +1,29 @@
-let get url on_result =
+let send (request : Nopal_http.request) on_result =
   Nopal_mvu.Cmd.task (fun dispatch ->
-      let fut = Brr_io.Fetch.url (Jstr.of_string url) in
+      let method' =
+        Jstr.of_string
+          (match request.meth with
+          | Nopal_http.GET -> "GET"
+          | Nopal_http.POST -> "POST")
+      in
+      let headers =
+        match request.headers with
+        | [] -> None
+        | hdrs ->
+            Some
+              (Brr_io.Fetch.Headers.of_assoc
+                 (List.map
+                    (fun (k, v) -> (Jstr.of_string k, Jstr.of_string v))
+                    hdrs))
+      in
+      let body =
+        match request.meth with
+        | Nopal_http.GET -> None
+        | Nopal_http.POST ->
+            Some (Brr_io.Fetch.Body.of_jstr (Jstr.of_string request.body))
+      in
+      let init = Brr_io.Fetch.Request.init ?body ?headers ~method' () in
+      let fut = Brr_io.Fetch.url ~init (Jstr.of_string request.url) in
       Fut.await fut (function
         | Error err ->
             let msg = Jstr.to_string (Jv.Error.message err) in
@@ -17,3 +40,9 @@ let get url on_result =
               | Ok body_jstr ->
                   let body = Jstr.to_string body_jstr in
                   dispatch (on_result (Ok { Nopal_http.status; body })))))
+
+let get ?(headers = []) url on_result =
+  send { Nopal_http.meth = GET; url; headers; body = "" } on_result
+
+let post url ?(headers = []) ~body on_result =
+  send { Nopal_http.meth = POST; url; headers; body } on_result

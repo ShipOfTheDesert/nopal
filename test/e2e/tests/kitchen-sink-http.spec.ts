@@ -6,6 +6,12 @@ const HTTP_STATUS = '[data-testid="http-status"]';
 const HTTP_RESULT = '[data-testid="http-result"]';
 const HTTP_ERROR = '[data-testid="http-error"]';
 
+const POST_SECTION = '[data-section="http-post"]';
+const POST_BTN = '[data-testid="post-btn"]';
+const POST_STATUS = '[data-testid="post-status"]';
+const POST_RESULT = '[data-testid="post-result"]';
+const POST_ERROR = '[data-testid="post-error"]';
+
 test.beforeEach(async ({ page }) => {
   await page.goto("/kitchen_sink/");
   await page.waitForFunction(
@@ -48,4 +54,53 @@ test("result displays response content", async ({ page }) => {
   const text = await outcome.textContent();
   expect(text).toBeTruthy();
   expect(text!.length).toBeGreaterThan(0);
+});
+
+test("post section renders with send button", async ({ page }) => {
+  await page.waitForFunction(
+    (sel) => document.querySelector(sel) !== null,
+    POST_SECTION,
+    { timeout: 10000 }
+  );
+
+  const section = page.locator(POST_SECTION);
+  await expect(section).toBeVisible();
+
+  const postBtn = page.locator(POST_BTN);
+  await expect(postBtn).toBeVisible();
+  await expect(postBtn).toContainText("Send");
+});
+
+test("clicking send shows loading then result", async ({ page }) => {
+  await page.waitForFunction(
+    (sel) => document.querySelector(sel) !== null,
+    POST_SECTION,
+    { timeout: 10000 }
+  );
+
+  // Intercept the POST request to control timing — ensures loading state is
+  // observable before the response arrives.
+  let fulfill: (() => void) | null = null;
+  await page.route("**/post", (route) => {
+    fulfill = () =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ nopal: true }),
+      });
+  });
+
+  const postBtn = page.locator(POST_BTN);
+  await postBtn.click();
+
+  // Loading state is guaranteed visible because the response is held
+  const status = page.locator(POST_STATUS);
+  await expect(status).toContainText("Loading");
+
+  // Release the response
+  fulfill!();
+
+  // Should eventually show result
+  const outcome = page.locator(`${POST_RESULT}, ${POST_ERROR}`);
+  await expect(outcome).toBeVisible({ timeout: 10000 });
 });

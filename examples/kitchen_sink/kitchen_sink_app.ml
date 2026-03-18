@@ -73,6 +73,7 @@ type model = {
   line_domain_window : Domain_window.t;
   line_drag_start_x : float option;
   http_state : http_state;
+  post_state : http_state;
 }
 
 (* Messages *)
@@ -111,6 +112,8 @@ type msg =
   | ZoomOut
   | FetchClicked
   | FetchResult of Nopal_http.outcome
+  | PostClicked
+  | PostResult of Nopal_http.outcome
 
 let init () =
   let sub_counter, sub_cmd = Sub_counter.init () in
@@ -134,6 +137,7 @@ let init () =
       line_domain_window = Domain_window.create ~x_min:0.0 ~x_max:100.0;
       line_drag_start_x = None;
       http_state = Idle;
+      post_state = Idle;
     },
     Nopal_mvu.Cmd.map (fun m -> SubCounterMsg m) sub_cmd )
 
@@ -274,6 +278,16 @@ let update model = function
       ({ model with http_state = Success body }, Nopal_mvu.Cmd.none)
   | FetchResult (Error (Network_error msg)) ->
       ({ model with http_state = Errored msg }, Nopal_mvu.Cmd.none)
+  | PostClicked ->
+      ( { model with post_state = Loading },
+        Nopal_http.post "https://httpbin.org/post"
+          ~headers:[ ("Content-Type", "application/json") ]
+          ~body:{|{"nopal":true}|}
+          (fun o -> PostResult o) )
+  | PostResult (Ok { body; _ }) ->
+      ({ model with post_state = Success body }, Nopal_mvu.Cmd.none)
+  | PostResult (Error (Network_error msg)) ->
+      ({ model with post_state = Errored msg }, Nopal_mvu.Cmd.none)
 
 (* Section wrapper (REQ-F10) *)
 let view_section ?(attrs = []) title children =
@@ -1902,6 +1916,40 @@ let view_http model =
       status_display;
     ]
 
+let view_http_post model =
+  let status_display =
+    match model.post_state with
+    | Idle ->
+        Element.box
+          ~attrs:[ ("data-testid", "post-idle") ]
+          [ Element.text "Click Send to post data" ]
+    | Loading ->
+        Element.box
+          ~attrs:[ ("data-testid", "post-status") ]
+          [ Element.text "Loading\u{2026}" ]
+    | Success body ->
+        Element.box
+          ~attrs:[ ("data-testid", "post-result") ]
+          [ Element.text body ]
+    | Errored msg ->
+        Element.box
+          ~attrs:[ ("data-testid", "post-error") ]
+          [ Element.text msg ]
+  in
+  let post_btn_style =
+    Style.default
+    |> Style.with_layout (fun l -> l |> Style.padding 6.0 16.0 6.0 16.0)
+  in
+  view_section
+    ~attrs:[ ("data-section", "http-post") ]
+    "HTTP POST"
+    [
+      Element.button ~style:post_btn_style
+        ~attrs:[ ("data-testid", "post-btn") ]
+        ~on_click:PostClicked (Element.text "Send");
+      status_display;
+    ]
+
 (* Main view — all sections in a scrollable column (REQ-F10, REQ-F12) *)
 let view vp model =
   Element.scroll
@@ -1928,6 +1976,7 @@ let view vp model =
          view_chart_extensions model;
          view_responsive vp model;
          view_http model;
+         view_http_post model;
        ])
 
 let subscriptions _model = Nopal_mvu.Sub.none
