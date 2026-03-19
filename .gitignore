@@ -55,3 +55,8 @@ bench/runner/test-results/
 
 # Site build output
 dist/
+
+# Tauri
+tauri/dist/
+tauri/node_modules/
+tauri/src-tauri/target/
