@@ -727,16 +727,20 @@ let test_map_preserves_interaction () =
       (Nopal_style.Interaction.equal interaction ix)
   in
   check_one "button"
-    (Element.map (fun _m -> ())
+    (Element.map
+       (fun _m -> ())
        (Element.button ~interaction:ix ~on_click:Click (Element.text "ok")));
   check_one "box"
-    (Element.map (fun _m -> ())
+    (Element.map
+       (fun _m -> ())
        (Element.box ~interaction:ix [ Element.text "child" ]));
   check_one "row"
-    (Element.map (fun _m -> ())
+    (Element.map
+       (fun _m -> ())
        (Element.row ~interaction:ix [ Element.text "child" ]));
   check_one "column"
-    (Element.map (fun _m -> ())
+    (Element.map
+       (fun _m -> ())
        (Element.column ~interaction:ix [ Element.text "child" ]));
   check_one "input"
     (Element.map (fun _m -> ()) (Element.input ~interaction:ix "val"))

@@ -134,9 +134,8 @@ let () =
   Alcotest.run "nopal_element_events"
     [
       ( "button_events",
-        [
-          Alcotest.test_case "dblclick_some" `Quick test_button_dblclick_some;
-        ] );
+        [ Alcotest.test_case "dblclick_some" `Quick test_button_dblclick_some ]
+      );
       ( "input_events",
         [
           Alcotest.test_case "blur_some" `Quick test_input_blur_some;

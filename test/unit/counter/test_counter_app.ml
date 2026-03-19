@@ -8,7 +8,6 @@ let msg_pp fmt msg =
   | Reset -> Format.fprintf fmt "Reset"
 
 let msg_testable = Alcotest.testable msg_pp ( = )
-
 let error_testable = Test_util.error_testable
 
 let test_click_increment () =
