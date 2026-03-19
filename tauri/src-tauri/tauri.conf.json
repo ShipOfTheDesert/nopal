@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/nickel-org/nickel.rs/master/api/schema.json",
+  "$schema": "./gen/schemas/desktop-schema.json",
   "productName": "nopal-kitchen-sink",
   "version": "0.0.0",
   "identifier": "run.nopal.kitchen-sink",

@@ -57,6 +57,31 @@ Chromium by default.
 
 E2E tests live in `test/e2e/tests/` and cover every interactive example.
 
+### Desktop Development (Tauri)
+
+Tauri builds require two additional tools:
+
+- **Rust toolchain** — Install via [rustup](https://rustup.rs/). The stable
+  channel is sufficient.
+- **miniserve** — Static file server used during dev mode. Install with
+  `cargo install miniserve`.
+
+Tauri system dependencies (GTK, WebKit, etc.) are also required on Linux.
+See the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
+for your platform.
+
+```bash
+just dev-tauri         # dune watch + miniserve + Tauri dev window (kitchen sink)
+just build-tauri       # production build — outputs binary to tauri/src-tauri/target/release/bundle/
+```
+
+`dev-tauri` launches a full dev loop: it builds assets, starts a dune
+polling rebuild, serves `tauri/dist/` via miniserve on port 1420, and
+opens the Tauri window. File changes trigger a rebuild automatically.
+
+`build-tauri` produces an optimized release binary bundled with the
+kitchen sink frontend.
+
 ## Coding Principles
 
 These principles govern every contribution. Listed in priority order.
