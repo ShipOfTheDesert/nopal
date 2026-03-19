@@ -1,0 +1,24 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nickel-org/nickel.rs/master/api/schema.json",
+  "productName": "nopal-kitchen-sink",
+  "version": "0.0.0",
+  "identifier": "run.nopal.kitchen-sink",
+  "build": {
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist",
+    "beforeBuildCommand": "just tauri-prepare-build",
+    "beforeDevCommand": ""
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Nopal Kitchen Sink",
+        "width": 1024,
+        "height": 768
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  }
+}

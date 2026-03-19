@@ -69,6 +69,48 @@ serve-http-demo: build
     @cp examples/http_demo/index.html _build/default/examples/http_demo/
     python3 -m http.server 8000 -d _build/default/examples/http_demo
 
+# Tauri
+
+tauri-prepare-dev: build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rm -rf tauri/dist
+    mkdir -p tauri/dist
+    cp examples/kitchen_sink/index.html _build/default/examples/kitchen_sink/main.bc.js tauri/dist/
+    cp -r examples/kitchen_sink/assets tauri/dist/assets
+
+tauri-prepare-build: build-release
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rm -rf tauri/dist
+    mkdir -p tauri/dist
+    cp examples/kitchen_sink/index.html _build/default/examples/kitchen_sink/main.bc.js tauri/dist/
+    cp -r examples/kitchen_sink/assets tauri/dist/assets
+
+dev-tauri: tauri-prepare-dev
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cleanup() {
+        kill $DUNE_PID $SERVE_PID 2>/dev/null || true
+        wait $DUNE_PID $SERVE_PID 2>/dev/null || true
+    }
+    trap cleanup EXIT INT TERM
+    # Watch for OCaml changes and rebuild assets
+    (while true; do
+        opam exec -- dune build 2>&1 | tail -1
+        cp _build/default/examples/kitchen_sink/main.bc.js tauri/dist/ 2>/dev/null || true
+        sleep 1
+    done) &
+    DUNE_PID=$!
+    # Serve tauri/dist/ on port 1420
+    miniserve --port 1420 --index index.html tauri/dist &
+    SERVE_PID=$!
+    # Launch Tauri dev window
+    cd tauri && npm exec tauri dev
+
+build-tauri:
+    cd tauri && npm exec tauri build
+
 # Site — assemble examples mini-site into dist/
 
 build-release:
