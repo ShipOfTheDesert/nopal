@@ -11,7 +11,7 @@
 
 (maintainers "Maintainer Name <maintainer@example.com>")
 
-(license LICENSE)
+(license MIT)
 
 (documentation https://url/to/documentation)
 
@@ -197,4 +197,5 @@
   brr
   js_of_ocaml
   yojson
-  ppx_deriving_yojson))
+  ppx_deriving_yojson
+  (alcotest :with-test)))

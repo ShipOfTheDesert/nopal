@@ -3,7 +3,7 @@ opam-version: "2.0"
 synopsis: "Example applications for Nopal"
 maintainer: ["Maintainer Name <maintainer@example.com>"]
 authors: ["Author Name <author@example.com>"]
-license: "LICENSE"
+license: "MIT"
 homepage: "https://github.com/ShipOfTheDesert/nopal"
 doc: "https://url/to/documentation"
 bug-reports: "https://github.com/ShipOfTheDesert/nopal/issues"
@@ -24,6 +24,7 @@ depends: [
   "js_of_ocaml"
   "yojson"
   "ppx_deriving_yojson"
+  "alcotest" {with-test}
   "odoc" {with-doc}
 ]
 build: [
