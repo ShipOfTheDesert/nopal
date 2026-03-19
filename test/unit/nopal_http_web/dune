@@ -1,7 +1,14 @@
 (test
  (name test_nopal_http_web)
  (package nopal_http_web)
- (libraries nopal_http_web nopal_http nopal_mvu alcotest brr js_of_ocaml)
+ (libraries
+  nopal_http_web
+  nopal_http
+  nopal_mvu
+  test_util
+  alcotest
+  brr
+  js_of_ocaml)
  (modes js)
  (js_of_ocaml
   (javascript_files fetch_shim.js)))

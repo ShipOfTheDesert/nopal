@@ -26,6 +26,8 @@ let msg_pp fmt msg =
   | PostResult _ -> Format.fprintf fmt "PostResult _"
   | PutClicked -> Format.fprintf fmt "PutClicked"
   | PutResult _ -> Format.fprintf fmt "PutResult _"
+  | TimeoutClicked -> Format.fprintf fmt "TimeoutClicked"
+  | TimeoutResult _ -> Format.fprintf fmt "TimeoutResult _"
   | ButtonClicked
   | InputChanged _
   | SubmitInputChanged _
@@ -73,6 +75,7 @@ type section_config = {
   set_state : model -> http_state -> model;
   section_attr : string;
   prefix : string;
+  btn_testid : string;
   click_msg : msg;
 }
 
@@ -83,6 +86,7 @@ let http_section =
     set_state = (fun m s -> { m with http_state = s });
     section_attr = "http";
     prefix = "http";
+    btn_testid = "fetch-btn";
     click_msg = FetchClicked;
   }
 
@@ -93,6 +97,7 @@ let post_section =
     set_state = (fun m s -> { m with post_state = s });
     section_attr = "http-post";
     prefix = "post";
+    btn_testid = "post-btn";
     click_msg = PostClicked;
   }
 
@@ -103,7 +108,19 @@ let put_section =
     set_state = (fun m s -> { m with put_state = s });
     section_attr = "http-put";
     prefix = "put";
+    btn_testid = "put-btn";
     click_msg = PutClicked;
+  }
+
+let timeout_section =
+  {
+    label = "http_timeout";
+    view_fn = view_http_timeout;
+    set_state = (fun m s -> { m with timeout_state = s });
+    section_attr = "http-timeout";
+    prefix = "timeout";
+    btn_testid = "timeout-btn";
+    click_msg = TimeoutClicked;
   }
 
 let test_idle cfg () =
@@ -112,12 +129,7 @@ let test_idle cfg () =
   let t = tree r in
   let section = find (By_attr ("data-section", cfg.section_attr)) t in
   Alcotest.(check bool) "section exists" true (Option.is_some section);
-  let btn_id = cfg.prefix ^ "-btn" in
-  let btn =
-    match cfg.prefix with
-    | "http" -> find (By_attr ("data-testid", "fetch-btn")) t
-    | _ -> find (By_attr ("data-testid", btn_id)) t
-  in
+  let btn = find (By_attr ("data-testid", cfg.btn_testid)) t in
   Alcotest.(check bool) "button exists" true (Option.is_some btn);
   let idle = find (By_attr ("data-testid", cfg.prefix ^ "-idle")) t in
   Alcotest.(check bool) "idle placeholder exists" true (Option.is_some idle);
@@ -166,12 +178,7 @@ let test_error cfg () =
 let test_click cfg () =
   let model = idle_model () in
   let r = render (cfg.view_fn model) in
-  let btn_id =
-    match cfg.prefix with
-    | "http" -> "fetch-btn"
-    | _ -> cfg.prefix ^ "-btn"
-  in
-  let result = click (By_attr ("data-testid", btn_id)) r in
+  let result = click (By_attr ("data-testid", cfg.btn_testid)) r in
   Alcotest.(check (result unit error_testable)) "click succeeds" (Ok ()) result;
   Alcotest.(check (list msg_testable))
     ("dispatches " ^ cfg.label)
@@ -207,20 +214,9 @@ let test_view_http_put_shows_headers () =
     | Some node -> text_content node
     | None -> ""
   in
-  let contains_substr s sub =
-    let slen = String.length s in
-    let sublen = String.length sub in
-    if sublen > slen then false
-    else
-      let found = ref false in
-      for i = 0 to slen - sublen do
-        if String.sub s i sublen = sub then found := true
-      done;
-      !found
-  in
   Alcotest.(check bool)
     "shows content-type header" true
-    (contains_substr headers_text "application/json")
+    (Test_util.string_contains headers_text ~sub:"application/json")
 
 let () =
   Alcotest.run "kitchen_sink_http"
@@ -228,6 +224,7 @@ let () =
       section_tests http_section;
       section_tests post_section;
       section_tests put_section;
+      section_tests timeout_section;
       ( "http_put_extras",
         [
           Alcotest.test_case "put shows response headers" `Quick

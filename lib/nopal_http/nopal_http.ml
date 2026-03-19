@@ -4,7 +4,14 @@ type response = {
   headers : (string * string) list;
 }
 
-type error = Network_error of string
+type body =
+  | String of { content : string; content_type : string option }
+  | Json of string
+  | Form_encoded of (string * string) list
+  | Multipart of (string * string) list
+  | Empty
+
+type error = Network_error of string | Timeout
 type outcome = (response, error) result
 type meth = GET | POST | PUT | DELETE | PATCH
 
@@ -12,7 +19,8 @@ type request = {
   meth : meth;
   url : string;
   headers : (string * string) list;
-  body : string;
+  body : body;
+  timeout : float option;
 }
 
 type backend = {
@@ -36,17 +44,17 @@ let current_backend = ref default_backend
 let register_backend b = current_backend := b
 let send request on_result = !current_backend.send request on_result
 
-let get ?(headers = []) url on_result =
-  send { meth = GET; url; headers; body = "" } on_result
+let get ?(headers = []) ?timeout url on_result =
+  send { meth = GET; url; headers; body = Empty; timeout } on_result
 
-let post url ?(headers = []) ~body on_result =
-  send { meth = POST; url; headers; body } on_result
+let post ?(headers = []) ?timeout ~body url on_result =
+  send { meth = POST; url; headers; body; timeout } on_result
 
-let put url ?(headers = []) ~body on_result =
-  send { meth = PUT; url; headers; body } on_result
+let put ?(headers = []) ?timeout ~body url on_result =
+  send { meth = PUT; url; headers; body; timeout } on_result
 
-let delete_ ?(body = "") ?(headers = []) url on_result =
-  send { meth = DELETE; url; headers; body } on_result
+let delete_ ?(body = Empty) ?(headers = []) ?timeout url on_result =
+  send { meth = DELETE; url; headers; body; timeout } on_result
 
-let patch url ?(headers = []) ~body on_result =
-  send { meth = PATCH; url; headers; body } on_result
+let patch ?(headers = []) ?timeout ~body url on_result =
+  send { meth = PATCH; url; headers; body; timeout } on_result

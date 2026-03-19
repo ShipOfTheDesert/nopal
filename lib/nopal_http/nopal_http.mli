@@ -14,10 +14,22 @@ type response = {
     is the response body as a string. [headers] is a list of response header
     name-value pairs with lowercased names. *)
 
+type body =
+  | String of { content : string; content_type : string option }
+  | Json of string
+  | Form_encoded of (string * string) list
+  | Multipart of (string * string) list
+  | Empty
+      (** HTTP request body variants. [String] carries raw content with an
+          optional content type. [Json] carries a JSON string. [Form_encoded]
+          and [Multipart] carry key-value pairs. [Empty] indicates no body. *)
+
 type error =
   | Network_error of string
+  | Timeout
       (** HTTP failure modes. [Network_error msg] indicates the request could
-          not be completed (DNS failure, connection refused, etc.). *)
+          not be completed (DNS failure, connection refused, etc.). [Timeout]
+          indicates the request exceeded its timeout. *)
 
 type outcome = (response, error) result
 (** The result of an HTTP request — either a successful [response] or an
@@ -29,11 +41,12 @@ type request = {
   meth : meth;
   url : string;
   headers : (string * string) list;
-  body : string;
+  body : body;
+  timeout : float option;
 }
 (** An HTTP request. [meth] is the HTTP method, [url] is the target URL,
-    [headers] is a list of header name-value pairs, and [body] is the request
-    body (empty string for GET requests). *)
+    [headers] is a list of header name-value pairs, [body] is the request body,
+    and [timeout] is an optional timeout in seconds. *)
 
 type backend = {
   send : 'msg. request -> (outcome -> 'msg) -> 'msg Nopal_mvu.Cmd.t;
@@ -57,46 +70,49 @@ val send : request -> (outcome -> 'msg) -> 'msg Nopal_mvu.Cmd.t
 
 val get :
   ?headers:(string * string) list ->
+  ?timeout:float ->
   string ->
   (outcome -> 'msg) ->
   'msg Nopal_mvu.Cmd.t
-(** [get ?headers url on_result] creates a command that will perform an HTTP GET
-    request to [url] with optional [headers]. When the request completes,
-    [on_result] is called with the [outcome] and the resulting message is
-    dispatched. *)
+(** [get ?headers ?timeout url on_result] creates a command that will perform an
+    HTTP GET request to [url] with optional [headers] and [timeout]. *)
 
 val post :
-  string ->
   ?headers:(string * string) list ->
-  body:string ->
+  ?timeout:float ->
+  body:body ->
+  string ->
   (outcome -> 'msg) ->
   'msg Nopal_mvu.Cmd.t
-(** [post url ?headers ~body on_result] creates a command that will perform an
-    HTTP POST request to [url] with the given [body] and optional [headers]. *)
+(** [post ?headers ?timeout ~body url on_result] creates a command that will
+    perform an HTTP POST request to [url] with the given [body]. *)
 
 val put :
-  string ->
   ?headers:(string * string) list ->
-  body:string ->
+  ?timeout:float ->
+  body:body ->
+  string ->
   (outcome -> 'msg) ->
   'msg Nopal_mvu.Cmd.t
-(** [put url ?headers ~body on_result] creates a command that will perform an
-    HTTP PUT request to [url] with the given [body] and optional [headers]. *)
+(** [put ?headers ?timeout ~body url on_result] creates a command that will
+    perform an HTTP PUT request to [url] with the given [body]. *)
 
 val delete_ :
-  ?body:string ->
+  ?body:body ->
   ?headers:(string * string) list ->
+  ?timeout:float ->
   string ->
   (outcome -> 'msg) ->
   'msg Nopal_mvu.Cmd.t
-(** [delete_ ?body ?headers url on_result] creates a command that will perform
-    an HTTP DELETE request to [url] with an optional [body] and [headers]. *)
+(** [delete_ ?body ?headers ?timeout url on_result] creates a command that will
+    perform an HTTP DELETE request to [url]. *)
 
 val patch :
-  string ->
   ?headers:(string * string) list ->
-  body:string ->
+  ?timeout:float ->
+  body:body ->
+  string ->
   (outcome -> 'msg) ->
   'msg Nopal_mvu.Cmd.t
-(** [patch url ?headers ~body on_result] creates a command that will perform an
-    HTTP PATCH request to [url] with the given [body] and optional [headers]. *)
+(** [patch ?headers ?timeout ~body url on_result] creates a command that will
+    perform an HTTP PATCH request to [url] with the given [body]. *)

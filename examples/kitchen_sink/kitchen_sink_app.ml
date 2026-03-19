@@ -75,6 +75,7 @@ type model = {
   http_state : http_state;
   post_state : http_state;
   put_state : http_state;
+  timeout_state : http_state;
   resp_headers : (string * string) list;
 }
 
@@ -118,6 +119,8 @@ type msg =
   | PostResult of Nopal_http.outcome
   | PutClicked
   | PutResult of Nopal_http.outcome
+  | TimeoutClicked
+  | TimeoutResult of Nopal_http.outcome
 
 let init () =
   let sub_counter, sub_cmd = Sub_counter.init () in
@@ -143,6 +146,7 @@ let init () =
       http_state = Idle;
       post_state = Idle;
       put_state = Idle;
+      timeout_state = Idle;
       resp_headers = [];
     },
     Nopal_mvu.Cmd.map (fun m -> SubCounterMsg m) sub_cmd )
@@ -284,27 +288,43 @@ let update model = function
       ({ model with http_state = Success body }, Nopal_mvu.Cmd.none)
   | FetchResult (Error (Network_error msg)) ->
       ({ model with http_state = Errored msg }, Nopal_mvu.Cmd.none)
+  | FetchResult (Error Timeout) ->
+      ( { model with http_state = Errored "request timed out" },
+        Nopal_mvu.Cmd.none )
   | PostClicked ->
       ( { model with post_state = Loading },
-        Nopal_http.post "https://httpbin.org/post"
-          ~headers:[ ("Content-Type", "application/json") ]
-          ~body:{|{"nopal":true}|}
-          (fun o -> PostResult o) )
+        Nopal_http.post ~body:(Nopal_http.Json {|{"nopal":true}|})
+          "https://httpbin.org/post" (fun o -> PostResult o) )
   | PostResult (Ok { body; _ }) ->
       ({ model with post_state = Success body }, Nopal_mvu.Cmd.none)
   | PostResult (Error (Network_error msg)) ->
       ({ model with post_state = Errored msg }, Nopal_mvu.Cmd.none)
+  | PostResult (Error Timeout) ->
+      ( { model with post_state = Errored "request timed out" },
+        Nopal_mvu.Cmd.none )
   | PutClicked ->
       ( { model with put_state = Loading },
-        Nopal_http.put "https://httpbin.org/put"
-          ~headers:[ ("Content-Type", "application/json") ]
-          ~body:{|{"nopal":"put"}|}
-          (fun o -> PutResult o) )
+        Nopal_http.put ~body:(Nopal_http.Json {|{"nopal":"put"}|})
+          "https://httpbin.org/put" (fun o -> PutResult o) )
   | PutResult (Ok { body; headers; _ }) ->
       ( { model with put_state = Success body; resp_headers = headers },
         Nopal_mvu.Cmd.none )
   | PutResult (Error (Network_error msg)) ->
       ( { model with put_state = Errored msg; resp_headers = [] },
+        Nopal_mvu.Cmd.none )
+  | PutResult (Error Timeout) ->
+      ( { model with put_state = Errored "request timed out"; resp_headers = [] },
+        Nopal_mvu.Cmd.none )
+  | TimeoutClicked ->
+      ( { model with timeout_state = Loading },
+        Nopal_http.get ~timeout:2.0 "https://httpbin.org/delay/10" (fun o ->
+            TimeoutResult o) )
+  | TimeoutResult (Ok { body; _ }) ->
+      ({ model with timeout_state = Success body }, Nopal_mvu.Cmd.none)
+  | TimeoutResult (Error (Network_error msg)) ->
+      ({ model with timeout_state = Errored msg }, Nopal_mvu.Cmd.none)
+  | TimeoutResult (Error Timeout) ->
+      ( { model with timeout_state = Errored "request timed out" },
         Nopal_mvu.Cmd.none )
 
 (* Section wrapper (REQ-F10) *)
@@ -2012,6 +2032,44 @@ let view_http_put model =
       headers_display;
     ]
 
+let view_http_timeout model =
+  let status_display =
+    match model.timeout_state with
+    | Idle ->
+        Element.box
+          ~attrs:[ ("data-testid", "timeout-idle") ]
+          [
+            Element.text
+              "Click Send to test timeout (2s limit, 10s endpoint \u{2014} \
+               requires internet)";
+          ]
+    | Loading ->
+        Element.box
+          ~attrs:[ ("data-testid", "timeout-status") ]
+          [ Element.text "Loading\u{2026}" ]
+    | Success body ->
+        Element.box
+          ~attrs:[ ("data-testid", "timeout-result") ]
+          [ Element.text body ]
+    | Errored msg ->
+        Element.box
+          ~attrs:[ ("data-testid", "timeout-error") ]
+          [ Element.text msg ]
+  in
+  let timeout_btn_style =
+    Style.default
+    |> Style.with_layout (fun l -> l |> Style.padding 6.0 16.0 6.0 16.0)
+  in
+  view_section
+    ~attrs:[ ("data-section", "http-timeout") ]
+    "HTTP Timeout"
+    [
+      Element.button ~style:timeout_btn_style
+        ~attrs:[ ("data-testid", "timeout-btn") ]
+        ~on_click:TimeoutClicked (Element.text "Send");
+      status_display;
+    ]
+
 (* Main view — all sections in a scrollable column (REQ-F10, REQ-F12) *)
 let view vp model =
   Element.scroll
@@ -2040,6 +2098,7 @@ let view vp model =
          view_http model;
          view_http_post model;
          view_http_put model;
+         view_http_timeout model;
        ])
 
 let subscriptions _model = Nopal_mvu.Sub.none
