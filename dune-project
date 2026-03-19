@@ -177,3 +177,24 @@
   lwd
   brr
   js_of_ocaml))
+
+(package
+ (name nopal_examples)
+ (allow_empty)
+ (synopsis "Example applications for Nopal")
+ (depends
+  ocaml
+  nopal_mvu
+  nopal_element
+  nopal_style
+  nopal_draw
+  nopal_charts
+  nopal_http
+  nopal_http_web
+  nopal_runtime
+  nopal_router
+  nopal_web
+  brr
+  js_of_ocaml
+  yojson
+  ppx_deriving_yojson))
