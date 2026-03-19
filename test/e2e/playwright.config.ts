@@ -23,10 +23,18 @@ export default defineConfig({
         baseURL: "http://localhost:3000/kitchen_sink",
       },
     },
+    {
+      name: "http-demo",
+      testMatch: "http-demo.spec.ts",
+      use: {
+        browserName: "chromium",
+        baseURL: "http://localhost:3000/http_demo",
+      },
+    },
   ],
   webServer: {
     command:
-      "cd ../.. && opam exec -- dune build && cp examples/todomvc/index.html _build/default/examples/todomvc/ && cp examples/kitchen_sink/index.html _build/default/examples/kitchen_sink/ && cp examples/dashboard/index.html _build/default/examples/dashboard/ && npx serve -l 3000 _build/default/examples",
+      "cd ../.. && opam exec -- dune build && cp examples/todomvc/index.html _build/default/examples/todomvc/ && cp examples/kitchen_sink/index.html _build/default/examples/kitchen_sink/ && cp examples/dashboard/index.html _build/default/examples/dashboard/ && cp examples/http_demo/index.html _build/default/examples/http_demo/ && npx serve -l 3000 _build/default/examples",
     port: 3000,
     reuseExistingServer: !process.env.CI,
   },
