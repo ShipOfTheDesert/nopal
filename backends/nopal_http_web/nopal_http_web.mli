@@ -16,44 +16,49 @@ val send :
 
 val get :
   ?headers:(string * string) list ->
+  ?timeout:float ->
   string ->
   (Nopal_http.outcome -> 'msg) ->
   'msg Nopal_mvu.Cmd.t
-(** [get ?headers url on_result] creates a command that performs an HTTP GET
-    request to [url] with optional [headers] using the browser Fetch API. *)
+(** [get ?headers ?timeout url on_result] creates a command that performs an
+    HTTP GET request to [url] with optional [headers] and [timeout]. *)
 
 val post :
-  string ->
   ?headers:(string * string) list ->
-  body:string ->
+  ?timeout:float ->
+  body:Nopal_http.body ->
+  string ->
   (Nopal_http.outcome -> 'msg) ->
   'msg Nopal_mvu.Cmd.t
-(** [post url ?headers ~body on_result] creates a command that performs an HTTP
-    POST request to [url] with the given [body] and optional [headers]. *)
+(** [post ?headers ?timeout ~body url on_result] creates a command that performs
+    an HTTP POST request to [url] with the given [body]. *)
 
 val put :
-  string ->
   ?headers:(string * string) list ->
-  body:string ->
+  ?timeout:float ->
+  body:Nopal_http.body ->
+  string ->
   (Nopal_http.outcome -> 'msg) ->
   'msg Nopal_mvu.Cmd.t
-(** [put url ?headers ~body on_result] creates a command that performs an HTTP
-    PUT request to [url] with the given [body] and optional [headers]. *)
+(** [put ?headers ?timeout ~body url on_result] creates a command that performs
+    an HTTP PUT request to [url] with the given [body]. *)
 
 val delete_ :
-  ?body:string ->
+  ?body:Nopal_http.body ->
   ?headers:(string * string) list ->
+  ?timeout:float ->
   string ->
   (Nopal_http.outcome -> 'msg) ->
   'msg Nopal_mvu.Cmd.t
-(** [delete_ ?body ?headers url on_result] creates a command that performs an
-    HTTP DELETE request to [url] with an optional [body] and [headers]. *)
+(** [delete_ ?body ?headers ?timeout url on_result] creates a command that
+    performs an HTTP DELETE request to [url]. *)
 
 val patch :
-  string ->
   ?headers:(string * string) list ->
-  body:string ->
+  ?timeout:float ->
+  body:Nopal_http.body ->
+  string ->
   (Nopal_http.outcome -> 'msg) ->
   'msg Nopal_mvu.Cmd.t
-(** [patch url ?headers ~body on_result] creates a command that performs an HTTP
-    PATCH request to [url] with the given [body] and optional [headers]. *)
+(** [patch ?headers ?timeout ~body url on_result] creates a command that
+    performs an HTTP PATCH request to [url] with the given [body]. *)

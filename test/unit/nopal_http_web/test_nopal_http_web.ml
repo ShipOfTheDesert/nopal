@@ -1,18 +1,5 @@
 type test_msg = Got of Nopal_http.outcome | Mapped of string
 
-(* Returns true if [sub] appears anywhere in [s]. *)
-let string_contains s ~sub =
-  let len_s = String.length s in
-  let len_sub = String.length sub in
-  if len_sub > len_s then false
-  else
-    let rec check i =
-      if i > len_s - len_sub then false
-      else if String.sub s i len_sub = sub then true
-      else check (i + 1)
-    in
-    check 0
-
 (* Defers [k] until after all microtasks have flushed via setTimeout(0).
    Brr_io.Fetch wraps browser fetch in Promise.then() chains. Even with
    a synchronously-resolving fetch shim, .then() callbacks are microtasks
@@ -37,6 +24,9 @@ let () =
   let results_delete = ref [] in
   let results_patch = ref [] in
   let results_delete_body = ref [] in
+  let results_form_encoded = ref [] in
+  let results_multipart = ref [] in
+  let results_timeout = ref [] in
   Nopal_mvu.Cmd.execute
     (fun msg -> results_get_success := msg :: !results_get_success)
     (Nopal_http_web.get "https://example.com/success" (fun outcome ->
@@ -60,13 +50,17 @@ let () =
          | Error _ -> Mapped "error"));
   Nopal_mvu.Cmd.execute
     (fun msg -> results_post := msg :: !results_post)
-    (Nopal_http_web.post "https://example.com/success"
+    (Nopal_http_web.post
        ~headers:[ ("Content-Type", "application/json") ]
-       ~body:"test-payload"
+       ~body:
+         (Nopal_http.String { content = "test-payload"; content_type = None })
+       "https://example.com/success"
        (fun outcome -> Got outcome));
   Nopal_mvu.Cmd.execute
     (fun msg -> results_post_network := msg :: !results_post_network)
-    (Nopal_http_web.post "https://example.com/network-error" ~body:"hello"
+    (Nopal_http_web.post
+       ~body:(Nopal_http.String { content = "hello"; content_type = None })
+       "https://example.com/network-error"
        (fun outcome -> Got outcome));
   Nopal_mvu.Cmd.execute
     (fun msg -> results_get_headers := msg :: !results_get_headers)
@@ -76,7 +70,10 @@ let () =
        (fun outcome -> Got outcome));
   Nopal_mvu.Cmd.execute
     (fun msg -> results_put := msg :: !results_put)
-    (Nopal_http_web.put "https://example.com/success" ~body:"put-payload"
+    (Nopal_http_web.put
+       ~body:
+         (Nopal_http.String { content = "put-payload"; content_type = None })
+       "https://example.com/success"
        (fun outcome -> Got outcome));
   Nopal_mvu.Cmd.execute
     (fun msg -> results_delete := msg :: !results_delete)
@@ -84,11 +81,34 @@ let () =
          Got outcome));
   Nopal_mvu.Cmd.execute
     (fun msg -> results_patch := msg :: !results_patch)
-    (Nopal_http_web.patch "https://example.com/success" ~body:"patch-data"
+    (Nopal_http_web.patch
+       ~body:(Nopal_http.String { content = "patch-data"; content_type = None })
+       "https://example.com/success"
        (fun outcome -> Got outcome));
   Nopal_mvu.Cmd.execute
     (fun msg -> results_delete_body := msg :: !results_delete_body)
-    (Nopal_http_web.delete_ ~body:"delete-payload" "https://example.com/success"
+    (Nopal_http_web.delete_
+       ~body:
+         (Nopal_http.String { content = "delete-payload"; content_type = None })
+       "https://example.com/success"
+       (fun outcome -> Got outcome));
+  Nopal_mvu.Cmd.execute
+    (fun msg -> results_form_encoded := msg :: !results_form_encoded)
+    (Nopal_http_web.post
+       ~body:
+         (Nopal_http.Form_encoded
+            [ ("a&b", "c=d"); ("space key", "val ue"); ("utf8", "\xc3\xa9") ])
+       "https://example.com/success"
+       (fun outcome -> Got outcome));
+  Nopal_mvu.Cmd.execute
+    (fun msg -> results_multipart := msg :: !results_multipart)
+    (Nopal_http_web.post
+       ~body:(Nopal_http.Multipart [ ("name", "nopal"); ("version", "1") ])
+       "https://example.com/success"
+       (fun outcome -> Got outcome));
+  Nopal_mvu.Cmd.execute
+    (fun msg -> results_timeout := msg :: !results_timeout)
+    (Nopal_http_web.get ~timeout:0.01 "https://example.com/delay"
        (fun outcome -> Got outcome));
   (* Defer all assertions until after microtask flush *)
   flush_then_run (fun () ->
@@ -174,11 +194,11 @@ let () =
                         "status is 200" 200 resp.Nopal_http.status;
                       Alcotest.(check bool)
                         "response contains test-payload" true
-                        (string_contains resp.Nopal_http.body
+                        (Test_util.string_contains resp.Nopal_http.body
                            ~sub:"test-payload");
                       Alcotest.(check bool)
                         "response contains content-type" true
-                        (string_contains resp.Nopal_http.body
+                        (Test_util.string_contains resp.Nopal_http.body
                            ~sub:"content-type")
                   | _ ->
                       Alcotest.fail
@@ -199,7 +219,7 @@ let () =
                   | [ Got (Ok resp) ] ->
                       Alcotest.(check bool)
                         "response contains authorization" true
-                        (string_contains resp.Nopal_http.body
+                        (Test_util.string_contains resp.Nopal_http.body
                            ~sub:"authorization")
                   | _ ->
                       Alcotest.fail
@@ -211,7 +231,8 @@ let () =
                         "status is 200" 200 resp.Nopal_http.status;
                       Alcotest.(check bool)
                         "response contains put-payload" true
-                        (string_contains resp.Nopal_http.body ~sub:"put-payload")
+                        (Test_util.string_contains resp.Nopal_http.body
+                           ~sub:"put-payload")
                   | _ ->
                       Alcotest.fail
                         "expected exactly one Got (Ok _) for put test");
@@ -231,15 +252,66 @@ let () =
                   | _ ->
                       Alcotest.fail
                         "expected exactly one Got (Ok { status = 200; ... })");
+              Alcotest.test_case "form_encoded encodes special characters"
+                `Quick (fun () ->
+                  match !results_form_encoded with
+                  | [ Got (Ok resp) ] ->
+                      (* The fetch shim echoes the body field. Form-encoded body
+                         should contain URL-encoded keys and values joined by &. *)
+                      let body = resp.Nopal_http.body in
+                      Alcotest.(check bool)
+                        "body contains encoded ampersand (a%26b)" true
+                        (Test_util.string_contains body ~sub:"a%26b");
+                      Alcotest.(check bool)
+                        "body contains encoded equals (c%3Dd)" true
+                        (Test_util.string_contains body ~sub:"c%3Dd");
+                      Alcotest.(check bool)
+                        "body contains encoded space (space%20key)" true
+                        (Test_util.string_contains body ~sub:"space%20key");
+                      Alcotest.(check bool)
+                        "body contains pair separator (&)" true
+                        (Test_util.string_contains body ~sub:"&")
+                  | _ ->
+                      Alcotest.fail
+                        "expected exactly one Got (Ok _) for form_encoded test");
               Alcotest.test_case "delete with body sends body" `Quick (fun () ->
                   match !results_delete_body with
                   | [ Got (Ok resp) ] ->
                       Alcotest.(check bool)
                         "response contains delete-payload" true
-                        (string_contains resp.Nopal_http.body
+                        (Test_util.string_contains resp.Nopal_http.body
                            ~sub:"delete-payload")
                   | _ ->
                       Alcotest.fail
                         "expected exactly one Got (Ok _) for delete body test");
+              Alcotest.test_case "multipart sends FormData entries" `Quick
+                (fun () ->
+                  match !results_multipart with
+                  | [ Got (Ok resp) ] ->
+                      (* The shim serialises FormData._entries as a JSON array.
+                         Verify both entries appear in the echoed body. *)
+                      Alcotest.(check bool)
+                        "body contains name entry" true
+                        (Test_util.string_contains resp.Nopal_http.body
+                           ~sub:"nopal");
+                      Alcotest.(check bool)
+                        "body contains version entry" true
+                        (Test_util.string_contains resp.Nopal_http.body
+                           ~sub:"version")
+                  | _ ->
+                      Alcotest.fail
+                        "expected exactly one Got (Ok _) for multipart test");
+              Alcotest.test_case "timeout aborts and dispatches Timeout" `Quick
+                (fun () ->
+                  match !results_timeout with
+                  | [ Got (Error Nopal_http.Timeout) ] -> ()
+                  | [ Got (Error (Nopal_http.Network_error msg)) ] ->
+                      Alcotest.fail
+                        ("expected Timeout but got Network_error: " ^ msg)
+                  | [ Got (Ok _) ] ->
+                      Alcotest.fail
+                        "expected Timeout but got Ok (request was not aborted)"
+                  | _ ->
+                      Alcotest.fail "expected exactly one Got (Error Timeout)");
             ] );
         ])

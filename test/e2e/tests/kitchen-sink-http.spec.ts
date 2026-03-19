@@ -12,6 +12,10 @@ const POST_STATUS = '[data-testid="post-status"]';
 const POST_RESULT = '[data-testid="post-result"]';
 const POST_ERROR = '[data-testid="post-error"]';
 
+const TIMEOUT_SECTION = '[data-section="http-timeout"]';
+const TIMEOUT_BTN = '[data-testid="timeout-btn"]';
+const TIMEOUT_ERROR = '[data-testid="timeout-error"]';
+
 const PUT_SECTION = '[data-section="http-put"]';
 const PUT_BTN = '[data-testid="put-btn"]';
 const PUT_STATUS = '[data-testid="put-status"]';
@@ -28,15 +32,6 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
-test("http section renders with fetch button", async ({ page }) => {
-  const section = page.locator(SECTION);
-  await expect(section).toBeVisible();
-
-  const fetchBtn = page.locator(FETCH_BTN);
-  await expect(fetchBtn).toBeVisible();
-  await expect(fetchBtn).toContainText("Fetch");
-});
-
 test("clicking fetch shows loading then result", async ({ page }) => {
   const fetchBtn = page.locator(FETCH_BTN);
   await fetchBtn.click();
@@ -50,22 +45,7 @@ test("clicking fetch shows loading then result", async ({ page }) => {
   await expect(outcome).toBeVisible({ timeout: 10000 });
 });
 
-test("post section renders with send button", async ({ page }) => {
-  await page.waitForFunction(
-    (sel) => document.querySelector(sel) !== null,
-    POST_SECTION,
-    { timeout: 10000 }
-  );
-
-  const section = page.locator(POST_SECTION);
-  await expect(section).toBeVisible();
-
-  const postBtn = page.locator(POST_BTN);
-  await expect(postBtn).toBeVisible();
-  await expect(postBtn).toContainText("Send");
-});
-
-test("clicking send shows loading then result", async ({ page }) => {
+test("clicking send post shows loading then result", async ({ page }) => {
   await page.waitForFunction(
     (sel) => document.querySelector(sel) !== null,
     POST_SECTION,
@@ -99,22 +79,7 @@ test("clicking send shows loading then result", async ({ page }) => {
   await expect(outcome).toBeVisible({ timeout: 10000 });
 });
 
-test("put section renders with send button", async ({ page }) => {
-  await page.waitForFunction(
-    (sel) => document.querySelector(sel) !== null,
-    PUT_SECTION,
-    { timeout: 10000 }
-  );
-
-  const section = page.locator(PUT_SECTION);
-  await expect(section).toBeVisible();
-
-  const putBtn = page.locator(PUT_BTN);
-  await expect(putBtn).toBeVisible();
-  await expect(putBtn).toContainText("Send");
-});
-
-test("clicking put send shows loading then result", async ({ page }) => {
+test("clicking put send shows loading then result with headers", async ({ page }) => {
   await page.waitForFunction(
     (sel) => document.querySelector(sel) !== null,
     PUT_SECTION,
@@ -147,31 +112,6 @@ test("clicking put send shows loading then result", async ({ page }) => {
   // Should eventually show result
   const outcome = page.locator(`${PUT_RESULT}, ${PUT_ERROR}`);
   await expect(outcome).toBeVisible({ timeout: 10000 });
-});
-
-test("put result displays response headers", async ({ page }) => {
-  await page.waitForFunction(
-    (sel) => document.querySelector(sel) !== null,
-    PUT_SECTION,
-    { timeout: 10000 }
-  );
-
-  // Intercept the PUT request and return known headers
-  await page.route("**/httpbin.org/put", (route) => {
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      headers: { "content-type": "application/json", "x-request-id": "test-123" },
-      body: JSON.stringify({ nopal: "put" }),
-    });
-  });
-
-  const putBtn = page.locator(PUT_BTN);
-  await putBtn.click();
-
-  // Wait for the result to appear
-  const outcome = page.locator(`${PUT_RESULT}, ${PUT_ERROR}`);
-  await expect(outcome).toBeVisible({ timeout: 10000 });
 
   // Response headers should be displayed
   const headers = page.locator(RESP_HEADERS);
@@ -179,4 +119,32 @@ test("put result displays response headers", async ({ page }) => {
 
   const headersText = await headers.textContent();
   expect(headersText).toContain("content-type");
+});
+
+test("timeout section renders and abort produces error", async ({ page }) => {
+  await page.waitForFunction(
+    (sel) => document.querySelector(sel) !== null,
+    TIMEOUT_SECTION,
+    { timeout: 10000 }
+  );
+
+  const section = page.locator(TIMEOUT_SECTION);
+  await expect(section).toBeVisible();
+
+  const timeoutBtn = page.locator(TIMEOUT_BTN);
+  await expect(timeoutBtn).toBeVisible();
+  await expect(timeoutBtn).toContainText("Send");
+
+  // Intercept the request and never respond — the 2s timeout in the app
+  // will abort the request before Playwright's own timeout.
+  await page.route("**/httpbin.org/delay/**", () => {
+    // Intentionally never fulfill — let the AbortController fire.
+  });
+
+  await timeoutBtn.click();
+
+  // Should show timeout error within a reasonable window (2s timeout + buffer)
+  const error = page.locator(TIMEOUT_ERROR);
+  await expect(error).toBeVisible({ timeout: 10000 });
+  await expect(error).toContainText("timed out");
 });
