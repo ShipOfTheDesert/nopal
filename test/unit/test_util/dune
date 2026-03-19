@@ -1,2 +1,3 @@
 (library
- (name test_util))
+ (name test_util)
+ (libraries nopal_test alcotest))

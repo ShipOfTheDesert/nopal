@@ -2,24 +2,6 @@ open Nopal_element
 
 type msg = Click | DblClick | Blur | KeyDown of string [@@warning "-37"]
 
-let test_button_dblclick_none_by_default () =
-  Alcotest.(check bool)
-    "button without on_dblclick has None" true
-    (match Element.button (Element.text "ok") with
-    | Element.Button { on_dblclick = None; _ } -> true
-    | Element.Empty
-    | Element.Text _
-    | Element.Box _
-    | Element.Row _
-    | Element.Column _
-    | Element.Button _
-    | Element.Input _
-    | Element.Image _
-    | Element.Scroll _
-    | Element.Keyed _
-    | Element.Draw _ ->
-        false)
-
 let test_button_dblclick_some () =
   Alcotest.(check bool)
     "button with on_dblclick has Some" true
@@ -38,47 +20,11 @@ let test_button_dblclick_some () =
     | Element.Draw _ ->
         false)
 
-let test_input_blur_none_by_default () =
-  Alcotest.(check bool)
-    "input without on_blur has None" true
-    (match Element.input "val" with
-    | Element.Input { on_blur = None; _ } -> true
-    | Element.Empty
-    | Element.Text _
-    | Element.Box _
-    | Element.Row _
-    | Element.Column _
-    | Element.Button _
-    | Element.Input _
-    | Element.Image _
-    | Element.Scroll _
-    | Element.Keyed _
-    | Element.Draw _ ->
-        false)
-
 let test_input_blur_some () =
   Alcotest.(check bool)
     "input with on_blur has Some" true
     (match Element.input ~on_blur:Blur "val" with
     | Element.Input { on_blur = Some Blur; _ } -> true
-    | Element.Empty
-    | Element.Text _
-    | Element.Box _
-    | Element.Row _
-    | Element.Column _
-    | Element.Button _
-    | Element.Input _
-    | Element.Image _
-    | Element.Scroll _
-    | Element.Keyed _
-    | Element.Draw _ ->
-        false)
-
-let test_input_keydown_none_by_default () =
-  Alcotest.(check bool)
-    "input without on_keydown has None" true
-    (match Element.input "val" with
-    | Element.Input { on_keydown = None; _ } -> true
     | Element.Empty
     | Element.Text _
     | Element.Box _
@@ -189,17 +135,11 @@ let () =
     [
       ( "button_events",
         [
-          Alcotest.test_case "dblclick_none_by_default" `Quick
-            test_button_dblclick_none_by_default;
           Alcotest.test_case "dblclick_some" `Quick test_button_dblclick_some;
         ] );
       ( "input_events",
         [
-          Alcotest.test_case "blur_none_by_default" `Quick
-            test_input_blur_none_by_default;
           Alcotest.test_case "blur_some" `Quick test_input_blur_some;
-          Alcotest.test_case "keydown_none_by_default" `Quick
-            test_input_keydown_none_by_default;
           Alcotest.test_case "keydown_some" `Quick test_input_keydown_some;
         ] );
       ( "map_events",

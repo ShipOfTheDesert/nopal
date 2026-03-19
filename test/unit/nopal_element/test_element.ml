@@ -37,62 +37,33 @@ let test_text_builder () =
     | Element.Draw _ ->
         false)
 
-let test_box_default_style () =
-  Alcotest.(check bool)
-    "box defaults to Style.empty" true
-    (match Element.box [] with
-    | Element.Box { style; children = []; _ } ->
-        Nopal_style.Style.equal style Nopal_style.Style.empty
-    | Element.Empty
-    | Element.Text _
-    | Element.Box _
-    | Element.Row _
-    | Element.Column _
-    | Element.Button _
-    | Element.Input _
-    | Element.Image _
-    | Element.Scroll _
-    | Element.Keyed _
-    | Element.Draw _ ->
-        false)
-
-let test_row_default_style () =
-  Alcotest.(check bool)
-    "row defaults to Style.empty" true
-    (match Element.row [] with
-    | Element.Row { style; children = []; _ } ->
-        Nopal_style.Style.equal style Nopal_style.Style.empty
-    | Element.Empty
-    | Element.Text _
-    | Element.Box _
-    | Element.Row _
-    | Element.Column _
-    | Element.Button _
-    | Element.Input _
-    | Element.Image _
-    | Element.Scroll _
-    | Element.Keyed _
-    | Element.Draw _ ->
-        false)
-
-let test_column_default_style () =
-  Alcotest.(check bool)
-    "column defaults to Style.empty" true
-    (match Element.column [] with
-    | Element.Column { style; children = []; _ } ->
-        Nopal_style.Style.equal style Nopal_style.Style.empty
-    | Element.Empty
-    | Element.Text _
-    | Element.Box _
-    | Element.Row _
-    | Element.Column _
-    | Element.Button _
-    | Element.Input _
-    | Element.Image _
-    | Element.Scroll _
-    | Element.Keyed _
-    | Element.Draw _ ->
-        false)
+let test_default_styles () =
+  let check_style label el =
+    let style =
+      match el with
+      | Element.Box { style; _ } -> style
+      | Element.Row { style; _ } -> style
+      | Element.Column { style; _ } -> style
+      | Element.Image { style; _ } -> style
+      | Element.Scroll { style; _ } -> style
+      | Element.Empty
+      | Element.Text _
+      | Element.Button _
+      | Element.Input _
+      | Element.Keyed _
+      | Element.Draw _ ->
+          Alcotest.fail (label ^ ": unexpected variant")
+    in
+    Alcotest.(check bool)
+      (label ^ " defaults to Style.empty")
+      true
+      (Nopal_style.Style.equal style Nopal_style.Style.empty)
+  in
+  check_style "box" (Element.box []);
+  check_style "row" (Element.row []);
+  check_style "column" (Element.column []);
+  check_style "image" (Element.image ~src:"a.png" ~alt:"pic" ());
+  check_style "scroll" (Element.scroll Element.empty)
 
 let test_box_preserves_children () =
   let a = Element.text "a" in
@@ -124,9 +95,9 @@ let test_box_preserves_children () =
 
 let test_button_no_handler () =
   Alcotest.(check bool)
-    "button without on_click has None" true
+    "button without handlers has None" true
     (match Element.button (Element.text "ok") with
-    | Element.Button { on_click = None; _ } -> true
+    | Element.Button { on_click = None; on_dblclick = None; _ } -> true
     | Element.Empty
     | Element.Text _
     | Element.Box _
@@ -188,6 +159,8 @@ let test_input_defaults () =
           placeholder = "";
           on_change = None;
           on_submit = None;
+          on_blur = None;
+          on_keydown = None;
           _;
         } ->
         true
@@ -279,42 +252,6 @@ let test_image_required_fields () =
     | Element.Input _
     | Element.Image _
     | Element.Scroll _
-    | Element.Keyed _
-    | Element.Draw _ ->
-        false)
-
-let test_image_default_style () =
-  Alcotest.(check bool)
-    "image defaults to Style.empty" true
-    (match Element.image ~src:"a.png" ~alt:"pic" () with
-    | Element.Image { style; _ } ->
-        Nopal_style.Style.equal style Nopal_style.Style.empty
-    | Element.Empty
-    | Element.Text _
-    | Element.Box _
-    | Element.Row _
-    | Element.Column _
-    | Element.Button _
-    | Element.Input _
-    | Element.Scroll _
-    | Element.Keyed _
-    | Element.Draw _ ->
-        false)
-
-let test_scroll_default_style () =
-  Alcotest.(check bool)
-    "scroll defaults to Style.empty" true
-    (match Element.scroll Element.empty with
-    | Element.Scroll { style; _ } ->
-        Nopal_style.Style.equal style Nopal_style.Style.empty
-    | Element.Empty
-    | Element.Text _
-    | Element.Box _
-    | Element.Row _
-    | Element.Column _
-    | Element.Button _
-    | Element.Input _
-    | Element.Image _
     | Element.Keyed _
     | Element.Draw _ ->
         false)
@@ -766,111 +703,43 @@ let test_input_with_interaction () =
     | Element.Draw _ ->
         false)
 
-let test_map_preserves_interaction_button () =
+let test_map_preserves_interaction () =
   let ix = test_interaction in
-  let el = Element.button ~interaction:ix ~on_click:Click (Element.text "ok") in
-  let mapped = Element.map (fun m -> Wrapped m) el in
-  Alcotest.(check bool)
-    "map preserves interaction on button" true
-    (match mapped with
-    | Element.Button { interaction; on_click = Some (Wrapped Click); _ } ->
-        Nopal_style.Interaction.equal interaction ix
-    | Element.Empty
-    | Element.Text _
-    | Element.Box _
-    | Element.Row _
-    | Element.Column _
-    | Element.Button _
-    | Element.Input _
-    | Element.Image _
-    | Element.Scroll _
-    | Element.Keyed _
-    | Element.Draw _ ->
-        false)
-
-let test_map_preserves_interaction_box () =
-  let ix = test_interaction in
-  let el = Element.box ~interaction:ix [ Element.text "child" ] in
-  let mapped = Element.map (fun _m -> ()) el in
-  Alcotest.(check bool)
-    "map preserves interaction on box" true
-    (match mapped with
-    | Element.Box { interaction; _ } ->
-        Nopal_style.Interaction.equal interaction ix
-    | Element.Empty
-    | Element.Text _
-    | Element.Row _
-    | Element.Column _
-    | Element.Button _
-    | Element.Input _
-    | Element.Image _
-    | Element.Scroll _
-    | Element.Keyed _
-    | Element.Draw _ ->
-        false)
-
-let test_map_preserves_interaction_row () =
-  let ix = test_interaction in
-  let el = Element.row ~interaction:ix [ Element.text "child" ] in
-  let mapped = Element.map (fun _m -> ()) el in
-  Alcotest.(check bool)
-    "map preserves interaction on row" true
-    (match mapped with
-    | Element.Row { interaction; _ } ->
-        Nopal_style.Interaction.equal interaction ix
-    | Element.Empty
-    | Element.Text _
-    | Element.Box _
-    | Element.Column _
-    | Element.Button _
-    | Element.Input _
-    | Element.Image _
-    | Element.Scroll _
-    | Element.Keyed _
-    | Element.Draw _ ->
-        false)
-
-let test_map_preserves_interaction_column () =
-  let ix = test_interaction in
-  let el = Element.column ~interaction:ix [ Element.text "child" ] in
-  let mapped = Element.map (fun _m -> ()) el in
-  Alcotest.(check bool)
-    "map preserves interaction on column" true
-    (match mapped with
-    | Element.Column { interaction; _ } ->
-        Nopal_style.Interaction.equal interaction ix
-    | Element.Empty
-    | Element.Text _
-    | Element.Box _
-    | Element.Row _
-    | Element.Button _
-    | Element.Input _
-    | Element.Image _
-    | Element.Scroll _
-    | Element.Keyed _
-    | Element.Draw _ ->
-        false)
-
-let test_map_preserves_interaction_input () =
-  let ix = test_interaction in
-  let el = Element.input ~interaction:ix "val" in
-  let mapped = Element.map (fun _m -> ()) el in
-  Alcotest.(check bool)
-    "map preserves interaction on input" true
-    (match mapped with
-    | Element.Input { interaction; _ } ->
-        Nopal_style.Interaction.equal interaction ix
-    | Element.Empty
-    | Element.Text _
-    | Element.Box _
-    | Element.Row _
-    | Element.Column _
-    | Element.Button _
-    | Element.Image _
-    | Element.Scroll _
-    | Element.Keyed _
-    | Element.Draw _ ->
-        false)
+  let check_one label el =
+    let interaction =
+      match el with
+      | Element.Button { interaction; _ } -> interaction
+      | Element.Box { interaction; _ } -> interaction
+      | Element.Row { interaction; _ } -> interaction
+      | Element.Column { interaction; _ } -> interaction
+      | Element.Input { interaction; _ } -> interaction
+      | Element.Empty
+      | Element.Text _
+      | Element.Image _
+      | Element.Scroll _
+      | Element.Keyed _
+      | Element.Draw _ ->
+          Alcotest.fail (label ^ ": unexpected variant")
+    in
+    Alcotest.(check bool)
+      ("map preserves interaction on " ^ label)
+      true
+      (Nopal_style.Interaction.equal interaction ix)
+  in
+  check_one "button"
+    (Element.map (fun _m -> ())
+       (Element.button ~interaction:ix ~on_click:Click (Element.text "ok")));
+  check_one "box"
+    (Element.map (fun _m -> ())
+       (Element.box ~interaction:ix [ Element.text "child" ]));
+  check_one "row"
+    (Element.map (fun _m -> ())
+       (Element.row ~interaction:ix [ Element.text "child" ]));
+  check_one "column"
+    (Element.map (fun _m -> ())
+       (Element.column ~interaction:ix [ Element.text "child" ]));
+  check_one "input"
+    (Element.map (fun _m -> ()) (Element.input ~interaction:ix "val"))
 
 let test_equal_different_interaction () =
   let ix = test_interaction in
@@ -878,24 +747,6 @@ let test_equal_different_interaction () =
   let b = Element.box [] in
   Alcotest.(check bool)
     "different interaction not equal" false (Element.equal a b)
-
-let test_text_unchanged_signature () =
-  Alcotest.(check bool)
-    "text builder still returns Text with content" true
-    (match Element.text "hello" with
-    | Element.Text { content = "hello"; text_style = None } -> true
-    | Element.Empty
-    | Element.Text _
-    | Element.Box _
-    | Element.Row _
-    | Element.Column _
-    | Element.Button _
-    | Element.Input _
-    | Element.Image _
-    | Element.Scroll _
-    | Element.Keyed _
-    | Element.Draw _ ->
-        false)
 
 let test_styled_text_carries_style () =
   let ts =
@@ -947,10 +798,7 @@ let () =
         [
           Alcotest.test_case "empty_builder" `Quick test_empty_builder;
           Alcotest.test_case "text_builder" `Quick test_text_builder;
-          Alcotest.test_case "box_default_style" `Quick test_box_default_style;
-          Alcotest.test_case "row_default_style" `Quick test_row_default_style;
-          Alcotest.test_case "column_default_style" `Quick
-            test_column_default_style;
+          Alcotest.test_case "default_styles" `Quick test_default_styles;
           Alcotest.test_case "box_preserves_children" `Quick
             test_box_preserves_children;
           Alcotest.test_case "button_no_handler" `Quick test_button_no_handler;
@@ -963,10 +811,6 @@ let () =
           Alcotest.test_case "input_on_submit" `Quick test_input_on_submit;
           Alcotest.test_case "image_required_fields" `Quick
             test_image_required_fields;
-          Alcotest.test_case "image_default_style" `Quick
-            test_image_default_style;
-          Alcotest.test_case "scroll_default_style" `Quick
-            test_scroll_default_style;
           Alcotest.test_case "scroll_child" `Quick test_scroll_child;
           Alcotest.test_case "keyed_preserves_key" `Quick
             test_keyed_preserves_key;
@@ -1034,23 +878,13 @@ let () =
             test_button_with_interaction;
           Alcotest.test_case "input_with_interaction" `Quick
             test_input_with_interaction;
-          Alcotest.test_case "map_preserves_interaction_button" `Quick
-            test_map_preserves_interaction_button;
-          Alcotest.test_case "map_preserves_interaction_box" `Quick
-            test_map_preserves_interaction_box;
-          Alcotest.test_case "map_preserves_interaction_row" `Quick
-            test_map_preserves_interaction_row;
-          Alcotest.test_case "map_preserves_interaction_column" `Quick
-            test_map_preserves_interaction_column;
-          Alcotest.test_case "map_preserves_interaction_input" `Quick
-            test_map_preserves_interaction_input;
+          Alcotest.test_case "map_preserves_interaction" `Quick
+            test_map_preserves_interaction;
           Alcotest.test_case "equal_different_interaction" `Quick
             test_equal_different_interaction;
         ] );
       ( "styled_text",
         [
-          Alcotest.test_case "text_unchanged_signature" `Quick
-            test_text_unchanged_signature;
           Alcotest.test_case "styled_text_carries_style" `Quick
             test_styled_text_carries_style;
           Alcotest.test_case "styled_text_with_default_is_some" `Quick
