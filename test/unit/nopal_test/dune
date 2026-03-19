@@ -1,10 +1,16 @@
 (test
  (name test_test_renderer)
- (libraries nopal_test nopal_element nopal_style nopal_mvu alcotest))
+ (libraries
+  nopal_test
+  nopal_element
+  nopal_style
+  nopal_mvu
+  test_util
+  alcotest))
 
 (test
  (name test_event_simulation)
- (libraries nopal_test nopal_element nopal_style alcotest))
+ (libraries nopal_test nopal_element nopal_style test_util alcotest))
 
 (test
  (name test_draw_renderer)

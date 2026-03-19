@@ -3,7 +3,7 @@ opam-version: "2.0"
 synopsis: "Composable, interactive chart library for Nopal"
 maintainer: ["Maintainer Name <maintainer@example.com>"]
 authors: ["Author Name <author@example.com>"]
-license: "LICENSE"
+license: "MIT"
 homepage: "https://github.com/ShipOfTheDesert/nopal"
 doc: "https://url/to/documentation"
 bug-reports: "https://github.com/ShipOfTheDesert/nopal/issues"

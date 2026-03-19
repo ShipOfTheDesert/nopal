@@ -4,4 +4,4 @@
 
 (test
  (name test_counter_app)
- (libraries counter nopal_test nopal_element nopal_mvu alcotest))
+ (libraries counter nopal_test nopal_element nopal_mvu test_util alcotest))

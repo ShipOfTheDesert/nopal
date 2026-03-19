@@ -8,23 +8,7 @@ let msg_pp fmt msg =
   | Reset -> Format.fprintf fmt "Reset"
 
 let msg_testable = Alcotest.testable msg_pp ( = )
-
-let pp_selector fmt sel =
-  match sel with
-  | By_tag t -> Format.fprintf fmt "By_tag %S" t
-  | By_text t -> Format.fprintf fmt "By_text %S" t
-  | By_attr (k, v) -> Format.fprintf fmt "By_attr (%S, %S)" k v
-  | First_child -> Format.fprintf fmt "First_child"
-  | Nth_child n -> Format.fprintf fmt "Nth_child %d" n
-
-let error_testable =
-  Alcotest.testable
-    (fun fmt e ->
-      match e with
-      | Not_found sel -> Format.fprintf fmt "Not_found (%a)" pp_selector sel
-      | No_handler { tag; event } ->
-          Format.fprintf fmt "No_handler { tag = %S; event = %S }" tag event)
-    ( = )
+let error_testable = Test_util.error_testable
 
 let test_click_increment () =
   let r = render (view Nopal_element.Viewport.desktop { count = 0 }) in

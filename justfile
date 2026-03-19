@@ -64,6 +64,11 @@ serve-dashboard: build
     @cp examples/dashboard/index.html _build/default/examples/dashboard/
     python3 -m http.server 8000 -d _build/default/examples/dashboard
 
+serve-http-demo: build
+    @echo "Serving http_demo at http://localhost:8000"
+    @cp examples/http_demo/index.html _build/default/examples/http_demo/
+    python3 -m http.server 8000 -d _build/default/examples/http_demo
+
 # Site — assemble examples mini-site into dist/
 
 build-release:
