@@ -20,6 +20,7 @@
     "core:window:allow-is-maximized",
     "core:window:allow-close",
     "core:window:allow-set-size",
-    "core:window:allow-inner-size"
+    "core:window:allow-inner-size",
+    "os:default"
   ]
 }
