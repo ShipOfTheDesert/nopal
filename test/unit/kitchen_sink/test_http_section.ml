@@ -59,7 +59,11 @@ let msg_pp fmt msg =
   | LinePointerLeave
   | LineWheelZoom _
   | ZoomIn
-  | ZoomOut ->
+  | ZoomOut
+  | FetchTauriInfo
+  | GotAppName _
+  | GotAppVersion _
+  | GotTauriVersion _ ->
       Format.fprintf fmt "<other>"
 
 let msg_testable = Alcotest.testable msg_pp ( = )

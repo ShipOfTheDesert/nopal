@@ -77,6 +77,9 @@ type model = {
   put_state : http_state;
   timeout_state : http_state;
   resp_headers : (string * string) list;
+  tauri_app_name : string;
+  tauri_app_version : string;
+  tauri_version : string;
 }
 
 (* Messages *)
@@ -121,6 +124,10 @@ type msg =
   | PutResult of Nopal_http.outcome
   | TimeoutClicked
   | TimeoutResult of Nopal_http.outcome
+  | FetchTauriInfo
+  | GotAppName of string
+  | GotAppVersion of string
+  | GotTauriVersion of string
 
 let init () =
   let sub_counter, sub_cmd = Sub_counter.init () in
@@ -148,6 +155,9 @@ let init () =
       put_state = Idle;
       timeout_state = Idle;
       resp_headers = [];
+      tauri_app_name = "Not in Tauri";
+      tauri_app_version = "Not in Tauri";
+      tauri_version = "Not in Tauri";
     },
     Nopal_mvu.Cmd.map (fun m -> SubCounterMsg m) sub_cmd )
 
@@ -326,6 +336,12 @@ let update model = function
   | TimeoutResult (Error Timeout) ->
       ( { model with timeout_state = Errored "request timed out" },
         Nopal_mvu.Cmd.none )
+  | FetchTauriInfo -> (model, Nopal_mvu.Cmd.none)
+  | GotAppName name -> ({ model with tauri_app_name = name }, Nopal_mvu.Cmd.none)
+  | GotAppVersion version ->
+      ({ model with tauri_app_version = version }, Nopal_mvu.Cmd.none)
+  | GotTauriVersion version ->
+      ({ model with tauri_version = version }, Nopal_mvu.Cmd.none)
 
 (* Section wrapper (REQ-F10) *)
 let view_section ?(attrs = []) title children =
@@ -2070,6 +2086,17 @@ let view_http_timeout model =
       status_display;
     ]
 
+(* Section: Tauri App *)
+let view_tauri_app model =
+  view_section
+    ~attrs:[ ("data-section", "tauri-app") ]
+    "Tauri App"
+    [
+      Element.text ("App name: " ^ model.tauri_app_name);
+      Element.text ("App version: " ^ model.tauri_app_version);
+      Element.text ("Tauri version: " ^ model.tauri_version);
+    ]
+
 (* Main view — all sections in a scrollable column (REQ-F10, REQ-F12) *)
 let view vp model =
   Element.scroll
@@ -2099,6 +2126,7 @@ let view vp model =
          view_http_post model;
          view_http_put model;
          view_http_timeout model;
+         view_tauri_app model;
        ])
 
 let subscriptions _model = Nopal_mvu.Sub.none
