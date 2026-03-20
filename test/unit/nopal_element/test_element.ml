@@ -275,7 +275,7 @@ let test_scroll_child () =
     | Element.Draw _ ->
         false)
 
-let test_keyed_preserves_key () =
+let test_keyed_preserves_fields () =
   Alcotest.(check bool)
     "keyed preserves key" true
     (match Element.keyed "k1" Element.empty with
@@ -291,9 +291,7 @@ let test_keyed_preserves_key () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
-        false)
-
-let test_keyed_preserves_child () =
+        false);
   Alcotest.(check bool)
     "keyed preserves child" true
     (match Element.keyed "k1" (Element.text "x") with
@@ -546,9 +544,7 @@ let test_equal_deep_nesting () =
     Element.box [ Element.row [ Element.column [ Element.text "deep" ] ] ]
   in
   Alcotest.(check bool)
-    "identical deep trees are equal" true (Element.equal tree tree)
-
-let test_equal_deep_nesting_distinct () =
+    "identical deep trees are equal" true (Element.equal tree tree);
   let make () =
     Element.box [ Element.row [ Element.column [ Element.text "deep" ] ] ]
   in
@@ -602,15 +598,12 @@ let test_equal_image_distinct () =
     "separately constructed images are equal" true
     (Element.equal (make ()) (make ()))
 
-let test_equal_image_different_src () =
+let test_equal_image_different_fields () =
   let a = Element.image ~src:"a.png" ~alt:"pic" () in
   let b = Element.image ~src:"b.png" ~alt:"pic" () in
-  Alcotest.(check bool) "different src not equal" false (Element.equal a b)
-
-let test_equal_image_different_alt () =
-  let a = Element.image ~src:"a.png" ~alt:"pic" () in
-  let b = Element.image ~src:"a.png" ~alt:"photo" () in
-  Alcotest.(check bool) "different alt not equal" false (Element.equal a b)
+  Alcotest.(check bool) "different src not equal" false (Element.equal a b);
+  let c = Element.image ~src:"a.png" ~alt:"photo" () in
+  Alcotest.(check bool) "different alt not equal" false (Element.equal a c)
 
 let test_equal_scroll_distinct () =
   let make () = Element.scroll (Element.text "inner") in
@@ -630,16 +623,14 @@ let test_equal_keyed_distinct () =
     "separately constructed keyeds are equal" true
     (Element.equal (make ()) (make ()))
 
-let test_equal_keyed_different_key () =
+let test_equal_keyed_different_fields () =
   let a = Element.keyed "k1" (Element.text "x") in
   let b = Element.keyed "k2" (Element.text "x") in
-  Alcotest.(check bool) "different key not equal" false (Element.equal a b)
-
-let test_equal_keyed_different_child () =
-  let a = Element.keyed "k" (Element.text "a") in
-  let b = Element.keyed "k" (Element.text "b") in
+  Alcotest.(check bool) "different key not equal" false (Element.equal a b);
+  let c = Element.keyed "k" (Element.text "a") in
+  let d = Element.keyed "k" (Element.text "b") in
   Alcotest.(check bool)
-    "different keyed child not equal" false (Element.equal a b)
+    "different keyed child not equal" false (Element.equal c d)
 
 let test_box_default_interaction () =
   Alcotest.(check bool)
@@ -816,10 +807,8 @@ let () =
           Alcotest.test_case "image_required_fields" `Quick
             test_image_required_fields;
           Alcotest.test_case "scroll_child" `Quick test_scroll_child;
-          Alcotest.test_case "keyed_preserves_key" `Quick
-            test_keyed_preserves_key;
-          Alcotest.test_case "keyed_preserves_child" `Quick
-            test_keyed_preserves_child;
+          Alcotest.test_case "keyed_preserves_fields" `Quick
+            test_keyed_preserves_fields;
         ] );
       ( "map",
         [
@@ -841,8 +830,6 @@ let () =
           Alcotest.test_case "equal_text_different" `Quick
             test_equal_text_different;
           Alcotest.test_case "equal_deep_nesting" `Quick test_equal_deep_nesting;
-          Alcotest.test_case "equal_deep_nesting_distinct" `Quick
-            test_equal_deep_nesting_distinct;
           Alcotest.test_case "equal_different_structure" `Quick
             test_equal_different_structure;
           Alcotest.test_case "equal_different_children_count" `Quick
@@ -859,20 +846,16 @@ let () =
             test_equal_input_different_placeholder;
           Alcotest.test_case "equal_image_distinct" `Quick
             test_equal_image_distinct;
-          Alcotest.test_case "equal_image_different_src" `Quick
-            test_equal_image_different_src;
-          Alcotest.test_case "equal_image_different_alt" `Quick
-            test_equal_image_different_alt;
+          Alcotest.test_case "equal_image_different_fields" `Quick
+            test_equal_image_different_fields;
           Alcotest.test_case "equal_scroll_distinct" `Quick
             test_equal_scroll_distinct;
           Alcotest.test_case "equal_scroll_different_child" `Quick
             test_equal_scroll_different_child;
           Alcotest.test_case "equal_keyed_distinct" `Quick
             test_equal_keyed_distinct;
-          Alcotest.test_case "equal_keyed_different_key" `Quick
-            test_equal_keyed_different_key;
-          Alcotest.test_case "equal_keyed_different_child" `Quick
-            test_equal_keyed_different_child;
+          Alcotest.test_case "equal_keyed_different_fields" `Quick
+            test_equal_keyed_different_fields;
         ] );
       ( "interaction",
         [

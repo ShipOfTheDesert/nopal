@@ -2,14 +2,12 @@ open Nopal_style.Style
 
 (* --- Default layout tests --- *)
 
-let test_default_layout_direction () =
+let test_default_layout_values () =
   Alcotest.(check string)
     "direction is Column_dir" "Column_dir"
     (match default_layout.direction with
     | Column_dir -> "Column_dir"
-    | Row_dir -> "Row_dir")
-
-let test_default_layout_main_align () =
+    | Row_dir -> "Row_dir");
   Alcotest.(check string)
     "main_align is Start" "Start"
     (match default_layout.main_align with
@@ -17,9 +15,7 @@ let test_default_layout_main_align () =
     | Center -> "Center"
     | End_ -> "End_"
     | Stretch -> "Stretch"
-    | Space_between -> "Space_between")
-
-let test_default_layout_cross_align () =
+    | Space_between -> "Space_between");
   Alcotest.(check string)
     "cross_align is Start" "Start"
     (match default_layout.cross_align with
@@ -27,15 +23,9 @@ let test_default_layout_cross_align () =
     | Center -> "Center"
     | End_ -> "End_"
     | Stretch -> "Stretch"
-    | Space_between -> "Space_between")
-
-let test_default_layout_wrap () =
-  Alcotest.(check bool) "wrap is false" false default_layout.wrap
-
-let test_default_layout_gap () =
-  Alcotest.(check (float 0.001)) "gap is 0." 0. default_layout.gap
-
-let test_default_layout_padding () =
+    | Space_between -> "Space_between");
+  Alcotest.(check bool) "wrap is false" false default_layout.wrap;
+  Alcotest.(check (float 0.001)) "gap is 0." 0. default_layout.gap;
   Alcotest.(check (float 0.001))
     "padding_top is 0." 0. default_layout.padding_top;
   Alcotest.(check (float 0.001))
@@ -43,57 +33,43 @@ let test_default_layout_padding () =
   Alcotest.(check (float 0.001))
     "padding_bottom is 0." 0. default_layout.padding_bottom;
   Alcotest.(check (float 0.001))
-    "padding_left is 0." 0. default_layout.padding_left
-
-let test_default_layout_width () =
+    "padding_left is 0." 0. default_layout.padding_left;
   Alcotest.(check string)
     "width is Hug" "Hug"
     (match default_layout.width with
     | Hug -> "Hug"
     | Fill -> "Fill"
     | Fixed _ -> "Fixed"
-    | Fraction _ -> "Fraction")
-
-let test_default_layout_height () =
+    | Fraction _ -> "Fraction");
   Alcotest.(check string)
     "height is Hug" "Hug"
     (match default_layout.height with
     | Hug -> "Hug"
     | Fill -> "Fill"
     | Fixed _ -> "Fixed"
-    | Fraction _ -> "Fraction")
-
-let test_default_layout_flex_grow () =
+    | Fraction _ -> "Fraction");
   Alcotest.(check (option (float 0.001)))
     "flex_grow is None" None default_layout.flex_grow
 
 (* --- Default paint tests --- *)
 
-let test_default_paint_background () =
+let test_default_paint_values () =
   Alcotest.(check bool)
     "background is None" true
     (match default_paint.background with
     | None -> true
-    | Some _ -> false)
-
-let test_default_paint_border () =
+    | Some _ -> false);
   Alcotest.(check bool)
     "border is None" true
     (match default_paint.border with
     | None -> true
-    | Some _ -> false)
-
-let test_default_paint_opacity () =
-  Alcotest.(check (float 0.001)) "opacity is 1.0" 1.0 default_paint.opacity
-
-let test_default_paint_shadow () =
+    | Some _ -> false);
+  Alcotest.(check (float 0.001)) "opacity is 1.0" 1.0 default_paint.opacity;
   Alcotest.(check bool)
     "shadow is None" true
     (match default_paint.shadow with
     | None -> true
-    | Some _ -> false)
-
-let test_default_paint_overflow () =
+    | Some _ -> false);
   Alcotest.(check string)
     "overflow is Visible" "Visible"
     (match default_paint.overflow with
@@ -429,36 +405,13 @@ let () =
     [
       ( "Default layout",
         [
-          Alcotest.test_case "default_layout_direction" `Quick
-            test_default_layout_direction;
-          Alcotest.test_case "default_layout_main_align" `Quick
-            test_default_layout_main_align;
-          Alcotest.test_case "default_layout_cross_align" `Quick
-            test_default_layout_cross_align;
-          Alcotest.test_case "default_layout_wrap" `Quick
-            test_default_layout_wrap;
-          Alcotest.test_case "default_layout_gap" `Quick test_default_layout_gap;
-          Alcotest.test_case "default_layout_padding" `Quick
-            test_default_layout_padding;
-          Alcotest.test_case "default_layout_width" `Quick
-            test_default_layout_width;
-          Alcotest.test_case "default_layout_height" `Quick
-            test_default_layout_height;
-          Alcotest.test_case "default_layout_flex_grow" `Quick
-            test_default_layout_flex_grow;
+          Alcotest.test_case "default_layout_values" `Quick
+            test_default_layout_values;
         ] );
       ( "Default paint",
         [
-          Alcotest.test_case "default_paint_background" `Quick
-            test_default_paint_background;
-          Alcotest.test_case "default_paint_border" `Quick
-            test_default_paint_border;
-          Alcotest.test_case "default_paint_opacity" `Quick
-            test_default_paint_opacity;
-          Alcotest.test_case "default_paint_shadow" `Quick
-            test_default_paint_shadow;
-          Alcotest.test_case "default_paint_overflow" `Quick
-            test_default_paint_overflow;
+          Alcotest.test_case "default_paint_values" `Quick
+            test_default_paint_values;
         ] );
       ( "Default style",
         [
