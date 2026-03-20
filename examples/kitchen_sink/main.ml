@@ -15,9 +15,16 @@ let tauri_fetch_cmd =
               dispatch (Kitchen_sink_app.GotTauriVersion s)));
     ]
 
+let tauri_listen_cmd =
+  Nopal_mvu.Cmd.task (fun dispatch ->
+      Nopal_tauri.Event.listen "nopal:kitchen-sink"
+        (fun ev -> dispatch (Kitchen_sink_app.TauriEventReceived ev.payload))
+        (fun unlisten -> dispatch (Kitchen_sink_app.GotTauriUnlisten unlisten)))
+
 let init () =
   let model, cmd = Kitchen_sink_app.init () in
-  if has_tauri () then (model, Nopal_mvu.Cmd.batch [ cmd; tauri_fetch_cmd ])
+  if has_tauri () then
+    (model, Nopal_mvu.Cmd.batch [ cmd; tauri_fetch_cmd; tauri_listen_cmd ])
   else (model, cmd)
 
 let update model msg =
@@ -25,6 +32,22 @@ let update model msg =
   match msg with
   | Kitchen_sink_app.FetchTauriInfo when has_tauri () ->
       (model', Nopal_mvu.Cmd.batch [ cmd; tauri_fetch_cmd ])
+  | Kitchen_sink_app.EmitTauriEvent when has_tauri () ->
+      let emit_cmd =
+        Nopal_mvu.Cmd.task (fun dispatch ->
+            Nopal_tauri.Event.emit "nopal:kitchen-sink" "hello from nopal"
+              (fun () -> dispatch Kitchen_sink_app.TauriEventEmitted))
+      in
+      (model', Nopal_mvu.Cmd.batch [ cmd; emit_cmd ])
+  | Kitchen_sink_app.ListenTauriEvents when has_tauri () ->
+      (model', Nopal_mvu.Cmd.batch [ cmd; tauri_listen_cmd ])
+  | Kitchen_sink_app.UnlistenTauriEvents when has_tauri () ->
+      let unlisten_cmd =
+        match model.tauri_event_unlisten with
+        | Some f -> Nopal_mvu.Cmd.task (fun _dispatch -> f ())
+        | None -> Nopal_mvu.Cmd.none
+      in
+      (model', Nopal_mvu.Cmd.batch [ cmd; unlisten_cmd ])
   | _ -> (model', cmd)
 
 let () =

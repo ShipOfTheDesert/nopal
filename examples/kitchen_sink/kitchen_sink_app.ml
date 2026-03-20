@@ -80,6 +80,8 @@ type model = {
   tauri_app_name : string;
   tauri_app_version : string;
   tauri_version : string;
+  tauri_events : string list;
+  tauri_event_unlisten : (unit -> unit) option;
 }
 
 (* Messages *)
@@ -128,6 +130,12 @@ type msg =
   | GotAppName of string
   | GotAppVersion of string
   | GotTauriVersion of string
+  | EmitTauriEvent
+  | TauriEventReceived of string
+  | TauriEventEmitted
+  | ListenTauriEvents
+  | UnlistenTauriEvents
+  | GotTauriUnlisten of (unit -> unit)
 
 let init () =
   let sub_counter, sub_cmd = Sub_counter.init () in
@@ -158,6 +166,8 @@ let init () =
       tauri_app_name = "Not in Tauri";
       tauri_app_version = "Not in Tauri";
       tauri_version = "Not in Tauri";
+      tauri_events = [];
+      tauri_event_unlisten = None;
     },
     Nopal_mvu.Cmd.map (fun m -> SubCounterMsg m) sub_cmd )
 
@@ -342,6 +352,22 @@ let update model = function
       ({ model with tauri_app_version = version }, Nopal_mvu.Cmd.none)
   | GotTauriVersion version ->
       ({ model with tauri_version = version }, Nopal_mvu.Cmd.none)
+  | EmitTauriEvent -> (model, Nopal_mvu.Cmd.none)
+  | TauriEventReceived payload ->
+      let max_events = 20 in
+      let events = payload :: model.tauri_events in
+      let events =
+        if List.length events > max_events then
+          List.filteri (fun i _ -> i < max_events) events
+        else events
+      in
+      ({ model with tauri_events = events }, Nopal_mvu.Cmd.none)
+  | TauriEventEmitted -> (model, Nopal_mvu.Cmd.none)
+  | ListenTauriEvents -> (model, Nopal_mvu.Cmd.none)
+  | UnlistenTauriEvents ->
+      ({ model with tauri_event_unlisten = None }, Nopal_mvu.Cmd.none)
+  | GotTauriUnlisten f ->
+      ({ model with tauri_event_unlisten = Some f }, Nopal_mvu.Cmd.none)
 
 (* Section wrapper (REQ-F10) *)
 let view_section ?(attrs = []) title children =
@@ -2097,6 +2123,31 @@ let view_tauri_app model =
       Element.text ("Tauri version: " ^ model.tauri_version);
     ]
 
+(* Section: Tauri Events *)
+let view_tauri_events model =
+  let listener_status =
+    match model.tauri_event_unlisten with
+    | Some _ -> "Listening"
+    | None -> "Not listening"
+  in
+  let event_items =
+    List.map
+      (fun payload -> Element.text ("Received: " ^ payload))
+      model.tauri_events
+  in
+  view_section
+    ~attrs:[ ("data-section", "tauri-events") ]
+    "Tauri Events"
+    ([
+       Element.button ~on_click:EmitTauriEvent (Element.text "Emit Event");
+       Element.button ~on_click:ListenTauriEvents
+         (Element.text "Start Listening");
+       Element.button ~on_click:UnlistenTauriEvents
+         (Element.text "Stop Listening");
+       Element.text ("Status: " ^ listener_status);
+     ]
+    @ event_items)
+
 (* Main view — all sections in a scrollable column (REQ-F10, REQ-F12) *)
 let view vp model =
   Element.scroll
@@ -2127,6 +2178,7 @@ let view vp model =
          view_http_put model;
          view_http_timeout model;
          view_tauri_app model;
+         view_tauri_events model;
        ])
 
 let subscriptions _model = Nopal_mvu.Sub.none
