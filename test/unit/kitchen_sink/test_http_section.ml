@@ -99,6 +99,7 @@ let msg_pp fmt msg =
   | QueryTauriInnerSize -> Format.fprintf fmt "QueryTauriInnerSize"
   | GotWindowInnerSize (w, h) ->
       Format.fprintf fmt "GotWindowInnerSize(%d, %d)" w h
+  | GotPlatform s -> Format.fprintf fmt "GotPlatform(%s)" s
 
 let msg_testable = Alcotest.testable msg_pp ( = )
 

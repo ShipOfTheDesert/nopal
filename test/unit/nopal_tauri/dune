@@ -1,0 +1,5 @@
+(test
+ (name test_nopal_tauri_os)
+ (libraries nopal_tauri alcotest)
+ (modes js)
+ (js_of_ocaml))

@@ -13,6 +13,10 @@ let tauri_fetch_cmd =
       Nopal_mvu.Cmd.task (fun dispatch ->
           Nopal_tauri.App.get_tauri_version (fun s ->
               dispatch (Kitchen_sink_app.GotTauriVersion s)));
+      Nopal_mvu.Cmd.task (fun dispatch ->
+          Nopal_tauri.Os.platform (fun p ->
+              dispatch
+                (Kitchen_sink_app.GotPlatform (Nopal_tauri.Os.to_string p))));
     ]
 
 let tauri_listen_cmd =
@@ -197,7 +201,8 @@ let update model msg =
   | Kitchen_sink_app.SetTauriWindowSize _
   | Kitchen_sink_app.TauriWindowSizeSet
   | Kitchen_sink_app.QueryTauriInnerSize
-  | Kitchen_sink_app.GotWindowInnerSize _ ->
+  | Kitchen_sink_app.GotWindowInnerSize _
+  | Kitchen_sink_app.GotPlatform _ ->
       (model', cmd)
 
 let () =

@@ -88,6 +88,7 @@ type model = {
   tauri_inner_size : (int * int) option;
   tauri_window_width : string;
   tauri_window_height : string;
+  tauri_platform : string;
 }
 
 (* Messages *)
@@ -165,6 +166,7 @@ type msg =
   | TauriWindowSizeSet
   | QueryTauriInnerSize
   | GotWindowInnerSize of int * int
+  | GotPlatform of string
 
 let init () =
   let sub_counter, sub_cmd = Sub_counter.init () in
@@ -203,6 +205,7 @@ let init () =
       tauri_inner_size = None;
       tauri_window_width = "800";
       tauri_window_height = "600";
+      tauri_platform = "Not in Tauri";
     },
     Nopal_mvu.Cmd.map (fun m -> SubCounterMsg m) sub_cmd )
 
@@ -432,6 +435,7 @@ let update model = function
   | QueryTauriInnerSize -> (model, Nopal_mvu.Cmd.none)
   | GotWindowInnerSize (w, h) ->
       ({ model with tauri_inner_size = Some (w, h) }, Nopal_mvu.Cmd.none)
+  | GotPlatform s -> ({ model with tauri_platform = s }, Nopal_mvu.Cmd.none)
 
 (* Section wrapper (REQ-F10) *)
 let view_section ?(attrs = []) title children =
@@ -2212,6 +2216,13 @@ let view_tauri_events model =
      ]
     @ event_items)
 
+(* Section: Tauri Os *)
+let view_tauri_os model =
+  view_section
+    ~attrs:[ ("data-section", "tauri-os") ]
+    "Tauri Os"
+    [ Element.text ("Platform: " ^ model.tauri_platform) ]
+
 (* Section: Tauri Window *)
 let view_tauri_window model =
   let row_style =
@@ -2335,6 +2346,7 @@ let view vp model =
          view_http_put model;
          view_http_timeout model;
          view_tauri_app model;
+         view_tauri_os model;
          view_tauri_events model;
          view_tauri_window model;
        ])
