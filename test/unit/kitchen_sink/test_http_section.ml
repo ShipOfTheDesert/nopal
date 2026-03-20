@@ -63,7 +63,13 @@ let msg_pp fmt msg =
   | FetchTauriInfo
   | GotAppName _
   | GotAppVersion _
-  | GotTauriVersion _ ->
+  | GotTauriVersion _
+  | EmitTauriEvent
+  | TauriEventReceived _
+  | TauriEventEmitted
+  | ListenTauriEvents
+  | UnlistenTauriEvents
+  | GotTauriUnlisten _ ->
       Format.fprintf fmt "<other>"
 
 let msg_testable = Alcotest.testable msg_pp ( = )
@@ -222,6 +228,62 @@ let test_view_http_put_shows_headers () =
     "shows content-type header" true
     (Test_util.string_contains headers_text ~sub:"application/json")
 
+let test_tauri_event_received_prepends () =
+  let model = idle_model () in
+  let model = { model with tauri_events = [ "first" ] } in
+  let model', _ = update model (TauriEventReceived "second") in
+  Alcotest.(check (list string))
+    "prepends new event" [ "second"; "first" ] model'.tauri_events
+
+let test_tauri_event_received_caps_at_20 () =
+  let model = idle_model () in
+  let events = List.init 20 (fun i -> "event-" ^ string_of_int i) in
+  let model = { model with tauri_events = events } in
+  let model', _ = update model (TauriEventReceived "overflow") in
+  Alcotest.(check int) "capped at 20" 20 (List.length model'.tauri_events);
+  Alcotest.(check string)
+    "newest is first" "overflow"
+    (List.hd model'.tauri_events)
+
+let test_got_tauri_unlisten_stores () =
+  let model = idle_model () in
+  let called = ref false in
+  let f () = called := true in
+  let model', _ = update model (GotTauriUnlisten f) in
+  Alcotest.(check bool)
+    "unlisten stored" true
+    (Option.is_some model'.tauri_event_unlisten);
+  (match model'.tauri_event_unlisten with
+  | Some g -> g ()
+  | None -> ());
+  Alcotest.(check bool) "stored function is the one we passed" true !called
+
+let test_unlisten_tauri_events_calls_and_clears () =
+  let called = ref false in
+  let f () = called := true in
+  let model = idle_model () in
+  let model = { model with tauri_event_unlisten = Some f } in
+  let model', _ = update model UnlistenTauriEvents in
+  Alcotest.(check bool) "unlisten called" true !called;
+  Alcotest.(check bool)
+    "unlisten cleared" true
+    (Option.is_none model'.tauri_event_unlisten)
+
+let test_unlisten_tauri_events_noop_when_none () =
+  let model = idle_model () in
+  let model', _ = update model UnlistenTauriEvents in
+  Alcotest.(check bool)
+    "remains None" true
+    (Option.is_none model'.tauri_event_unlisten)
+
+let test_view_tauri_events_shows_start_listening () =
+  let model = idle_model () in
+  let r = render (view_tauri_events model) in
+  let t = tree r in
+  let btn = find (By_text "Start Listening") t in
+  Alcotest.(check bool)
+    "start listening button exists" true (Option.is_some btn)
+
 let () =
   Alcotest.run "kitchen_sink_http"
     [
@@ -233,5 +295,20 @@ let () =
         [
           Alcotest.test_case "put shows response headers" `Quick
             test_view_http_put_shows_headers;
+        ] );
+      ( "tauri_events",
+        [
+          Alcotest.test_case "received prepends to list" `Quick
+            test_tauri_event_received_prepends;
+          Alcotest.test_case "received caps at 20" `Quick
+            test_tauri_event_received_caps_at_20;
+          Alcotest.test_case "GotTauriUnlisten stores function" `Quick
+            test_got_tauri_unlisten_stores;
+          Alcotest.test_case "UnlistenTauriEvents calls and clears" `Quick
+            test_unlisten_tauri_events_calls_and_clears;
+          Alcotest.test_case "UnlistenTauriEvents noop when None" `Quick
+            test_unlisten_tauri_events_noop_when_none;
+          Alcotest.test_case "view has Start Listening button" `Quick
+            test_view_tauri_events_shows_start_listening;
         ] );
     ]

@@ -4,3 +4,4 @@
     via js_of_ocaml and Brr. It does NOT depend on any nopal UI packages. *)
 
 module App = App
+module Event = Event
