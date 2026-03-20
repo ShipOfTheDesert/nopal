@@ -365,11 +365,6 @@ let update model = function
   | TauriEventEmitted -> (model, Nopal_mvu.Cmd.none)
   | ListenTauriEvents -> (model, Nopal_mvu.Cmd.none)
   | UnlistenTauriEvents ->
-      let () =
-        match model.tauri_event_unlisten with
-        | Some f -> f ()
-        | None -> ()
-      in
       ({ model with tauri_event_unlisten = None }, Nopal_mvu.Cmd.none)
   | GotTauriUnlisten f ->
       ({ model with tauri_event_unlisten = Some f }, Nopal_mvu.Cmd.none)

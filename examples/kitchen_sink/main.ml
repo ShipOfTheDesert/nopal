@@ -41,6 +41,13 @@ let update model msg =
       (model', Nopal_mvu.Cmd.batch [ cmd; emit_cmd ])
   | Kitchen_sink_app.ListenTauriEvents when has_tauri () ->
       (model', Nopal_mvu.Cmd.batch [ cmd; tauri_listen_cmd ])
+  | Kitchen_sink_app.UnlistenTauriEvents when has_tauri () ->
+      let unlisten_cmd =
+        match model.tauri_event_unlisten with
+        | Some f -> Nopal_mvu.Cmd.task (fun _dispatch -> f ())
+        | None -> Nopal_mvu.Cmd.none
+      in
+      (model', Nopal_mvu.Cmd.batch [ cmd; unlisten_cmd ])
   | _ -> (model', cmd)
 
 let () =
