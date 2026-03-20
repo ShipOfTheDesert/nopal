@@ -14,4 +14,10 @@
 
 (test
  (name test_draw_renderer)
- (libraries nopal_test nopal_element nopal_draw nopal_style test_util alcotest))
+ (libraries
+  nopal_test
+  nopal_element
+  nopal_draw
+  nopal_style
+  test_util
+  alcotest))
