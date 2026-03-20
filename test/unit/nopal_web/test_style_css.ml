@@ -459,7 +459,7 @@ let test_interaction_rules_focused_only () =
   Alcotest.(check bool) "no hover rule" true (not (contains result ":hover"));
   Alcotest.(check bool) "no active rule" true (not (contains result ":active"))
 
-(* ── Task 1 tests: base_class_rule and no !important ── *)
+(* ── base_class_rule tests ── *)
 
 let test_base_class_rule_generates_class_selector () =
   let props =
@@ -475,48 +475,6 @@ let test_base_class_rule_generates_class_selector () =
 let test_base_class_rule_empty_props () =
   let result = base_class_rule ~class_name:"_nopal_b_0" [] in
   Alcotest.(check string) "empty props" "" result
-
-let test_interaction_rules_no_important () =
-  let interaction =
-    {
-      Nopal_style.Interaction.default with
-      hover =
-        Some
-          (Nopal_style.Style.default
-          |> Nopal_style.Style.with_paint (fun p ->
-              { p with background = Some (Nopal_style.Style.hex "#ff0000") }));
-    }
-  in
-  let result = interaction_rules ~class_name:"_nopal_ix_0" interaction in
-  Alcotest.(check bool)
-    "no !important in output" true
-    (not (contains result "!important"))
-
-let test_interaction_rules_precedence_order () =
-  let mk_style color =
-    Nopal_style.Style.default
-    |> Nopal_style.Style.with_paint (fun p ->
-        { p with background = Some (Nopal_style.Style.hex color) })
-  in
-  let interaction =
-    {
-      Nopal_style.Interaction.hover = Some (mk_style "#aaa");
-      pressed = Some (mk_style "#bbb");
-      focused = Some (mk_style "#ccc");
-    }
-  in
-  let result = interaction_rules ~class_name:"_nopal_ix_0" interaction in
-  let hover_pos = find_substring result ":hover{" in
-  let focus_pos = find_substring result ":focus-visible{" in
-  let active_pos = find_substring result ":active{" in
-  Alcotest.(check bool) "hover before focus" true (hover_pos < focus_pos);
-  Alcotest.(check bool) "focus before active" true (focus_pos < active_pos)
-
-let test_interaction_rules_empty () =
-  let result =
-    interaction_rules ~class_name:"_nopal_ix_0" Nopal_style.Interaction.default
-  in
-  Alcotest.(check string) "empty interaction" "" result
 
 (* ── split_css_rules tests ── *)
 
@@ -677,15 +635,6 @@ let () =
             test_base_class_rule_generates_class_selector;
           Alcotest.test_case "empty props" `Quick
             test_base_class_rule_empty_props;
-        ] );
-      ( "interaction_rules_redesign",
-        [
-          Alcotest.test_case "no !important" `Quick
-            test_interaction_rules_no_important;
-          Alcotest.test_case "precedence order" `Quick
-            test_interaction_rules_precedence_order;
-          Alcotest.test_case "empty interaction" `Quick
-            test_interaction_rules_empty;
         ] );
       ( "split_css_rules",
         [

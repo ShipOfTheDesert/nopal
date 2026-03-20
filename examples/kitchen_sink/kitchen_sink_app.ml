@@ -82,6 +82,12 @@ type model = {
   tauri_version : string;
   tauri_events : string list;
   tauri_event_unlisten : (unit -> unit) option;
+  tauri_window_title : string;
+  tauri_is_fullscreen : bool;
+  tauri_is_maximized : bool;
+  tauri_inner_size : (int * int) option;
+  tauri_window_width : string;
+  tauri_window_height : string;
 }
 
 (* Messages *)
@@ -136,6 +142,29 @@ type msg =
   | ListenTauriEvents
   | UnlistenTauriEvents
   | GotTauriUnlisten of (unit -> unit)
+  | SetTauriWindowTitle
+  | TauriWindowTitleSet
+  | UpdateTauriWindowTitleInput of string
+  | SetTauriFullscreen of bool
+  | TauriFullscreenSet
+  | QueryTauriFullscreen
+  | GotTauriFullscreen of bool
+  | MinimizeTauriWindow
+  | TauriWindowMinimized
+  | MaximizeTauriWindow
+  | TauriWindowMaximized
+  | UnmaximizeTauriWindow
+  | TauriWindowUnmaximized
+  | QueryTauriMaximized
+  | GotTauriMaximized of bool
+  | CloseTauriWindow
+  | TauriWindowClosed
+  | UpdateTauriWindowWidth of string
+  | UpdateTauriWindowHeight of string
+  | SetTauriWindowSize of int * int
+  | TauriWindowSizeSet
+  | QueryTauriInnerSize
+  | GotWindowInnerSize of int * int
 
 let init () =
   let sub_counter, sub_cmd = Sub_counter.init () in
@@ -168,6 +197,12 @@ let init () =
       tauri_version = "Not in Tauri";
       tauri_events = [];
       tauri_event_unlisten = None;
+      tauri_window_title = "Nopal Kitchen Sink";
+      tauri_is_fullscreen = false;
+      tauri_is_maximized = false;
+      tauri_inner_size = None;
+      tauri_window_width = "800";
+      tauri_window_height = "600";
     },
     Nopal_mvu.Cmd.map (fun m -> SubCounterMsg m) sub_cmd )
 
@@ -368,6 +403,35 @@ let update model = function
       ({ model with tauri_event_unlisten = None }, Nopal_mvu.Cmd.none)
   | GotTauriUnlisten f ->
       ({ model with tauri_event_unlisten = Some f }, Nopal_mvu.Cmd.none)
+  | UpdateTauriWindowTitleInput s ->
+      ({ model with tauri_window_title = s }, Nopal_mvu.Cmd.none)
+  | SetTauriWindowTitle -> (model, Nopal_mvu.Cmd.none)
+  | TauriWindowTitleSet -> (model, Nopal_mvu.Cmd.none)
+  | SetTauriFullscreen _ -> (model, Nopal_mvu.Cmd.none)
+  | TauriFullscreenSet -> (model, Nopal_mvu.Cmd.none)
+  | QueryTauriFullscreen -> (model, Nopal_mvu.Cmd.none)
+  | GotTauriFullscreen v ->
+      ({ model with tauri_is_fullscreen = v }, Nopal_mvu.Cmd.none)
+  | MinimizeTauriWindow -> (model, Nopal_mvu.Cmd.none)
+  | TauriWindowMinimized -> (model, Nopal_mvu.Cmd.none)
+  | MaximizeTauriWindow -> (model, Nopal_mvu.Cmd.none)
+  | TauriWindowMaximized -> (model, Nopal_mvu.Cmd.none)
+  | UnmaximizeTauriWindow -> (model, Nopal_mvu.Cmd.none)
+  | TauriWindowUnmaximized -> (model, Nopal_mvu.Cmd.none)
+  | QueryTauriMaximized -> (model, Nopal_mvu.Cmd.none)
+  | GotTauriMaximized v ->
+      ({ model with tauri_is_maximized = v }, Nopal_mvu.Cmd.none)
+  | CloseTauriWindow -> (model, Nopal_mvu.Cmd.none)
+  | TauriWindowClosed -> (model, Nopal_mvu.Cmd.none)
+  | UpdateTauriWindowWidth s ->
+      ({ model with tauri_window_width = s }, Nopal_mvu.Cmd.none)
+  | UpdateTauriWindowHeight s ->
+      ({ model with tauri_window_height = s }, Nopal_mvu.Cmd.none)
+  | SetTauriWindowSize _ -> (model, Nopal_mvu.Cmd.none)
+  | TauriWindowSizeSet -> (model, Nopal_mvu.Cmd.none)
+  | QueryTauriInnerSize -> (model, Nopal_mvu.Cmd.none)
+  | GotWindowInnerSize (w, h) ->
+      ({ model with tauri_inner_size = Some (w, h) }, Nopal_mvu.Cmd.none)
 
 (* Section wrapper (REQ-F10) *)
 let view_section ?(attrs = []) title children =
@@ -2148,6 +2212,99 @@ let view_tauri_events model =
      ]
     @ event_items)
 
+(* Section: Tauri Window *)
+let view_tauri_window model =
+  let row_style =
+    Style.default
+    |> Style.with_layout (fun l -> { l with gap = 8.0; cross_align = Center })
+  in
+  let fullscreen_label =
+    if model.tauri_is_fullscreen then "Exit Fullscreen" else "Enter Fullscreen"
+  in
+  let maximized_label =
+    if model.tauri_is_maximized then "Unmaximize" else "Maximize"
+  in
+  let maximized_action =
+    if model.tauri_is_maximized then UnmaximizeTauriWindow
+    else MaximizeTauriWindow
+  in
+  let size_display =
+    match model.tauri_inner_size with
+    | Some (w, h) -> string_of_int w ^ " × " ^ string_of_int h
+    | None -> "Unknown"
+  in
+  let parsed_width = int_of_string_opt model.tauri_window_width in
+  let parsed_height = int_of_string_opt model.tauri_window_height in
+  let set_size_msg =
+    match (parsed_width, parsed_height) with
+    | Some w, Some h -> Some (SetTauriWindowSize (w, h))
+    | _ -> None
+  in
+  view_section
+    ~attrs:[ ("data-section", "tauri-window") ]
+    "Tauri Window"
+    [
+      Element.row ~style:row_style
+        [
+          Element.input
+            ~on_change:(fun s -> UpdateTauriWindowTitleInput s)
+            ~attrs:[ ("data-testid", "window-title-input") ]
+            model.tauri_window_title;
+          Element.button ~on_click:SetTauriWindowTitle
+            ~attrs:[ ("data-testid", "set-title-btn") ]
+            (Element.text "Set Title");
+        ];
+      Element.row ~style:row_style
+        [
+          Element.button
+            ~on_click:(SetTauriFullscreen (not model.tauri_is_fullscreen))
+            ~attrs:[ ("data-testid", "fullscreen-btn") ]
+            (Element.text fullscreen_label);
+          Element.button ~on_click:QueryTauriFullscreen
+            ~attrs:[ ("data-testid", "query-fullscreen-btn") ]
+            (Element.text "Query Fullscreen");
+          Element.text
+            ("Fullscreen: " ^ string_of_bool model.tauri_is_fullscreen);
+        ];
+      Element.row ~style:row_style
+        [
+          Element.button ~on_click:MinimizeTauriWindow
+            ~attrs:[ ("data-testid", "minimize-btn") ]
+            (Element.text "Minimize");
+          Element.button ~on_click:maximized_action
+            ~attrs:[ ("data-testid", "maximize-btn") ]
+            (Element.text maximized_label);
+          Element.button ~on_click:QueryTauriMaximized
+            ~attrs:[ ("data-testid", "query-maximized-btn") ]
+            (Element.text "Query Maximized");
+          Element.text ("Maximized: " ^ string_of_bool model.tauri_is_maximized);
+        ];
+      Element.button ~on_click:CloseTauriWindow
+        ~attrs:[ ("data-testid", "close-btn") ]
+        (Element.text "Close Window");
+      Element.row ~style:row_style
+        [
+          Element.input
+            ~on_change:(fun s -> UpdateTauriWindowWidth s)
+            ~attrs:[ ("data-testid", "window-width-input") ]
+            model.tauri_window_width;
+          Element.input
+            ~on_change:(fun s -> UpdateTauriWindowHeight s)
+            ~attrs:[ ("data-testid", "window-height-input") ]
+            model.tauri_window_height;
+          (match set_size_msg with
+          | Some msg ->
+              Element.button ~on_click:msg
+                ~attrs:[ ("data-testid", "set-size-btn") ]
+                (Element.text "Set Size")
+          | None -> Element.text "Set Size (enter valid numbers)");
+          Element.button ~on_click:QueryTauriInnerSize
+            ~attrs:[ ("data-testid", "query-size-btn") ]
+            (Element.text "Query Size");
+          Element.text ("Inner size: " ^ size_display);
+        ];
+    ]
+
 (* Main view — all sections in a scrollable column (REQ-F10, REQ-F12) *)
 let view vp model =
   Element.scroll
@@ -2179,6 +2336,7 @@ let view vp model =
          view_http_timeout model;
          view_tauri_app model;
          view_tauri_events model;
+         view_tauri_window model;
        ])
 
 let subscriptions _model = Nopal_mvu.Sub.none

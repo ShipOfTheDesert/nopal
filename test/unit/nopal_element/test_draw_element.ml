@@ -4,7 +4,7 @@ type msg = Moved of float * float | Clicked of float * float | Left
 
 let scene = [ Nopal_scene.Scene.rect ~x:0. ~y:0. ~w:100. ~h:50. () ]
 
-let test_draw_builder () =
+let test_draw_builder_defaults () =
   let el = Element.draw ~width:200. ~height:100. scene in
   Alcotest.(check bool)
     "draw produces Draw with scene" true
@@ -21,10 +21,7 @@ let test_draw_builder () =
     | Element.Image _
     | Element.Scroll _
     | Element.Keyed _ ->
-        false)
-
-let test_draw_defaults () =
-  let el = Element.draw ~width:100. ~height:50. scene in
+        false);
   Alcotest.(check bool)
     "draw defaults: no callbacks, no cursor, no aria_label" true
     (match el with
@@ -145,8 +142,8 @@ let () =
     [
       ( "draw",
         [
-          Alcotest.test_case "draw_builder" `Quick test_draw_builder;
-          Alcotest.test_case "draw_defaults" `Quick test_draw_defaults;
+          Alcotest.test_case "draw_builder_defaults" `Quick
+            test_draw_builder_defaults;
           Alcotest.test_case "draw_with_callbacks" `Quick
             test_draw_with_callbacks;
           Alcotest.test_case "draw_map" `Quick test_draw_map;
