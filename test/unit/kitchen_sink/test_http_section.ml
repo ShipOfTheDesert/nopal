@@ -71,6 +71,34 @@ let msg_pp fmt msg =
   | ListenTauriEvents -> Format.fprintf fmt "ListenTauriEvents"
   | UnlistenTauriEvents -> Format.fprintf fmt "UnlistenTauriEvents"
   | GotTauriUnlisten _ -> Format.fprintf fmt "GotTauriUnlisten(<fn>)"
+  | SetTauriWindowTitle -> Format.fprintf fmt "SetTauriWindowTitle"
+  | TauriWindowTitleSet -> Format.fprintf fmt "TauriWindowTitleSet"
+  | UpdateTauriWindowTitleInput s ->
+      Format.fprintf fmt "UpdateTauriWindowTitleInput(%s)" s
+  | SetTauriFullscreen b -> Format.fprintf fmt "SetTauriFullscreen(%b)" b
+  | TauriFullscreenSet -> Format.fprintf fmt "TauriFullscreenSet"
+  | QueryTauriFullscreen -> Format.fprintf fmt "QueryTauriFullscreen"
+  | GotTauriFullscreen b -> Format.fprintf fmt "GotTauriFullscreen(%b)" b
+  | MinimizeTauriWindow -> Format.fprintf fmt "MinimizeTauriWindow"
+  | TauriWindowMinimized -> Format.fprintf fmt "TauriWindowMinimized"
+  | MaximizeTauriWindow -> Format.fprintf fmt "MaximizeTauriWindow"
+  | TauriWindowMaximized -> Format.fprintf fmt "TauriWindowMaximized"
+  | UnmaximizeTauriWindow -> Format.fprintf fmt "UnmaximizeTauriWindow"
+  | TauriWindowUnmaximized -> Format.fprintf fmt "TauriWindowUnmaximized"
+  | QueryTauriMaximized -> Format.fprintf fmt "QueryTauriMaximized"
+  | GotTauriMaximized b -> Format.fprintf fmt "GotTauriMaximized(%b)" b
+  | CloseTauriWindow -> Format.fprintf fmt "CloseTauriWindow"
+  | TauriWindowClosed -> Format.fprintf fmt "TauriWindowClosed"
+  | UpdateTauriWindowWidth s ->
+      Format.fprintf fmt "UpdateTauriWindowWidth(%s)" s
+  | UpdateTauriWindowHeight s ->
+      Format.fprintf fmt "UpdateTauriWindowHeight(%s)" s
+  | SetTauriWindowSize (w, h) ->
+      Format.fprintf fmt "SetTauriWindowSize(%d, %d)" w h
+  | TauriWindowSizeSet -> Format.fprintf fmt "TauriWindowSizeSet"
+  | QueryTauriInnerSize -> Format.fprintf fmt "QueryTauriInnerSize"
+  | GotWindowInnerSize (w, h) ->
+      Format.fprintf fmt "GotWindowInnerSize(%d, %d)" w h
 
 let msg_testable = Alcotest.testable msg_pp ( = )
 
