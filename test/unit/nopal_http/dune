@@ -1,3 +1,3 @@
 (tests
- (names test_nopal_http)
- (libraries nopal_http nopal_mvu alcotest))
+ (names test_nopal_http test_http)
+ (libraries nopal_http nopal_mvu test_util alcotest))

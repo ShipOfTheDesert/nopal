@@ -30,7 +30,7 @@ let test_cmd_perform_dispatches () =
 let test_cmd_task_dispatches () =
   let results = ref [] in
   let dispatch msg = results := msg :: !results in
-  let cmd = Nopal_mvu.Cmd.task (fun d -> d 99) in
+  let cmd = Nopal_mvu.Cmd.task (Nopal_mvu.Task.return 99) in
   Nopal_mvu.Cmd.execute dispatch cmd;
   Alcotest.(check (list int)) "task dispatches" [ 99 ] !results
 
@@ -57,7 +57,7 @@ let test_cmd_after_returns_none_for_non_after () =
 let test_cmd_map_task () =
   let results = ref [] in
   let dispatch msg = results := msg :: !results in
-  let cmd = Nopal_mvu.Cmd.task (fun d -> d 5) in
+  let cmd = Nopal_mvu.Cmd.task (Nopal_mvu.Task.return 5) in
   let mapped = Nopal_mvu.Cmd.map (fun n -> n + 100) cmd in
   Nopal_mvu.Cmd.execute dispatch mapped;
   Alcotest.(check (list int)) "map transforms task" [ 105 ] !results
@@ -110,7 +110,7 @@ let test_cmd_interpret_single_pass () =
       [
         Nopal_mvu.Cmd.perform (fun d -> d "hello");
         Nopal_mvu.Cmd.after 300 "delayed";
-        Nopal_mvu.Cmd.task (fun d -> d "async");
+        Nopal_mvu.Cmd.task (Nopal_mvu.Task.return "async");
         Nopal_mvu.Cmd.none;
       ]
   in
@@ -134,6 +134,14 @@ let test_cmd_batch_deep_nesting () =
   in
   Nopal_mvu.Cmd.execute dispatch cmd;
   Alcotest.(check (list int)) "deep nesting executes" [ 1 ] !results
+
+let test_cmd_map_transforms_task () =
+  let results = ref [] in
+  let dispatch msg = results := msg :: !results in
+  let cmd = Nopal_mvu.Cmd.task (Nopal_mvu.Task.return 10) in
+  let mapped = Nopal_mvu.Cmd.map (fun n -> n * 2) cmd in
+  Nopal_mvu.Cmd.execute dispatch mapped;
+  Alcotest.(check (list int)) "map transforms task" [ 20 ] !results
 
 let () =
   Alcotest.run "nopal_mvu_cmd"
@@ -161,5 +169,7 @@ let () =
             test_cmd_batch_deep_nesting;
           Alcotest.test_case "interpret single pass" `Quick
             test_cmd_interpret_single_pass;
+          Alcotest.test_case "map transforms task" `Quick
+            test_cmd_map_transforms_task;
         ] );
     ]

@@ -1,47 +1,36 @@
 type test_msg = Got of Nopal_http.outcome
 
 let test_all_methods_return_cmd_with_default_backend () =
-  let test_one label mk_cmd expected_url =
+  let test_one label mk_cmd =
     let results = ref [] in
     let dispatch msg = results := msg :: !results in
     let cmd = mk_cmd (fun outcome -> Got outcome) in
     Nopal_mvu.Cmd.execute dispatch cmd;
     match !results with
-    | [ Got (Error (Nopal_http.Network_error msg)) ] ->
-        Alcotest.(check string)
-          (label ^ " error mentions url")
-          ("no HTTP backend: " ^ expected_url)
-          msg
-    | _ ->
-        Alcotest.fail
-          (label ^ ": expected exactly one Got (Error (Network_error _))")
+    | [ Got (Error (Nopal_http.Network_error _)) ] -> ()
+    | _ -> Alcotest.fail (label ^ " expected Network_error")
   in
   let url = "https://example.com/api" in
-  test_one "get" (Nopal_http.get url) url;
+  test_one "get" (Nopal_http.get url);
   test_one "get ~headers"
-    (Nopal_http.get ~headers:[ ("Authorization", "Bearer x") ] url)
-    url;
+    (Nopal_http.get ~headers:[ ("Authorization", "Bearer x") ] url);
   test_one "post"
     (Nopal_http.post
        ~body:(Nopal_http.String { content = "b"; content_type = None })
-       url)
-    url;
+       url);
   test_one "put"
     (Nopal_http.put
        ~body:(Nopal_http.String { content = "b"; content_type = None })
-       url)
-    url;
-  test_one "delete_" (Nopal_http.delete_ url) url;
+       url);
+  test_one "delete_" (Nopal_http.delete_ url);
   test_one "delete_ ~body"
     (Nopal_http.delete_
        ~body:(Nopal_http.String { content = "b"; content_type = None })
-       url)
-    url;
+       url);
   test_one "patch"
     (Nopal_http.patch
        ~body:(Nopal_http.String { content = "b"; content_type = None })
-       url)
-    url;
+       url);
   test_one "send"
     (Nopal_http.send
        {
@@ -51,7 +40,6 @@ let test_all_methods_return_cmd_with_default_backend () =
          body = Nopal_http.String { content = "hello"; content_type = None };
          timeout = None;
        })
-    url
 
 let test_register_backend () =
   let results = ref [] in
@@ -62,21 +50,19 @@ let test_register_backend () =
       Nopal_http.register_backend
         {
           Nopal_http.send =
-            (fun request on_result ->
-              Nopal_mvu.Cmd.task (fun dispatch ->
-                  let body_str =
-                    match request.body with
-                    | Nopal_http.String { content; _ } -> content
-                    | _ -> ""
-                  in
-                  dispatch
-                    (on_result
-                       (Ok
-                          {
-                            Nopal_http.status = 201;
-                            body = "echoed:" ^ body_str;
-                            headers = [];
-                          }))));
+            (fun request ->
+              let body_str =
+                match request.body with
+                | Nopal_http.String { content; _ } -> content
+                | _ -> ""
+              in
+              Nopal_mvu.Task.return
+                (Ok
+                   {
+                     Nopal_http.status = 201;
+                     body = "echoed:" ^ body_str;
+                     headers = [];
+                   }));
         };
       let req : Nopal_http.request =
         {

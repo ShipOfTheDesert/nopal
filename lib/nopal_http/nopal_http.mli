@@ -48,11 +48,10 @@ type request = {
     [headers] is a list of header name-value pairs, [body] is the request body,
     and [timeout] is an optional timeout in seconds. *)
 
-type backend = {
-  send : 'msg. request -> (outcome -> 'msg) -> 'msg Nopal_mvu.Cmd.t;
-}
+type backend = { send : request -> outcome Nopal_mvu.Task.t }
 (** A platform-specific HTTP backend. The [send] field handles all HTTP methods
-    by inspecting the [request.meth] field. *)
+    by inspecting the [request.meth] field. Returns a {!Nopal_mvu.Task.t} that
+    resolves with the HTTP outcome. *)
 
 val default_backend : backend
 (** The default backend, which always dispatches [Network_error]. Useful for

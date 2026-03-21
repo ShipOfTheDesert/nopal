@@ -5,13 +5,13 @@ type test_msg = Got of Nopal_http.outcome | Mapped of string
    a synchronously-resolving fetch shim, .then() callbacks are microtasks
    that run after the current synchronous code completes. A single
    setTimeout(0) fires after the entire microtask queue drains, so all
-   Cmd.task dispatch callbacks will have run by the time [k] executes. *)
+   Task resolve callbacks will have run by the time [k] executes. *)
 let flush_then_run k =
   let flush = Jv.get Jv.global "_flush" in
   ignore (Jv.apply flush [| Jv.callback ~arity:1 (fun _ -> k ()) |])
 
 let () =
-  (* Execute all async commands now — dispatches happen during microtask flush *)
+  (* Execute all async tasks now — resolves happen during microtask flush *)
   let results_get_success = ref [] in
   let results_404 = ref [] in
   let results_network = ref [] in
@@ -27,89 +27,75 @@ let () =
   let results_form_encoded = ref [] in
   let results_multipart = ref [] in
   let results_timeout = ref [] in
-  Nopal_mvu.Cmd.execute
-    (fun msg -> results_get_success := msg :: !results_get_success)
-    (Nopal_http_web.get "https://example.com/success" (fun outcome ->
-         Got outcome));
-  Nopal_mvu.Cmd.execute
-    (fun msg -> results_404 := msg :: !results_404)
-    (Nopal_http_web.get "https://example.com/404" (fun outcome -> Got outcome));
-  Nopal_mvu.Cmd.execute
-    (fun msg -> results_network := msg :: !results_network)
-    (Nopal_http_web.get "https://example.com/network-error" (fun outcome ->
-         Got outcome));
-  Nopal_mvu.Cmd.execute
-    (fun msg -> results_body_error := msg :: !results_body_error)
-    (Nopal_http_web.get "https://example.com/body-error" (fun outcome ->
-         Got outcome));
-  Nopal_mvu.Cmd.execute
-    (fun msg -> results_mapped := msg :: !results_mapped)
-    (Nopal_http_web.get "https://example.com/success" (fun outcome ->
+  Nopal_mvu.Task.run (Nopal_http_web.get "https://example.com/success")
+    (fun outcome -> results_get_success := Got outcome :: !results_get_success);
+  Nopal_mvu.Task.run (Nopal_http_web.get "https://example.com/404")
+    (fun outcome -> results_404 := Got outcome :: !results_404);
+  Nopal_mvu.Task.run (Nopal_http_web.get "https://example.com/network-error")
+    (fun outcome -> results_network := Got outcome :: !results_network);
+  Nopal_mvu.Task.run (Nopal_http_web.get "https://example.com/body-error")
+    (fun outcome -> results_body_error := Got outcome :: !results_body_error);
+  Nopal_mvu.Task.run
+    (Nopal_mvu.Task.map
+       (fun outcome ->
          match outcome with
          | Ok resp -> Mapped ("status:" ^ string_of_int resp.Nopal_http.status)
-         | Error _ -> Mapped "error"));
-  Nopal_mvu.Cmd.execute
-    (fun msg -> results_post := msg :: !results_post)
+         | Error _ -> Mapped "error")
+       (Nopal_http_web.get "https://example.com/success"))
+    (fun msg -> results_mapped := msg :: !results_mapped);
+  Nopal_mvu.Task.run
     (Nopal_http_web.post
        ~headers:[ ("Content-Type", "application/json") ]
        ~body:
          (Nopal_http.String { content = "test-payload"; content_type = None })
-       "https://example.com/success"
-       (fun outcome -> Got outcome));
-  Nopal_mvu.Cmd.execute
-    (fun msg -> results_post_network := msg :: !results_post_network)
+       "https://example.com/success")
+    (fun outcome -> results_post := Got outcome :: !results_post);
+  Nopal_mvu.Task.run
     (Nopal_http_web.post
        ~body:(Nopal_http.String { content = "hello"; content_type = None })
-       "https://example.com/network-error"
-       (fun outcome -> Got outcome));
-  Nopal_mvu.Cmd.execute
-    (fun msg -> results_get_headers := msg :: !results_get_headers)
+       "https://example.com/network-error")
+    (fun outcome ->
+      results_post_network := Got outcome :: !results_post_network);
+  Nopal_mvu.Task.run
     (Nopal_http_web.get
        ~headers:[ ("Authorization", "Bearer token123") ]
-       "https://example.com/success"
-       (fun outcome -> Got outcome));
-  Nopal_mvu.Cmd.execute
-    (fun msg -> results_put := msg :: !results_put)
+       "https://example.com/success")
+    (fun outcome -> results_get_headers := Got outcome :: !results_get_headers);
+  Nopal_mvu.Task.run
     (Nopal_http_web.put
        ~body:
          (Nopal_http.String { content = "put-payload"; content_type = None })
-       "https://example.com/success"
-       (fun outcome -> Got outcome));
-  Nopal_mvu.Cmd.execute
-    (fun msg -> results_delete := msg :: !results_delete)
-    (Nopal_http_web.delete_ "https://example.com/success" (fun outcome ->
-         Got outcome));
-  Nopal_mvu.Cmd.execute
-    (fun msg -> results_patch := msg :: !results_patch)
+       "https://example.com/success")
+    (fun outcome -> results_put := Got outcome :: !results_put);
+  Nopal_mvu.Task.run (Nopal_http_web.delete_ "https://example.com/success")
+    (fun outcome -> results_delete := Got outcome :: !results_delete);
+  Nopal_mvu.Task.run
     (Nopal_http_web.patch
        ~body:(Nopal_http.String { content = "patch-data"; content_type = None })
-       "https://example.com/success"
-       (fun outcome -> Got outcome));
-  Nopal_mvu.Cmd.execute
-    (fun msg -> results_delete_body := msg :: !results_delete_body)
+       "https://example.com/success")
+    (fun outcome -> results_patch := Got outcome :: !results_patch);
+  Nopal_mvu.Task.run
     (Nopal_http_web.delete_
        ~body:
          (Nopal_http.String { content = "delete-payload"; content_type = None })
-       "https://example.com/success"
-       (fun outcome -> Got outcome));
-  Nopal_mvu.Cmd.execute
-    (fun msg -> results_form_encoded := msg :: !results_form_encoded)
+       "https://example.com/success")
+    (fun outcome -> results_delete_body := Got outcome :: !results_delete_body);
+  Nopal_mvu.Task.run
     (Nopal_http_web.post
        ~body:
          (Nopal_http.Form_encoded
             [ ("a&b", "c=d"); ("space key", "val ue"); ("utf8", "\xc3\xa9") ])
-       "https://example.com/success"
-       (fun outcome -> Got outcome));
-  Nopal_mvu.Cmd.execute
-    (fun msg -> results_multipart := msg :: !results_multipart)
+       "https://example.com/success")
+    (fun outcome ->
+      results_form_encoded := Got outcome :: !results_form_encoded);
+  Nopal_mvu.Task.run
     (Nopal_http_web.post
        ~body:(Nopal_http.Multipart [ ("name", "nopal"); ("version", "1") ])
-       "https://example.com/success"
-       (fun outcome -> Got outcome));
-  Nopal_mvu.Cmd.execute
-    (fun msg -> results_timeout := msg :: !results_timeout)
-    (Nopal_http_web.get ~timeout:0.01 "https://example.com/delay"
-       (fun outcome -> Got outcome));
+       "https://example.com/success")
+    (fun outcome -> results_multipart := Got outcome :: !results_multipart);
+  Nopal_mvu.Task.run
+    (Nopal_http_web.get ~timeout:0.01 "https://example.com/delay")
+    (fun outcome -> results_timeout := Got outcome :: !results_timeout);
   (* Defer all assertions until after microtask flush *)
   flush_then_run (fun () ->
       Alcotest.run "nopal_http_web"

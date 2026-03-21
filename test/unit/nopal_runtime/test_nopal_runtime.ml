@@ -183,9 +183,10 @@ let test_cmd_perform_and_task () =
             Nopal_mvu.Cmd.perform (fun dispatch ->
                 perform_ran := true;
                 dispatch 10);
-            Nopal_mvu.Cmd.task (fun dispatch ->
-                task_ran := true;
-                dispatch 20);
+            Nopal_mvu.Cmd.task
+              (Nopal_mvu.Task.from_callback (fun resolve ->
+                   task_ran := true;
+                   resolve 20));
           ] )
 
     let update model msg = (model + msg, Nopal_mvu.Cmd.none)

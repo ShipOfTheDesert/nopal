@@ -43,30 +43,22 @@ val perform : ('msg dispatch -> unit) -> 'msg t
           dispatch (Time_read now))
     ]} *)
 
-val task : ('msg dispatch -> unit) -> 'msg t
-(** [task f] creates a command for an {b asynchronous, deferred} effect.
+val task : 'msg Task.t -> 'msg t
+(** [task t] creates a command from an asynchronous {!Task.t}.
 
-    The callback [f] receives a [dispatch] function and may hold onto it,
-    calling [dispatch] zero or more times at a later point. The runtime treats
-    [f] as potentially long-lived — it will not block on [f] returning.
+    The task [t] describes an async operation that eventually produces a
+    message. The runtime executes the task and dispatches the resulting message.
 
     Use [task] when:
     - Making an HTTP request or other I/O that completes later.
-    - Setting up a one-shot timer or callback.
-    - Performing work that may produce multiple messages over time.
-    - The effect may fail silently (zero dispatches is valid).
+    - Composing async operations with [Task.map] / [Task.bind].
 
     {[
       (* Fetch data from an API *)
-      Cmd.task (fun dispatch ->
-          http_get "/api/items" (fun response ->
-              dispatch (Items_loaded response)))
-    ]}
-
-    {[
-      (* One-shot timer (prefer Cmd.after for simple delays) *)
-      Cmd.task (fun dispatch ->
-          set_timeout 500 (fun () -> dispatch Timer_fired))
+      Cmd.task
+        (let open Task.Syntax in
+         let+ response = Http.get "/api/items" in
+         Items_loaded response)
     ]} *)
 
 val after : int -> 'msg -> 'msg t
