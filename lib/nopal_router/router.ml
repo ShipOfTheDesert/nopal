@@ -16,17 +16,17 @@ let current t =
   | None -> t.not_found
 
 let push t route =
-  Nopal_mvu.Cmd.task (fun _dispatch ->
+  Nopal_mvu.Cmd.perform (fun _dispatch ->
       let module P = (val t.platform : Platform.S) in
       P.push_state (t.to_path route))
 
 let replace t route =
-  Nopal_mvu.Cmd.task (fun _dispatch ->
+  Nopal_mvu.Cmd.perform (fun _dispatch ->
       let module P = (val t.platform : Platform.S) in
       P.replace_state (t.to_path route))
 
 let back t =
-  Nopal_mvu.Cmd.task (fun _dispatch ->
+  Nopal_mvu.Cmd.perform (fun _dispatch ->
       let module P = (val t.platform : Platform.S) in
       P.back ())
 

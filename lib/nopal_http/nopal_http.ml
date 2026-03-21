@@ -23,18 +23,14 @@ type request = {
   timeout : float option;
 }
 
-type backend = {
-  send : 'msg. request -> (outcome -> 'msg) -> 'msg Nopal_mvu.Cmd.t;
-}
+type backend = { send : request -> outcome Nopal_mvu.Task.t }
 
 let default_backend =
   {
     send =
-      (fun request on_result ->
-        Nopal_mvu.Cmd.task (fun dispatch ->
-            dispatch
-              (on_result
-                 (Error (Network_error ("no HTTP backend: " ^ request.url))))));
+      (fun request ->
+        Nopal_mvu.Task.return
+          (Error (Network_error ("no HTTP backend: " ^ request.url))));
   }
 
 (* Mutable: backend registration allows platform-specific HTTP implementations
@@ -42,7 +38,10 @@ let default_backend =
    code to a specific backend. *)
 let current_backend = ref default_backend
 let register_backend b = current_backend := b
-let send request on_result = !current_backend.send request on_result
+
+let send request on_result =
+  Nopal_mvu.Cmd.task
+    (Nopal_mvu.Task.map on_result (!current_backend.send request))
 
 let get ?(headers = []) ?timeout url on_result =
   send { meth = GET; url; headers; body = Empty; timeout } on_result

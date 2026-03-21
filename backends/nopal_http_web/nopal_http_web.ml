@@ -8,8 +8,8 @@ let encode_uri_component (s : string) : string =
     (Jv.to_jstr
        (Jv.apply encode_uri_component_fn [| Jv.of_jstr (Jstr.of_string s) |]))
 
-let send (request : Nopal_http.request) on_result =
-  Nopal_mvu.Cmd.task (fun dispatch ->
+let send (request : Nopal_http.request) =
+  Nopal_mvu.Task.from_callback (fun resolve ->
       let method' =
         Jstr.of_string
           (match request.meth with
@@ -92,10 +92,10 @@ let send (request : Nopal_http.request) on_result =
         | Error err ->
             Option.iter Brr.G.stop_timer timer_id;
             let is_abort = Jv.Error.enum err = `Abort_error in
-            if is_abort then dispatch (on_result (Error Nopal_http.Timeout))
+            if is_abort then resolve (Error Nopal_http.Timeout)
             else
               let msg = Jstr.to_string (Jv.Error.message err) in
-              dispatch (on_result (Error (Nopal_http.Network_error msg)))
+              resolve (Error (Nopal_http.Network_error msg))
         | Ok response ->
             Option.iter Brr.G.stop_timer timer_id;
             let status = Brr_io.Fetch.Response.status response in
@@ -111,24 +111,23 @@ let send (request : Nopal_http.request) on_result =
             Fut.await body_fut (function
               | Error err ->
                   let msg = Jstr.to_string (Jv.Error.message err) in
-                  dispatch (on_result (Error (Nopal_http.Network_error msg)))
+                  resolve (Error (Nopal_http.Network_error msg))
               | Ok body_jstr ->
                   let body = Jstr.to_string body_jstr in
-                  dispatch
-                    (on_result
-                       (Ok { Nopal_http.status; body; headers = resp_headers })))))
+                  resolve
+                    (Ok { Nopal_http.status; body; headers = resp_headers }))))
 
-let get ?(headers = []) ?timeout url on_result =
-  send { Nopal_http.meth = GET; url; headers; body = Empty; timeout } on_result
+let get ?(headers = []) ?timeout url =
+  send { Nopal_http.meth = GET; url; headers; body = Empty; timeout }
 
-let post ?(headers = []) ?timeout ~body url on_result =
-  send { Nopal_http.meth = POST; url; headers; body; timeout } on_result
+let post ?(headers = []) ?timeout ~body url =
+  send { Nopal_http.meth = POST; url; headers; body; timeout }
 
-let put ?(headers = []) ?timeout ~body url on_result =
-  send { Nopal_http.meth = PUT; url; headers; body; timeout } on_result
+let put ?(headers = []) ?timeout ~body url =
+  send { Nopal_http.meth = PUT; url; headers; body; timeout }
 
-let delete_ ?(body = Nopal_http.Empty) ?(headers = []) ?timeout url on_result =
-  send { Nopal_http.meth = DELETE; url; headers; body; timeout } on_result
+let delete_ ?(body = Nopal_http.Empty) ?(headers = []) ?timeout url =
+  send { Nopal_http.meth = DELETE; url; headers; body; timeout }
 
-let patch ?(headers = []) ?timeout ~body url on_result =
-  send { Nopal_http.meth = PATCH; url; headers; body; timeout } on_result
+let patch ?(headers = []) ?timeout ~body url =
+  send { Nopal_http.meth = PATCH; url; headers; body; timeout }
