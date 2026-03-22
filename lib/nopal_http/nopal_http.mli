@@ -53,14 +53,33 @@ type backend = { send : request -> outcome Nopal_mvu.Task.t }
     by inspecting the [request.meth] field. Returns a {!Nopal_mvu.Task.t} that
     resolves with the HTTP outcome. *)
 
+type cancellable_backend = {
+  send_cancellable :
+    request -> Nopal_mvu.Task.cancellation_token * outcome Nopal_mvu.Task.t;
+}
+(** A platform-specific cancellable HTTP backend. [send_cancellable] returns
+    both a cancellation token and a task. When the token is cancelled, the
+    underlying I/O is aborted (e.g., via [AbortController] on web). *)
+
 val default_backend : backend
 (** The default backend, which always dispatches [Network_error]. Useful for
     testing or restoring state after {!register_backend}. *)
+
+val default_cancellable_backend : cancellable_backend
+(** The default cancellable backend. Wraps {!default_backend}'s [send] with
+    {!Nopal_mvu.Task.cancellable}. *)
 
 val register_backend : backend -> unit
 (** [register_backend b] sets the HTTP backend used by {!val-send}, {!val-get},
     {!val-post}, {!val-put}, {!val-delete_}, and {!val-patch}. Call this at
     application startup before mounting the app. *)
+
+val register_cancellable_backend : cancellable_backend -> unit
+(** [register_cancellable_backend b] sets the cancellable HTTP backend used by
+    {!val-send_cancellable}, {!val-get_cancellable}, {!val-post_cancellable},
+    {!val-put_cancellable}, {!val-delete_cancellable}, and
+    {!val-patch_cancellable}. Call this at application startup before mounting
+    the app. *)
 
 val send : request -> (outcome -> 'msg) -> 'msg Nopal_mvu.Cmd.t
 (** [send request on_result] creates a command that will perform the HTTP
@@ -115,3 +134,61 @@ val patch :
   'msg Nopal_mvu.Cmd.t
 (** [patch ?headers ?timeout ~body url on_result] creates a command that will
     perform an HTTP PATCH request to [url] with the given [body]. *)
+
+val send_cancellable :
+  request ->
+  (outcome -> 'msg) ->
+  Nopal_mvu.Task.cancellation_token * 'msg Nopal_mvu.Cmd.t
+(** [send_cancellable request on_result] is like {!val-send} but also returns a
+    cancellation token. If a platform-specific cancellable backend is
+    registered, I/O is aborted on cancellation; otherwise, the default backend's
+    [send] is wrapped with {!Nopal_mvu.Task.cancellable}. *)
+
+val get_cancellable :
+  ?headers:(string * string) list ->
+  ?timeout:float ->
+  string ->
+  (outcome -> 'msg) ->
+  Nopal_mvu.Task.cancellation_token * 'msg Nopal_mvu.Cmd.t
+(** [get_cancellable ?headers ?timeout url on_result] is like {!val-get} but
+    also returns a cancellation token. *)
+
+val post_cancellable :
+  ?headers:(string * string) list ->
+  ?timeout:float ->
+  body:body ->
+  string ->
+  (outcome -> 'msg) ->
+  Nopal_mvu.Task.cancellation_token * 'msg Nopal_mvu.Cmd.t
+(** [post_cancellable ?headers ?timeout ~body url on_result] is like {!val-post}
+    but also returns a cancellation token. *)
+
+val put_cancellable :
+  ?headers:(string * string) list ->
+  ?timeout:float ->
+  body:body ->
+  string ->
+  (outcome -> 'msg) ->
+  Nopal_mvu.Task.cancellation_token * 'msg Nopal_mvu.Cmd.t
+(** [put_cancellable ?headers ?timeout ~body url on_result] is like {!val-put}
+    but also returns a cancellation token. *)
+
+val delete_cancellable :
+  ?body:body ->
+  ?headers:(string * string) list ->
+  ?timeout:float ->
+  string ->
+  (outcome -> 'msg) ->
+  Nopal_mvu.Task.cancellation_token * 'msg Nopal_mvu.Cmd.t
+(** [delete_cancellable ?body ?headers ?timeout url on_result] is like
+    {!val-delete_} but also returns a cancellation token. *)
+
+val patch_cancellable :
+  ?headers:(string * string) list ->
+  ?timeout:float ->
+  body:body ->
+  string ->
+  (outcome -> 'msg) ->
+  Nopal_mvu.Task.cancellation_token * 'msg Nopal_mvu.Cmd.t
+(** [patch_cancellable ?headers ?timeout ~body url on_result] is like
+    {!val-patch} but also returns a cancellation token. *)
