@@ -2,6 +2,7 @@ module Style_css = Style_css
 module Style_sheet = Style_sheet
 module Renderer = Renderer
 module Platform_web = Platform_web
+module Storage = Storage
 
 let schedule_after ms callback =
   let w = Jv.get Jv.global "window" in

@@ -48,3 +48,6 @@ module Renderer = Renderer
 
 module Platform_web = Platform_web
 (** Web platform navigation via the browser History API. *)
+
+module Storage = Storage
+(** Browser localStorage access. See {!Storage}. *)

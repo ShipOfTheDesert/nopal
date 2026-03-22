@@ -100,6 +100,12 @@ let msg_pp fmt msg =
   | GotWindowInnerSize (w, h) ->
       Format.fprintf fmt "GotWindowInnerSize(%d, %d)" w h
   | GotPlatform s -> Format.fprintf fmt "GotPlatform(%s)" s
+  | StorageKeyChanged s -> Format.fprintf fmt "StorageKeyChanged(%s)" s
+  | StorageValueChanged s -> Format.fprintf fmt "StorageValueChanged(%s)" s
+  | StorageSet -> Format.fprintf fmt "StorageSet"
+  | StorageGet -> Format.fprintf fmt "StorageGet"
+  | StorageRemove -> Format.fprintf fmt "StorageRemove"
+  | StorageClear -> Format.fprintf fmt "StorageClear"
 
 let msg_testable = Alcotest.testable msg_pp ( = )
 
