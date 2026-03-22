@@ -176,6 +176,22 @@ let update model msg =
            Kitchen_sink_app.GotWindowInnerSize (size.width, size.height))
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
+  | Kitchen_sink_app.StorageSet ->
+      Nopal_web.Storage.set model.storage_key model.storage_value;
+      ({ model' with storage_state = Stored }, cmd)
+  | Kitchen_sink_app.StorageGet ->
+      let state =
+        match Nopal_web.Storage.get model.storage_key with
+        | Some v -> Kitchen_sink_app.Retrieved v
+        | None -> Kitchen_sink_app.NotFound
+      in
+      ({ model' with storage_state = state }, cmd)
+  | Kitchen_sink_app.StorageRemove ->
+      Nopal_web.Storage.remove model.storage_key;
+      ({ model' with storage_state = Removed }, cmd)
+  | Kitchen_sink_app.StorageClear ->
+      Nopal_web.Storage.clear ();
+      ({ model' with storage_state = Cleared }, cmd)
   | Kitchen_sink_app.ButtonClicked
   | Kitchen_sink_app.InputChanged _
   | Kitchen_sink_app.SubmitInputChanged _
@@ -249,7 +265,9 @@ let update model msg =
   | Kitchen_sink_app.TauriWindowSizeSet
   | Kitchen_sink_app.QueryTauriInnerSize
   | Kitchen_sink_app.GotWindowInnerSize _
-  | Kitchen_sink_app.GotPlatform _ ->
+  | Kitchen_sink_app.GotPlatform _
+  | Kitchen_sink_app.StorageKeyChanged _
+  | Kitchen_sink_app.StorageValueChanged _ ->
       (model', cmd)
 
 let () =

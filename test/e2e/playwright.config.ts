@@ -17,7 +17,7 @@ export default defineConfig({
     },
     {
       name: "kitchen-sink",
-      testMatch: ["kitchen-sink-*.spec.ts", "interaction-styling.spec.ts"],
+      testMatch: ["kitchen-sink-*.spec.ts", "interaction-styling.spec.ts", "storage.spec.ts"],
       use: {
         browserName: "chromium",
         baseURL: "http://localhost:3000/kitchen_sink",

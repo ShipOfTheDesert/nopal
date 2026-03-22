@@ -52,6 +52,14 @@ let page_style =
 (* HTTP state *)
 type http_state = Idle | Loading | Success of string | Errored of string
 
+type storage_state =
+  | StorageIdle
+  | Stored
+  | Retrieved of string
+  | NotFound
+  | Removed
+  | Cleared
+
 (* Model *)
 type model = {
   button_clicks : int;
@@ -89,6 +97,9 @@ type model = {
   tauri_window_width : string;
   tauri_window_height : string;
   tauri_platform : string;
+  storage_key : string;
+  storage_value : string;
+  storage_state : storage_state;
 }
 
 (* Messages *)
@@ -167,6 +178,12 @@ type msg =
   | QueryTauriInnerSize
   | GotWindowInnerSize of int * int
   | GotPlatform of string
+  | StorageKeyChanged of string
+  | StorageValueChanged of string
+  | StorageSet
+  | StorageGet
+  | StorageRemove
+  | StorageClear
 
 let init () =
   let sub_counter, sub_cmd = Sub_counter.init () in
@@ -206,6 +223,9 @@ let init () =
       tauri_window_width = "800";
       tauri_window_height = "600";
       tauri_platform = "Not in Tauri";
+      storage_key = "";
+      storage_value = "";
+      storage_state = StorageIdle;
     },
     Nopal_mvu.Cmd.map (fun m -> SubCounterMsg m) sub_cmd )
 
@@ -436,6 +456,13 @@ let update model = function
   | GotWindowInnerSize (w, h) ->
       ({ model with tauri_inner_size = Some (w, h) }, Nopal_mvu.Cmd.none)
   | GotPlatform s -> ({ model with tauri_platform = s }, Nopal_mvu.Cmd.none)
+  | StorageKeyChanged s -> ({ model with storage_key = s }, Nopal_mvu.Cmd.none)
+  | StorageValueChanged s ->
+      ({ model with storage_value = s }, Nopal_mvu.Cmd.none)
+  | StorageSet -> (model, Nopal_mvu.Cmd.none)
+  | StorageGet -> (model, Nopal_mvu.Cmd.none)
+  | StorageRemove -> (model, Nopal_mvu.Cmd.none)
+  | StorageClear -> (model, Nopal_mvu.Cmd.none)
 
 (* Section wrapper (REQ-F10) *)
 let view_section ?(attrs = []) title children =
@@ -2316,6 +2343,52 @@ let view_tauri_window model =
         ];
     ]
 
+let view_storage model =
+  let button_row_style =
+    Style.default
+    |> Style.with_layout (fun l -> { l with direction = Row_dir; gap = 8.0 })
+  in
+  view_section
+    ~attrs:[ ("data-section", "storage") ]
+    "Storage (localStorage)"
+    [
+      Element.input
+        ~on_change:(fun s -> StorageKeyChanged s)
+        ~attrs:[ ("data-testid", "storage-key-input") ]
+        ~placeholder:"Key" model.storage_key;
+      Element.input
+        ~on_change:(fun s -> StorageValueChanged s)
+        ~attrs:[ ("data-testid", "storage-value-input") ]
+        ~placeholder:"Value" model.storage_value;
+      Element.row ~style:button_row_style
+        [
+          Element.button ~on_click:StorageSet
+            ~attrs:[ ("data-testid", "storage-set-btn") ]
+            (Element.text "Set");
+          Element.button ~on_click:StorageGet
+            ~attrs:[ ("data-testid", "storage-get-btn") ]
+            (Element.text "Get");
+          Element.button ~on_click:StorageRemove
+            ~attrs:[ ("data-testid", "storage-remove-btn") ]
+            (Element.text "Remove");
+          Element.button ~on_click:StorageClear
+            ~attrs:[ ("data-testid", "storage-clear-btn") ]
+            (Element.text "Clear");
+        ];
+      Element.box
+        ~attrs:[ ("data-testid", "storage-result") ]
+        [
+          Element.text
+            (match model.storage_state with
+            | StorageIdle -> "No operation yet"
+            | Stored -> "Stored"
+            | Retrieved v -> v
+            | NotFound -> "Not found"
+            | Removed -> "Removed"
+            | Cleared -> "Cleared");
+        ];
+    ]
+
 (* Main view — all sections in a scrollable column (REQ-F10, REQ-F12) *)
 let view vp model =
   Element.scroll
@@ -2349,6 +2422,7 @@ let view vp model =
          view_tauri_os model;
          view_tauri_events model;
          view_tauri_window model;
+         view_storage model;
        ])
 
 let subscriptions _model = Nopal_mvu.Sub.none
