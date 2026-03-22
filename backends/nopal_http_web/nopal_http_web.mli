@@ -56,3 +56,11 @@ val patch :
   Nopal_http.outcome Nopal_mvu.Task.t
 (** [patch ?headers ?timeout ~body url] creates a task that performs an HTTP
     PATCH request to [url] with the given [body]. *)
+
+val send_cancellable :
+  Nopal_http.request ->
+  Nopal_mvu.Task.cancellation_token * Nopal_http.outcome Nopal_mvu.Task.t
+(** [send_cancellable request] is like {!send} but returns a cancellation token.
+    When the token is cancelled, the underlying Fetch request is aborted via
+    [AbortController]. The task resolves with
+    [Error (Network_error "cancelled")]. *)

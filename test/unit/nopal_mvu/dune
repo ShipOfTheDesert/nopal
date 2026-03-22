@@ -1,3 +1,9 @@
 (tests
- (names test_cmd test_sub test_sub_viewport test_app test_task)
+ (names
+  test_cmd
+  test_sub
+  test_sub_viewport
+  test_app
+  test_task
+  test_task_cancellation)
  (libraries nopal_mvu nopal_element alcotest))

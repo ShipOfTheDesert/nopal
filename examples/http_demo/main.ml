@@ -1,5 +1,7 @@
 let () =
   Nopal_http.register_backend { Nopal_http.send = Nopal_http_web.send };
+  Nopal_http.register_cancellable_backend
+    { Nopal_http.send_cancellable = Nopal_http_web.send_cancellable };
   let open Brr in
   let target =
     match Document.find_el_by_id G.document (Jstr.v "app") with
