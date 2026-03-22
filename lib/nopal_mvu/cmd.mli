@@ -17,30 +17,38 @@ val batch : 'msg t list -> 'msg t
 (** Combine multiple commands. Nested batches are flattened by the runtime. *)
 
 val perform : ('msg dispatch -> unit) -> 'msg t
-(** [perform f] creates a command for a {b synchronous, immediate} effect.
+(** [perform f] creates a command for a general effect that needs direct access
+    to [dispatch].
 
-    The thunk [f] receives a [dispatch] function, performs a short, non-blocking
-    operation, and calls [dispatch] exactly once before returning. The runtime
-    may call [f] on the current execution tick.
+    The thunk [f] receives a [dispatch] function and may call it zero, one, or
+    many times, either synchronously or asynchronously. The runtime queues each
+    dispatched message safely — re-entrant and async calls are handled.
 
     Use [perform] when:
-    - Reading a value that is available right now (e.g. current time, a random
-      number, a value from synchronous storage).
-    - Dispatching a message derived from a pure computation that is factored out
-      of [update] for clarity.
+    - The effect dispatches {b zero} messages (fire-and-forget side effects).
+    - The effect dispatches {b many} messages over time (event listeners,
+      streaming).
+    - Reading a synchronous value and dispatching it immediately.
+
+    For effects that produce {b exactly one} message asynchronously, prefer
+    {!task} with a {!Task.t} — it composes better and supports cancellation.
 
     {[
-      (* Generate a random ID and dispatch it *)
-      Cmd.perform (fun dispatch ->
-          let id = Random.int 1_000_000 in
-          dispatch (Got_id id))
+      (* Fire-and-forget — zero dispatches *)
+      Cmd.perform (fun _dispatch -> log_to_console "something happened")
     ]}
 
     {[
-      (* Read a synchronous value *)
+      (* Synchronous read — one dispatch *)
       Cmd.perform (fun dispatch ->
           let now = get_current_time () in
           dispatch (Time_read now))
+    ]}
+
+    {[
+      (* Event listener — many dispatches over time *)
+      Cmd.perform (fun dispatch ->
+          setup_listener (fun event -> dispatch (Got_event event)))
     ]} *)
 
 val task : 'msg Task.t -> 'msg t

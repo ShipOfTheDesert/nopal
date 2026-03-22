@@ -124,10 +124,38 @@ Pure descriptions of side effects — never execute directly. The runtime interp
 ```ocaml
 Cmd.none                                      (* no effect *)
 Cmd.batch : 'msg Cmd.t list -> 'msg Cmd.t     (* combine multiple commands *)
-Cmd.perform : (('msg -> unit) -> unit) -> 'msg Cmd.t  (* synchronous effect *)
-Cmd.task : (('msg -> unit) -> unit) -> 'msg Cmd.t     (* async deferred effect *)
+Cmd.perform : (('msg -> unit) -> unit) -> 'msg Cmd.t  (* general effect — zero, one, or many dispatches *)
+Cmd.task : 'msg Task.t -> 'msg Cmd.t                  (* async task effect *)
 Cmd.after : int -> 'msg -> 'msg Cmd.t         (* delay message by N ms *)
 Cmd.map : ('a -> 'b) -> 'a Cmd.t -> 'b Cmd.t  (* transform message type *)
+```
+
+### Tasks (`Task.t`)
+
+Composable async operations — a continuation monad. Tasks are pure descriptions; they do not execute until `run` is called. Use `let*` / `let+` syntax from `Task.Syntax` for readable chaining.
+
+```ocaml
+type 'a Task.t                                         (* async operation producing 'a *)
+
+Task.return : 'a -> 'a Task.t                          (* wrap a pure value *)
+Task.from_callback : (('a -> unit) -> unit) -> 'a Task.t  (* bridge callback-style async *)
+Task.map  : ('a -> 'b) -> 'a Task.t -> 'b Task.t      (* transform result *)
+Task.bind : ('a -> 'b Task.t) -> 'a Task.t -> 'b Task.t   (* sequence two tasks *)
+Task.run  : 'a Task.t -> ('a -> unit) -> unit          (* execute and observe result *)
+
+(* Cancellation *)
+type Task.cancellation_token
+Task.cancellable : (Task.cancellation_token -> 'a Task.t)
+  -> Task.cancellation_token * ('a, string) result Task.t
+Task.cancel         : Task.cancellation_token -> unit       (* idempotent *)
+Task.set_on_cancel  : Task.cancellation_token -> (unit -> unit) -> unit
+Task.is_cancelled   : Task.cancellation_token -> bool
+
+(* Syntax — open Task.Syntax for let operators *)
+module Task.Syntax : sig
+  val ( let* ) : 'a Task.t -> ('a -> 'b Task.t) -> 'b Task.t   (* bind *)
+  val ( let+ ) : 'a Task.t -> ('a -> 'b) -> 'b Task.t          (* map *)
+end
 ```
 
 ### Subscriptions (`Sub.t`)
@@ -595,10 +623,15 @@ type request = {
 }
 
 (* Backend abstraction — set once at startup *)
-type backend = { send : 'msg. request -> (outcome -> 'msg) -> 'msg Cmd.t }
+type backend = { send : request -> outcome Nopal_mvu.Task.t }
+type cancellable_backend = {
+  send_cancellable : request -> Nopal_mvu.Task.cancellation_token * outcome Nopal_mvu.Task.t
+}
 
-val default_backend : backend                (* always dispatches Network_error *)
-val register_backend : backend -> unit        (* call at startup before mounting *)
+val default_backend : backend                              (* always dispatches Network_error *)
+val default_cancellable_backend : cancellable_backend      (* wraps default_backend with Task.cancellable *)
+val register_backend : backend -> unit                     (* call at startup before mounting *)
+val register_cancellable_backend : cancellable_backend -> unit
 
 (* HTTP commands — return Cmd.t for MVU integration *)
 val send : request -> (outcome -> 'msg) -> 'msg Cmd.t       (* generic, any method *)
@@ -612,6 +645,20 @@ val delete_ : ?body:body -> ?headers:(string * string) list -> ?timeout:float
   -> string -> (outcome -> 'msg) -> 'msg Cmd.t
 val patch : ?headers:(string * string) list -> ?timeout:float
   -> body:body -> string -> (outcome -> 'msg) -> 'msg Cmd.t
+
+(* Cancellable variants — return token + Cmd.t *)
+val send_cancellable : request -> (outcome -> 'msg)
+  -> Nopal_mvu.Task.cancellation_token * 'msg Cmd.t
+val get_cancellable : ?headers:(string * string) list -> ?timeout:float
+  -> string -> (outcome -> 'msg) -> Nopal_mvu.Task.cancellation_token * 'msg Cmd.t
+val post_cancellable : ?headers:(string * string) list -> ?timeout:float
+  -> body:body -> string -> (outcome -> 'msg) -> Nopal_mvu.Task.cancellation_token * 'msg Cmd.t
+val put_cancellable : ?headers:(string * string) list -> ?timeout:float
+  -> body:body -> string -> (outcome -> 'msg) -> Nopal_mvu.Task.cancellation_token * 'msg Cmd.t
+val delete_cancellable : ?body:body -> ?headers:(string * string) list -> ?timeout:float
+  -> string -> (outcome -> 'msg) -> Nopal_mvu.Task.cancellation_token * 'msg Cmd.t
+val patch_cancellable : ?headers:(string * string) list -> ?timeout:float
+  -> body:body -> string -> (outcome -> 'msg) -> Nopal_mvu.Task.cancellation_token * 'msg Cmd.t
 ```
 
 Usage pattern in `main.ml`:
@@ -619,7 +666,9 @@ Usage pattern in `main.ml`:
 ```ocaml
 (* Register the web backend before mounting *)
 let () =
-  Nopal_http.register_backend { send = Nopal_http_web.send };
+  Nopal_http.register_backend { Nopal_http.send = Nopal_http_web.send };
+  Nopal_http.register_cancellable_backend
+    { Nopal_http.send_cancellable = Nopal_http_web.send_cancellable };
   Nopal_web.mount (module My_app) target
 ```
 
@@ -650,23 +699,27 @@ let submit_data model =
 
 ### HTTP Web Backend (`nopal_http_web`)
 
-Browser Fetch API implementation. Only used in `main.ml` to register the backend. Supports all HTTP methods, headers, request bodies, and timeouts.
+Browser Fetch API implementation. Returns `Task.t` values — used in `main.ml` to register the backend via `{ send = Nopal_http_web.send }`. Supports all HTTP methods, headers, request bodies, and timeouts.
 
 ```ocaml
-val send : Nopal_http.request -> (Nopal_http.outcome -> 'msg) -> 'msg Cmd.t
+val send : Nopal_http.request -> Nopal_http.outcome Nopal_mvu.Task.t
 val get : ?headers:(string * string) list -> ?timeout:float
-  -> string -> (Nopal_http.outcome -> 'msg) -> 'msg Cmd.t
+  -> string -> Nopal_http.outcome Nopal_mvu.Task.t
 val post : ?headers:(string * string) list -> ?timeout:float
-  -> body:Nopal_http.body -> string -> (Nopal_http.outcome -> 'msg) -> 'msg Cmd.t
+  -> body:Nopal_http.body -> string -> Nopal_http.outcome Nopal_mvu.Task.t
 val put : ?headers:(string * string) list -> ?timeout:float
-  -> body:Nopal_http.body -> string -> (Nopal_http.outcome -> 'msg) -> 'msg Cmd.t
+  -> body:Nopal_http.body -> string -> Nopal_http.outcome Nopal_mvu.Task.t
 val delete_ : ?body:Nopal_http.body -> ?headers:(string * string) list -> ?timeout:float
-  -> string -> (Nopal_http.outcome -> 'msg) -> 'msg Cmd.t
+  -> string -> Nopal_http.outcome Nopal_mvu.Task.t
 val patch : ?headers:(string * string) list -> ?timeout:float
-  -> body:Nopal_http.body -> string -> (Nopal_http.outcome -> 'msg) -> 'msg Cmd.t
+  -> body:Nopal_http.body -> string -> Nopal_http.outcome Nopal_mvu.Task.t
+
+val send_cancellable : Nopal_http.request
+  -> Nopal_mvu.Task.cancellation_token * Nopal_http.outcome Nopal_mvu.Task.t
+
 (* All functions use the browser Fetch API. Network failures produce
    Error (Network_error msg), timeouts produce Error Timeout — never
-   a raised exception. *)
+   a raised exception. send_cancellable aborts via AbortController on cancel. *)
 ```
 
 ### Test Renderer (`nopal_test`)
@@ -717,6 +770,17 @@ Nopal_web.mount :
 
 (* Browser platform for routing *)
 module Platform_web : Nopal_router.Platform.S
+```
+
+### Web Storage (`nopal_web`)
+
+Browser localStorage access. All operations are synchronous — safe to call directly from `update`. Values persist across page reloads within the same origin.
+
+```ocaml
+Nopal_web.Storage.get    : string -> string option   (* read key from localStorage *)
+Nopal_web.Storage.set    : string -> string -> unit   (* write key/value; ignores quota errors *)
+Nopal_web.Storage.remove : string -> unit             (* delete key; no-op if absent *)
+Nopal_web.Storage.clear  : unit -> unit               (* remove all keys *)
 ```
 
 ## Coding Rules
