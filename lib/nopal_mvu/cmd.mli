@@ -35,8 +35,7 @@ val perform : ('msg dispatch -> unit) -> 'msg t
 
     {[
       (* Fire-and-forget — zero dispatches *)
-      Cmd.perform (fun _dispatch ->
-          log_to_console "something happened")
+      Cmd.perform (fun _dispatch -> log_to_console "something happened")
     ]}
 
     {[
