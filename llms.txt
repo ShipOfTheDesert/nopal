@@ -25,6 +25,7 @@ nopal_runtime   ← Lwd reactive integration + MVU loop
 nopal_test      ← Pure OCaml test renderer — no js_of_ocaml
 nopal_web       ← js_of_ocaml + Brr DOM renderer (only browser-dependent package)
 nopal_http_web  ← Browser Fetch API backend for nopal_http — js_of_ocaml + Brr
+nopal_tauri     ← Tauri desktop/mobile bindings — depends on nopal_mvu (for Task.t)
 ```
 
 Critical boundary: `nopal_element`, `nopal_style`, `nopal_test`, `nopal_router` must compile on native OCaml without js_of_ocaml. Application view code never imports `nopal_web` or `Brr`.
@@ -783,6 +784,70 @@ Nopal_web.Storage.remove : string -> unit             (* delete key; no-op if ab
 Nopal_web.Storage.clear  : unit -> unit               (* remove all keys *)
 ```
 
+### Tauri Bindings (`nopal_tauri`)
+
+Typed OCaml bindings to the Tauri JavaScript API for desktop/mobile targets. Depends on `nopal_mvu` for `Task.t`. All async functions return `Task.t` values — use `Cmd.task` to run them from `update`. If the Tauri runtime is not available, tasks never resolve.
+
+```ocaml
+(* App — application metadata from tauri.conf.json *)
+val App.get_name          : string Nopal_mvu.Task.t
+val App.get_version       : string Nopal_mvu.Task.t
+val App.get_tauri_version : string Nopal_mvu.Task.t
+
+(* Os — host platform detection via Tauri os plugin *)
+type Os.platform = Windows | MacOS | Linux | IOS | Android
+val Os.platform           : Os.platform Nopal_mvu.Task.t
+val Os.to_string          : Os.platform -> string
+val Os.platform_of_string : string -> Os.platform option
+
+(* Window — window management *)
+type Window.size = { width : int; height : int }
+val Window.set_title      : string -> unit Nopal_mvu.Task.t
+val Window.set_fullscreen : bool -> unit Nopal_mvu.Task.t
+val Window.is_fullscreen  : bool Nopal_mvu.Task.t
+val Window.minimize       : unit Nopal_mvu.Task.t
+val Window.maximize       : unit Nopal_mvu.Task.t
+val Window.unmaximize     : unit Nopal_mvu.Task.t
+val Window.is_maximized   : bool Nopal_mvu.Task.t
+val Window.close          : unit Nopal_mvu.Task.t
+val Window.set_size       : Window.size -> unit Nopal_mvu.Task.t
+val Window.inner_size     : Window.size Nopal_mvu.Task.t
+
+(* Event — emit returns Task.t; listen uses callbacks (maps to Sub.custom) *)
+type Event.event = { payload : string }
+type Event.unlisten = unit -> unit
+val Event.emit   : string -> string -> unit Nopal_mvu.Task.t
+val Event.listen : string -> (Event.event -> unit) -> (Event.unlisten -> unit) -> unit
+```
+
+Usage pattern — `Cmd.task` + `Task.Syntax` composition:
+
+```ocaml
+open Nopal_mvu.Task.Syntax
+
+(* Single task *)
+| GetAppName ->
+    let task = let+ name = Nopal_tauri.App.get_name in GotName name in
+    (model, Cmd.task task)
+
+(* Chained tasks *)
+| ToggleFullscreen ->
+    let task =
+      let* fs = Nopal_tauri.Window.is_fullscreen in
+      let+ () = Nopal_tauri.Window.set_fullscreen (not fs) in
+      FullscreenToggled
+    in
+    (model, Cmd.task task)
+
+(* Event.listen maps to Sub.custom (not Task.t) *)
+let subscriptions _model =
+  Sub.custom "tauri-event" (fun dispatch ->
+    Nopal_tauri.Event.listen "my-event"
+      (fun ev -> dispatch (GotEvent ev.payload))
+      (fun _unlisten -> ());
+    fun () -> () (* cleanup *))
+```
+
 ## Coding Rules
 
 - Never `raise` for recoverable errors — return `('a, error) result`
@@ -816,6 +881,7 @@ lib/
 backends/
   nopal_web/         — js_of_ocaml + Brr DOM renderer
   nopal_http_web/    — Browser Fetch API backend for nopal_http
+  nopal_tauri/       — Tauri desktop/mobile bindings (depends on nopal_mvu)
 examples/
   counter/           — Hello world
   todomvc/           — Complex app with routing & localStorage

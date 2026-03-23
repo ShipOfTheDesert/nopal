@@ -76,15 +76,12 @@ let msg_pp fmt msg =
   | UpdateTauriWindowTitleInput s ->
       Format.fprintf fmt "UpdateTauriWindowTitleInput(%s)" s
   | SetTauriFullscreen b -> Format.fprintf fmt "SetTauriFullscreen(%b)" b
-  | TauriFullscreenSet -> Format.fprintf fmt "TauriFullscreenSet"
   | QueryTauriFullscreen -> Format.fprintf fmt "QueryTauriFullscreen"
   | GotTauriFullscreen b -> Format.fprintf fmt "GotTauriFullscreen(%b)" b
   | MinimizeTauriWindow -> Format.fprintf fmt "MinimizeTauriWindow"
   | TauriWindowMinimized -> Format.fprintf fmt "TauriWindowMinimized"
   | MaximizeTauriWindow -> Format.fprintf fmt "MaximizeTauriWindow"
-  | TauriWindowMaximized -> Format.fprintf fmt "TauriWindowMaximized"
   | UnmaximizeTauriWindow -> Format.fprintf fmt "UnmaximizeTauriWindow"
-  | TauriWindowUnmaximized -> Format.fprintf fmt "TauriWindowUnmaximized"
   | QueryTauriMaximized -> Format.fprintf fmt "QueryTauriMaximized"
   | GotTauriMaximized b -> Format.fprintf fmt "GotTauriMaximized(%b)" b
   | CloseTauriWindow -> Format.fprintf fmt "CloseTauriWindow"

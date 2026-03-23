@@ -158,15 +158,12 @@ type msg =
   | TauriWindowTitleSet
   | UpdateTauriWindowTitleInput of string
   | SetTauriFullscreen of bool
-  | TauriFullscreenSet
   | QueryTauriFullscreen
   | GotTauriFullscreen of bool
   | MinimizeTauriWindow
   | TauriWindowMinimized
   | MaximizeTauriWindow
-  | TauriWindowMaximized
   | UnmaximizeTauriWindow
-  | TauriWindowUnmaximized
   | QueryTauriMaximized
   | GotTauriMaximized of bool
   | CloseTauriWindow
@@ -431,16 +428,13 @@ let update model = function
   | SetTauriWindowTitle -> (model, Nopal_mvu.Cmd.none)
   | TauriWindowTitleSet -> (model, Nopal_mvu.Cmd.none)
   | SetTauriFullscreen _ -> (model, Nopal_mvu.Cmd.none)
-  | TauriFullscreenSet -> (model, Nopal_mvu.Cmd.none)
   | QueryTauriFullscreen -> (model, Nopal_mvu.Cmd.none)
   | GotTauriFullscreen v ->
       ({ model with tauri_is_fullscreen = v }, Nopal_mvu.Cmd.none)
   | MinimizeTauriWindow -> (model, Nopal_mvu.Cmd.none)
   | TauriWindowMinimized -> (model, Nopal_mvu.Cmd.none)
   | MaximizeTauriWindow -> (model, Nopal_mvu.Cmd.none)
-  | TauriWindowMaximized -> (model, Nopal_mvu.Cmd.none)
   | UnmaximizeTauriWindow -> (model, Nopal_mvu.Cmd.none)
-  | TauriWindowUnmaximized -> (model, Nopal_mvu.Cmd.none)
   | QueryTauriMaximized -> (model, Nopal_mvu.Cmd.none)
   | GotTauriMaximized v ->
       ({ model with tauri_is_maximized = v }, Nopal_mvu.Cmd.none)
