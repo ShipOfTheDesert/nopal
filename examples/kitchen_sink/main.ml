@@ -6,31 +6,19 @@ let tauri_fetch_cmd =
     [
       Nopal_mvu.Cmd.task
         (let open Nopal_mvu.Task.Syntax in
-         let+ s =
-           Nopal_mvu.Task.from_callback (fun resolve ->
-               Nopal_tauri.App.get_name resolve)
-         in
+         let+ s = Nopal_tauri.App.get_name in
          Kitchen_sink_app.GotAppName s);
       Nopal_mvu.Cmd.task
         (let open Nopal_mvu.Task.Syntax in
-         let+ s =
-           Nopal_mvu.Task.from_callback (fun resolve ->
-               Nopal_tauri.App.get_version resolve)
-         in
+         let+ s = Nopal_tauri.App.get_version in
          Kitchen_sink_app.GotAppVersion s);
       Nopal_mvu.Cmd.task
         (let open Nopal_mvu.Task.Syntax in
-         let+ s =
-           Nopal_mvu.Task.from_callback (fun resolve ->
-               Nopal_tauri.App.get_tauri_version resolve)
-         in
+         let+ s = Nopal_tauri.App.get_tauri_version in
          Kitchen_sink_app.GotTauriVersion s);
       Nopal_mvu.Cmd.task
         (let open Nopal_mvu.Task.Syntax in
-         let+ p =
-           Nopal_mvu.Task.from_callback (fun resolve ->
-               Nopal_tauri.Os.platform resolve)
-         in
+         let+ p = Nopal_tauri.Os.platform in
          Kitchen_sink_app.GotPlatform (Nopal_tauri.Os.to_string p));
     ]
 
@@ -56,9 +44,7 @@ let update model msg =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
            let+ () =
-             Nopal_mvu.Task.from_callback (fun resolve ->
-                 Nopal_tauri.Event.emit "nopal:kitchen-sink" "hello from nopal"
-                   resolve)
+             Nopal_tauri.Event.emit "nopal:kitchen-sink" "hello from nopal"
            in
            Kitchen_sink_app.TauriEventEmitted)
       in
@@ -76,30 +62,24 @@ let update model msg =
       let window_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
-           let+ () =
-             Nopal_mvu.Task.from_callback (fun resolve ->
-                 Nopal_tauri.Window.set_title model.tauri_window_title resolve)
-           in
+           let+ () = Nopal_tauri.Window.set_title model.tauri_window_title in
            Kitchen_sink_app.TauriWindowTitleSet)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
   | Kitchen_sink_app.SetTauriFullscreen flag when has_tauri () ->
       let window_cmd =
-        Nopal_mvu.Cmd.perform (fun dispatch ->
-            Nopal_tauri.Window.set_fullscreen flag (fun () ->
-                dispatch Kitchen_sink_app.TauriFullscreenSet;
-                Nopal_tauri.Window.is_fullscreen (fun v ->
-                    dispatch (Kitchen_sink_app.GotTauriFullscreen v))))
+        Nopal_mvu.Cmd.task
+          (let open Nopal_mvu.Task.Syntax in
+           let* () = Nopal_tauri.Window.set_fullscreen flag in
+           let+ v = Nopal_tauri.Window.is_fullscreen in
+           Kitchen_sink_app.GotTauriFullscreen v)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
   | Kitchen_sink_app.QueryTauriFullscreen when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
-           let+ v =
-             Nopal_mvu.Task.from_callback (fun resolve ->
-                 Nopal_tauri.Window.is_fullscreen resolve)
-           in
+           let+ v = Nopal_tauri.Window.is_fullscreen in
            Kitchen_sink_app.GotTauriFullscreen v)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
@@ -107,39 +87,33 @@ let update model msg =
       let window_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
-           let+ () =
-             Nopal_mvu.Task.from_callback (fun resolve ->
-                 Nopal_tauri.Window.minimize resolve)
-           in
+           let+ () = Nopal_tauri.Window.minimize in
            Kitchen_sink_app.TauriWindowMinimized)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
   | Kitchen_sink_app.MaximizeTauriWindow when has_tauri () ->
       let window_cmd =
-        Nopal_mvu.Cmd.perform (fun dispatch ->
-            Nopal_tauri.Window.maximize (fun () ->
-                dispatch Kitchen_sink_app.TauriWindowMaximized;
-                Nopal_tauri.Window.is_maximized (fun v ->
-                    dispatch (Kitchen_sink_app.GotTauriMaximized v))))
+        Nopal_mvu.Cmd.task
+          (let open Nopal_mvu.Task.Syntax in
+           let* () = Nopal_tauri.Window.maximize in
+           let+ v = Nopal_tauri.Window.is_maximized in
+           Kitchen_sink_app.GotTauriMaximized v)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
   | Kitchen_sink_app.UnmaximizeTauriWindow when has_tauri () ->
       let window_cmd =
-        Nopal_mvu.Cmd.perform (fun dispatch ->
-            Nopal_tauri.Window.unmaximize (fun () ->
-                dispatch Kitchen_sink_app.TauriWindowUnmaximized;
-                Nopal_tauri.Window.is_maximized (fun v ->
-                    dispatch (Kitchen_sink_app.GotTauriMaximized v))))
+        Nopal_mvu.Cmd.task
+          (let open Nopal_mvu.Task.Syntax in
+           let* () = Nopal_tauri.Window.unmaximize in
+           let+ v = Nopal_tauri.Window.is_maximized in
+           Kitchen_sink_app.GotTauriMaximized v)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
   | Kitchen_sink_app.QueryTauriMaximized when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
-           let+ v =
-             Nopal_mvu.Task.from_callback (fun resolve ->
-                 Nopal_tauri.Window.is_maximized resolve)
-           in
+           let+ v = Nopal_tauri.Window.is_maximized in
            Kitchen_sink_app.GotTauriMaximized v)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
@@ -147,10 +121,7 @@ let update model msg =
       let window_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
-           let+ () =
-             Nopal_mvu.Task.from_callback (fun resolve ->
-                 Nopal_tauri.Window.close resolve)
-           in
+           let+ () = Nopal_tauri.Window.close in
            Kitchen_sink_app.TauriWindowClosed)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
@@ -158,10 +129,7 @@ let update model msg =
       let window_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
-           let+ () =
-             Nopal_mvu.Task.from_callback (fun resolve ->
-                 Nopal_tauri.Window.set_size { width = w; height = h } resolve)
-           in
+           let+ () = Nopal_tauri.Window.set_size { width = w; height = h } in
            Kitchen_sink_app.TauriWindowSizeSet)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
@@ -169,10 +137,7 @@ let update model msg =
       let window_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
-           let+ size =
-             Nopal_mvu.Task.from_callback (fun resolve ->
-                 Nopal_tauri.Window.inner_size resolve)
-           in
+           let+ size = Nopal_tauri.Window.inner_size in
            Kitchen_sink_app.GotWindowInnerSize (size.width, size.height))
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
@@ -246,15 +211,12 @@ let update model msg =
   | Kitchen_sink_app.TauriWindowTitleSet
   | Kitchen_sink_app.UpdateTauriWindowTitleInput _
   | Kitchen_sink_app.SetTauriFullscreen _
-  | Kitchen_sink_app.TauriFullscreenSet
   | Kitchen_sink_app.QueryTauriFullscreen
   | Kitchen_sink_app.GotTauriFullscreen _
   | Kitchen_sink_app.MinimizeTauriWindow
   | Kitchen_sink_app.TauriWindowMinimized
   | Kitchen_sink_app.MaximizeTauriWindow
-  | Kitchen_sink_app.TauriWindowMaximized
   | Kitchen_sink_app.UnmaximizeTauriWindow
-  | Kitchen_sink_app.TauriWindowUnmaximized
   | Kitchen_sink_app.QueryTauriMaximized
   | Kitchen_sink_app.GotTauriMaximized _
   | Kitchen_sink_app.CloseTauriWindow

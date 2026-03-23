@@ -10,9 +10,9 @@ type event = { payload : string }
 type unlisten = unit -> unit
 (** A function that removes a previously registered listener. *)
 
-val emit : string -> string -> (unit -> unit) -> unit
-(** [emit name payload f] emits a named event with [payload] via the Tauri event
-    system. When the emission completes, [f ()] is called. *)
+val emit : string -> string -> unit Nopal_mvu.Task.t
+(** [emit name payload] emits a named event with [payload] via the Tauri event
+    system. Resolves with [()] when the emission completes. *)
 
 val listen : string -> (event -> unit) -> (unlisten -> unit) -> unit
 (** [listen name on_event on_unlisten] registers a listener for events named

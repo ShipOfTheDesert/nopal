@@ -15,15 +15,19 @@ let platform_of_string = function
   | "android" -> Some Android
   | _ -> None
 
-let platform f =
-  let internals = Jv.get Jv.global "__TAURI_INTERNALS__" in
-  let promise =
-    Jv.call internals "invoke" [| Jv.of_string "plugin:os|platform" |]
-  in
-  let fut = Fut.of_promise ~ok:Jv.to_jstr promise in
-  Fut.await fut (function
-    | Ok s -> (
-        match platform_of_string (Jstr.to_string s) with
-        | Some p -> f p
-        | None -> ())
-    | Error _err -> ())
+let platform =
+  Nopal_mvu.Task.from_callback (fun resolve ->
+      let internals = Jv.get Jv.global "__TAURI_INTERNALS__" in
+      let promise =
+        Jv.call internals "invoke" [| Jv.of_string "plugin:os|platform" |]
+      in
+      let fut = Fut.of_promise ~ok:Jv.to_jstr promise in
+      Fut.await fut (function
+        | Ok s -> (
+            match platform_of_string (Jstr.to_string s) with
+            | Some p -> resolve p
+            | None ->
+                Brr.Console.(
+                  error [ str "nopal_tauri: Os.platform unknown platform"; s ]))
+        | Error err ->
+            Brr.Console.(error [ str "nopal_tauri: Os.platform failed"; err ])))

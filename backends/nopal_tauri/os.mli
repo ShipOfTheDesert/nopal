@@ -6,10 +6,10 @@
 
 type platform = Windows | MacOS | Linux | IOS | Android
 
-val platform : (platform -> unit) -> unit
-(** [platform f] calls the Tauri os plugin [platform()] command. When the
-    promise resolves, [f p] is called with the detected platform variant. If the
-    platform string is not recognized, the callback is not invoked. *)
+val platform : platform Nopal_mvu.Task.t
+(** [platform] is a task that calls the Tauri os plugin [platform()] command.
+    When the promise resolves, the task produces the detected platform variant.
+    If the platform string is not recognized, the task does not resolve. *)
 
 val to_string : platform -> string
 (** [to_string p] returns a human-readable name: ["Windows"], ["macOS"],

@@ -1,19 +1,23 @@
 type event = { payload : string }
 type unlisten = unit -> unit
 
-let emit name payload f =
-  let internals = Jv.get Jv.global "__TAURI_INTERNALS__" in
-  let args =
-    Jv.obj [| ("event", Jv.of_string name); ("payload", Jv.of_string payload) |]
-  in
-  let fut =
-    Fut.of_promise
-      ~ok:(fun _ -> ())
-      (Jv.call internals "invoke" [| Jv.of_string "plugin:event|emit"; args |])
-  in
-  Fut.await fut (function
-    | Ok () -> f ()
-    | Error _err -> ())
+let emit name payload =
+  Nopal_mvu.Task.from_callback (fun resolve ->
+      let internals = Jv.get Jv.global "__TAURI_INTERNALS__" in
+      let args =
+        Jv.obj
+          [| ("event", Jv.of_string name); ("payload", Jv.of_string payload) |]
+      in
+      let fut =
+        Fut.of_promise
+          ~ok:(fun _ -> ())
+          (Jv.call internals "invoke"
+             [| Jv.of_string "plugin:event|emit"; args |])
+      in
+      Fut.await fut (function
+        | Ok () -> resolve ()
+        | Error err ->
+            Brr.Console.(error [ str "nopal_tauri: Event.emit failed"; err ])))
 
 let listen name on_event on_unlisten =
   let internals = Jv.get Jv.global "__TAURI_INTERNALS__" in

@@ -33,6 +33,15 @@ let test_from_callback_resolves () =
   let result = run_capture t in
   Alcotest.(check int) "from_callback resolves" 99 result
 
+let test_from_callback_does_not_execute_until_run () =
+  let executed = ref false in
+  let _t =
+    from_callback (fun resolve ->
+        executed := true;
+        resolve 42)
+  in
+  Alcotest.(check bool) "not executed before run" false !executed
+
 let test_from_callback_bind_chain () =
   let t = from_callback (fun resolve -> resolve 10) in
   let chained = bind (fun n -> return (n + 5)) t in
@@ -75,6 +84,8 @@ let () =
       ( "from_callback",
         [
           Alcotest.test_case "resolves" `Quick test_from_callback_resolves;
+          Alcotest.test_case "lazy until run" `Quick
+            test_from_callback_does_not_execute_until_run;
           Alcotest.test_case "bind chain" `Quick test_from_callback_bind_chain;
         ] );
       ( "combinators",
