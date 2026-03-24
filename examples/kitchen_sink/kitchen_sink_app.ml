@@ -98,6 +98,7 @@ type model = {
   tauri_window_width : string;
   tauri_window_height : string;
   tauri_platform : string;
+  tray_tooltip_input : string;
   storage_key : string;
   storage_value : string;
   storage_state : storage_state;
@@ -184,6 +185,15 @@ type msg =
   | CenterTauriWindow
   | TauriWindowCentered
   | GotPlatform of string
+  | HideToTray
+  | TrayHidden
+  | TrayClicked
+  | TrayRestored
+  | UpdateTrayTooltipInput of string
+  | SetTrayTooltip
+  | TrayTooltipSet
+  | SetTrayIconVisible of bool
+  | TrayIconVisibleSet
   | StorageKeyChanged of string
   | StorageValueChanged of string
   | StorageSet
@@ -230,6 +240,7 @@ let init () =
       tauri_window_width = "800";
       tauri_window_height = "600";
       tauri_platform = "Not in Tauri";
+      tray_tooltip_input = "";
       storage_key = "";
       storage_value = "";
       storage_state = StorageIdle;
@@ -469,6 +480,16 @@ let update model = function
   | CenterTauriWindow -> (model, Nopal_mvu.Cmd.none)
   | TauriWindowCentered -> (model, Nopal_mvu.Cmd.none)
   | GotPlatform s -> ({ model with tauri_platform = s }, Nopal_mvu.Cmd.none)
+  | HideToTray -> (model, Nopal_mvu.Cmd.none)
+  | TrayHidden -> (model, Nopal_mvu.Cmd.none)
+  | TrayClicked -> (model, Nopal_mvu.Cmd.none)
+  | TrayRestored -> (model, Nopal_mvu.Cmd.none)
+  | UpdateTrayTooltipInput s ->
+      ({ model with tray_tooltip_input = s }, Nopal_mvu.Cmd.none)
+  | SetTrayTooltip -> (model, Nopal_mvu.Cmd.none)
+  | TrayTooltipSet -> (model, Nopal_mvu.Cmd.none)
+  | SetTrayIconVisible _ -> (model, Nopal_mvu.Cmd.none)
+  | TrayIconVisibleSet -> (model, Nopal_mvu.Cmd.none)
   | StorageKeyChanged s -> ({ model with storage_key = s }, Nopal_mvu.Cmd.none)
   | StorageValueChanged s ->
       ({ model with storage_value = s }, Nopal_mvu.Cmd.none)
@@ -2375,6 +2396,40 @@ let view_tauri_window model =
         ];
     ]
 
+let view_tauri_tray model =
+  let row_style =
+    Style.default
+    |> Style.with_layout (fun l -> { l with gap = 8.0; cross_align = Center })
+  in
+  view_section
+    ~attrs:[ ("data-section", "tauri-tray") ]
+    "Tray"
+    [
+      Element.button ~on_click:HideToTray
+        ~attrs:[ ("data-testid", "tray-hide-btn") ]
+        (Element.text "Hide to Tray");
+      Element.text "Click the tray icon to restore the window";
+      Element.row ~style:row_style
+        [
+          Element.input
+            ~on_change:(fun s -> UpdateTrayTooltipInput s)
+            ~attrs:[ ("data-testid", "tray-tooltip-input") ]
+            model.tray_tooltip_input;
+          Element.button ~on_click:SetTrayTooltip
+            ~attrs:[ ("data-testid", "tray-set-tooltip-btn") ]
+            (Element.text "Set Tooltip");
+        ];
+      Element.row ~style:row_style
+        [
+          Element.button ~on_click:(SetTrayIconVisible true)
+            ~attrs:[ ("data-testid", "tray-show-btn") ]
+            (Element.text "Show Tray Icon");
+          Element.button ~on_click:(SetTrayIconVisible false)
+            ~attrs:[ ("data-testid", "tray-hide-icon-btn") ]
+            (Element.text "Hide Tray Icon");
+        ];
+    ]
+
 let view_storage model =
   let button_row_style =
     Style.default
@@ -2454,6 +2509,7 @@ let view vp model =
          view_tauri_os model;
          view_tauri_events model;
          view_tauri_window model;
+         view_tauri_tray model;
          view_storage model;
        ])
 

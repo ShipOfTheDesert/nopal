@@ -183,6 +183,39 @@ let update model msg =
            Kitchen_sink_app.GotWindowInnerSize (size.width, size.height))
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
+  | Kitchen_sink_app.HideToTray when has_tauri () ->
+      let hide_cmd =
+        Nopal_mvu.Cmd.task
+          (let open Nopal_mvu.Task.Syntax in
+           let+ () = Nopal_tauri.Window.hide in
+           Kitchen_sink_app.TrayHidden)
+      in
+      (model', Nopal_mvu.Cmd.batch [ cmd; hide_cmd ])
+  | Kitchen_sink_app.TrayClicked when has_tauri () ->
+      let restore_cmd =
+        Nopal_mvu.Cmd.task
+          (let open Nopal_mvu.Task.Syntax in
+           let* () = Nopal_tauri.Window.show in
+           let+ () = Nopal_tauri.Window.set_focus in
+           Kitchen_sink_app.TrayRestored)
+      in
+      (model', Nopal_mvu.Cmd.batch [ cmd; restore_cmd ])
+  | Kitchen_sink_app.SetTrayTooltip when has_tauri () ->
+      let tooltip_cmd =
+        Nopal_mvu.Cmd.task
+          (let open Nopal_mvu.Task.Syntax in
+           let+ () = Nopal_tauri.Tray.set_tooltip model.tray_tooltip_input in
+           Kitchen_sink_app.TrayTooltipSet)
+      in
+      (model', Nopal_mvu.Cmd.batch [ cmd; tooltip_cmd ])
+  | Kitchen_sink_app.SetTrayIconVisible flag when has_tauri () ->
+      let visible_cmd =
+        Nopal_mvu.Cmd.task
+          (let open Nopal_mvu.Task.Syntax in
+           let+ () = Nopal_tauri.Tray.set_visible flag in
+           Kitchen_sink_app.TrayIconVisibleSet)
+      in
+      (model', Nopal_mvu.Cmd.batch [ cmd; visible_cmd ])
   | Kitchen_sink_app.StorageSet ->
       Nopal_web.Storage.set model.storage_key model.storage_value;
       ({ model' with storage_state = Stored }, cmd)
@@ -278,6 +311,15 @@ let update model msg =
   | Kitchen_sink_app.CenterTauriWindow
   | Kitchen_sink_app.TauriWindowCentered
   | Kitchen_sink_app.GotPlatform _
+  | Kitchen_sink_app.HideToTray
+  | Kitchen_sink_app.TrayHidden
+  | Kitchen_sink_app.TrayClicked
+  | Kitchen_sink_app.TrayRestored
+  | Kitchen_sink_app.UpdateTrayTooltipInput _
+  | Kitchen_sink_app.SetTrayTooltip
+  | Kitchen_sink_app.TrayTooltipSet
+  | Kitchen_sink_app.SetTrayIconVisible _
+  | Kitchen_sink_app.TrayIconVisibleSet
   | Kitchen_sink_app.StorageKeyChanged _
   | Kitchen_sink_app.StorageValueChanged _ ->
       (model', cmd)
@@ -304,6 +346,12 @@ let () =
       let init = init
       let update = update
       let view = Kitchen_sink_app.view
-      let subscriptions = Kitchen_sink_app.subscriptions
+
+      let subscriptions model =
+        let base = Kitchen_sink_app.subscriptions model in
+        if has_tauri () then
+          Nopal_mvu.Sub.batch
+            [ base; Nopal_tauri.Tray.on_click Kitchen_sink_app.TrayClicked ]
+        else base
     end)
     target

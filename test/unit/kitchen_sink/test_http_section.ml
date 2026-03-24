@@ -105,6 +105,16 @@ let msg_pp fmt msg =
   | CenterTauriWindow -> Format.fprintf fmt "CenterTauriWindow"
   | TauriWindowCentered -> Format.fprintf fmt "TauriWindowCentered"
   | GotPlatform s -> Format.fprintf fmt "GotPlatform(%s)" s
+  | HideToTray -> Format.fprintf fmt "HideToTray"
+  | TrayHidden -> Format.fprintf fmt "TrayHidden"
+  | TrayClicked -> Format.fprintf fmt "TrayClicked"
+  | TrayRestored -> Format.fprintf fmt "TrayRestored"
+  | UpdateTrayTooltipInput s ->
+      Format.fprintf fmt "UpdateTrayTooltipInput(%s)" s
+  | SetTrayTooltip -> Format.fprintf fmt "SetTrayTooltip"
+  | TrayTooltipSet -> Format.fprintf fmt "TrayTooltipSet"
+  | SetTrayIconVisible b -> Format.fprintf fmt "SetTrayIconVisible(%b)" b
+  | TrayIconVisibleSet -> Format.fprintf fmt "TrayIconVisibleSet"
   | StorageKeyChanged s -> Format.fprintf fmt "StorageKeyChanged(%s)" s
   | StorageValueChanged s -> Format.fprintf fmt "StorageValueChanged(%s)" s
   | StorageSet -> Format.fprintf fmt "StorageSet"
