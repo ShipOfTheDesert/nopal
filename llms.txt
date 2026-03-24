@@ -25,7 +25,7 @@ nopal_runtime   ← Lwd reactive integration + MVU loop
 nopal_test      ← Pure OCaml test renderer — no js_of_ocaml
 nopal_web       ← js_of_ocaml + Brr DOM renderer (only browser-dependent package)
 nopal_http_web  ← Browser Fetch API backend for nopal_http — js_of_ocaml + Brr
-nopal_tauri     ← Tauri desktop/mobile bindings — depends on nopal_mvu (for Task.t)
+nopal_tauri     ← Tauri desktop/mobile bindings — depends on nopal_mvu (for Task.t), nopal_router (for Platform.S)
 ```
 
 Critical boundary: `nopal_element`, `nopal_style`, `nopal_test`, `nopal_router` must compile on native OCaml without js_of_ocaml. Application view code never imports `nopal_web` or `Brr`.
@@ -812,6 +812,14 @@ val Window.is_maximized   : bool Nopal_mvu.Task.t
 val Window.close          : unit Nopal_mvu.Task.t
 val Window.set_size       : Window.size -> unit Nopal_mvu.Task.t
 val Window.inner_size     : Window.size Nopal_mvu.Task.t
+val Window.is_visible     : bool Nopal_mvu.Task.t
+val Window.show           : unit Nopal_mvu.Task.t
+val Window.hide           : unit Nopal_mvu.Task.t
+val Window.set_focus      : unit Nopal_mvu.Task.t
+val Window.center         : unit Nopal_mvu.Task.t
+
+(* Platform — routing support for Tauri webview *)
+module Platform_tauri : Nopal_router.Platform.S
 
 (* Event — emit returns Task.t; listen uses callbacks (maps to Sub.custom) *)
 type Event.event = { payload : string }
@@ -838,6 +846,12 @@ open Nopal_mvu.Task.Syntax
       FullscreenToggled
     in
     (model, Cmd.task task)
+
+(* Platform_tauri — routing in Tauri apps *)
+let router =
+  Router.create
+    ~platform:(module Nopal_tauri.Platform_tauri)
+    ~parse ~to_path ~not_found:Home
 
 (* Event.listen maps to Sub.custom (not Task.t) *)
 let subscriptions _model =
@@ -881,7 +895,7 @@ lib/
 backends/
   nopal_web/         — js_of_ocaml + Brr DOM renderer
   nopal_http_web/    — Browser Fetch API backend for nopal_http
-  nopal_tauri/       — Tauri desktop/mobile bindings (depends on nopal_mvu)
+  nopal_tauri/       — Tauri desktop/mobile bindings (depends on nopal_mvu, nopal_router)
 examples/
   counter/           — Hello world
   todomvc/           — Complex app with routing & localStorage

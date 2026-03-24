@@ -47,3 +47,22 @@ val set_size : size -> unit Nopal_mvu.Task.t
 val inner_size : size Nopal_mvu.Task.t
 (** [inner_size] queries the window's inner dimensions. Resolves with the
     logical pixel size. *)
+
+val is_visible : bool Nopal_mvu.Task.t
+(** [is_visible] queries whether the window is currently visible. Resolves with
+    the current visibility status. *)
+
+val show : unit Nopal_mvu.Task.t
+(** [show] makes the window visible. Resolves with [()] when the operation
+    completes. *)
+
+val hide : unit Nopal_mvu.Task.t
+(** [hide] hides the window. Resolves with [()] when the operation completes. *)
+
+val set_focus : unit Nopal_mvu.Task.t
+(** [set_focus] brings the window to the foreground and gives it input focus.
+    Resolves with [()] when the operation completes. *)
+
+val center : unit Nopal_mvu.Task.t
+(** [center] centers the window on the screen. Resolves with [()] when the
+    operation completes. *)

@@ -93,6 +93,7 @@ type model = {
   tauri_window_title : string;
   tauri_is_fullscreen : bool;
   tauri_is_maximized : bool;
+  tauri_is_visible : bool;
   tauri_inner_size : (int * int) option;
   tauri_window_width : string;
   tauri_window_height : string;
@@ -174,6 +175,14 @@ type msg =
   | TauriWindowSizeSet
   | QueryTauriInnerSize
   | GotWindowInnerSize of int * int
+  | ShowTauriWindow
+  | HideTauriWindow
+  | QueryTauriVisible
+  | GotTauriVisible of bool
+  | SetTauriWindowFocus
+  | TauriWindowFocused
+  | CenterTauriWindow
+  | TauriWindowCentered
   | GotPlatform of string
   | StorageKeyChanged of string
   | StorageValueChanged of string
@@ -216,6 +225,7 @@ let init () =
       tauri_window_title = "Nopal Kitchen Sink";
       tauri_is_fullscreen = false;
       tauri_is_maximized = false;
+      tauri_is_visible = false;
       tauri_inner_size = None;
       tauri_window_width = "800";
       tauri_window_height = "600";
@@ -449,6 +459,15 @@ let update model = function
   | QueryTauriInnerSize -> (model, Nopal_mvu.Cmd.none)
   | GotWindowInnerSize (w, h) ->
       ({ model with tauri_inner_size = Some (w, h) }, Nopal_mvu.Cmd.none)
+  | ShowTauriWindow -> (model, Nopal_mvu.Cmd.none)
+  | HideTauriWindow -> (model, Nopal_mvu.Cmd.none)
+  | QueryTauriVisible -> (model, Nopal_mvu.Cmd.none)
+  | GotTauriVisible v ->
+      ({ model with tauri_is_visible = v }, Nopal_mvu.Cmd.none)
+  | SetTauriWindowFocus -> (model, Nopal_mvu.Cmd.none)
+  | TauriWindowFocused -> (model, Nopal_mvu.Cmd.none)
+  | CenterTauriWindow -> (model, Nopal_mvu.Cmd.none)
+  | TauriWindowCentered -> (model, Nopal_mvu.Cmd.none)
   | GotPlatform s -> ({ model with tauri_platform = s }, Nopal_mvu.Cmd.none)
   | StorageKeyChanged s -> ({ model with storage_key = s }, Nopal_mvu.Cmd.none)
   | StorageValueChanged s ->
@@ -2311,6 +2330,25 @@ let view_tauri_window model =
             (Element.text "Query Maximized");
           Element.text ("Maximized: " ^ string_of_bool model.tauri_is_maximized);
         ];
+      Element.row ~style:row_style
+        [
+          Element.button ~on_click:ShowTauriWindow
+            ~attrs:[ ("data-testid", "show-btn") ]
+            (Element.text "Show");
+          Element.button ~on_click:HideTauriWindow
+            ~attrs:[ ("data-testid", "hide-btn") ]
+            (Element.text "Hide");
+          Element.button ~on_click:QueryTauriVisible
+            ~attrs:[ ("data-testid", "query-visible-btn") ]
+            (Element.text "Query Visible");
+          Element.text ("Visible: " ^ string_of_bool model.tauri_is_visible);
+        ];
+      Element.button ~on_click:SetTauriWindowFocus
+        ~attrs:[ ("data-testid", "set-focus-btn") ]
+        (Element.text "Set Focus");
+      Element.button ~on_click:CenterTauriWindow
+        ~attrs:[ ("data-testid", "center-btn") ]
+        (Element.text "Center");
       Element.button ~on_click:CloseTauriWindow
         ~attrs:[ ("data-testid", "close-btn") ]
         (Element.text "Close Window");
