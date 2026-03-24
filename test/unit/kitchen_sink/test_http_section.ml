@@ -121,6 +121,19 @@ let msg_pp fmt msg =
   | StorageGet -> Format.fprintf fmt "StorageGet"
   | StorageRemove -> Format.fprintf fmt "StorageRemove"
   | StorageClear -> Format.fprintf fmt "StorageClear"
+  | TauriStoreKeyChanged s -> Format.fprintf fmt "TauriStoreKeyChanged(%s)" s
+  | TauriStoreValueChanged s ->
+      Format.fprintf fmt "TauriStoreValueChanged(%s)" s
+  | TauriStoreSet -> Format.fprintf fmt "TauriStoreSet"
+  | TauriStoreSetResult _ -> Format.fprintf fmt "TauriStoreSetResult _"
+  | TauriStoreGet -> Format.fprintf fmt "TauriStoreGet"
+  | TauriStoreGetResult _ -> Format.fprintf fmt "TauriStoreGetResult _"
+  | TauriStoreDelete -> Format.fprintf fmt "TauriStoreDelete"
+  | TauriStoreDeleteResult _ -> Format.fprintf fmt "TauriStoreDeleteResult _"
+  | TauriStoreClear -> Format.fprintf fmt "TauriStoreClear"
+  | TauriStoreClearResult _ -> Format.fprintf fmt "TauriStoreClearResult _"
+  | TauriStoreSave -> Format.fprintf fmt "TauriStoreSave"
+  | TauriStoreSaveResult _ -> Format.fprintf fmt "TauriStoreSaveResult _"
 
 let msg_testable = Alcotest.testable msg_pp ( = )
 

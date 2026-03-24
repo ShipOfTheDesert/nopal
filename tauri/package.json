@@ -2,6 +2,9 @@
   "name": "nopal-tauri",
   "version": "0.0.0",
   "private": true,
+  "dependencies": {
+    "@tauri-apps/plugin-store": "^2"
+  },
   "devDependencies": {
     "@tauri-apps/cli": "^2"
   }

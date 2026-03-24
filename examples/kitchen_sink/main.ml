@@ -216,6 +216,48 @@ let update model msg =
            Kitchen_sink_app.TrayIconVisibleSet)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; visible_cmd ])
+  | Kitchen_sink_app.TauriStoreSet when has_tauri () ->
+      let store_cmd =
+        Nopal_mvu.Cmd.task
+          (let open Nopal_mvu.Task.Syntax in
+           let+ r =
+             Nopal_tauri.Store.set model.tauri_store_key model.tauri_store_value
+           in
+           Kitchen_sink_app.TauriStoreSetResult r)
+      in
+      (model', Nopal_mvu.Cmd.batch [ cmd; store_cmd ])
+  | Kitchen_sink_app.TauriStoreGet when has_tauri () ->
+      let store_cmd =
+        Nopal_mvu.Cmd.task
+          (let open Nopal_mvu.Task.Syntax in
+           let+ r = Nopal_tauri.Store.get model.tauri_store_key in
+           Kitchen_sink_app.TauriStoreGetResult r)
+      in
+      (model', Nopal_mvu.Cmd.batch [ cmd; store_cmd ])
+  | Kitchen_sink_app.TauriStoreDelete when has_tauri () ->
+      let store_cmd =
+        Nopal_mvu.Cmd.task
+          (let open Nopal_mvu.Task.Syntax in
+           let+ r = Nopal_tauri.Store.delete model.tauri_store_key in
+           Kitchen_sink_app.TauriStoreDeleteResult r)
+      in
+      (model', Nopal_mvu.Cmd.batch [ cmd; store_cmd ])
+  | Kitchen_sink_app.TauriStoreClear when has_tauri () ->
+      let store_cmd =
+        Nopal_mvu.Cmd.task
+          (let open Nopal_mvu.Task.Syntax in
+           let+ r = Nopal_tauri.Store.clear () in
+           Kitchen_sink_app.TauriStoreClearResult r)
+      in
+      (model', Nopal_mvu.Cmd.batch [ cmd; store_cmd ])
+  | Kitchen_sink_app.TauriStoreSave when has_tauri () ->
+      let store_cmd =
+        Nopal_mvu.Cmd.task
+          (let open Nopal_mvu.Task.Syntax in
+           let+ r = Nopal_tauri.Store.save () in
+           Kitchen_sink_app.TauriStoreSaveResult r)
+      in
+      (model', Nopal_mvu.Cmd.batch [ cmd; store_cmd ])
   | Kitchen_sink_app.StorageSet ->
       Nopal_web.Storage.set model.storage_key model.storage_value;
       ({ model' with storage_state = Stored }, cmd)
@@ -321,7 +363,19 @@ let update model msg =
   | Kitchen_sink_app.SetTrayIconVisible _
   | Kitchen_sink_app.TrayIconVisibleSet
   | Kitchen_sink_app.StorageKeyChanged _
-  | Kitchen_sink_app.StorageValueChanged _ ->
+  | Kitchen_sink_app.StorageValueChanged _
+  | Kitchen_sink_app.TauriStoreKeyChanged _
+  | Kitchen_sink_app.TauriStoreValueChanged _
+  | Kitchen_sink_app.TauriStoreSet
+  | Kitchen_sink_app.TauriStoreSetResult _
+  | Kitchen_sink_app.TauriStoreGet
+  | Kitchen_sink_app.TauriStoreGetResult _
+  | Kitchen_sink_app.TauriStoreDelete
+  | Kitchen_sink_app.TauriStoreDeleteResult _
+  | Kitchen_sink_app.TauriStoreClear
+  | Kitchen_sink_app.TauriStoreClearResult _
+  | Kitchen_sink_app.TauriStoreSave
+  | Kitchen_sink_app.TauriStoreSaveResult _ ->
       (model', cmd)
 
 let () =

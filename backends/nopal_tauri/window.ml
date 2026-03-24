@@ -1,11 +1,8 @@
 type size = { width : int; height : int }
 
 let invoke_window cmd args =
-  let internals = Jv.get Jv.global "__TAURI_INTERNALS__" in
-  let label = ("label", Jv.of_string "main") in
-  let all_args = Jv.obj (Array.append [| label |] args) in
-  Jv.call internals "invoke"
-    [| Jv.of_string ("plugin:window|" ^ cmd); all_args |]
+  Ipc.invoke ("plugin:window|" ^ cmd)
+    (Array.append [| ("label", Jv.of_string "main") |] args)
 
 let set_title title =
   Nopal_mvu.Task.from_callback (fun resolve ->

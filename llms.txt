@@ -829,6 +829,14 @@ val Tray.set_icon       : string -> unit Nopal_mvu.Task.t
 val Tray.set_tooltip    : string -> unit Nopal_mvu.Task.t
 val Tray.set_visible    : bool -> unit Nopal_mvu.Task.t
 
+(* Store — persistent key-value storage via tauri-plugin-store *)
+(* Requires store:default capability and tauri-plugin-store registered *)
+val Store.get    : string -> (string option, string) result Nopal_mvu.Task.t
+val Store.set    : string -> string -> (unit, string) result Nopal_mvu.Task.t
+val Store.delete : string -> (unit, string) result Nopal_mvu.Task.t
+val Store.clear  : unit -> (unit, string) result Nopal_mvu.Task.t
+val Store.save   : unit -> (unit, string) result Nopal_mvu.Task.t
+
 (* Event — emit returns Task.t; listen uses callbacks (maps to Sub.custom) *)
 type Event.event = { payload : string }
 type Event.unlisten = unit -> unit
@@ -884,6 +892,24 @@ let subscriptions model =
        TrayRestored)
     in
     (model, cmd)
+
+(* Store — set + save + get pattern (requires: open Nopal_mvu.Task.Syntax) *)
+| SaveTheme ->
+    let task =
+      let* set_result = Nopal_tauri.Store.set "theme" "dark" in
+      match set_result with
+      | Error msg -> Task.return (SaveFailed msg)
+      | Ok () ->
+          let+ save_result = Nopal_tauri.Store.save () in
+          match save_result with
+          | Ok ()     -> ThemeSaved
+          | Error msg -> SaveFailed msg
+    in
+    (model, Cmd.task task)
+
+| LoadTheme ->
+    let task = let+ r = Nopal_tauri.Store.get "theme" in GotTheme r in
+    (model, Cmd.task task)
 ```
 
 ## Coding Rules

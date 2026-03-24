@@ -17,11 +17,9 @@ let platform_of_string = function
 
 let platform =
   Nopal_mvu.Task.from_callback (fun resolve ->
-      let internals = Jv.get Jv.global "__TAURI_INTERNALS__" in
-      let promise =
-        Jv.call internals "invoke" [| Jv.of_string "plugin:os|platform" |]
+      let fut =
+        Fut.of_promise ~ok:Jv.to_jstr (Ipc.invoke "plugin:os|platform" [||])
       in
-      let fut = Fut.of_promise ~ok:Jv.to_jstr promise in
       Fut.await fut (function
         | Ok s -> (
             match platform_of_string (Jstr.to_string s) with

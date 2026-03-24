@@ -23,10 +23,8 @@ let click_type_of_string = function
   | _ -> None
 
 let invoke_tray rid cmd args =
-  let internals = Jv.get Jv.global "__TAURI_INTERNALS__" in
-  let rid_arg = ("rid", Jv.of_int rid) in
-  let all_args = Jv.obj (Array.append [| rid_arg |] args) in
-  Jv.call internals "invoke" [| Jv.of_string ("plugin:tray|" ^ cmd); all_args |]
+  Ipc.invoke ("plugin:tray|" ^ cmd)
+    (Array.append [| ("rid", Jv.of_int rid) |] args)
 
 let create_tray_icon () =
   let internals = Jv.get Jv.global "__TAURI_INTERNALS__" in
@@ -46,12 +44,10 @@ let create_tray_icon () =
             ())
   in
   let handler_id = Jv.to_int (Jv.call internals "transformCallback" [| cb |]) in
-  let args =
-    Jv.obj [| ("handler", Jv.obj [| ("id", Jv.of_int handler_id) |]) |]
-  in
   let fut =
     Fut.of_promise ~ok:Jv.to_int
-      (Jv.call internals "invoke" [| Jv.of_string "plugin:tray|new"; args |])
+      (Ipc.invoke "plugin:tray|new"
+         [| ("handler", Jv.obj [| ("id", Jv.of_int handler_id) |]) |])
   in
   Fut.await fut (function
     | Ok rid -> tray_rid := Some rid
@@ -62,11 +58,7 @@ let destroy_tray_icon () =
   match !tray_rid with
   | None -> ()
   | Some rid ->
-      let internals = Jv.get Jv.global "__TAURI_INTERNALS__" in
-      let args = Jv.obj [| ("rid", Jv.of_int rid) |] in
-      ignore
-        (Jv.call internals "invoke"
-           [| Jv.of_string "plugin:resources|close"; args |]);
+      ignore (Ipc.invoke "plugin:resources|close" [| ("rid", Jv.of_int rid) |]);
       tray_rid := None
 
 (* ensure_tray_icon is fire-and-forget: create_tray_icon awaits an async

@@ -60,6 +60,13 @@ type storage_state =
   | Removed
   | Cleared
 
+type tauri_store_state =
+  | TauriStoreIdle
+  | TauriStoreOk of string
+  | TauriStoreValue of string
+  | TauriStoreNotFound
+  | TauriStoreError of string
+
 (* Model *)
 type model = {
   button_clicks : int;
@@ -102,6 +109,9 @@ type model = {
   storage_key : string;
   storage_value : string;
   storage_state : storage_state;
+  tauri_store_key : string;
+  tauri_store_value : string;
+  tauri_store_state : tauri_store_state;
 }
 
 (* Messages *)
@@ -200,6 +210,18 @@ type msg =
   | StorageGet
   | StorageRemove
   | StorageClear
+  | TauriStoreKeyChanged of string
+  | TauriStoreValueChanged of string
+  | TauriStoreSet
+  | TauriStoreSetResult of (unit, string) result
+  | TauriStoreGet
+  | TauriStoreGetResult of (string option, string) result
+  | TauriStoreDelete
+  | TauriStoreDeleteResult of (unit, string) result
+  | TauriStoreClear
+  | TauriStoreClearResult of (unit, string) result
+  | TauriStoreSave
+  | TauriStoreSaveResult of (unit, string) result
 
 let init () =
   let sub_counter, sub_cmd = Sub_counter.init () in
@@ -244,6 +266,9 @@ let init () =
       storage_key = "";
       storage_value = "";
       storage_state = StorageIdle;
+      tauri_store_key = "";
+      tauri_store_value = "";
+      tauri_store_state = TauriStoreIdle;
     },
     Nopal_mvu.Cmd.map (fun m -> SubCounterMsg m) sub_cmd )
 
@@ -497,6 +522,41 @@ let update model = function
   | StorageGet -> (model, Nopal_mvu.Cmd.none)
   | StorageRemove -> (model, Nopal_mvu.Cmd.none)
   | StorageClear -> (model, Nopal_mvu.Cmd.none)
+  | TauriStoreKeyChanged s ->
+      ({ model with tauri_store_key = s }, Nopal_mvu.Cmd.none)
+  | TauriStoreValueChanged s ->
+      ({ model with tauri_store_value = s }, Nopal_mvu.Cmd.none)
+  | TauriStoreSet -> (model, Nopal_mvu.Cmd.none)
+  | TauriStoreSetResult (Ok ()) ->
+      ( { model with tauri_store_state = TauriStoreOk "Stored" },
+        Nopal_mvu.Cmd.none )
+  | TauriStoreSetResult (Error e) ->
+      ({ model with tauri_store_state = TauriStoreError e }, Nopal_mvu.Cmd.none)
+  | TauriStoreGet -> (model, Nopal_mvu.Cmd.none)
+  | TauriStoreGetResult (Ok (Some v)) ->
+      ({ model with tauri_store_state = TauriStoreValue v }, Nopal_mvu.Cmd.none)
+  | TauriStoreGetResult (Ok None) ->
+      ({ model with tauri_store_state = TauriStoreNotFound }, Nopal_mvu.Cmd.none)
+  | TauriStoreGetResult (Error e) ->
+      ({ model with tauri_store_state = TauriStoreError e }, Nopal_mvu.Cmd.none)
+  | TauriStoreDelete -> (model, Nopal_mvu.Cmd.none)
+  | TauriStoreDeleteResult (Ok ()) ->
+      ( { model with tauri_store_state = TauriStoreOk "Deleted" },
+        Nopal_mvu.Cmd.none )
+  | TauriStoreDeleteResult (Error e) ->
+      ({ model with tauri_store_state = TauriStoreError e }, Nopal_mvu.Cmd.none)
+  | TauriStoreClear -> (model, Nopal_mvu.Cmd.none)
+  | TauriStoreClearResult (Ok ()) ->
+      ( { model with tauri_store_state = TauriStoreOk "Cleared" },
+        Nopal_mvu.Cmd.none )
+  | TauriStoreClearResult (Error e) ->
+      ({ model with tauri_store_state = TauriStoreError e }, Nopal_mvu.Cmd.none)
+  | TauriStoreSave -> (model, Nopal_mvu.Cmd.none)
+  | TauriStoreSaveResult (Ok ()) ->
+      ( { model with tauri_store_state = TauriStoreOk "Saved" },
+        Nopal_mvu.Cmd.none )
+  | TauriStoreSaveResult (Error e) ->
+      ({ model with tauri_store_state = TauriStoreError e }, Nopal_mvu.Cmd.none)
 
 (* Section wrapper (REQ-F10) *)
 let view_section ?(attrs = []) title children =
@@ -2430,6 +2490,55 @@ let view_tauri_tray model =
         ];
     ]
 
+let view_tauri_store model =
+  let button_row_style =
+    Style.default
+    |> Style.with_layout (fun l -> { l with direction = Row_dir; gap = 8.0 })
+  in
+  view_section
+    ~attrs:[ ("data-section", "tauri-store") ]
+    "Store (Tauri)"
+    [
+      Element.input
+        ~on_change:(fun s -> TauriStoreKeyChanged s)
+        ~attrs:[ ("data-testid", "tauri-store-key-input") ]
+        ~placeholder:"Key" model.tauri_store_key;
+      Element.input
+        ~on_change:(fun s -> TauriStoreValueChanged s)
+        ~attrs:[ ("data-testid", "tauri-store-value-input") ]
+        ~placeholder:"Value" model.tauri_store_value;
+      Element.row ~style:button_row_style
+        [
+          Element.button ~on_click:TauriStoreSet
+            ~attrs:[ ("data-testid", "tauri-store-set-btn") ]
+            (Element.text "Set");
+          Element.button ~on_click:TauriStoreGet
+            ~attrs:[ ("data-testid", "tauri-store-get-btn") ]
+            (Element.text "Get");
+          Element.button ~on_click:TauriStoreDelete
+            ~attrs:[ ("data-testid", "tauri-store-delete-btn") ]
+            (Element.text "Delete");
+          Element.button ~on_click:TauriStoreClear
+            ~attrs:[ ("data-testid", "tauri-store-clear-btn") ]
+            (Element.text "Clear");
+          Element.button ~on_click:TauriStoreSave
+            ~attrs:[ ("data-testid", "tauri-store-save-btn") ]
+            (Element.text "Save");
+        ];
+      Element.box
+        ~attrs:[ ("data-testid", "tauri-store-result") ]
+        [
+          Element.text
+            (match model.tauri_store_state with
+            | TauriStoreIdle -> "No operation yet"
+            | TauriStoreOk s -> s
+            | TauriStoreValue v -> v
+            | TauriStoreNotFound -> "Not found"
+            | TauriStoreError e -> "Error: " ^ e);
+        ];
+      Element.text "Values persist across app relaunch after Save";
+    ]
+
 let view_storage model =
   let button_row_style =
     Style.default
@@ -2510,6 +2619,7 @@ let view vp model =
          view_tauri_events model;
          view_tauri_window model;
          view_tauri_tray model;
+         view_tauri_store model;
          view_storage model;
        ])
 

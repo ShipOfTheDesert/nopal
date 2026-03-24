@@ -28,6 +28,7 @@
     "core:window:allow-center",
     "os:default",
     "core:tray:default",
-    "core:menu:default"
+    "core:menu:default",
+    "store:default"
   ]
 }
