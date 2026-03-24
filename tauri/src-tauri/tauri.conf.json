@@ -19,6 +19,9 @@
     ],
     "security": {
       "csp": null
+    },
+    "trayIcon": {
+      "iconAsTemplate": true
     }
   }
 }

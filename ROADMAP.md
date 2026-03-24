@@ -251,6 +251,25 @@ The Playwright config should add `firefox` and `webkit` projects for the
 `kitchen-sink` test suite, particularly for `interaction-styling.spec.ts`.
 This verifies REQ-N4 (cross-browser support).
 
+### Typed Error Results for Tauri Task Bindings
+
+**Package:** `nopal_tauri` (`window.ml`, `tray.ml`)
+
+All Tauri task bindings (`Window.show`, `Window.hide`, `Tray.set_tooltip`, etc.)
+currently log IPC errors to the console but never resolve the `Task.t`, leaving
+it permanently pending. This is benign — the MVU loop is event-driven and does
+not block — but it means any state transition depending on the completion message
+silently never happens.
+
+The solution should change the return type from `unit Task.t` to
+`(unit, string) result Task.t` (or a dedicated error type), so callers receive
+`Ok ()` on success and `Error msg` on failure. This is a project-wide migration
+affecting all ~20 existing Tauri task bindings in both `Window` and `Tray`. All
+callers in examples and application code would need to handle the `Error` arm.
+
+This should be done as a single coordinated migration rather than piecemeal per
+module, to keep the API surface consistent.
+
 ## Performance
 
 Performance-related improvements tracked here. None of these are regressions —

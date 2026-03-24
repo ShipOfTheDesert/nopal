@@ -821,6 +821,14 @@ val Window.center         : unit Nopal_mvu.Task.t
 (* Platform — routing support for Tauri webview *)
 module Platform_tauri : Nopal_router.Platform.S
 
+(* Tray — system tray icon subscriptions + task bindings *)
+(* Requires tray-icon:default capability and trayIcon in tauri.conf.json *)
+val Tray.on_click       : 'msg -> 'msg Nopal_mvu.Sub.t
+val Tray.on_double_click : 'msg -> 'msg Nopal_mvu.Sub.t
+val Tray.set_icon       : string -> unit Nopal_mvu.Task.t
+val Tray.set_tooltip    : string -> unit Nopal_mvu.Task.t
+val Tray.set_visible    : bool -> unit Nopal_mvu.Task.t
+
 (* Event — emit returns Task.t; listen uses callbacks (maps to Sub.custom) *)
 type Event.event = { payload : string }
 type Event.unlisten = unit -> unit
@@ -860,6 +868,22 @@ let subscriptions _model =
       (fun ev -> dispatch (GotEvent ev.payload))
       (fun _unlisten -> ());
     fun () -> () (* cleanup *))
+
+(* Tray — hide window to tray, restore on click *)
+let subscriptions model =
+  let base = My_app.subscriptions model in
+  Sub.batch [ base; Nopal_tauri.Tray.on_click TrayClicked ]
+
+| HideToTray ->
+    let cmd = Cmd.task (let+ () = Nopal_tauri.Window.hide in TrayRestored) in
+    (model, cmd)
+| TrayClicked ->
+    let cmd = Cmd.task
+      (let* () = Nopal_tauri.Window.show in
+       let+ () = Nopal_tauri.Window.set_focus in
+       TrayRestored)
+    in
+    (model, cmd)
 ```
 
 ## Coding Rules

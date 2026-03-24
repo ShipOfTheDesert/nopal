@@ -26,6 +26,7 @@
     "core:window:allow-hide",
     "core:window:allow-set-focus",
     "core:window:allow-center",
-    "os:default"
+    "os:default",
+    "tray-icon:default"
   ]
 }
