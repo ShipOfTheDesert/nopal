@@ -27,6 +27,7 @@
     "core:window:allow-set-focus",
     "core:window:allow-center",
     "os:default",
-    "tray-icon:default"
+    "core:tray:default",
+    "core:menu:default"
   ]
 }
