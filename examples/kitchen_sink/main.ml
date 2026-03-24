@@ -117,6 +117,48 @@ let update model msg =
            Kitchen_sink_app.GotTauriMaximized v)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
+  | Kitchen_sink_app.ShowTauriWindow when has_tauri () ->
+      let window_cmd =
+        Nopal_mvu.Cmd.task
+          (let open Nopal_mvu.Task.Syntax in
+           let* () = Nopal_tauri.Window.show in
+           let+ v = Nopal_tauri.Window.is_visible in
+           Kitchen_sink_app.GotTauriVisible v)
+      in
+      (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
+  | Kitchen_sink_app.HideTauriWindow when has_tauri () ->
+      let window_cmd =
+        Nopal_mvu.Cmd.task
+          (let open Nopal_mvu.Task.Syntax in
+           let* () = Nopal_tauri.Window.hide in
+           let+ v = Nopal_tauri.Window.is_visible in
+           Kitchen_sink_app.GotTauriVisible v)
+      in
+      (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
+  | Kitchen_sink_app.QueryTauriVisible when has_tauri () ->
+      let window_cmd =
+        Nopal_mvu.Cmd.task
+          (let open Nopal_mvu.Task.Syntax in
+           let+ v = Nopal_tauri.Window.is_visible in
+           Kitchen_sink_app.GotTauriVisible v)
+      in
+      (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
+  | Kitchen_sink_app.SetTauriWindowFocus when has_tauri () ->
+      let window_cmd =
+        Nopal_mvu.Cmd.task
+          (let open Nopal_mvu.Task.Syntax in
+           let+ () = Nopal_tauri.Window.set_focus in
+           Kitchen_sink_app.TauriWindowFocused)
+      in
+      (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
+  | Kitchen_sink_app.CenterTauriWindow when has_tauri () ->
+      let window_cmd =
+        Nopal_mvu.Cmd.task
+          (let open Nopal_mvu.Task.Syntax in
+           let+ () = Nopal_tauri.Window.center in
+           Kitchen_sink_app.TauriWindowCentered)
+      in
+      (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
   | Kitchen_sink_app.CloseTauriWindow when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
@@ -227,6 +269,14 @@ let update model msg =
   | Kitchen_sink_app.TauriWindowSizeSet
   | Kitchen_sink_app.QueryTauriInnerSize
   | Kitchen_sink_app.GotWindowInnerSize _
+  | Kitchen_sink_app.ShowTauriWindow
+  | Kitchen_sink_app.HideTauriWindow
+  | Kitchen_sink_app.QueryTauriVisible
+  | Kitchen_sink_app.GotTauriVisible _
+  | Kitchen_sink_app.SetTauriWindowFocus
+  | Kitchen_sink_app.TauriWindowFocused
+  | Kitchen_sink_app.CenterTauriWindow
+  | Kitchen_sink_app.TauriWindowCentered
   | Kitchen_sink_app.GotPlatform _
   | Kitchen_sink_app.StorageKeyChanged _
   | Kitchen_sink_app.StorageValueChanged _ ->

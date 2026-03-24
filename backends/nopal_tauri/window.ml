@@ -127,3 +127,51 @@ let inner_size =
         | Error err ->
             Brr.Console.(
               error [ str "nopal_tauri: Window.inner_size failed"; err ])))
+
+let is_visible =
+  Nopal_mvu.Task.from_callback (fun resolve ->
+      let fut =
+        Fut.of_promise ~ok:Jv.to_bool (invoke_window "is_visible" [||])
+      in
+      Fut.await fut (function
+        | Ok v -> resolve v
+        | Error err ->
+            Brr.Console.(
+              error [ str "nopal_tauri: Window.is_visible failed"; err ])))
+
+let show =
+  Nopal_mvu.Task.from_callback (fun resolve ->
+      let fut = Fut.of_promise ~ok:(fun _ -> ()) (invoke_window "show" [||]) in
+      Fut.await fut (function
+        | Ok () -> resolve ()
+        | Error err ->
+            Brr.Console.(error [ str "nopal_tauri: Window.show failed"; err ])))
+
+let hide =
+  Nopal_mvu.Task.from_callback (fun resolve ->
+      let fut = Fut.of_promise ~ok:(fun _ -> ()) (invoke_window "hide" [||]) in
+      Fut.await fut (function
+        | Ok () -> resolve ()
+        | Error err ->
+            Brr.Console.(error [ str "nopal_tauri: Window.hide failed"; err ])))
+
+let set_focus =
+  Nopal_mvu.Task.from_callback (fun resolve ->
+      let fut =
+        Fut.of_promise ~ok:(fun _ -> ()) (invoke_window "set_focus" [||])
+      in
+      Fut.await fut (function
+        | Ok () -> resolve ()
+        | Error err ->
+            Brr.Console.(
+              error [ str "nopal_tauri: Window.set_focus failed"; err ])))
+
+let center =
+  Nopal_mvu.Task.from_callback (fun resolve ->
+      let fut =
+        Fut.of_promise ~ok:(fun _ -> ()) (invoke_window "center" [||])
+      in
+      Fut.await fut (function
+        | Ok () -> resolve ()
+        | Error err ->
+            Brr.Console.(error [ str "nopal_tauri: Window.center failed"; err ])))

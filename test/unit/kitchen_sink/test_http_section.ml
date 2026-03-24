@@ -96,6 +96,14 @@ let msg_pp fmt msg =
   | QueryTauriInnerSize -> Format.fprintf fmt "QueryTauriInnerSize"
   | GotWindowInnerSize (w, h) ->
       Format.fprintf fmt "GotWindowInnerSize(%d, %d)" w h
+  | ShowTauriWindow -> Format.fprintf fmt "ShowTauriWindow"
+  | HideTauriWindow -> Format.fprintf fmt "HideTauriWindow"
+  | QueryTauriVisible -> Format.fprintf fmt "QueryTauriVisible"
+  | GotTauriVisible v -> Format.fprintf fmt "GotTauriVisible(%b)" v
+  | SetTauriWindowFocus -> Format.fprintf fmt "SetTauriWindowFocus"
+  | TauriWindowFocused -> Format.fprintf fmt "TauriWindowFocused"
+  | CenterTauriWindow -> Format.fprintf fmt "CenterTauriWindow"
+  | TauriWindowCentered -> Format.fprintf fmt "TauriWindowCentered"
   | GotPlatform s -> Format.fprintf fmt "GotPlatform(%s)" s
   | StorageKeyChanged s -> Format.fprintf fmt "StorageKeyChanged(%s)" s
   | StorageValueChanged s -> Format.fprintf fmt "StorageValueChanged(%s)" s
