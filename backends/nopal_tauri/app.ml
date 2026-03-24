@@ -1,6 +1,4 @@
-let invoke cmd =
-  let internals = Jv.get Jv.global "__TAURI_INTERNALS__" in
-  Jv.call internals "invoke" [| Jv.of_string cmd |]
+let invoke cmd = Ipc.invoke cmd [||]
 
 let get_name =
   Nopal_mvu.Task.from_callback (fun resolve ->

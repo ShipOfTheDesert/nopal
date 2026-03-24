@@ -3,16 +3,13 @@ type unlisten = unit -> unit
 
 let emit name payload =
   Nopal_mvu.Task.from_callback (fun resolve ->
-      let internals = Jv.get Jv.global "__TAURI_INTERNALS__" in
-      let args =
-        Jv.obj
-          [| ("event", Jv.of_string name); ("payload", Jv.of_string payload) |]
-      in
       let fut =
         Fut.of_promise
           ~ok:(fun _ -> ())
-          (Jv.call internals "invoke"
-             [| Jv.of_string "plugin:event|emit"; args |])
+          (Ipc.invoke "plugin:event|emit"
+             [|
+               ("event", Jv.of_string name); ("payload", Jv.of_string payload);
+             |])
       in
       Fut.await fut (function
         | Ok () -> resolve ()
@@ -27,30 +24,22 @@ let listen name on_event on_unlisten =
         on_event { payload })
   in
   let handler_id = Jv.to_int (Jv.call internals "transformCallback" [| cb |]) in
-  let args =
-    Jv.obj
-      [|
-        ("event", Jv.of_string name);
-        ("handler", Jv.obj [| ("id", Jv.of_int handler_id) |]);
-      |]
-  in
   let fut =
     Fut.of_promise ~ok:Jv.to_int
-      (Jv.call internals "invoke"
-         [| Jv.of_string "plugin:event|listen"; args |])
+      (Ipc.invoke "plugin:event|listen"
+         [|
+           ("event", Jv.of_string name);
+           ("handler", Jv.obj [| ("id", Jv.of_int handler_id) |]);
+         |])
   in
   Fut.await fut (function
     | Ok event_id ->
         let unlisten () =
-          let args =
-            Jv.obj
-              [|
-                ("event", Jv.of_string name); ("eventId", Jv.of_int event_id);
-              |]
-          in
           ignore
-            (Jv.call internals "invoke"
-               [| Jv.of_string "plugin:event|unlisten"; args |])
+            (Ipc.invoke "plugin:event|unlisten"
+               [|
+                 ("event", Jv.of_string name); ("eventId", Jv.of_int event_id);
+               |])
         in
         on_unlisten unlisten
     | Error _err -> ())
