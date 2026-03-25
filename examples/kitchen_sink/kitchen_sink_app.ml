@@ -112,6 +112,7 @@ type model = {
   tauri_store_key : string;
   tauri_store_value : string;
   tauri_store_state : tauri_store_state;
+  ui : Kitchen_sink_ui.model;
 }
 
 (* Messages *)
@@ -125,6 +126,7 @@ type msg =
   | MoveKeyedItemUp of int
   | ToggleInteraction
   | SubCounterMsg of Sub_counter.msg
+  | Ui_msg of Kitchen_sink_ui.msg
   | DrawPointerMove of float * float
   | DrawPointerLeave
   | ChartHovered of Hover.t
@@ -225,6 +227,7 @@ type msg =
 
 let init () =
   let sub_counter, sub_cmd = Sub_counter.init () in
+  let ui, ui_cmd = Kitchen_sink_ui.init () in
   ( {
       button_clicks = 0;
       input_text = "";
@@ -269,8 +272,13 @@ let init () =
       tauri_store_key = "";
       tauri_store_value = "";
       tauri_store_state = TauriStoreIdle;
+      ui;
     },
-    Nopal_mvu.Cmd.map (fun m -> SubCounterMsg m) sub_cmd )
+    Nopal_mvu.Cmd.batch
+      [
+        Nopal_mvu.Cmd.map (fun m -> SubCounterMsg m) sub_cmd;
+        Nopal_mvu.Cmd.map (fun m -> Ui_msg m) ui_cmd;
+      ] )
 
 let clamp_pane_dw dw = Domain_window.clamp ~data_min:0.0 ~data_max:9.0 dw
 let clamp_line_dw dw = Domain_window.clamp ~data_min:0.0 ~data_max:999.0 dw
@@ -319,6 +327,9 @@ let update model = function
       let sub_counter, sub_cmd = Sub_counter.update model.sub_counter sub_msg in
       ( { model with sub_counter },
         Nopal_mvu.Cmd.map (fun m -> SubCounterMsg m) sub_cmd )
+  | Ui_msg ui_msg ->
+      let ui, ui_cmd = Kitchen_sink_ui.update model.ui ui_msg in
+      ({ model with ui }, Nopal_mvu.Cmd.map (fun m -> Ui_msg m) ui_cmd)
   | DrawPointerMove (x, y) ->
       ({ model with draw_pointer = Some (x, y) }, Nopal_mvu.Cmd.none)
   | DrawPointerLeave -> ({ model with draw_pointer = None }, Nopal_mvu.Cmd.none)
@@ -2605,6 +2616,7 @@ let view vp model =
          view_keyed model;
          view_nested model;
          view_interaction_states model;
+         Element.map (fun m -> Ui_msg m) (Kitchen_sink_ui.view vp model.ui);
          view_composition vp model;
          view_draw model;
          view_charts model;
