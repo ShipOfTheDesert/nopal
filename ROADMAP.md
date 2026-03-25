@@ -38,15 +38,19 @@ test steps.
 **Package:** `nopal_test` (extension)
 **Depends on:** `nopal_test`, `nopal_style`
 
-Add helpers to `nopal_test` for asserting on specific style property values of
-rendered elements. Currently `nopal_test` renders `Element.t` into a structural
-node tree but does not expose style information — style assertion helpers were
+Add style information to `nopal_test`'s rendered node tree and provide helpers
+for asserting on specific style property values. Currently the `Element` node
+in `test_renderer.mli` carries `interaction` but not `Style.t` — style was
 explicitly out of scope for the initial structural test renderer (PRD 0007).
+This gap prevents unit-testing style overrides (e.g. `nopal_ui.Button` custom
+style vs variant default) without a browser.
 
 The solution should provide:
 
-- Query functions to extract the `Style.t` associated with a rendered element
-  (by selector or from a found node).
+- A `style : Nopal_style.Style.t` field on the `Element` node variant in
+  `test_renderer.mli`, populated during rendering.
+- A `val style : node -> Nopal_style.Style.t option` query function (analogous
+  to the existing `val interaction` query).
 - Assertion helpers for common style properties: direction, alignment, size,
   color, padding, gap, border, opacity, overflow.
 - Readable test output showing expected vs actual style values on failure.

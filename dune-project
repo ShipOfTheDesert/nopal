@@ -191,6 +191,19 @@
   js_of_ocaml))
 
 (package
+ (name nopal_ui)
+ (synopsis "High-level UI components for Nopal")
+ (depends
+  (alcotest
+   (and
+    (>= 1.9.1)
+    :with-test))
+  ocaml
+  nopal_element
+  nopal_style
+  nopal_mvu))
+
+(package
  (name nopal_examples)
  (allow_empty)
  (synopsis "Example applications for Nopal")

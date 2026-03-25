@@ -134,6 +134,7 @@ let msg_pp fmt msg =
   | TauriStoreClearResult _ -> Format.fprintf fmt "TauriStoreClearResult _"
   | TauriStoreSave -> Format.fprintf fmt "TauriStoreSave"
   | TauriStoreSaveResult _ -> Format.fprintf fmt "TauriStoreSaveResult _"
+  | Ui_msg _ -> Format.fprintf fmt "Ui_msg _"
 
 let msg_testable = Alcotest.testable msg_pp ( = )
 

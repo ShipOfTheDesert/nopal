@@ -375,7 +375,8 @@ let update model msg =
   | Kitchen_sink_app.TauriStoreClear
   | Kitchen_sink_app.TauriStoreClearResult _
   | Kitchen_sink_app.TauriStoreSave
-  | Kitchen_sink_app.TauriStoreSaveResult _ ->
+  | Kitchen_sink_app.TauriStoreSaveResult _
+  | Kitchen_sink_app.Ui_msg _ ->
       (model', cmd)
 
 let () =

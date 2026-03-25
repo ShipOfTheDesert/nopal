@@ -1,13 +1,14 @@
 (library
  (name kitchen_sink_app)
- (modules kitchen_sink_app sub_counter)
+ (modules kitchen_sink_app sub_counter kitchen_sink_ui)
  (libraries
   nopal_element
   nopal_mvu
   nopal_style
   nopal_draw
   nopal_charts
-  nopal_http))
+  nopal_http
+  nopal_ui))
 
 (executable
  (name main)
