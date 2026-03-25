@@ -6,6 +6,7 @@ type pointer_event = {
 }
 
 type wheel_event = { delta_y : float; x : float; y : float }
+type select_option = { value : string; label : string; disabled : bool }
 
 type 'msg t =
   | Empty
@@ -51,6 +52,32 @@ type 'msg t =
       on_submit : 'msg option;
       on_blur : 'msg option;
       on_keydown : (string -> 'msg option) option;
+    }
+  | Checkbox of {
+      style : Nopal_style.Style.t;
+      interaction : Nopal_style.Interaction.t;
+      attrs : (string * string) list;
+      checked : bool;
+      disabled : bool;
+      on_toggle : (bool -> 'msg) option;
+    }
+  | Radio of {
+      style : Nopal_style.Style.t;
+      interaction : Nopal_style.Interaction.t;
+      attrs : (string * string) list;
+      name : string;
+      checked : bool;
+      disabled : bool;
+      on_select : 'msg option;
+    }
+  | Select of {
+      style : Nopal_style.Style.t;
+      interaction : Nopal_style.Interaction.t;
+      attrs : (string * string) list;
+      options : select_option list;
+      selected : string;
+      disabled : bool;
+      on_change : (string -> 'msg) option;
     }
   | Image of { style : Nopal_style.Style.t; src : string; alt : string }
   | Scroll of { style : Nopal_style.Style.t; child : 'msg t }
@@ -120,6 +147,23 @@ let input ?(style = Nopal_style.Style.empty)
       on_blur;
       on_keydown;
     }
+
+let checkbox ?(style = Nopal_style.Style.empty)
+    ?(interaction = Nopal_style.Interaction.default) ?(attrs = [])
+    ?(disabled = false) ?on_toggle checked =
+  Checkbox { style; interaction; attrs; checked; disabled; on_toggle }
+
+let radio ?(style = Nopal_style.Style.empty)
+    ?(interaction = Nopal_style.Interaction.default) ?(attrs = [])
+    ?(checked = false) ?(disabled = false) ?on_select ~name () =
+  Radio { style; interaction; attrs; name; checked; disabled; on_select }
+
+let select ?(style = Nopal_style.Style.empty)
+    ?(interaction = Nopal_style.Interaction.default) ?(attrs = [])
+    ?(disabled = false) ?on_change ~selected options =
+  Select { style; interaction; attrs; options; selected; disabled; on_change }
+
+let select_option ?(disabled = false) ~value label = { value; label; disabled }
 
 let image ?(style = Nopal_style.Style.empty) ~src ~alt () =
   Image { style; src; alt }
@@ -209,6 +253,39 @@ let rec map f = function
           on_blur = Option.map f on_blur;
           on_keydown = Option.map (fun g s -> Option.map f (g s)) on_keydown;
         }
+  | Checkbox { style; interaction; attrs; checked; disabled; on_toggle } ->
+      Checkbox
+        {
+          style;
+          interaction;
+          attrs;
+          checked;
+          disabled;
+          on_toggle = Option.map (fun g b -> f (g b)) on_toggle;
+        }
+  | Radio { style; interaction; attrs; name; checked; disabled; on_select } ->
+      Radio
+        {
+          style;
+          interaction;
+          attrs;
+          name;
+          checked;
+          disabled;
+          on_select = Option.map f on_select;
+        }
+  | Select { style; interaction; attrs; options; selected; disabled; on_change }
+    ->
+      Select
+        {
+          style;
+          interaction;
+          attrs;
+          options;
+          selected;
+          disabled;
+          on_change = Option.map (fun g s -> f (g s)) on_change;
+        }
   | Image { style; src; alt } -> Image { style; src; alt }
   | Scroll { style; child } -> Scroll { style; child = map f child }
   | Keyed { key; child } -> Keyed { key; child = map f child }
@@ -264,6 +341,14 @@ let equal_attrs a1 a2 =
     (fun (k1, v1) (k2, v2) -> String.equal k1 k2 && String.equal v1 v2)
     a1 a2
 
+(* Equality strategy for handler fields:
+   - Function-typed handlers (on_click, on_toggle, on_change, etc.) use physical
+     equality ( == ) because structural equality is undefined for closures.
+   - Plain 'msg values (on_submit, on_blur, on_select) use structural equality
+     ( = ) because they are data, not closures. This is correct for typical msg
+     types (variants with string/int payloads). If a msg type contains floats,
+     polymorphic ( = ) has known issues (nan <> nan); this is an accepted
+     trade-off given that float-carrying messages are rare in MVU apps. *)
 let rec equal a b =
   match (a, b) with
   | Empty, Empty -> true
@@ -410,8 +495,92 @@ let rec equal a b =
       && List.equal Nopal_scene.Scene.equal s1 s2
       && Option.equal Nopal_style.Cursor.equal c1 c2
       && Option.equal String.equal al1 al2
-  | ( ( Empty | Text _ | Box _ | Row _ | Column _ | Button _ | Input _ | Image _
-      | Scroll _ | Keyed _ | Draw _ ),
+  | ( Checkbox
+        {
+          style = s1;
+          interaction = i1;
+          attrs = a1;
+          checked = c1;
+          disabled = d1;
+          on_toggle = ot1;
+        },
+      Checkbox
+        {
+          style = s2;
+          interaction = i2;
+          attrs = a2;
+          checked = c2;
+          disabled = d2;
+          on_toggle = ot2;
+        } ) ->
+      Nopal_style.Style.equal s1 s2
+      && Nopal_style.Interaction.equal i1 i2
+      && equal_attrs a1 a2
+      && Bool.equal c1 c2
+      && Bool.equal d1 d2
+      && Option.equal ( == ) ot1 ot2
+  | ( Radio
+        {
+          style = s1;
+          interaction = i1;
+          attrs = a1;
+          name = n1;
+          checked = c1;
+          disabled = d1;
+          on_select = os1;
+        },
+      Radio
+        {
+          style = s2;
+          interaction = i2;
+          attrs = a2;
+          name = n2;
+          checked = c2;
+          disabled = d2;
+          on_select = os2;
+        } ) ->
+      Nopal_style.Style.equal s1 s2
+      && Nopal_style.Interaction.equal i1 i2
+      && equal_attrs a1 a2
+      && String.equal n1 n2
+      && Bool.equal c1 c2
+      && Bool.equal d1 d2
+      && Option.equal ( = ) os1 os2
+  | ( Select
+        {
+          style = s1;
+          interaction = i1;
+          attrs = a1;
+          options = o1;
+          selected = sel1;
+          disabled = d1;
+          on_change = oc1;
+        },
+      Select
+        {
+          style = s2;
+          interaction = i2;
+          attrs = a2;
+          options = o2;
+          selected = sel2;
+          disabled = d2;
+          on_change = oc2;
+        } ) ->
+      Nopal_style.Style.equal s1 s2
+      && Nopal_style.Interaction.equal i1 i2
+      && equal_attrs a1 a2
+      && List.equal
+           (fun a b ->
+             String.equal a.value b.value
+             && String.equal a.label b.label
+             && Bool.equal a.disabled b.disabled)
+           o1 o2
+      && String.equal sel1 sel2
+      && Bool.equal d1 d2
+      && Option.equal ( == ) oc1 oc2
+  | ( ( Empty | Text _ | Box _ | Row _ | Column _ | Button _ | Input _
+      | Checkbox _ | Radio _ | Select _ | Image _ | Scroll _ | Keyed _ | Draw _
+        ),
       _ ) ->
       false
 

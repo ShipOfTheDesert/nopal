@@ -105,6 +105,12 @@ val click : selector -> 'msg rendered -> (unit, error) result
     [Error (Not_found selector)] if no element matches, [Error (No_handler ...)]
     if the element has no click handler. *)
 
+val toggle : selector -> 'msg rendered -> (unit, error) result
+(** [toggle selector rendered] finds the first checkbox matching [selector],
+    reads its [checked] attribute, and invokes its [on_toggle] handler with the
+    negated value. Returns [Error (Not_found selector)] if no element matches,
+    [Error (No_handler ...)] if the element has no toggle handler. *)
+
 val input : selector -> string -> 'msg rendered -> (unit, error) result
 (** [input selector value rendered] finds the first input matching [selector],
     invokes its [on_change] handler with [value], and appends the resulting

@@ -19,6 +19,9 @@ let test_draw_builder_defaults () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _ ->
         false);
@@ -43,6 +46,9 @@ let test_draw_builder_defaults () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -86,6 +92,9 @@ let test_draw_with_callbacks () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -117,6 +126,9 @@ let test_draw_map () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->

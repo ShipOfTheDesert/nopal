@@ -14,6 +14,9 @@ let test_empty_builder () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -32,6 +35,9 @@ let test_text_builder () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -46,6 +52,9 @@ let test_default_styles () =
       | Element.Column { style; _ } -> style
       | Element.Image { style; _ } -> style
       | Element.Scroll { style; _ } -> style
+      | Element.Checkbox { style; _ } -> style
+      | Element.Radio { style; _ } -> style
+      | Element.Select { style; _ } -> style
       | Element.Empty
       | Element.Text _
       | Element.Button _
@@ -88,6 +97,9 @@ let test_box_preserves_children () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -106,6 +118,9 @@ let test_button_no_handler () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -124,6 +139,9 @@ let test_button_with_handler () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -144,6 +162,9 @@ let test_button_child () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -172,6 +193,9 @@ let test_input_defaults () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -190,6 +214,9 @@ let test_input_placeholder () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -215,6 +242,9 @@ let test_input_on_change () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -233,6 +263,9 @@ let test_input_on_submit () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -251,6 +284,9 @@ let test_image_required_fields () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -270,6 +306,9 @@ let test_scroll_child () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -288,6 +327,9 @@ let test_keyed_preserves_fields () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -304,6 +346,9 @@ let test_keyed_preserves_fields () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -326,6 +371,9 @@ let test_map_transforms_click () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -351,6 +399,9 @@ let test_map_transforms_input () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -391,6 +442,9 @@ let test_map_recursive () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -418,6 +472,9 @@ let test_map_column () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -438,6 +495,9 @@ let test_map_image () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -460,6 +520,9 @@ let test_map_scroll () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -487,6 +550,9 @@ let test_map_keyed () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -505,6 +571,9 @@ let test_map_empty_noop () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -524,6 +593,9 @@ let test_map_text_noop () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -646,6 +718,9 @@ let test_box_default_interaction () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -670,6 +745,9 @@ let test_button_with_interaction () =
     | Element.Column _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -689,6 +767,9 @@ let test_input_with_interaction () =
     | Element.Column _
     | Element.Button _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -704,6 +785,9 @@ let test_map_preserves_interaction () =
       | Element.Row { interaction; _ } -> interaction
       | Element.Column { interaction; _ } -> interaction
       | Element.Input { interaction; _ } -> interaction
+      | Element.Checkbox { interaction; _ } -> interaction
+      | Element.Radio { interaction; _ } -> interaction
+      | Element.Select { interaction; _ } -> interaction
       | Element.Empty
       | Element.Text _
       | Element.Image _
@@ -762,6 +846,9 @@ let test_styled_text_carries_style () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -781,6 +868,9 @@ let test_styled_text_with_default_is_some () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
