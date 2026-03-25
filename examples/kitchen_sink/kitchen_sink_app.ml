@@ -113,6 +113,7 @@ type model = {
   tauri_store_value : string;
   tauri_store_state : tauri_store_state;
   ui : Kitchen_sink_ui.model;
+  form : Kitchen_sink_form.model;
 }
 
 (* Messages *)
@@ -127,6 +128,7 @@ type msg =
   | ToggleInteraction
   | SubCounterMsg of Sub_counter.msg
   | Ui_msg of Kitchen_sink_ui.msg
+  | Form_msg of Kitchen_sink_form.msg
   | DrawPointerMove of float * float
   | DrawPointerLeave
   | ChartHovered of Hover.t
@@ -228,6 +230,7 @@ type msg =
 let init () =
   let sub_counter, sub_cmd = Sub_counter.init () in
   let ui, ui_cmd = Kitchen_sink_ui.init () in
+  let form, form_cmd = Kitchen_sink_form.init () in
   ( {
       button_clicks = 0;
       input_text = "";
@@ -273,11 +276,13 @@ let init () =
       tauri_store_value = "";
       tauri_store_state = TauriStoreIdle;
       ui;
+      form;
     },
     Nopal_mvu.Cmd.batch
       [
         Nopal_mvu.Cmd.map (fun m -> SubCounterMsg m) sub_cmd;
         Nopal_mvu.Cmd.map (fun m -> Ui_msg m) ui_cmd;
+        Nopal_mvu.Cmd.map (fun m -> Form_msg m) form_cmd;
       ] )
 
 let clamp_pane_dw dw = Domain_window.clamp ~data_min:0.0 ~data_max:9.0 dw
@@ -330,6 +335,9 @@ let update model = function
   | Ui_msg ui_msg ->
       let ui, ui_cmd = Kitchen_sink_ui.update model.ui ui_msg in
       ({ model with ui }, Nopal_mvu.Cmd.map (fun m -> Ui_msg m) ui_cmd)
+  | Form_msg form_msg ->
+      let form, form_cmd = Kitchen_sink_form.update model.form form_msg in
+      ({ model with form }, Nopal_mvu.Cmd.map (fun m -> Form_msg m) form_cmd)
   | DrawPointerMove (x, y) ->
       ({ model with draw_pointer = Some (x, y) }, Nopal_mvu.Cmd.none)
   | DrawPointerLeave -> ({ model with draw_pointer = None }, Nopal_mvu.Cmd.none)
@@ -2611,6 +2619,14 @@ let view vp model =
          view_layout model;
          view_buttons model;
          view_inputs model;
+         view_section
+           ~attrs:[ ("data-testid", "form-primitives-section") ]
+           "Form Primitives"
+           [
+             Element.map
+               (fun m -> Form_msg m)
+               (Kitchen_sink_form.view vp model.form);
+           ];
          view_images model;
          view_scroll model;
          view_keyed model;

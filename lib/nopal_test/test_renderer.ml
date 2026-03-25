@@ -16,6 +16,7 @@ type 'msg handler_entry = {
   on_submit : 'msg option;
   on_blur : 'msg option;
   on_keydown : (string -> 'msg option) option;
+  on_toggle : (bool -> 'msg) option;
 }
 
 type 'msg draw_handler_entry = {
@@ -118,6 +119,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             on_submit = None;
             on_blur = None;
             on_keydown = None;
+            on_toggle = None;
           }
           :: !handlers;
         Element
@@ -148,6 +150,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             on_submit;
             on_blur;
             on_keydown;
+            on_toggle = None;
           }
           :: !handlers;
         Element
@@ -155,6 +158,110 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             tag = "input";
             attrs = [ ("value", value); ("placeholder", placeholder) ] @ attrs;
             children = [];
+            interaction;
+          }
+    | Checkbox { style = _; interaction; attrs; checked; disabled; on_toggle }
+      ->
+        if not disabled then
+          handlers :=
+            {
+              path = List.rev rev_path;
+              on_click = None;
+              on_dblclick = None;
+              on_change = None;
+              on_submit = None;
+              on_blur = None;
+              on_keydown = None;
+              on_toggle;
+            }
+            :: !handlers;
+        Element
+          {
+            tag = "checkbox";
+            attrs =
+              [
+                ("checked", string_of_bool checked);
+                ("disabled", string_of_bool disabled);
+              ]
+              @ attrs;
+            children = [];
+            interaction;
+          }
+    | Radio
+        { style = _; interaction; attrs; name; checked; disabled; on_select } ->
+        if not disabled then
+          handlers :=
+            {
+              path = List.rev rev_path;
+              on_click = on_select;
+              on_dblclick = None;
+              on_change = None;
+              on_submit = None;
+              on_blur = None;
+              on_keydown = None;
+              on_toggle = None;
+            }
+            :: !handlers;
+        Element
+          {
+            tag = "radio";
+            attrs =
+              [
+                ("name", name);
+                ("checked", string_of_bool checked);
+                ("disabled", string_of_bool disabled);
+              ]
+              @ attrs;
+            children = [];
+            interaction;
+          }
+    | Select
+        {
+          style = _;
+          interaction;
+          attrs;
+          options;
+          selected;
+          disabled;
+          on_change;
+        } ->
+        if not disabled then
+          handlers :=
+            {
+              path = List.rev rev_path;
+              on_click = None;
+              on_dblclick = None;
+              on_change;
+              on_submit = None;
+              on_blur = None;
+              on_keydown = None;
+              on_toggle = None;
+            }
+            :: !handlers;
+        let option_children =
+          List.map
+            (fun (opt : Nopal_element.Element.select_option) ->
+              Element
+                {
+                  tag = "option";
+                  attrs =
+                    [
+                      ("value", opt.value);
+                      ("label", opt.label);
+                      ("disabled", string_of_bool opt.disabled);
+                    ];
+                  children = [];
+                  interaction = Nopal_style.Interaction.default;
+                })
+            options
+        in
+        Element
+          {
+            tag = "select";
+            attrs =
+              [ ("selected", selected); ("disabled", string_of_bool disabled) ]
+              @ attrs;
+            children = option_children;
             interaction;
           }
     | Image { style = _; src; alt } ->
@@ -485,6 +592,28 @@ let click sel r =
   | None -> Error (No_handler { tag; event = "click" })
   | Some msg ->
       r.msgs := msg :: !(r.msgs);
+      Ok ()
+
+let toggle sel r =
+  let* path, found =
+    resolve_path sel r.tree |> Option.to_result ~none:(Not_found sel)
+  in
+  let tag = tag_of_node found in
+  let* handler =
+    find_handler_by_path path r.handlers
+    |> Option.to_result ~none:(No_handler { tag; event = "toggle" })
+  in
+  match handler.on_toggle with
+  | None -> Error (No_handler { tag; event = "toggle" })
+  | Some f ->
+      let checked =
+        match attr "checked" found with
+        | Some "true" -> true
+        | Some _
+        | None ->
+            false
+      in
+      r.msgs := f (not checked) :: !(r.msgs);
       Ok ()
 
 let input sel value r =

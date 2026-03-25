@@ -308,6 +308,41 @@
       return { x: 0, y: 0, width: 0, height: 0, top: 0, right: 0, bottom: 0, left: 0 };
     };
 
+    // innerHTML setter: clears all children (write) and serializes (read)
+    Object.defineProperty(el, "innerHTML", {
+      get() {
+        return "";
+      },
+      set(_v) {
+        // Clear all children (the renderer uses innerHTML="" to wipe)
+        while (el.childNodes.length > 0) {
+          const child = el.childNodes[el.childNodes.length - 1];
+          child.parentNode = null;
+          el.childNodes.pop();
+        }
+      },
+    });
+
+    // For <select> elements, value reflects the selected option's value
+    if (tag.toLowerCase() === "select") {
+      Object.defineProperty(el, "value", {
+        get() {
+          for (const child of el.childNodes) {
+            if (child.selected) return child._attributes["value"] || "";
+          }
+          // Fallback: first option's value
+          if (el.childNodes.length > 0)
+            return el.childNodes[0]._attributes["value"] || "";
+          return "";
+        },
+        set(v) {
+          for (const child of el.childNodes) {
+            child.selected = (child._attributes["value"] === v);
+          }
+        },
+      });
+    }
+
     return el;
   }
 

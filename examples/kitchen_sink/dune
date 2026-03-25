@@ -1,6 +1,6 @@
 (library
  (name kitchen_sink_app)
- (modules kitchen_sink_app sub_counter kitchen_sink_ui)
+ (modules kitchen_sink_app sub_counter kitchen_sink_ui kitchen_sink_form)
  (libraries
   nopal_element
   nopal_mvu

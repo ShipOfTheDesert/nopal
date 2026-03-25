@@ -90,6 +90,10 @@ let interaction_of (el : 'msg Nopal_element.Element.t) =
   | Button { interaction; _ }
   | Input { interaction; _ } ->
       Some interaction
+  | Checkbox { interaction; _ }
+  | Radio { interaction; _ }
+  | Select { interaction; _ } ->
+      Some interaction
   | Empty
   | Text _
   | Image _
@@ -479,6 +483,94 @@ let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
       in
       Live_node
         { dom = el; element; children = []; listeners; base_id; interaction_id }
+  | Checkbox { style; interaction; attrs; checked; disabled; on_toggle } ->
+      let el = Brr.El.v (Jstr.v "input") [] in
+      Brr.El.set_at (Jstr.v "type") (Some (Jstr.v "checkbox")) el;
+      Jv.set (Brr.El.to_jv el) "checked" (Jv.of_bool checked);
+      if disabled then Brr.El.set_at (Jstr.v "disabled") (Some (Jstr.v "")) el;
+      let base_id, interaction_id =
+        apply_styles_for_element ~sheet el style interaction
+      in
+      List.iter
+        (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
+        attrs;
+      let listeners =
+        match (on_toggle, disabled) with
+        | Some f, false ->
+            [
+              Brr.Ev.listen Brr.Ev.change
+                (fun _ev ->
+                  let is_checked = Jv.Bool.get (Brr.El.to_jv el) "checked" in
+                  dispatch (f is_checked))
+                (Brr.El.as_target el);
+            ]
+        | _ -> []
+      in
+      Live_node
+        { dom = el; element; children = []; listeners; base_id; interaction_id }
+  | Radio { style; interaction; attrs; name; checked; disabled; on_select } ->
+      let el = Brr.El.v (Jstr.v "input") [] in
+      Brr.El.set_at (Jstr.v "type") (Some (Jstr.v "radio")) el;
+      Brr.El.set_at (Jstr.v "name") (Some (Jstr.v name)) el;
+      Jv.set (Brr.El.to_jv el) "checked" (Jv.of_bool checked);
+      if disabled then Brr.El.set_at (Jstr.v "disabled") (Some (Jstr.v "")) el;
+      let base_id, interaction_id =
+        apply_styles_for_element ~sheet el style interaction
+      in
+      List.iter
+        (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
+        attrs;
+      let listeners =
+        match (on_select, disabled) with
+        | Some msg, false ->
+            [
+              Brr.Ev.listen Brr.Ev.change
+                (fun _ev -> dispatch msg)
+                (Brr.El.as_target el);
+            ]
+        | _ -> []
+      in
+      Live_node
+        { dom = el; element; children = []; listeners; base_id; interaction_id }
+  | Select { style; interaction; attrs; options; selected; disabled; on_change }
+    ->
+      let el = Brr.El.v (Jstr.v "select") [] in
+      List.iter
+        (fun (opt : Nopal_element.Element.select_option) ->
+          let opt_el =
+            Brr.El.v (Jstr.v "option") [ Brr.El.txt (Jstr.v opt.label) ]
+          in
+          Brr.El.set_at (Jstr.v "value") (Some (Jstr.v opt.value)) opt_el;
+          if opt.disabled then
+            Brr.El.set_at (Jstr.v "disabled") (Some (Jstr.v "")) opt_el;
+          if String.equal opt.value selected then
+            Jv.set (Brr.El.to_jv opt_el) "selected" (Jv.of_bool true);
+          ignore
+            (Jv.call (Brr.El.to_jv el) "appendChild" [| Brr.El.to_jv opt_el |]))
+        options;
+      if disabled then Brr.El.set_at (Jstr.v "disabled") (Some (Jstr.v "")) el;
+      let base_id, interaction_id =
+        apply_styles_for_element ~sheet el style interaction
+      in
+      List.iter
+        (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
+        attrs;
+      let listeners =
+        match (on_change, disabled) with
+        | Some f, false ->
+            [
+              Brr.Ev.listen Brr.Ev.change
+                (fun _ev ->
+                  let value =
+                    Jv.Jstr.get (Brr.El.to_jv el) "value" |> Jstr.to_string
+                  in
+                  dispatch (f value))
+                (Brr.El.as_target el);
+            ]
+        | _ -> []
+      in
+      Live_node
+        { dom = el; element; children = []; listeners; base_id; interaction_id }
   | Image { style; src; alt } ->
       let el = Brr.El.v (Jstr.v "img") [] in
       apply_style el style;
@@ -604,10 +696,14 @@ let same_variant (a : 'msg Nopal_element.Element.t)
   | Image _, Image _
   | Scroll _, Scroll _
   | Keyed _, Keyed _
-  | Draw _, Draw _ ->
+  | Draw _, Draw _
+  | Checkbox _, Checkbox _
+  | Radio _, Radio _
+  | Select _, Select _ ->
       true
-  | ( ( Empty | Text _ | Box _ | Row _ | Column _ | Button _ | Input _ | Image _
-      | Scroll _ | Keyed _ | Draw _ ),
+  | ( ( Empty | Text _ | Box _ | Row _ | Column _ | Button _ | Input _
+      | Checkbox _ | Radio _ | Select _ | Image _ | Scroll _ | Keyed _ | Draw _
+        ),
       _ ) ->
       false
 
@@ -615,8 +711,8 @@ let extract_keyed_pairs elements =
   let rec go acc = function
     | [] -> Some (List.rev acc)
     | Keyed { key; child } :: rest -> go ((key, child) :: acc) rest
-    | ( Empty | Text _ | Box _ | Row _ | Column _ | Button _ | Input _ | Image _
-      | Scroll _ | Draw _ )
+    | ( Empty | Text _ | Box _ | Row _ | Column _ | Button _ | Input _
+      | Checkbox _ | Radio _ | Select _ | Image _ | Scroll _ | Draw _ )
       :: _ ->
         None
   in
@@ -646,7 +742,10 @@ let attrs_of (el : 'msg Nopal_element.Element.t) =
   | Row { attrs; _ }
   | Column { attrs; _ }
   | Button { attrs; _ }
-  | Input { attrs; _ } ->
+  | Input { attrs; _ }
+  | Checkbox { attrs; _ }
+  | Radio { attrs; _ }
+  | Select { attrs; _ } ->
       attrs
   | Empty
   | Text _
@@ -679,7 +778,10 @@ let style_of (el : 'msg Nopal_element.Element.t) =
   | Button { style; _ }
   | Input { style; _ }
   | Image { style; _ }
-  | Scroll { style; _ } ->
+  | Scroll { style; _ }
+  | Checkbox { style; _ }
+  | Radio { style; _ }
+  | Select { style; _ } ->
       Some style
   | Empty
   | Text _
@@ -818,11 +920,11 @@ and reconcile_live ~sheet ~dispatch parent_el (old_live : 'msg live)
       reconcile_node ~sheet ~dispatch old_n new_el;
       Live_node old_n
   | ( Live_text _,
-      ( Empty | Box _ | Row _ | Column _ | Button _ | Input _ | Image _
-      | Scroll _ | Keyed _ | Draw _ ) )
+      ( Empty | Box _ | Row _ | Column _ | Button _ | Input _ | Checkbox _
+      | Radio _ | Select _ | Image _ | Scroll _ | Keyed _ | Draw _ ) )
   | ( Live_comment _,
-      ( Text _ | Box _ | Row _ | Column _ | Button _ | Input _ | Image _
-      | Scroll _ | Keyed _ | Draw _ ) )
+      ( Text _ | Box _ | Row _ | Column _ | Button _ | Input _ | Checkbox _
+      | Radio _ | Select _ | Image _ | Scroll _ | Keyed _ | Draw _ ) )
   | Live_node _, _ ->
       (* Different variant or same_variant returned false — replace *)
       let new_live = create_live ~sheet ~dispatch new_element in
@@ -1000,6 +1102,9 @@ and reconcile_node ~sheet ~dispatch (old_n : 'msg live_node)
       | Row _
       | Column _
       | Button _
+      | Checkbox _
+      | Radio _
+      | Select _
       | Image _
       | Scroll _
       | Keyed _
@@ -1023,6 +1128,9 @@ and reconcile_node ~sheet ~dispatch (old_n : 'msg live_node)
       | Column _
       | Button _
       | Input _
+      | Checkbox _
+      | Radio _
+      | Select _
       | Scroll _
       | Keyed _
       | Draw _ ->
@@ -1060,6 +1168,9 @@ and reconcile_node ~sheet ~dispatch (old_n : 'msg live_node)
         | Button _
         | Input _
         | Image _
+        | Checkbox _
+        | Radio _
+        | Select _
         | Scroll _
         | Keyed _ ->
             (0.0, 0.0)
@@ -1076,6 +1187,84 @@ and reconcile_node ~sheet ~dispatch (old_n : 'msg live_node)
       old_n.listeners <-
         wire_draw_pointer_events ~dispatch el on_pointer_move on_click
           on_pointer_leave on_pointer_down on_pointer_up on_wheel
+  | Checkbox { checked; disabled; on_toggle; _ } ->
+      Jv.set (Brr.El.to_jv el) "checked" (Jv.of_bool checked);
+      (match (disabled, old_n.element) with
+      | true, Checkbox { disabled = false; _ } ->
+          Brr.El.set_at (Jstr.v "disabled") (Some (Jstr.v "")) el
+      | false, Checkbox { disabled = true; _ } ->
+          Brr.El.set_at (Jstr.v "disabled") None el
+      | _ -> ());
+      maybe_apply_attrs el old_n.element new_el;
+      unlisten_all old_n.listeners;
+      old_n.listeners <-
+        (match (on_toggle, disabled) with
+        | Some f, false ->
+            [
+              Brr.Ev.listen Brr.Ev.change
+                (fun _ev ->
+                  let is_checked = Jv.Bool.get (Brr.El.to_jv el) "checked" in
+                  dispatch (f is_checked))
+                (Brr.El.as_target el);
+            ]
+        | _ -> [])
+  | Radio { name; checked; disabled; on_select; _ } ->
+      Brr.El.set_at (Jstr.v "name") (Some (Jstr.v name)) el;
+      Jv.set (Brr.El.to_jv el) "checked" (Jv.of_bool checked);
+      (match (disabled, old_n.element) with
+      | true, Radio { disabled = false; _ } ->
+          Brr.El.set_at (Jstr.v "disabled") (Some (Jstr.v "")) el
+      | false, Radio { disabled = true; _ } ->
+          Brr.El.set_at (Jstr.v "disabled") None el
+      | _ -> ());
+      maybe_apply_attrs el old_n.element new_el;
+      unlisten_all old_n.listeners;
+      old_n.listeners <-
+        (match (on_select, disabled) with
+        | Some msg, false ->
+            [
+              Brr.Ev.listen Brr.Ev.change
+                (fun _ev -> dispatch msg)
+                (Brr.El.as_target el);
+            ]
+        | _ -> [])
+  | Select { options; selected; disabled; on_change; _ } ->
+      (* Rebuild option children — simple and correct for typical select sizes *)
+      let parent_jv = Brr.El.to_jv el in
+      Jv.set parent_jv "innerHTML" (Jv.of_string "");
+      List.iter
+        (fun (opt : Nopal_element.Element.select_option) ->
+          let opt_el =
+            Brr.El.v (Jstr.v "option") [ Brr.El.txt (Jstr.v opt.label) ]
+          in
+          Brr.El.set_at (Jstr.v "value") (Some (Jstr.v opt.value)) opt_el;
+          if opt.disabled then
+            Brr.El.set_at (Jstr.v "disabled") (Some (Jstr.v "")) opt_el;
+          if String.equal opt.value selected then
+            Jv.set (Brr.El.to_jv opt_el) "selected" (Jv.of_bool true);
+          ignore (Jv.call parent_jv "appendChild" [| Brr.El.to_jv opt_el |]))
+        options;
+      (match (disabled, old_n.element) with
+      | true, Select { disabled = false; _ } ->
+          Brr.El.set_at (Jstr.v "disabled") (Some (Jstr.v "")) el
+      | false, Select { disabled = true; _ } ->
+          Brr.El.set_at (Jstr.v "disabled") None el
+      | _ -> ());
+      maybe_apply_attrs el old_n.element new_el;
+      unlisten_all old_n.listeners;
+      old_n.listeners <-
+        (match (on_change, disabled) with
+        | Some f, false ->
+            [
+              Brr.Ev.listen Brr.Ev.change
+                (fun _ev ->
+                  let value =
+                    Jv.Jstr.get (Brr.El.to_jv el) "value" |> Jstr.to_string
+                  in
+                  dispatch (f value))
+                (Brr.El.as_target el);
+            ]
+        | _ -> [])
   | Empty
   | Text _
   | Keyed _ ->

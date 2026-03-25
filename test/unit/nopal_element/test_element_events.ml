@@ -15,6 +15,9 @@ let test_button_dblclick_some () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -33,6 +36,9 @@ let test_input_blur_some () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -57,6 +63,9 @@ let test_input_keydown_some () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -79,6 +88,9 @@ let test_map_preserves_dblclick () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -99,6 +111,9 @@ let test_map_preserves_blur () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->
@@ -125,6 +140,9 @@ let test_map_preserves_keydown () =
     | Element.Button _
     | Element.Input _
     | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _ ->

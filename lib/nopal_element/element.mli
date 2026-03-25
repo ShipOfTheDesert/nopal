@@ -18,6 +18,9 @@ type pointer_event = {
 type wheel_event = { delta_y : float; x : float; y : float }
 (** Wheel event with scroll delta and element-local coordinates. *)
 
+type select_option = { value : string; label : string; disabled : bool }
+(** A single option within a [Select] element. *)
+
 type 'msg t =
   | Empty
   | Text of { content : string; text_style : Nopal_style.Text.t option }
@@ -62,6 +65,32 @@ type 'msg t =
       on_submit : 'msg option;
       on_blur : 'msg option;
       on_keydown : (string -> 'msg option) option;
+    }
+  | Checkbox of {
+      style : Nopal_style.Style.t;
+      interaction : Nopal_style.Interaction.t;
+      attrs : (string * string) list;
+      checked : bool;
+      disabled : bool;
+      on_toggle : (bool -> 'msg) option;
+    }
+  | Radio of {
+      style : Nopal_style.Style.t;
+      interaction : Nopal_style.Interaction.t;
+      attrs : (string * string) list;
+      name : string;
+      checked : bool;
+      disabled : bool;
+      on_select : 'msg option;
+    }
+  | Select of {
+      style : Nopal_style.Style.t;
+      interaction : Nopal_style.Interaction.t;
+      attrs : (string * string) list;
+      options : select_option list;
+      selected : string;
+      disabled : bool;
+      on_change : (string -> 'msg) option;
     }
   | Image of { style : Nopal_style.Style.t; src : string; alt : string }
   | Scroll of { style : Nopal_style.Style.t; child : 'msg t }
@@ -150,6 +179,42 @@ val input :
   string ->
   'msg t
 (** A text input. The positional argument is the current value. *)
+
+val checkbox :
+  ?style:Nopal_style.Style.t ->
+  ?interaction:Nopal_style.Interaction.t ->
+  ?attrs:(string * string) list ->
+  ?disabled:bool ->
+  ?on_toggle:(bool -> 'msg) ->
+  bool ->
+  'msg t
+(** A checkbox. The positional argument is the current [checked] state. *)
+
+val radio :
+  ?style:Nopal_style.Style.t ->
+  ?interaction:Nopal_style.Interaction.t ->
+  ?attrs:(string * string) list ->
+  ?checked:bool ->
+  ?disabled:bool ->
+  ?on_select:'msg ->
+  name:string ->
+  unit ->
+  'msg t
+(** A radio button. [name] groups radios so only one is selected at a time. *)
+
+val select :
+  ?style:Nopal_style.Style.t ->
+  ?interaction:Nopal_style.Interaction.t ->
+  ?attrs:(string * string) list ->
+  ?disabled:bool ->
+  ?on_change:(string -> 'msg) ->
+  selected:string ->
+  select_option list ->
+  'msg t
+(** A dropdown select. [selected] is the currently chosen option value. *)
+
+val select_option : ?disabled:bool -> value:string -> string -> select_option
+(** [select_option ~value label] creates a select option. *)
 
 val image :
   ?style:Nopal_style.Style.t -> src:string -> alt:string -> unit -> 'msg t

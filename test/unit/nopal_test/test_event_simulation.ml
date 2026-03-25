@@ -1,7 +1,8 @@
 open Nopal_test.Test_renderer
 module E = Nopal_element.Element
 
-type msg = Click | DblClick | Blur | KeyDown of string [@@warning "-37"]
+type msg = Click | DblClick | Blur | KeyDown of string | Toggled of bool
+[@@warning "-37"]
 
 let error_testable = Test_util.error_testable
 
@@ -12,7 +13,8 @@ let msg_testable =
       | Click -> Format.fprintf fmt "Click"
       | DblClick -> Format.fprintf fmt "DblClick"
       | Blur -> Format.fprintf fmt "Blur"
-      | KeyDown s -> Format.fprintf fmt "KeyDown %S" s)
+      | KeyDown s -> Format.fprintf fmt "KeyDown %S" s
+      | Toggled b -> Format.fprintf fmt "Toggled %b" b)
     ( = )
 
 let test_dblclick_dispatches_message () =
@@ -74,6 +76,46 @@ let test_keydown_no_handler_returns_error () =
     result;
   Alcotest.(check int) "no messages" 0 (List.length (messages r))
 
+let test_toggle_checked_dispatches_false () =
+  let r = render (E.checkbox ~on_toggle:(fun b -> Toggled b) true) in
+  let result = toggle (By_tag "checkbox") r in
+  Alcotest.(check (result unit error_testable)) "toggle succeeds" (Ok ()) result;
+  Alcotest.(check (list msg_testable))
+    "toggle dispatches Toggled false" [ Toggled false ] (messages r)
+
+let test_toggle_unchecked_dispatches_true () =
+  let r = render (E.checkbox ~on_toggle:(fun b -> Toggled b) false) in
+  let result = toggle (By_tag "checkbox") r in
+  Alcotest.(check (result unit error_testable)) "toggle succeeds" (Ok ()) result;
+  Alcotest.(check (list msg_testable))
+    "toggle dispatches Toggled true" [ Toggled true ] (messages r)
+
+let test_toggle_disabled_returns_error () =
+  let r =
+    render (E.checkbox ~on_toggle:(fun b -> Toggled b) ~disabled:true false)
+  in
+  let result = toggle (By_tag "checkbox") r in
+  Alcotest.(check (result unit error_testable))
+    "toggle returns No_handler"
+    (Error (No_handler { tag = "checkbox"; event = "toggle" }))
+    result;
+  Alcotest.(check int) "no messages" 0 (List.length (messages r))
+
+let test_toggle_non_checkbox_returns_error () =
+  let r = render (E.button ~on_click:Click (E.text "not a checkbox")) in
+  let result = toggle (By_tag "button") r in
+  Alcotest.(check (result unit error_testable))
+    "toggle returns No_handler"
+    (Error (No_handler { tag = "button"; event = "toggle" }))
+    result;
+  Alcotest.(check int) "no messages" 0 (List.length (messages r))
+
+let test_toggle_not_found_returns_error () =
+  let r = render (E.box [ E.text "hello" ]) in
+  let result = toggle (By_tag "checkbox") r in
+  Alcotest.(check (result unit error_testable))
+    "toggle returns Not_found" (Error (Not_found (By_tag "checkbox"))) result
+
 let () =
   Alcotest.run "event_simulation"
     [
@@ -99,5 +141,18 @@ let () =
             test_keydown_handler_returns_none;
           Alcotest.test_case "no_handler_returns_error" `Quick
             test_keydown_no_handler_returns_error;
+        ] );
+      ( "toggle",
+        [
+          Alcotest.test_case "checked_dispatches_false" `Quick
+            test_toggle_checked_dispatches_false;
+          Alcotest.test_case "unchecked_dispatches_true" `Quick
+            test_toggle_unchecked_dispatches_true;
+          Alcotest.test_case "disabled_returns_error" `Quick
+            test_toggle_disabled_returns_error;
+          Alcotest.test_case "non_checkbox_returns_error" `Quick
+            test_toggle_non_checkbox_returns_error;
+          Alcotest.test_case "not_found_returns_error" `Quick
+            test_toggle_not_found_returns_error;
         ] );
     ]

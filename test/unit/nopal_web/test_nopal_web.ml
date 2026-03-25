@@ -1,7 +1,7 @@
 open Nopal_element.Element
 open Nopal_style.Style
 
-type msg = Click | Change of string | Submit
+type msg = Click | Change of string | Submit | Toggled of bool | Selected
 
 let fresh_dispatch () =
   let msgs = ref [] in
@@ -1482,6 +1482,480 @@ let test_parse_css_px_whitespace () =
 let test_parse_css_px_garbage () =
   Alcotest.(check int) "garbage returns 0" 0 (Nopal_web.parse_css_px "abc")
 
+(* --- Checkbox reconciliation --- *)
+
+(* Checkbox: checked state changes true->false *)
+let test_reconcile_checkbox_checked_true_to_false () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let el1 =
+    Checkbox
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        checked = true;
+        disabled = false;
+        on_toggle = Some (fun b -> Toggled b);
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let node = Nopal_web.Renderer.dom_node handle in
+  Alcotest.(check bool) "initially checked" true (Jv.Bool.get node "checked");
+  let el2 =
+    Checkbox
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        checked = false;
+        disabled = false;
+        on_toggle = Some (fun b -> Toggled b);
+      }
+  in
+  Nopal_web.Renderer.update ~dispatch handle el2;
+  let node_after = Nopal_web.Renderer.dom_node handle in
+  Alcotest.(check bool) "same node reused" true (node == node_after);
+  Alcotest.(check bool)
+    "checked updated to false" false
+    (Jv.Bool.get node "checked")
+
+(* Checkbox: checked state changes false->true *)
+let test_reconcile_checkbox_checked_false_to_true () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let el1 =
+    Checkbox
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        checked = false;
+        disabled = false;
+        on_toggle = Some (fun b -> Toggled b);
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let node = Nopal_web.Renderer.dom_node handle in
+  Alcotest.(check bool) "initially unchecked" false (Jv.Bool.get node "checked");
+  let el2 =
+    Checkbox
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        checked = true;
+        disabled = false;
+        on_toggle = Some (fun b -> Toggled b);
+      }
+  in
+  Nopal_web.Renderer.update ~dispatch handle el2;
+  Alcotest.(check bool)
+    "checked updated to true" true
+    (Jv.Bool.get node "checked")
+
+(* Checkbox: enabled->disabled suppresses handler *)
+let test_reconcile_checkbox_enabled_to_disabled () =
+  let parent = fresh_parent () in
+  let dispatch, msgs = fresh_dispatch () in
+  let el1 =
+    Checkbox
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        checked = false;
+        disabled = false;
+        on_toggle = Some (fun b -> Toggled b);
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let el2 =
+    Checkbox
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        checked = false;
+        disabled = true;
+        on_toggle = Some (fun b -> Toggled b);
+      }
+  in
+  Nopal_web.Renderer.update ~dispatch handle el2;
+  let disabled_val =
+    Jv.call node "getAttribute" [| Jv.of_string "disabled" |]
+  in
+  Alcotest.(check bool) "disabled attr set" false (Jv.is_null disabled_val);
+  (* Dispatch a change event — should not produce a message *)
+  let ev = Jv.new' (Jv.get Jv.global "Event") [| Jv.of_string "change" |] in
+  ignore (Jv.call node "dispatchEvent" [| ev |]);
+  Alcotest.(check int)
+    "no message dispatched when disabled" 0 (List.length !msgs)
+
+(* Checkbox: disabled->enabled restores handler *)
+let test_reconcile_checkbox_disabled_to_enabled () =
+  let parent = fresh_parent () in
+  let dispatch, msgs = fresh_dispatch () in
+  let el1 =
+    Checkbox
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        checked = false;
+        disabled = true;
+        on_toggle = Some (fun b -> Toggled b);
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let el2 =
+    Checkbox
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        checked = false;
+        disabled = false;
+        on_toggle = Some (fun b -> Toggled b);
+      }
+  in
+  Nopal_web.Renderer.update ~dispatch handle el2;
+  let disabled_val =
+    Jv.call node "getAttribute" [| Jv.of_string "disabled" |]
+  in
+  Alcotest.(check bool) "disabled attr removed" true (Jv.is_null disabled_val);
+  (* Dispatch a change event — should produce a message *)
+  let ev = Jv.new' (Jv.get Jv.global "Event") [| Jv.of_string "change" |] in
+  ignore (Jv.call node "dispatchEvent" [| ev |]);
+  Alcotest.(check int) "message dispatched when enabled" 1 (List.length !msgs)
+
+(* --- Radio reconciliation --- *)
+
+(* Radio: checked state changes *)
+let test_reconcile_radio_checked_state_changes () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let el1 =
+    Radio
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        name = "color";
+        checked = false;
+        disabled = false;
+        on_select = Some Selected;
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let node = Nopal_web.Renderer.dom_node handle in
+  Alcotest.(check bool) "initially unchecked" false (Jv.Bool.get node "checked");
+  let el2 =
+    Radio
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        name = "color";
+        checked = true;
+        disabled = false;
+        on_select = Some Selected;
+      }
+  in
+  Nopal_web.Renderer.update ~dispatch handle el2;
+  let node_after = Nopal_web.Renderer.dom_node handle in
+  Alcotest.(check bool) "same node reused" true (node == node_after);
+  Alcotest.(check bool)
+    "checked updated to true" true
+    (Jv.Bool.get node "checked")
+
+(* Radio: enabled->disabled suppresses handler *)
+let test_reconcile_radio_enabled_to_disabled () =
+  let parent = fresh_parent () in
+  let dispatch, msgs = fresh_dispatch () in
+  let el1 =
+    Radio
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        name = "color";
+        checked = false;
+        disabled = false;
+        on_select = Some Selected;
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let el2 =
+    Radio
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        name = "color";
+        checked = false;
+        disabled = true;
+        on_select = Some Selected;
+      }
+  in
+  Nopal_web.Renderer.update ~dispatch handle el2;
+  let disabled_val =
+    Jv.call node "getAttribute" [| Jv.of_string "disabled" |]
+  in
+  Alcotest.(check bool) "disabled attr set" false (Jv.is_null disabled_val);
+  let ev = Jv.new' (Jv.get Jv.global "Event") [| Jv.of_string "change" |] in
+  ignore (Jv.call node "dispatchEvent" [| ev |]);
+  Alcotest.(check int)
+    "no message dispatched when disabled" 0 (List.length !msgs)
+
+(* Radio: disabled->enabled restores handler *)
+let test_reconcile_radio_disabled_to_enabled () =
+  let parent = fresh_parent () in
+  let dispatch, msgs = fresh_dispatch () in
+  let el1 =
+    Radio
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        name = "color";
+        checked = false;
+        disabled = true;
+        on_select = Some Selected;
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let el2 =
+    Radio
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        name = "color";
+        checked = false;
+        disabled = false;
+        on_select = Some Selected;
+      }
+  in
+  Nopal_web.Renderer.update ~dispatch handle el2;
+  let disabled_val =
+    Jv.call node "getAttribute" [| Jv.of_string "disabled" |]
+  in
+  Alcotest.(check bool) "disabled attr removed" true (Jv.is_null disabled_val);
+  let ev = Jv.new' (Jv.get Jv.global "Event") [| Jv.of_string "change" |] in
+  ignore (Jv.call node "dispatchEvent" [| ev |]);
+  Alcotest.(check int) "message dispatched when enabled" 1 (List.length !msgs)
+
+(* --- Select reconciliation --- *)
+
+let opts_ab : select_option list =
+  [
+    { value = "a"; label = "Alpha"; disabled = false };
+    { value = "b"; label = "Beta"; disabled = false };
+  ]
+
+let opts_abc : select_option list =
+  [
+    { value = "a"; label = "Alpha"; disabled = false };
+    { value = "b"; label = "Beta"; disabled = false };
+    { value = "c"; label = "Gamma"; disabled = false };
+  ]
+
+let opts_a_only : select_option list =
+  [ { value = "a"; label = "Alpha"; disabled = false } ]
+
+(* Select: selected value changes *)
+let test_reconcile_select_selected_value_changes () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let el1 =
+    Select
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        options = opts_ab;
+        selected = "a";
+        disabled = false;
+        on_change = Some (fun v -> Change v);
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let el2 =
+    Select
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        options = opts_ab;
+        selected = "b";
+        disabled = false;
+        on_change = Some (fun v -> Change v);
+      }
+  in
+  Nopal_web.Renderer.update ~dispatch handle el2;
+  let node_after = Nopal_web.Renderer.dom_node handle in
+  Alcotest.(check bool) "same node reused" true (node == node_after);
+  (* Check that the selected option is now "b" by inspecting the value property *)
+  let value = Jv.Jstr.get node "value" |> Jstr.to_string in
+  Alcotest.(check string) "selected value is b" "b" value
+
+(* Select: options list grows (add option) *)
+let test_reconcile_select_options_add () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let el1 =
+    Select
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        options = opts_ab;
+        selected = "a";
+        disabled = false;
+        on_change = Some (fun v -> Change v);
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let count_before = Jv.Int.get (Jv.get node "childNodes") "length" in
+  Alcotest.(check int) "2 options initially" 2 count_before;
+  let el2 =
+    Select
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        options = opts_abc;
+        selected = "a";
+        disabled = false;
+        on_change = Some (fun v -> Change v);
+      }
+  in
+  Nopal_web.Renderer.update ~dispatch handle el2;
+  let count_after = Jv.Int.get (Jv.get node "childNodes") "length" in
+  Alcotest.(check int) "3 options after add" 3 count_after
+
+(* Select: options list shrinks (remove option) *)
+let test_reconcile_select_options_remove () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let el1 =
+    Select
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        options = opts_ab;
+        selected = "a";
+        disabled = false;
+        on_change = Some (fun v -> Change v);
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let count_before = Jv.Int.get (Jv.get node "childNodes") "length" in
+  Alcotest.(check int) "2 options initially" 2 count_before;
+  let el2 =
+    Select
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        options = opts_a_only;
+        selected = "a";
+        disabled = false;
+        on_change = Some (fun v -> Change v);
+      }
+  in
+  Nopal_web.Renderer.update ~dispatch handle el2;
+  let count_after = Jv.Int.get (Jv.get node "childNodes") "length" in
+  Alcotest.(check int) "1 option after remove" 1 count_after
+
+(* Select: enabled->disabled suppresses handler *)
+let test_reconcile_select_enabled_to_disabled () =
+  let parent = fresh_parent () in
+  let dispatch, msgs = fresh_dispatch () in
+  let el1 =
+    Select
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        options = opts_ab;
+        selected = "a";
+        disabled = false;
+        on_change = Some (fun v -> Change v);
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let el2 =
+    Select
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        options = opts_ab;
+        selected = "a";
+        disabled = true;
+        on_change = Some (fun v -> Change v);
+      }
+  in
+  Nopal_web.Renderer.update ~dispatch handle el2;
+  let disabled_val =
+    Jv.call node "getAttribute" [| Jv.of_string "disabled" |]
+  in
+  Alcotest.(check bool) "disabled attr set" false (Jv.is_null disabled_val);
+  let ev = Jv.new' (Jv.get Jv.global "Event") [| Jv.of_string "change" |] in
+  ignore (Jv.call node "dispatchEvent" [| ev |]);
+  Alcotest.(check int)
+    "no message dispatched when disabled" 0 (List.length !msgs)
+
+(* Select: disabled->enabled restores handler *)
+let test_reconcile_select_disabled_to_enabled () =
+  let parent = fresh_parent () in
+  let dispatch, msgs = fresh_dispatch () in
+  let el1 =
+    Select
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        options = opts_ab;
+        selected = "a";
+        disabled = true;
+        on_change = Some (fun v -> Change v);
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let el2 =
+    Select
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        options = opts_ab;
+        selected = "a";
+        disabled = false;
+        on_change = Some (fun v -> Change v);
+      }
+  in
+  Nopal_web.Renderer.update ~dispatch handle el2;
+  let disabled_val =
+    Jv.call node "getAttribute" [| Jv.of_string "disabled" |]
+  in
+  Alcotest.(check bool) "disabled attr removed" true (Jv.is_null disabled_val);
+  let ev = Jv.new' (Jv.get Jv.global "Event") [| Jv.of_string "change" |] in
+  ignore (Jv.call node "dispatchEvent" [| ev |]);
+  Alcotest.(check int) "message dispatched when enabled" 1 (List.length !msgs)
+
 let () =
   Alcotest.run "nopal_web"
     [
@@ -1557,6 +2031,39 @@ let () =
             `Quick test_reconcile_input_updates_changed_placeholder;
           Alcotest.test_case "reconcile input skips unchanged attrs" `Quick
             test_reconcile_input_skips_unchanged_attrs;
+        ] );
+      ( "checkbox reconciliation",
+        [
+          Alcotest.test_case "checked true->false" `Quick
+            test_reconcile_checkbox_checked_true_to_false;
+          Alcotest.test_case "checked false->true" `Quick
+            test_reconcile_checkbox_checked_false_to_true;
+          Alcotest.test_case "enabled->disabled suppresses handler" `Quick
+            test_reconcile_checkbox_enabled_to_disabled;
+          Alcotest.test_case "disabled->enabled restores handler" `Quick
+            test_reconcile_checkbox_disabled_to_enabled;
+        ] );
+      ( "radio reconciliation",
+        [
+          Alcotest.test_case "checked state changes" `Quick
+            test_reconcile_radio_checked_state_changes;
+          Alcotest.test_case "enabled->disabled suppresses handler" `Quick
+            test_reconcile_radio_enabled_to_disabled;
+          Alcotest.test_case "disabled->enabled restores handler" `Quick
+            test_reconcile_radio_disabled_to_enabled;
+        ] );
+      ( "select reconciliation",
+        [
+          Alcotest.test_case "selected value changes" `Quick
+            test_reconcile_select_selected_value_changes;
+          Alcotest.test_case "options list add" `Quick
+            test_reconcile_select_options_add;
+          Alcotest.test_case "options list remove" `Quick
+            test_reconcile_select_options_remove;
+          Alcotest.test_case "enabled->disabled suppresses handler" `Quick
+            test_reconcile_select_enabled_to_disabled;
+          Alcotest.test_case "disabled->enabled restores handler" `Quick
+            test_reconcile_select_disabled_to_enabled;
         ] );
       ( "keyed reconciliation",
         [
