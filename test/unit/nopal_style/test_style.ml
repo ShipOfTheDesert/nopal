@@ -3,51 +3,35 @@ open Nopal_style.Style
 (* --- Default layout tests --- *)
 
 let test_default_layout_values () =
-  Alcotest.(check string)
-    "direction is Column_dir" "Column_dir"
-    (match default_layout.direction with
-    | Column_dir -> "Column_dir"
-    | Row_dir -> "Row_dir");
-  Alcotest.(check string)
-    "main_align is Start" "Start"
-    (match default_layout.main_align with
-    | Start -> "Start"
-    | Center -> "Center"
-    | End_ -> "End_"
-    | Stretch -> "Stretch"
-    | Space_between -> "Space_between");
-  Alcotest.(check string)
-    "cross_align is Start" "Start"
-    (match default_layout.cross_align with
-    | Start -> "Start"
-    | Center -> "Center"
-    | End_ -> "End_"
-    | Stretch -> "Stretch"
-    | Space_between -> "Space_between");
-  Alcotest.(check bool) "wrap is false" false default_layout.wrap;
-  Alcotest.(check (float 0.001)) "gap is 0." 0. default_layout.gap;
-  Alcotest.(check (float 0.001))
-    "padding_top is 0." 0. default_layout.padding_top;
-  Alcotest.(check (float 0.001))
-    "padding_right is 0." 0. default_layout.padding_right;
-  Alcotest.(check (float 0.001))
-    "padding_bottom is 0." 0. default_layout.padding_bottom;
-  Alcotest.(check (float 0.001))
-    "padding_left is 0." 0. default_layout.padding_left;
-  Alcotest.(check string)
-    "width is Hug" "Hug"
-    (match default_layout.width with
-    | Hug -> "Hug"
-    | Fill -> "Fill"
-    | Fixed _ -> "Fixed"
-    | Fraction _ -> "Fraction");
-  Alcotest.(check string)
-    "height is Hug" "Hug"
-    (match default_layout.height with
-    | Hug -> "Hug"
-    | Fill -> "Fill"
-    | Fixed _ -> "Fixed"
-    | Fraction _ -> "Fraction");
+  Alcotest.(check bool)
+    "direction is None" true
+    (Option.is_none default_layout.direction);
+  Alcotest.(check bool)
+    "main_align is None" true
+    (Option.is_none default_layout.main_align);
+  Alcotest.(check bool)
+    "cross_align is None" true
+    (Option.is_none default_layout.cross_align);
+  Alcotest.(check bool) "wrap is None" true (Option.is_none default_layout.wrap);
+  Alcotest.(check bool) "gap is None" true (Option.is_none default_layout.gap);
+  Alcotest.(check bool)
+    "padding_top is None" true
+    (Option.is_none default_layout.padding_top);
+  Alcotest.(check bool)
+    "padding_right is None" true
+    (Option.is_none default_layout.padding_right);
+  Alcotest.(check bool)
+    "padding_bottom is None" true
+    (Option.is_none default_layout.padding_bottom);
+  Alcotest.(check bool)
+    "padding_left is None" true
+    (Option.is_none default_layout.padding_left);
+  Alcotest.(check bool)
+    "width is None" true
+    (Option.is_none default_layout.width);
+  Alcotest.(check bool)
+    "height is None" true
+    (Option.is_none default_layout.height);
   Alcotest.(check (option (float 0.001)))
     "flex_grow is None" None default_layout.flex_grow
 
@@ -89,47 +73,51 @@ let test_default_style_is_defaults () =
 (* --- Size value tests --- *)
 
 let test_size_fill () =
-  let l = { default_layout with width = Fill } in
+  let l = { default_layout with width = Some Fill } in
   Alcotest.(check string)
     "Fill assigned" "Fill"
     (match l.width with
-    | Fill -> "Fill"
-    | Hug
-    | Fixed _
-    | Fraction _ ->
+    | Some Fill -> "Fill"
+    | Some Hug
+    | Some (Fixed _)
+    | Some (Fraction _)
+    | None ->
         "other")
 
 let test_size_hug () =
-  let l = { default_layout with width = Hug } in
+  let l = { default_layout with width = Some Hug } in
   Alcotest.(check string)
     "Hug assigned" "Hug"
     (match l.width with
-    | Hug -> "Hug"
-    | Fill
-    | Fixed _
-    | Fraction _ ->
+    | Some Hug -> "Hug"
+    | Some Fill
+    | Some (Fixed _)
+    | Some (Fraction _)
+    | None ->
         "other")
 
 let test_size_fixed () =
-  let l = { default_layout with width = Fixed 100. } in
+  let l = { default_layout with width = Some (Fixed 100.) } in
   Alcotest.(check (float 0.001))
     "Fixed carries value" 100.
     (match l.width with
-    | Fixed v -> v
-    | Fill
-    | Hug
-    | Fraction _ ->
+    | Some (Fixed v) -> v
+    | Some Fill
+    | Some Hug
+    | Some (Fraction _)
+    | None ->
         -1.)
 
 let test_size_fraction () =
-  let l = { default_layout with width = Fraction 0.5 } in
+  let l = { default_layout with width = Some (Fraction 0.5) } in
   Alcotest.(check (float 0.001))
     "Fraction carries value" 0.5
     (match l.width with
-    | Fraction v -> v
-    | Fill
-    | Hug
-    | Fixed _ ->
+    | Some (Fraction v) -> v
+    | Some Fill
+    | Some Hug
+    | Some (Fixed _)
+    | None ->
         -1.)
 
 (* --- Color value tests --- *)
@@ -230,20 +218,31 @@ let test_default_shadow_values () =
 (* --- Update function tests --- *)
 
 let test_with_layout_returns_new_style () =
-  let s = with_layout (fun l -> { l with gap = 10. }) default in
+  let s = with_layout (fun l -> { l with gap = Some 10. }) default in
   Alcotest.(check bool) "not same reference" true (s != default);
-  Alcotest.(check (float 0.001)) "gap changed" 10. s.layout.gap
+  Alcotest.(check bool)
+    "gap changed" true
+    (match s.layout.gap with
+    | Some v -> Float.equal v 10.
+    | None -> false)
 
 let test_with_layout_applies_fn () =
   let s =
-    with_layout (fun l -> { l with direction = Row_dir; wrap = true }) default
+    with_layout
+      (fun l -> { l with direction = Some Row_dir; wrap = Some true })
+      default
   in
   Alcotest.(check string)
     "direction is Row_dir" "Row_dir"
     (match s.layout.direction with
-    | Row_dir -> "Row_dir"
-    | Column_dir -> "Column_dir");
-  Alcotest.(check bool) "wrap is true" true s.layout.wrap
+    | Some Row_dir -> "Row_dir"
+    | Some Column_dir -> "Column_dir"
+    | None -> "None");
+  Alcotest.(check bool)
+    "wrap is Some true" true
+    (match s.layout.wrap with
+    | Some true -> true
+    | _ -> false)
 
 let test_with_paint_returns_new_style () =
   let s = with_paint (fun p -> { p with opacity = 0.5 }) default in
@@ -267,25 +266,29 @@ let test_with_paint_applies_fn () =
     | Visible -> "Visible")
 
 let test_set_layout_replaces () =
-  let new_layout = { default_layout with gap = 42. } in
+  let new_layout = { default_layout with gap = Some 42. } in
   let s = set_layout new_layout default in
-  Alcotest.(check (float 0.001)) "layout replaced" 42. s.layout.gap;
+  Alcotest.(check bool)
+    "layout replaced" true
+    (match s.layout.gap with
+    | Some v -> Float.equal v 42.
+    | None -> false);
   Alcotest.(check (float 0.001)) "paint unchanged" 1.0 s.paint.opacity
 
 let test_set_paint_replaces () =
   let new_paint = { default_paint with opacity = 0.3 } in
   let s = set_paint new_paint default in
   Alcotest.(check (float 0.001)) "paint replaced" 0.3 s.paint.opacity;
-  Alcotest.(check string)
-    "layout unchanged" "Column_dir"
-    (match s.layout.direction with
-    | Column_dir -> "Column_dir"
-    | Row_dir -> "Row_dir")
+  Alcotest.(check bool)
+    "layout unchanged (direction is None)" true
+    (Option.is_none s.layout.direction)
 
 let test_original_unchanged_after_with_layout () =
   let original = default in
-  let _modified = with_layout (fun l -> { l with gap = 99. }) original in
-  Alcotest.(check (float 0.001)) "original gap unchanged" 0. original.layout.gap
+  let _modified = with_layout (fun l -> { l with gap = Some 99. }) original in
+  Alcotest.(check bool)
+    "original gap unchanged (None)" true
+    (Option.is_none original.layout.gap)
 
 let test_original_unchanged_after_with_paint () =
   let original = default in
@@ -297,17 +300,17 @@ let test_original_unchanged_after_with_paint () =
 
 let test_padding_sets_four_sides () =
   let l = padding 1. 2. 3. 4. default_layout in
-  Alcotest.(check (float 0.001)) "top" 1. l.padding_top;
-  Alcotest.(check (float 0.001)) "right" 2. l.padding_right;
-  Alcotest.(check (float 0.001)) "bottom" 3. l.padding_bottom;
-  Alcotest.(check (float 0.001)) "left" 4. l.padding_left
+  Alcotest.(check (option (float 0.001))) "top" (Some 1.) l.padding_top;
+  Alcotest.(check (option (float 0.001))) "right" (Some 2.) l.padding_right;
+  Alcotest.(check (option (float 0.001))) "bottom" (Some 3.) l.padding_bottom;
+  Alcotest.(check (option (float 0.001))) "left" (Some 4.) l.padding_left
 
 let test_padding_all_sets_uniform () =
   let l = padding_all 8. default_layout in
-  Alcotest.(check (float 0.001)) "top" 8. l.padding_top;
-  Alcotest.(check (float 0.001)) "right" 8. l.padding_right;
-  Alcotest.(check (float 0.001)) "bottom" 8. l.padding_bottom;
-  Alcotest.(check (float 0.001)) "left" 8. l.padding_left
+  Alcotest.(check (option (float 0.001))) "top" (Some 8.) l.padding_top;
+  Alcotest.(check (option (float 0.001))) "right" (Some 8.) l.padding_right;
+  Alcotest.(check (option (float 0.001))) "bottom" (Some 8.) l.padding_bottom;
+  Alcotest.(check (option (float 0.001))) "left" (Some 8.) l.padding_left
 
 (* --- Equality tests --- *)
 
@@ -315,7 +318,7 @@ let test_equal_default_default () =
   Alcotest.(check bool) "default = default" true (equal default default)
 
 let test_equal_different_layout () =
-  let s = with_layout (fun l -> { l with gap = 5. }) default in
+  let s = with_layout (fun l -> { l with gap = Some 5. }) default in
   Alcotest.(check bool) "different layout" false (equal default s)
 
 let test_equal_different_paint () =
@@ -338,8 +341,8 @@ let test_equal_color_different_variants () =
     (equal_color (rgba 255 0 0 1.0) (hex "#ff0000"))
 
 let test_equal_layout_same () =
-  let l1 = { default_layout with gap = 10.; direction = Row_dir } in
-  let l2 = { default_layout with gap = 10.; direction = Row_dir } in
+  let l1 = { default_layout with gap = Some 10.; direction = Some Row_dir } in
+  let l2 = { default_layout with gap = Some 10.; direction = Some Row_dir } in
   Alcotest.(check bool) "same layout" true (equal_layout l1 l2)
 
 let test_equal_paint_same () =
@@ -397,6 +400,101 @@ let test_backward_compat_default_layout_paint () =
   Alcotest.(check bool)
     "default still has correct paint" true
     (equal_paint default.paint default_paint)
+
+(* --- Optional layout fields tests --- *)
+
+let test_default_layout_all_none () =
+  Alcotest.(check bool)
+    "direction is None" true
+    (Option.is_none default_layout.direction);
+  Alcotest.(check bool)
+    "main_align is None" true
+    (Option.is_none default_layout.main_align);
+  Alcotest.(check bool)
+    "cross_align is None" true
+    (Option.is_none default_layout.cross_align);
+  Alcotest.(check bool) "wrap is None" true (Option.is_none default_layout.wrap);
+  Alcotest.(check bool) "gap is None" true (Option.is_none default_layout.gap);
+  Alcotest.(check bool)
+    "padding_top is None" true
+    (Option.is_none default_layout.padding_top);
+  Alcotest.(check bool)
+    "padding_right is None" true
+    (Option.is_none default_layout.padding_right);
+  Alcotest.(check bool)
+    "padding_bottom is None" true
+    (Option.is_none default_layout.padding_bottom);
+  Alcotest.(check bool)
+    "padding_left is None" true
+    (Option.is_none default_layout.padding_left);
+  Alcotest.(check bool)
+    "width is None" true
+    (Option.is_none default_layout.width);
+  Alcotest.(check bool)
+    "height is None" true
+    (Option.is_none default_layout.height);
+  Alcotest.(check bool)
+    "flex_grow is None" true
+    (Option.is_none default_layout.flex_grow)
+
+let test_padding_helpers_wrap_some () =
+  let l = padding 1. 2. 3. 4. default_layout in
+  Alcotest.(check bool)
+    "padding_top is Some 1." true
+    (match l.padding_top with
+    | Some v -> Float.equal v 1.
+    | None -> false);
+  Alcotest.(check bool)
+    "padding_right is Some 2." true
+    (match l.padding_right with
+    | Some v -> Float.equal v 2.
+    | None -> false);
+  Alcotest.(check bool)
+    "padding_bottom is Some 3." true
+    (match l.padding_bottom with
+    | Some v -> Float.equal v 3.
+    | None -> false);
+  Alcotest.(check bool)
+    "padding_left is Some 4." true
+    (match l.padding_left with
+    | Some v -> Float.equal v 4.
+    | None -> false);
+  let l2 = padding_all 8. default_layout in
+  Alcotest.(check bool)
+    "padding_all top is Some 8." true
+    (match l2.padding_top with
+    | Some v -> Float.equal v 8.
+    | None -> false);
+  Alcotest.(check bool)
+    "padding_all right is Some 8." true
+    (match l2.padding_right with
+    | Some v -> Float.equal v 8.
+    | None -> false);
+  Alcotest.(check bool)
+    "padding_all bottom is Some 8." true
+    (match l2.padding_bottom with
+    | Some v -> Float.equal v 8.
+    | None -> false);
+  Alcotest.(check bool)
+    "padding_all left is Some 8." true
+    (match l2.padding_left with
+    | Some v -> Float.equal v 8.
+    | None -> false)
+
+let test_equal_layout_none_fields () =
+  (* Two all-None layouts are equal *)
+  Alcotest.(check bool)
+    "all-None layouts equal" true
+    (equal_layout default_layout default_layout);
+  (* Some vs None is not equal *)
+  let l = { default_layout with gap = Some 4.0 } in
+  Alcotest.(check bool)
+    "Some gap vs None gap" false
+    (equal_layout default_layout l);
+  (* Two identical Some values are equal *)
+  let l1 = { default_layout with direction = Some Row_dir; gap = Some 4.0 } in
+  let l2 = { default_layout with direction = Some Row_dir; gap = Some 4.0 } in
+  Alcotest.(check bool) "same Some values equal" true (equal_layout l1 l2)
 
 (* --- Test runner --- *)
 
@@ -485,6 +583,15 @@ let () =
             test_equal_color_different_variants;
           Alcotest.test_case "equal_layout_same" `Quick test_equal_layout_same;
           Alcotest.test_case "equal_paint_same" `Quick test_equal_paint_same;
+        ] );
+      ( "Optional layout fields",
+        [
+          Alcotest.test_case "default_layout_all_none" `Quick
+            test_default_layout_all_none;
+          Alcotest.test_case "padding_helpers_wrap_some" `Quick
+            test_padding_helpers_wrap_some;
+          Alcotest.test_case "equal_layout_none_fields" `Quick
+            test_equal_layout_none_fields;
         ] );
       ( "Text integration",
         [

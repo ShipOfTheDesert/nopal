@@ -6,7 +6,7 @@ let entry ~label ~color = { label; color }
 let swatch_style color =
   Nopal_style.Style.default
   |> Nopal_style.Style.with_layout (fun l ->
-      { l with width = Fixed 12.0; height = Fixed 12.0 })
+      { l with width = Some (Fixed 12.0); height = Some (Fixed 12.0) })
   |> Nopal_style.Style.with_paint (fun p ->
       {
         p with

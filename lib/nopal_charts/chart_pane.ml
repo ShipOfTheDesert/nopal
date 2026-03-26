@@ -39,7 +39,11 @@ let view ~panes ~domain_window ~width ~height ?on_pointer_down ?on_pointer_move
               let style =
                 Nopal_style.Style.default
                 |> Nopal_style.Style.with_layout (fun l ->
-                    { l with width = Fixed width; height = Fixed pane_height })
+                    {
+                      l with
+                      width = Some (Fixed width);
+                      height = Some (Fixed pane_height);
+                    })
               in
               Nopal_element.Element.box ~style
                 [ p.chart domain_window ~width ~height:pane_height ])
@@ -49,7 +53,11 @@ let view ~panes ~domain_window ~width ~height ?on_pointer_down ?on_pointer_move
         let outer_style =
           Nopal_style.Style.default
           |> Nopal_style.Style.with_layout (fun l ->
-              { l with width = Fixed width; height = Fixed height })
+              {
+                l with
+                width = Some (Fixed width);
+                height = Some (Fixed height);
+              })
         in
         Nopal_element.Element.box ~style:outer_style ?on_pointer_down
           ?on_pointer_move ?on_pointer_up ?on_pointer_leave ?on_wheel [ column ]

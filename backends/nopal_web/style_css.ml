@@ -128,62 +128,101 @@ let of_style (style : t) =
   let paint = style.paint in
   let acc = [] in
   let add acc property value = { property; value } :: acc in
-  (* Layout properties — only emit when different from default.
-     TODO(perf): this evaluates all layout fields when any single one differs.
-     A per-field comparison would emit only changed properties. See ROADMAP.md
-     "of_style Per-Field Comparison". *)
+  (* Layout properties — emit per-field, only when Some *)
   let acc =
-    if not (equal_layout layout default_layout) then
-      let acc =
-        match layout.direction with
-        | Row_dir -> add acc "flex-direction" "row"
-        | Column_dir -> add acc "flex-direction" "column"
-      in
-      let acc =
-        match layout.main_align with
-        | Start -> acc
-        | other -> add acc "justify-content" (align_to_justify other)
-      in
-      let acc =
-        match layout.cross_align with
-        | Start -> acc
-        | other -> add acc "align-items" (align_to_items other)
-      in
-      let acc = if layout.wrap then add acc "flex-wrap" "wrap" else acc in
-      let acc =
-        if not (Float.equal layout.gap 0.) then
-          add acc "gap" (Printf.sprintf "%gpx" layout.gap)
+    match layout.direction with
+    | Some Row_dir -> add acc "flex-direction" "row"
+    | Some Column_dir -> add acc "flex-direction" "column"
+    | None -> acc
+  in
+  let acc =
+    match layout.main_align with
+    | Some a -> add acc "justify-content" (align_to_justify a)
+    | None -> acc
+  in
+  let acc =
+    match layout.cross_align with
+    | Some a -> add acc "align-items" (align_to_items a)
+    | None -> acc
+  in
+  let acc =
+    match layout.wrap with
+    | Some true -> add acc "flex-wrap" "wrap"
+    | Some false
+    | None ->
+        acc
+  in
+  let acc =
+    match layout.gap with
+    | Some g when not (Float.equal g 0.) ->
+        add acc "gap" (Printf.sprintf "%gpx" g)
+    | Some _
+    | None ->
+        acc
+  in
+  let acc =
+    match
+      ( layout.padding_top,
+        layout.padding_right,
+        layout.padding_bottom,
+        layout.padding_left )
+    with
+    | Some pt, Some pr, Some pb, Some pl ->
+        if
+          not
+            (Float.equal pt 0.
+            && Float.equal pr 0.
+            && Float.equal pb 0.
+            && Float.equal pl 0.)
+        then
+          add acc "padding" (Printf.sprintf "%gpx %gpx %gpx %gpx" pt pr pb pl)
         else acc
-      in
-      let has_padding =
-        not
-          (Float.equal layout.padding_top 0.
-          && Float.equal layout.padding_right 0.
-          && Float.equal layout.padding_bottom 0.
-          && Float.equal layout.padding_left 0.)
-      in
-      let acc =
-        if has_padding then
-          add acc "padding"
-            (Printf.sprintf "%gpx %gpx %gpx %gpx" layout.padding_top
-               layout.padding_right layout.padding_bottom layout.padding_left)
-        else acc
-      in
-      let acc =
-        let w = size_to_css layout.width in
+    | _ ->
+        (* Emit individual padding properties for partially-set padding *)
+        let acc =
+          match layout.padding_top with
+          | Some v when not (Float.equal v 0.) ->
+              add acc "padding-top" (Printf.sprintf "%gpx" v)
+          | _ -> acc
+        in
+        let acc =
+          match layout.padding_right with
+          | Some v when not (Float.equal v 0.) ->
+              add acc "padding-right" (Printf.sprintf "%gpx" v)
+          | _ -> acc
+        in
+        let acc =
+          match layout.padding_bottom with
+          | Some v when not (Float.equal v 0.) ->
+              add acc "padding-bottom" (Printf.sprintf "%gpx" v)
+          | _ -> acc
+        in
+        let acc =
+          match layout.padding_left with
+          | Some v when not (Float.equal v 0.) ->
+              add acc "padding-left" (Printf.sprintf "%gpx" v)
+          | _ -> acc
+        in
+        acc
+  in
+  let acc =
+    match layout.width with
+    | Some s ->
+        let w = size_to_css s in
         if not (String.equal w "") then add acc "width" w else acc
-      in
-      let acc =
-        let h = size_to_css layout.height in
+    | None -> acc
+  in
+  let acc =
+    match layout.height with
+    | Some s ->
+        let h = size_to_css s in
         if not (String.equal h "") then add acc "height" h else acc
-      in
-      let acc =
-        match layout.flex_grow with
-        | Some g -> add acc "flex-grow" (Printf.sprintf "%g" g)
-        | None -> acc
-      in
-      acc
-    else acc
+    | None -> acc
+  in
+  let acc =
+    match layout.flex_grow with
+    | Some g -> add acc "flex-grow" (Printf.sprintf "%g" g)
+    | None -> acc
   in
   (* Paint properties — only emit when different from default *)
   let acc =

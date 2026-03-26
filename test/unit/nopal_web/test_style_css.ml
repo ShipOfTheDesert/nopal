@@ -17,6 +17,15 @@ let check_has_prop name expected_value props =
         (Printf.sprintf "%s value" name)
         expected_value p.value
 
+let check_no_prop name props =
+  match find_prop name props with
+  | None -> ()
+  | Some _ ->
+      Alcotest.fail
+        (Printf.sprintf "expected property %S to be absent but found in [%s]"
+           name
+           (String.concat "; " (List.map css_prop_to_string props)))
+
 (* 1 *)
 let test_default_style_produces_empty () =
   let props = of_style default in
@@ -39,10 +48,10 @@ let test_padding_produces_css () =
       (fun l ->
         {
           l with
-          padding_top = 10.;
-          padding_right = 20.;
-          padding_bottom = 30.;
-          padding_left = 40.;
+          padding_top = Some 10.;
+          padding_right = Some 20.;
+          padding_bottom = Some 30.;
+          padding_left = Some 40.;
         })
       default
   in
@@ -51,7 +60,9 @@ let test_padding_produces_css () =
 
 (* 4 *)
 let test_flex_direction_row () =
-  let style = with_layout (fun l -> { l with direction = Row_dir }) default in
+  let style =
+    with_layout (fun l -> { l with direction = Some Row_dir }) default
+  in
   let props = of_style style in
   check_has_prop "flex-direction" "row" props
 
@@ -85,19 +96,23 @@ let test_to_inline_string_joins () =
 
 (* 7 *)
 let test_size_fill_produces_100_percent () =
-  let style = with_layout (fun l -> { l with width = Fill }) default in
+  let style = with_layout (fun l -> { l with width = Some Fill }) default in
   let props = of_style style in
   check_has_prop "width" "100%" props
 
 (* 8 *)
 let test_size_fixed_produces_px () =
-  let style = with_layout (fun l -> { l with width = Fixed 200. }) default in
+  let style =
+    with_layout (fun l -> { l with width = Some (Fixed 200.) }) default
+  in
   let props = of_style style in
   check_has_prop "width" "200px" props
 
 (* 9 *)
 let test_size_fraction_produces_percent () =
-  let style = with_layout (fun l -> { l with width = Fraction 0.5 }) default in
+  let style =
+    with_layout (fun l -> { l with width = Some (Fraction 0.5) }) default
+  in
   let props = of_style style in
   check_has_prop "width" "50%" props
 
@@ -129,7 +144,7 @@ let test_shadow_produces_box_shadow () =
 
 (* 13 *)
 let test_gap_produces_css () =
-  let style = with_layout (fun l -> { l with gap = 10. }) default in
+  let style = with_layout (fun l -> { l with gap = Some 10. }) default in
   let props = of_style style in
   check_has_prop "gap" "10px" props
 
@@ -141,24 +156,30 @@ let test_flex_grow_produces_css () =
 
 (* 15 *)
 let test_align_center_produces_css () =
-  let style = with_layout (fun l -> { l with main_align = Center }) default in
+  let style =
+    with_layout (fun l -> { l with main_align = Some Center }) default
+  in
   let props = of_style style in
   check_has_prop "justify-content" "center" props
 
 (* 16 *)
 let test_cross_align_stretch_produces_css () =
-  let style = with_layout (fun l -> { l with cross_align = Stretch }) default in
+  let style =
+    with_layout (fun l -> { l with cross_align = Some Stretch }) default
+  in
   let props = of_style style in
   check_has_prop "align-items" "stretch" props
 
 (* 17 *)
 let test_wrap_produces_css () =
-  let style = with_layout (fun l -> { l with wrap = true }) default in
+  let style = with_layout (fun l -> { l with wrap = Some true }) default in
   let props = of_style style in
   check_has_prop "flex-wrap" "wrap" props
 
 let test_size_hug_produces_no_property () =
-  let style = with_layout (fun l -> { l with width = Hug; gap = 1. }) default in
+  let style =
+    with_layout (fun l -> { l with width = Some Hug; gap = Some 1. }) default
+  in
   let props = of_style style in
   let has_width = find_prop "width" props in
   Alcotest.(check bool) "no width property" true (Option.is_none has_width)
@@ -528,6 +549,99 @@ let test_normalize_key_same_key_for_identical_styles () =
   let key_b = normalize_key css_b "_nopal_ix_7" in
   Alcotest.(check string) "same normalized key" key_a key_b
 
+(* ── Optional layout field CSS emission tests ── *)
+
+let test_css_omits_all_for_default_layout () =
+  let style = default in
+  let props = of_style style in
+  check_no_prop "flex-direction" props;
+  check_no_prop "justify-content" props;
+  check_no_prop "align-items" props;
+  check_no_prop "flex-wrap" props;
+  check_no_prop "gap" props;
+  check_no_prop "padding" props;
+  check_no_prop "width" props;
+  check_no_prop "height" props;
+  check_no_prop "flex-grow" props
+
+let test_css_emits_direction_when_set () =
+  let style =
+    with_layout (fun l -> { l with direction = Some Column_dir }) default
+  in
+  let props = of_style style in
+  check_has_prop "flex-direction" "column" props;
+  (* Only direction was set — no other layout props should appear *)
+  check_no_prop "justify-content" props;
+  check_no_prop "align-items" props;
+  check_no_prop "flex-wrap" props;
+  check_no_prop "gap" props;
+  check_no_prop "padding" props;
+  check_no_prop "width" props;
+  check_no_prop "height" props;
+  check_no_prop "flex-grow" props
+
+let test_css_emits_only_set_fields () =
+  let style =
+    with_layout
+      (fun l -> { l with gap = Some 16.; width = Some (Fixed 300.) })
+      default
+  in
+  let props = of_style style in
+  check_has_prop "gap" "16px" props;
+  check_has_prop "width" "300px" props;
+  (* Unset fields should not appear *)
+  check_no_prop "flex-direction" props;
+  check_no_prop "justify-content" props;
+  check_no_prop "align-items" props;
+  check_no_prop "flex-wrap" props;
+  check_no_prop "padding" props;
+  check_no_prop "height" props;
+  check_no_prop "flex-grow" props
+
+let test_css_partial_padding_emits_individual () =
+  let style =
+    with_layout
+      (fun l -> { l with padding_top = Some 10.; padding_left = Some 5. })
+      default
+  in
+  let props = of_style style in
+  check_has_prop "padding-top" "10px" props;
+  check_has_prop "padding-left" "5px" props;
+  check_no_prop "padding" props;
+  check_no_prop "padding-right" props;
+  check_no_prop "padding-bottom" props
+
+let test_css_emits_multiple_set_fields () =
+  let style =
+    with_layout
+      (fun _l ->
+        {
+          direction = Some Row_dir;
+          main_align = Some Center;
+          cross_align = Some End_;
+          wrap = Some true;
+          gap = Some 8.;
+          padding_top = Some 4.;
+          padding_right = Some 8.;
+          padding_bottom = Some 4.;
+          padding_left = Some 8.;
+          width = Some Fill;
+          height = Some (Fixed 100.);
+          flex_grow = Some 2.;
+        })
+      default
+  in
+  let props = of_style style in
+  check_has_prop "flex-direction" "row" props;
+  check_has_prop "justify-content" "center" props;
+  check_has_prop "align-items" "flex-end" props;
+  check_has_prop "flex-wrap" "wrap" props;
+  check_has_prop "gap" "8px" props;
+  check_has_prop "padding" "4px 8px 4px 8px" props;
+  check_has_prop "width" "100%" props;
+  check_has_prop "height" "100px" props;
+  check_has_prop "flex-grow" "2" props
+
 let () =
   Alcotest.run "style_css"
     [
@@ -654,5 +768,18 @@ let () =
           Alcotest.test_case "empty css" `Quick test_normalize_key_empty_css;
           Alcotest.test_case "same key for identical styles" `Quick
             test_normalize_key_same_key_for_identical_styles;
+        ] );
+      ( "optional_layout_css",
+        [
+          Alcotest.test_case "omits all for default layout" `Quick
+            test_css_omits_all_for_default_layout;
+          Alcotest.test_case "emits direction when set" `Quick
+            test_css_emits_direction_when_set;
+          Alcotest.test_case "emits only set fields" `Quick
+            test_css_emits_only_set_fields;
+          Alcotest.test_case "emits multiple set fields" `Quick
+            test_css_emits_multiple_set_fields;
+          Alcotest.test_case "partial padding emits individual" `Quick
+            test_css_partial_padding_emits_individual;
         ] );
     ]

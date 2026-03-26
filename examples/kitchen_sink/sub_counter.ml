@@ -16,17 +16,18 @@ let update model msg =
 
 let row_style =
   Style.default
-  |> Style.with_layout (fun l -> { l with cross_align = Center; gap = 8.0 })
+  |> Style.with_layout (fun l ->
+      { l with cross_align = Some Center; gap = Some 8.0 })
 
 let button_style =
   Style.default
   |> Style.with_layout (fun l ->
       {
         l with
-        width = Fixed 32.0;
-        height = Fixed 32.0;
-        main_align = Center;
-        cross_align = Center;
+        width = Some (Fixed 32.0);
+        height = Some (Fixed 32.0);
+        main_align = Some Center;
+        cross_align = Some Center;
       })
   |> Style.with_paint (fun p ->
       {

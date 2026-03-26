@@ -27,10 +27,11 @@ let label_text =
 
 let row_style =
   Style.default
-  |> Style.with_layout (fun l -> { l with gap = 12.0; cross_align = Center })
+  |> Style.with_layout (fun l ->
+      { l with gap = Some 12.0; cross_align = Some Center })
 
 let group_style =
-  Style.default |> Style.with_layout (fun l -> { l with gap = 8.0 })
+  Style.default |> Style.with_layout (fun l -> { l with gap = Some 8.0 })
 
 let view _vp model =
   Element.column ~style:group_style

@@ -43,11 +43,12 @@ let btn_style =
 let page_style =
   Nopal_style.Style.default
   |> Nopal_style.Style.with_layout (fun l ->
-      { l with gap = 20.0 } |> Nopal_style.Style.padding 32.0 32.0 32.0 32.0)
+      { l with gap = Some 20.0 }
+      |> Nopal_style.Style.padding 32.0 32.0 32.0 32.0)
 
 let section_style =
   Nopal_style.Style.default
-  |> Nopal_style.Style.with_layout (fun l -> { l with gap = 8.0 })
+  |> Nopal_style.Style.with_layout (fun l -> { l with gap = Some 8.0 })
 
 let init () =
   ( {

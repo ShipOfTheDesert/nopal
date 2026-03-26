@@ -29,17 +29,18 @@ let page_style =
   |> Style.with_layout (fun l ->
       {
         l with
-        width = Fill;
-        height = Fill;
-        main_align = Center;
-        cross_align = Center;
+        width = Some Fill;
+        height = Some Fill;
+        main_align = Some Center;
+        cross_align = Some Center;
       })
   |> Style.with_paint (fun p -> { p with background = Some bg_page })
 
 let card_style =
   Style.default
   |> Style.with_layout (fun l ->
-      { l with cross_align = Center; gap = 24.0 } |> Style.padding_all 40.0)
+      { l with cross_align = Some Center; gap = Some 24.0 }
+      |> Style.padding_all 40.0)
   |> Style.with_paint (fun p ->
       {
         p with
@@ -67,17 +68,22 @@ let count_text =
 let row_style =
   Style.default
   |> Style.with_layout (fun l ->
-      { l with direction = Row_dir; gap = 8.0; cross_align = Center })
+      {
+        l with
+        direction = Some Row_dir;
+        gap = Some 8.0;
+        cross_align = Some Center;
+      })
 
 let button_base =
   Style.default
   |> Style.with_layout (fun l ->
       {
         l with
-        width = Fixed 48.0;
-        height = Fixed 48.0;
-        main_align = Center;
-        cross_align = Center;
+        width = Some (Fixed 48.0);
+        height = Some (Fixed 48.0);
+        main_align = Some Center;
+        cross_align = Some Center;
       })
   |> Style.with_paint (fun p ->
       {

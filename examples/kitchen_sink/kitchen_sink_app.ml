@@ -14,7 +14,7 @@ let border_light = Style.hex "#dee2e6"
 let section_style =
   Style.default
   |> Style.with_layout (fun l ->
-      { l with gap = 12.0 } |> Style.padding_all 20.0)
+      { l with gap = Some 12.0 } |> Style.padding_all 20.0)
   |> Style.with_paint (fun p ->
       {
         p with
@@ -27,7 +27,7 @@ let section_style =
       })
 
 let section_body_style =
-  Style.default |> Style.with_layout (fun l -> { l with gap = 8.0 })
+  Style.default |> Style.with_layout (fun l -> { l with gap = Some 8.0 })
 
 let page_title_text =
   Text.default
@@ -40,13 +40,13 @@ let page_subtitle_text = Text.default |> Text.font_size 0.95
 let page_header_style =
   Style.default
   |> Style.with_layout (fun l ->
-      { l with gap = 4.0; cross_align = Center }
+      { l with gap = Some 4.0; cross_align = Some Center }
       |> Style.padding 8.0 0.0 8.0 0.0)
 
 let page_style =
   Style.default
   |> Style.with_layout (fun l ->
-      { l with gap = 20.0 } |> Style.padding 32.0 32.0 32.0 32.0)
+      { l with gap = Some 20.0 } |> Style.padding 32.0 32.0 32.0 32.0)
   |> Style.with_paint (fun p -> { p with background = Some bg_page })
 
 (* HTTP state *)
@@ -594,13 +594,14 @@ let view_typography _model =
   in
   (* Fixed-width container for ellipsis demo *)
   let fixed_width_style =
-    Style.default |> Style.with_layout (fun l -> { l with width = Fixed 150.0 })
+    Style.default
+    |> Style.with_layout (fun l -> { l with width = Some (Fixed 150.0) })
   in
   (* Alignment container: block-level div with text-align set via Style.t text *)
   let align_box align ~attrs children =
     let style =
       Style.default
-      |> Style.with_layout (fun l -> { l with width = Fill })
+      |> Style.with_layout (fun l -> { l with width = Some Fill })
       |> Style.with_text (fun t -> t |> Text.text_align align)
     in
     Element.box ~style ~attrs children
@@ -755,23 +756,31 @@ let view_layout _model =
   in
   let row_start_style =
     Style.default
-    |> Style.with_layout (fun l -> { l with main_align = Start; gap = 8.0 })
+    |> Style.with_layout (fun l ->
+        { l with main_align = Some Start; gap = Some 8.0 })
   in
   let row_center_style =
     Style.default
-    |> Style.with_layout (fun l -> { l with main_align = Center; gap = 8.0 })
+    |> Style.with_layout (fun l ->
+        { l with main_align = Some Center; gap = Some 8.0 })
   in
   let row_end_style =
     Style.default
-    |> Style.with_layout (fun l -> { l with main_align = End_; gap = 8.0 })
+    |> Style.with_layout (fun l ->
+        { l with main_align = Some End_; gap = Some 8.0 })
   in
   let row_between_style =
     Style.default
     |> Style.with_layout (fun l ->
-        { l with main_align = Space_between; gap = 8.0; width = Fill })
+        {
+          l with
+          main_align = Some Space_between;
+          gap = Some 8.0;
+          width = Some Fill;
+        })
   in
   let col_gap_style =
-    Style.default |> Style.with_layout (fun l -> { l with gap = 16.0 })
+    Style.default |> Style.with_layout (fun l -> { l with gap = Some 16.0 })
   in
   view_section "Layout"
     [
@@ -844,7 +853,8 @@ let view_buttons model =
   in
   let row_style =
     Style.default
-    |> Style.with_layout (fun l -> { l with gap = 8.0; cross_align = Center })
+    |> Style.with_layout (fun l ->
+        { l with gap = Some 8.0; cross_align = Some Center })
   in
   view_section "Buttons"
     [
@@ -875,7 +885,8 @@ let view_inputs model =
   in
   let row_style =
     Style.default
-    |> Style.with_layout (fun l -> { l with gap = 8.0; cross_align = Center })
+    |> Style.with_layout (fun l ->
+        { l with gap = Some 8.0; cross_align = Some Center })
   in
   view_section "Inputs"
     [
@@ -907,7 +918,7 @@ let view_images _model =
 let view_scroll _model =
   let scroll_style =
     Style.default
-    |> Style.with_layout (fun l -> { l with height = Fixed 120.0 })
+    |> Style.with_layout (fun l -> { l with height = Some (Fixed 120.0) })
     |> Style.with_paint (fun p ->
         {
           p with
@@ -919,7 +930,7 @@ let view_scroll _model =
   let content_style =
     Style.default
     |> Style.with_layout (fun l ->
-        { l with gap = 8.0 } |> Style.padding_all 8.0)
+        { l with gap = Some 8.0 } |> Style.padding_all 8.0)
   in
   let items =
     List.init 20 (fun i ->
@@ -937,7 +948,7 @@ let view_keyed model =
   let item_style =
     Style.default
     |> Style.with_layout (fun l ->
-        { l with gap = 8.0; cross_align = Center }
+        { l with gap = Some 8.0; cross_align = Some Center }
         |> Style.padding 4.0 8.0 4.0 8.0)
     |> Style.with_paint (fun p ->
         {
@@ -978,7 +989,7 @@ let view_nested _model =
   let outer_style =
     Style.default
     |> Style.with_layout (fun l ->
-        { l with gap = 8.0 } |> Style.padding_all 8.0)
+        { l with gap = Some 8.0 } |> Style.padding_all 8.0)
     |> Style.with_paint (fun p ->
         {
           p with
@@ -991,7 +1002,7 @@ let view_nested _model =
   let inner_style =
     Style.default
     |> Style.with_layout (fun l ->
-        { l with gap = 8.0 } |> Style.padding_all 8.0)
+        { l with gap = Some 8.0 } |> Style.padding_all 8.0)
     |> Style.with_paint (fun p ->
         {
           p with
@@ -1114,7 +1125,7 @@ let view_interaction_states model =
   let card_style =
     Style.default
     |> Style.with_layout (fun l ->
-        { l with gap = 4.0 } |> Style.padding_all 12.0)
+        { l with gap = Some 4.0 } |> Style.padding_all 12.0)
     |> Style.with_paint (fun p ->
         {
           p with
@@ -1147,7 +1158,8 @@ let view_interaction_states model =
   in
   let row_style =
     Style.default
-    |> Style.with_layout (fun l -> { l with gap = 8.0; cross_align = Center })
+    |> Style.with_layout (fun l ->
+        { l with gap = Some 8.0; cross_align = Some Center })
   in
   view_section "Interaction States"
     [
@@ -1538,11 +1550,12 @@ let view_charts model =
   let chart_w = 400.0 in
   let chart_h = 250.0 in
   let row_style =
-    Style.default |> Style.with_layout (fun l -> { l with gap = 16.0 })
+    Style.default |> Style.with_layout (fun l -> { l with gap = Some 16.0 })
   in
   let sparkline_row_style =
     Style.default
-    |> Style.with_layout (fun l -> { l with gap = 8.0; cross_align = Center })
+    |> Style.with_layout (fun l ->
+        { l with gap = Some 8.0; cross_align = Some Center })
   in
   Element.column ~style:section_style
     ~attrs:[ ("data-section", "charts") ]
@@ -1786,7 +1799,7 @@ let view_chart_extensions model =
         (x, y))
   in
   let row_style =
-    Style.default |> Style.with_layout (fun l -> { l with gap = 16.0 })
+    Style.default |> Style.with_layout (fun l -> { l with gap = Some 16.0 })
   in
   Element.column ~style:section_style
     ~attrs:[ ("data-section", "chart-extensions") ]
@@ -1915,8 +1928,8 @@ let view_chart_extensions model =
                   |> Style.with_layout (fun l ->
                       {
                         l with
-                        width = Fixed (chart_w *. 1.5);
-                        height = Fixed chart_h;
+                        width = Some (Fixed (chart_w *. 1.5));
+                        height = Some (Fixed chart_h);
                       }))
                 ~attrs:[ ("data-testid", "panzoom-line-chart") ]
                 ~on_pointer_down:(fun pe -> LinePointerDown pe.client_x)
@@ -1941,7 +1954,7 @@ let view_chart_extensions model =
               Element.column
                 ~style:
                   (Style.default
-                  |> Style.with_layout (fun l -> { l with gap = 8.0 }))
+                  |> Style.with_layout (fun l -> { l with gap = Some 8.0 }))
                 [
                   Element.button ~on_click:ZoomIn
                     ~attrs:[ ("data-testid", "zoom-in-btn") ]
@@ -1965,7 +1978,7 @@ let view_responsive vp _model =
            ~style:
              (Style.default
              |> Style.with_layout (fun l ->
-                 { l with gap = 16.0; main_align = Space_between }
+                 { l with gap = Some 16.0; main_align = Some Space_between }
                  |> Style.padding_all 12.0)
              |> Style.with_paint (fun p ->
                  { p with background = Some bg_muted }))
@@ -1976,7 +1989,7 @@ let view_responsive vp _model =
            ~style:
              (Style.default
              |> Style.with_layout (fun l ->
-                 { l with gap = 12.0; width = Fixed 200.0 }
+                 { l with gap = Some 12.0; width = Some (Fixed 200.0) }
                  |> Style.padding_all 16.0)
              |> Style.with_paint (fun p ->
                  {
@@ -2001,7 +2014,7 @@ let view_responsive vp _model =
   let grid_item_style =
     Style.default
     |> Style.with_layout (fun l ->
-        { l with width = Fill } |> Style.padding_all 16.0)
+        { l with width = Some Fill } |> Style.padding_all 16.0)
     |> Style.with_paint (fun p ->
         {
           p with
@@ -2021,30 +2034,33 @@ let view_responsive vp _model =
       ~compact:
         (Element.column
            ~style:
-             (Style.default |> Style.with_layout (fun l -> { l with gap = 8.0 }))
+             (Style.default
+             |> Style.with_layout (fun l -> { l with gap = Some 8.0 }))
            ~attrs:[ ("data-testid", "grid-1col") ]
            [ grid_item "A"; grid_item "B"; grid_item "C" ])
       ~medium:
         (Element.column
            ~style:
-             (Style.default |> Style.with_layout (fun l -> { l with gap = 8.0 }))
+             (Style.default
+             |> Style.with_layout (fun l -> { l with gap = Some 8.0 }))
            ~attrs:[ ("data-testid", "grid-2col") ]
            [
              Element.row
                ~style:
                  (Style.default
-                 |> Style.with_layout (fun l -> { l with gap = 8.0 }))
+                 |> Style.with_layout (fun l -> { l with gap = Some 8.0 }))
                [ grid_item "A"; grid_item "B" ];
              Element.row
                ~style:
                  (Style.default
-                 |> Style.with_layout (fun l -> { l with gap = 8.0 }))
+                 |> Style.with_layout (fun l -> { l with gap = Some 8.0 }))
                [ grid_item "C" ];
            ])
       ~expanded:
         (Element.row
            ~style:
-             (Style.default |> Style.with_layout (fun l -> { l with gap = 8.0 }))
+             (Style.default
+             |> Style.with_layout (fun l -> { l with gap = Some 8.0 }))
            ~attrs:[ ("data-testid", "grid-3col") ]
            [ grid_item "A"; grid_item "B"; grid_item "C" ])
       ()
@@ -2094,7 +2110,7 @@ let view_responsive vp _model =
       ~style:
         (Style.default
         |> Style.with_layout (fun l ->
-            { l with gap = 4.0 } |> Style.padding_all 12.0)
+            { l with gap = Some 4.0 } |> Style.padding_all 12.0)
         |> Style.with_paint (fun p ->
             {
               p with
@@ -2126,7 +2142,7 @@ let view_responsive vp _model =
       ~style:
         (Style.default
         |> Style.with_layout (fun l ->
-            { l with gap = 8.0; main_align = Space_between }))
+            { l with gap = Some 8.0; main_align = Some Space_between }))
       [
         Element.styled_text
           ~text_style:(Text.default |> Text.font_weight Font.Medium)
@@ -2141,7 +2157,7 @@ let view_responsive vp _model =
       ~style:
         (Style.default
         |> Style.with_layout (fun l ->
-            { l with gap = 4.0 } |> Style.padding_all 12.0)
+            { l with gap = Some 4.0 } |> Style.padding_all 12.0)
         |> Style.with_paint (fun p ->
             {
               p with
@@ -2367,7 +2383,8 @@ let view_tauri_os model =
 let view_tauri_window model =
   let row_style =
     Style.default
-    |> Style.with_layout (fun l -> { l with gap = 8.0; cross_align = Center })
+    |> Style.with_layout (fun l ->
+        { l with gap = Some 8.0; cross_align = Some Center })
   in
   let fullscreen_label =
     if model.tauri_is_fullscreen then "Exit Fullscreen" else "Enter Fullscreen"
@@ -2478,7 +2495,8 @@ let view_tauri_window model =
 let view_tauri_tray model =
   let row_style =
     Style.default
-    |> Style.with_layout (fun l -> { l with gap = 8.0; cross_align = Center })
+    |> Style.with_layout (fun l ->
+        { l with gap = Some 8.0; cross_align = Some Center })
   in
   view_section
     ~attrs:[ ("data-section", "tauri-tray") ]
@@ -2512,7 +2530,8 @@ let view_tauri_tray model =
 let view_tauri_store model =
   let button_row_style =
     Style.default
-    |> Style.with_layout (fun l -> { l with direction = Row_dir; gap = 8.0 })
+    |> Style.with_layout (fun l ->
+        { l with direction = Some Row_dir; gap = Some 8.0 })
   in
   view_section
     ~attrs:[ ("data-section", "tauri-store") ]
@@ -2561,7 +2580,8 @@ let view_tauri_store model =
 let view_storage model =
   let button_row_style =
     Style.default
-    |> Style.with_layout (fun l -> { l with direction = Row_dir; gap = 8.0 })
+    |> Style.with_layout (fun l ->
+        { l with direction = Some Row_dir; gap = Some 8.0 })
   in
   view_section
     ~attrs:[ ("data-section", "storage") ]

@@ -3,7 +3,8 @@ let tooltip_offset = 8.0
 let tooltip_style =
   Nopal_style.Style.default
   |> Nopal_style.Style.with_layout (fun l ->
-      Nopal_style.Style.padding_all 6.0 { l with width = Hug; height = Hug })
+      Nopal_style.Style.padding_all 6.0
+        { l with width = Some Hug; height = Some Hug })
   |> Nopal_style.Style.with_paint (fun p ->
       {
         p with
@@ -35,10 +36,10 @@ let container ~x ~y ~chart_width ~chart_height content =
     |> Nopal_style.Style.with_layout (fun l ->
         {
           l with
-          width = Fixed chart_width;
-          height = Fixed chart_height;
-          padding_left = pad_left;
-          padding_top = pad_top;
+          width = Some (Fixed chart_width);
+          height = Some (Fixed chart_height);
+          padding_left = Some pad_left;
+          padding_top = Some pad_top;
         })
     |> Nopal_style.Style.with_paint (fun p -> { p with overflow = Hidden })
   in

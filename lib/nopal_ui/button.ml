@@ -105,10 +105,10 @@ let default_style_for variant =
       |> S.with_layout (fun l ->
           {
             l with
-            padding_top = 4.0;
-            padding_right = 4.0;
-            padding_bottom = 4.0;
-            padding_left = 4.0;
+            padding_top = Some 4.0;
+            padding_right = Some 4.0;
+            padding_bottom = Some 4.0;
+            padding_left = Some 4.0;
           })
       |> S.with_paint (fun p ->
           {

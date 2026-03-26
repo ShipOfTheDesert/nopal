@@ -33,7 +33,7 @@ let get_fixed_height (el : msg Element.t) =
   match el with
   | Box { style; _ } -> (
       match style.Style.layout.height with
-      | Fixed h -> Some h
+      | Some (Fixed h) -> Some h
       | _ -> None)
   | _ -> None
 

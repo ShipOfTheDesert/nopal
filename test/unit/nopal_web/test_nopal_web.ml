@@ -1482,6 +1482,171 @@ let test_parse_css_px_whitespace () =
 let test_parse_css_px_garbage () =
   Alcotest.(check int) "garbage returns 0" 0 (Nopal_web.parse_css_px "abc")
 
+(* --- Box direction logic --- *)
+
+let test_box_direction_defaults_column_when_none () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let el =
+    Box
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        children = [];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let style_obj = Jv.get node "style" in
+  let fd = Jv.Jstr.get style_obj "flex-direction" |> Jstr.to_string in
+  Alcotest.(check string) "default direction is column" "column" fd
+
+let test_box_direction_overrides_when_some () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let style =
+    { default with layout = { default_layout with direction = Some Row_dir } }
+  in
+  let el =
+    Box
+      {
+        style;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        children = [];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let style_obj = Jv.get node "style" in
+  let fd = Jv.Jstr.get style_obj "flex-direction" |> Jstr.to_string in
+  Alcotest.(check string) "direction is row" "row" fd
+
+let test_row_ignores_style_direction () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let style =
+    {
+      default with
+      layout = { default_layout with direction = Some Column_dir };
+    }
+  in
+  let el =
+    Row
+      {
+        style;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        children = [];
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let style_obj = Jv.get node "style" in
+  let fd = Jv.Jstr.get style_obj "flex-direction" |> Jstr.to_string in
+  Alcotest.(check string) "row always row regardless of style" "row" fd
+
+let test_column_ignores_style_direction () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let style =
+    {
+      default with
+      layout = { default_layout with direction = Some Row_dir };
+    }
+  in
+  let el =
+    Column
+      {
+        style;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        children = [];
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let style_obj = Jv.get node "style" in
+  let fd = Jv.Jstr.get style_obj "flex-direction" |> Jstr.to_string in
+  Alcotest.(check string) "column always column regardless of style" "column" fd
+
+(* --- Reconcile direction re-assertion --- *)
+
+let test_reconcile_row_reasserts_direction () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let el1 =
+    Row
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        children = [];
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let el2 =
+    Row
+      {
+        style =
+          {
+            default with
+            layout = { default_layout with direction = Some Column_dir };
+          };
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        children = [];
+      }
+  in
+  Nopal_web.Renderer.update ~dispatch handle el2;
+  let node = Nopal_web.Renderer.dom_node handle in
+  let style_obj = Jv.get node "style" in
+  let fd = Jv.Jstr.get style_obj "flex-direction" |> Jstr.to_string in
+  Alcotest.(check string) "row stays row after reconcile" "row" fd
+
+let test_reconcile_column_reasserts_direction () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let el1 =
+    Column
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        children = [];
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let el2 =
+    Column
+      {
+        style =
+          {
+            default with
+            layout = { default_layout with direction = Some Row_dir };
+          };
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        children = [];
+      }
+  in
+  Nopal_web.Renderer.update ~dispatch handle el2;
+  let node = Nopal_web.Renderer.dom_node handle in
+  let style_obj = Jv.get node "style" in
+  let fd = Jv.Jstr.get style_obj "flex-direction" |> Jstr.to_string in
+  Alcotest.(check string) "column stays column after reconcile" "column" fd
+
 (* --- Checkbox reconciliation --- *)
 
 (* Checkbox: checked state changes true->false *)
@@ -2110,5 +2275,20 @@ let () =
           Alcotest.test_case "empty" `Quick test_parse_css_px_empty;
           Alcotest.test_case "whitespace" `Quick test_parse_css_px_whitespace;
           Alcotest.test_case "garbage" `Quick test_parse_css_px_garbage;
+        ] );
+      ( "box direction",
+        [
+          Alcotest.test_case "defaults column when none" `Quick
+            test_box_direction_defaults_column_when_none;
+          Alcotest.test_case "overrides when some" `Quick
+            test_box_direction_overrides_when_some;
+          Alcotest.test_case "row ignores style direction" `Quick
+            test_row_ignores_style_direction;
+          Alcotest.test_case "column ignores style direction" `Quick
+            test_column_ignores_style_direction;
+          Alcotest.test_case "reconcile row reasserts direction" `Quick
+            test_reconcile_row_reasserts_direction;
+          Alcotest.test_case "reconcile column reasserts direction" `Quick
+            test_reconcile_column_reasserts_direction;
         ] );
     ]

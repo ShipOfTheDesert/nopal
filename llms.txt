@@ -62,14 +62,14 @@ let update model = function
 let button_style =
   Style.default
   |> Style.with_layout (fun l ->
-       { l with width = Fixed 64.0 } |> Style.padding 8.0 16.0 8.0 16.0)
+       { l with width = Some (Fixed 64.0) } |> Style.padding 8.0 16.0 8.0 16.0)
 
 let view model =
   column
     ~style:
       (Style.default
       |> Style.with_layout (fun l ->
-           { l with cross_align = Center; gap = 8.0 } |> Style.padding_all 16.0))
+           { l with cross_align = Some Center; gap = Some 8.0 } |> Style.padding_all 16.0))
     [
       text (string_of_int model.count);
       button ~style:button_style ~on_click:Increment (text "+");
@@ -225,10 +225,19 @@ Element.map : ('a -> 'b) -> 'a Element.t -> 'b Element.t
 All styling is typed — no CSS strings in view code.
 
 ```ocaml
-(* Layout *)
+(* Layout — all fields are optional; None means "no opinion" *)
 type direction = Row_dir | Column_dir
 type align = Start | Center | End_ | Stretch | Space_between
 type size = Fill | Hug | Fixed of float | Fraction of float
+
+type layout = {
+  direction : direction option; main_align : align option;
+  cross_align : align option; wrap : bool option; gap : float option;
+  padding_top : float option; padding_right : float option;
+  padding_bottom : float option; padding_left : float option;
+  width : size option; height : size option; flex_grow : float option;
+}
+(* Style.default_layout has all fields None. *)
 
 (* Colors *)
 type color = Rgba of { r : int; g : int; b : int; a : float }
@@ -243,8 +252,9 @@ Style.default                                            (* sensible defaults *)
 Style.with_layout : (layout -> layout) -> Style.t -> Style.t
 Style.with_paint  : (paint -> paint)   -> Style.t -> Style.t
 Style.with_text   : (Text.t -> Text.t) -> Style.t -> Style.t
-Style.padding     : float -> float -> float -> float -> layout -> layout  (* T R B L *)
-Style.padding_all : float -> layout -> layout
+Style.padding     : float -> float -> float -> float -> layout -> layout  (* T R B L, wraps in Some *)
+Style.padding_all : float -> layout -> layout                             (* wraps in Some *)
+
 Style.hex   : string -> color
 Style.named : string -> color
 Style.rgba  : int -> int -> int -> float -> color

@@ -8,7 +8,7 @@ let cat = Nopal_draw.Color.categorical
 let page_style =
   Style.default
   |> Style.with_layout (fun l ->
-      { l with gap = 20.0 } |> Style.padding 32.0 32.0 32.0 32.0)
+      { l with gap = Some 20.0 } |> Style.padding 32.0 32.0 32.0 32.0)
   |> Style.with_paint (fun p ->
       { p with background = Some (Style.hex "#faf9f7") })
 
@@ -23,7 +23,7 @@ let page_subtitle_text = Text.default |> Text.font_size 0.95
 let card_style =
   Style.default
   |> Style.with_layout (fun l ->
-      { l with gap = 12.0 } |> Style.padding_all 20.0)
+      { l with gap = Some 12.0 } |> Style.padding_all 20.0)
   |> Style.with_paint (fun p ->
       {
         p with
@@ -41,11 +41,12 @@ let card_style =
       })
 
 let row_style =
-  Style.default |> Style.with_layout (fun l -> { l with gap = 16.0 })
+  Style.default |> Style.with_layout (fun l -> { l with gap = Some 16.0 })
 
 let detail_style =
   Style.default
-  |> Style.with_layout (fun l -> { l with gap = 4.0 } |> Style.padding_all 14.0)
+  |> Style.with_layout (fun l ->
+      { l with gap = Some 4.0 } |> Style.padding_all 14.0)
   |> Style.with_paint (fun p ->
       {
         p with

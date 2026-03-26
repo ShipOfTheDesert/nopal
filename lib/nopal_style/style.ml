@@ -21,17 +21,17 @@ type shadow = { x : float; y : float; blur : float; color : color }
 type overflow = Visible | Hidden
 
 type layout = {
-  direction : direction;
-  main_align : align;
-  cross_align : align;
-  wrap : bool;
-  gap : float;
-  padding_top : float;
-  padding_right : float;
-  padding_bottom : float;
-  padding_left : float;
-  width : size;
-  height : size;
+  direction : direction option;
+  main_align : align option;
+  cross_align : align option;
+  wrap : bool option;
+  gap : float option;
+  padding_top : float option;
+  padding_right : float option;
+  padding_bottom : float option;
+  padding_left : float option;
+  width : size option;
+  height : size option;
   flex_grow : float option;
 }
 
@@ -52,17 +52,17 @@ let default_shadow = { x = 0.; y = 0.; blur = 0.; color = Transparent }
 
 let default_layout =
   {
-    direction = Column_dir;
-    main_align = Start;
-    cross_align = Start;
-    wrap = false;
-    gap = 0.;
-    padding_top = 0.;
-    padding_right = 0.;
-    padding_bottom = 0.;
-    padding_left = 0.;
-    width = Hug;
-    height = Hug;
+    direction = None;
+    main_align = None;
+    cross_align = None;
+    wrap = None;
+    gap = None;
+    padding_top = None;
+    padding_right = None;
+    padding_bottom = None;
+    padding_left = None;
+    width = None;
+    height = None;
     flex_grow = None;
   }
 
@@ -94,13 +94,14 @@ let set_text t s = { s with text = t }
 let padding top right bottom left l =
   {
     l with
-    padding_top = top;
-    padding_right = right;
-    padding_bottom = bottom;
-    padding_left = left;
+    padding_top = Some top;
+    padding_right = Some right;
+    padding_bottom = Some bottom;
+    padding_left = Some left;
   }
 
 let padding_all v l = padding v v v v l
+
 let empty = default
 
 let equal_color a b =
@@ -159,17 +160,17 @@ let equal_align a b =
   | (Start | Center | End_ | Stretch | Space_between), _ -> false
 
 let equal_layout a b =
-  equal_direction a.direction b.direction
-  && equal_align a.main_align b.main_align
-  && equal_align a.cross_align b.cross_align
-  && Bool.equal a.wrap b.wrap
-  && Float.equal a.gap b.gap
-  && Float.equal a.padding_top b.padding_top
-  && Float.equal a.padding_right b.padding_right
-  && Float.equal a.padding_bottom b.padding_bottom
-  && Float.equal a.padding_left b.padding_left
-  && equal_size a.width b.width
-  && equal_size a.height b.height
+  Option.equal equal_direction a.direction b.direction
+  && Option.equal equal_align a.main_align b.main_align
+  && Option.equal equal_align a.cross_align b.cross_align
+  && Option.equal Bool.equal a.wrap b.wrap
+  && Option.equal Float.equal a.gap b.gap
+  && Option.equal Float.equal a.padding_top b.padding_top
+  && Option.equal Float.equal a.padding_right b.padding_right
+  && Option.equal Float.equal a.padding_bottom b.padding_bottom
+  && Option.equal Float.equal a.padding_left b.padding_left
+  && Option.equal equal_size a.width b.width
+  && Option.equal equal_size a.height b.height
   && Option.equal Float.equal a.flex_grow b.flex_grow
 
 let equal_overflow a b =
