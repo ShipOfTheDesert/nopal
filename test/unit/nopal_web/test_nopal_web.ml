@@ -1561,10 +1561,7 @@ let test_column_ignores_style_direction () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
   let style =
-    {
-      default with
-      layout = { default_layout with direction = Some Row_dir };
-    }
+    { default with layout = { default_layout with direction = Some Row_dir } }
   in
   let el =
     Column

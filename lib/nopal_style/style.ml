@@ -101,7 +101,6 @@ let padding top right bottom left l =
   }
 
 let padding_all v l = padding v v v v l
-
 let empty = default
 
 let equal_color a b =

@@ -123,7 +123,6 @@ val padding : float -> float -> float -> float -> layout -> layout
 val padding_all : float -> layout -> layout
 (** [padding_all v layout] sets all four padding sides to [Some v]. *)
 
-
 (** {1 Comparison} *)
 
 val equal_color : color -> color -> bool
