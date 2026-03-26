@@ -15,7 +15,8 @@ let update model msg =
 
 let variant_row_style =
   Style.default
-  |> Style.with_layout (fun l -> { l with gap = 8.0; cross_align = Center })
+  |> Style.with_layout (fun l ->
+      { l with gap = Some 8.0; cross_align = Some Center })
 
 let feedback_text =
   Text.default |> Text.font_size 0.9 |> Text.font_family System_ui
@@ -56,7 +57,7 @@ let view_variant_row variant =
 let section_style =
   Style.default
   |> Style.with_layout (fun l ->
-      { l with gap = 12.0 } |> Style.padding_all 20.0)
+      { l with gap = Some 12.0 } |> Style.padding_all 20.0)
 
 let section_title_text =
   Text.default

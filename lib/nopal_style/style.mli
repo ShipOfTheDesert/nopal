@@ -31,17 +31,17 @@ type overflow = Visible | Hidden
 (** {1 Layout and Paint} *)
 
 type layout = {
-  direction : direction;
-  main_align : align;
-  cross_align : align;
-  wrap : bool;
-  gap : float;
-  padding_top : float;
-  padding_right : float;
-  padding_bottom : float;
-  padding_left : float;
-  width : size;
-  height : size;
+  direction : direction option;
+  main_align : align option;
+  cross_align : align option;
+  wrap : bool option;
+  gap : float option;
+  padding_top : float option;
+  padding_right : float option;
+  padding_bottom : float option;
+  padding_left : float option;
+  width : size option;
+  height : size option;
   flex_grow : float option;
 }
 
@@ -66,8 +66,7 @@ val default_shadow : shadow
 (** Zero offset, zero blur, transparent. *)
 
 val default_layout : layout
-(** Column direction, start alignment, no wrap, zero gap, zero padding, hug
-    width, hug height, no flex-grow. *)
+(** All fields [None]. *)
 
 val default_paint : paint
 (** No background, no border, full opacity, no shadow, visible overflow. *)
@@ -118,10 +117,11 @@ val set_text : Text.t -> t -> t
 (** {1 Padding helpers} *)
 
 val padding : float -> float -> float -> float -> layout -> layout
-(** [padding top right bottom left layout] sets all four padding values. *)
+(** [padding top right bottom left layout] sets all four padding values to
+    [Some]. *)
 
 val padding_all : float -> layout -> layout
-(** [padding_all v layout] sets all four padding sides to [v]. *)
+(** [padding_all v layout] sets all four padding sides to [Some v]. *)
 
 (** {1 Comparison} *)
 

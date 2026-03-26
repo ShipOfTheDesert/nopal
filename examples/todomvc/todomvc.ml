@@ -169,7 +169,12 @@ let check_green = Style.hex "#5ba85b"
 let page_style =
   Style.default
   |> Style.with_layout (fun l ->
-      { l with width = Fill; height = Fill; cross_align = Center }
+      {
+        l with
+        width = Some Fill;
+        height = Some Fill;
+        cross_align = Some Center;
+      }
       |> Style.padding 48.0 16.0 32.0 16.0)
   |> Style.with_paint (fun p -> { p with background = Some bg_page })
 
@@ -177,7 +182,12 @@ let page_style =
 let card_style =
   Style.default
   |> Style.with_layout (fun l ->
-      { l with width = Fixed 480.0; gap = 0.0; cross_align = Stretch })
+      {
+        l with
+        width = Some (Fixed 480.0);
+        gap = Some 0.0;
+        cross_align = Some Stretch;
+      })
   |> Style.with_paint (fun p ->
       {
         p with
@@ -199,7 +209,7 @@ let title_text =
 let title_style =
   Style.default
   |> Style.with_layout (fun l ->
-      { l with main_align = Center; cross_align = Center }
+      { l with main_align = Some Center; cross_align = Some Center }
       |> Style.padding 24.0 0.0 16.0 0.0)
 
 (* Header input *)
@@ -244,7 +254,12 @@ let input_interaction =
 let todo_row_style =
   Style.default
   |> Style.with_layout (fun l ->
-      { l with direction = Row_dir; cross_align = Center; gap = 12.0 }
+      {
+        l with
+        direction = Some Row_dir;
+        cross_align = Some Center;
+        gap = Some 12.0;
+      }
       |> Style.padding 12.0 16.0 12.0 16.0)
   |> Style.with_paint (fun p ->
       {
@@ -264,7 +279,7 @@ let todo_row_interaction =
 
 let divider_style =
   Style.default
-  |> Style.with_layout (fun l -> { l with height = Fixed 1.0 })
+  |> Style.with_layout (fun l -> { l with height = Some (Fixed 1.0) })
   |> Style.with_paint (fun p ->
       { p with background = Some (Style.hex "#f0eeea") })
 
@@ -273,10 +288,10 @@ let checkbox_style completed =
   |> Style.with_layout (fun l ->
       {
         l with
-        width = Fixed 24.0;
-        height = Fixed 24.0;
-        main_align = Center;
-        cross_align = Center;
+        width = Some (Fixed 24.0);
+        height = Some (Fixed 24.0);
+        main_align = Some Center;
+        cross_align = Some Center;
       })
   |> Style.with_paint (fun p ->
       {
@@ -296,7 +311,7 @@ let checkbox_style completed =
 let title_button_style completed =
   Style.default
   |> Style.with_layout (fun l ->
-      { l with flex_grow = Some 1.0; cross_align = Start })
+      { l with flex_grow = Some 1.0; cross_align = Some Start })
   |> Style.with_paint (fun p ->
       {
         p with
@@ -319,10 +334,10 @@ let delete_style =
   |> Style.with_layout (fun l ->
       {
         l with
-        width = Fixed 28.0;
-        height = Fixed 28.0;
-        main_align = Center;
-        cross_align = Center;
+        width = Some (Fixed 28.0);
+        height = Some (Fixed 28.0);
+        main_align = Some Center;
+        cross_align = Some Center;
       })
   |> Style.with_paint (fun p ->
       {
@@ -366,7 +381,7 @@ let edit_input_style =
 let toggle_all_style =
   Style.default
   |> Style.with_layout (fun l ->
-      { l with cross_align = Start } |> Style.padding 10.0 16.0 10.0 16.0)
+      { l with cross_align = Some Start } |> Style.padding 10.0 16.0 10.0 16.0)
   |> Style.with_paint (fun p ->
       {
         p with
@@ -400,7 +415,7 @@ let toggle_all_interaction =
 let footer_style =
   Style.default
   |> Style.with_layout (fun l ->
-      { l with gap = 8.0 } |> Style.padding 12.0 16.0 16.0 16.0)
+      { l with gap = Some 8.0 } |> Style.padding 12.0 16.0 16.0 16.0)
   |> Style.with_paint (fun p ->
       { p with background = Some (Style.hex "#faf9f7") })
 
@@ -408,7 +423,8 @@ let count_text_style = Text.default |> Text.font_size 0.85
 
 let filter_row_style =
   Style.default
-  |> Style.with_layout (fun l -> { l with direction = Row_dir; gap = 4.0 })
+  |> Style.with_layout (fun l ->
+      { l with direction = Some Row_dir; gap = Some 4.0 })
 
 let filter_button_style selected =
   Style.default

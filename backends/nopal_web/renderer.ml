@@ -365,8 +365,10 @@ let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
          even when the rest of the layout matches the Nopal default. *)
       let dir =
         match style.layout.direction with
-        | Nopal_style.Style.Column_dir -> "column"
-        | Nopal_style.Style.Row_dir -> "row"
+        | Some Nopal_style.Style.Row_dir -> "row"
+        | Some Nopal_style.Style.Column_dir
+        | None ->
+            "column"
       in
       Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v dir) el;
       let base_id, interaction_id =
@@ -394,10 +396,12 @@ let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
   | Row { style; interaction; attrs; children } ->
       let el = Brr.El.v (Jstr.v "div") [] in
       apply_container_base_style el;
-      Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v "row") el;
       let base_id, interaction_id =
         apply_styles_for_element ~sheet el style interaction
       in
+      (* Row always uses "row" — set after style application so the element
+         type wins over any direction the style may carry. *)
+      Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v "row") el;
       List.iter
         (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
         attrs;
@@ -416,10 +420,12 @@ let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
   | Column { style; interaction; attrs; children } ->
       let el = Brr.El.v (Jstr.v "div") [] in
       apply_container_base_style el;
-      Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v "column") el;
       let base_id, interaction_id =
         apply_styles_for_element ~sheet el style interaction
       in
+      (* Column always uses "column" — set after style application so the
+         element type wins over any direction the style may carry. *)
+      Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v "column") el;
       List.iter
         (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
         attrs;
@@ -1066,8 +1072,10 @@ and reconcile_node ~sheet ~dispatch (old_n : 'msg live_node)
       (* Keep inline flex-direction in sync with the style's direction. *)
       let dir =
         match style.layout.direction with
-        | Nopal_style.Style.Column_dir -> "column"
-        | Nopal_style.Style.Row_dir -> "row"
+        | Some Nopal_style.Style.Row_dir -> "row"
+        | Some Nopal_style.Style.Column_dir
+        | None ->
+            "column"
       in
       Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v dir) el;
       unlisten_all old_n.listeners;
@@ -1076,9 +1084,16 @@ and reconcile_node ~sheet ~dispatch (old_n : 'msg live_node)
           on_pointer_down on_pointer_up on_wheel;
       old_n.children <-
         reconcile_children ~sheet ~dispatch el old_n.children children
-  | Row { children; _ }
+  | Row { children; _ } ->
+      maybe_apply_attrs el old_n.element new_el;
+      (* Re-assert hardcoded direction after style reconciliation. *)
+      Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v "row") el;
+      old_n.children <-
+        reconcile_children ~sheet ~dispatch el old_n.children children
   | Column { children; _ } ->
       maybe_apply_attrs el old_n.element new_el;
+      (* Re-assert hardcoded direction after style reconciliation. *)
+      Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v "column") el;
       old_n.children <-
         reconcile_children ~sheet ~dispatch el old_n.children children
   | Button { on_click; on_dblclick; child; _ } ->
