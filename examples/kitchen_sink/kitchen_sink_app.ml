@@ -114,6 +114,7 @@ type model = {
   tauri_store_state : tauri_store_state;
   ui : Kitchen_sink_ui.model;
   form : Kitchen_sink_form.model;
+  text_input : Kitchen_sink_text_input.model;
 }
 
 (* Messages *)
@@ -129,6 +130,7 @@ type msg =
   | SubCounterMsg of Sub_counter.msg
   | Ui_msg of Kitchen_sink_ui.msg
   | Form_msg of Kitchen_sink_form.msg
+  | Text_input_msg of Kitchen_sink_text_input.msg
   | DrawPointerMove of float * float
   | DrawPointerLeave
   | ChartHovered of Hover.t
@@ -231,6 +233,7 @@ let init () =
   let sub_counter, sub_cmd = Sub_counter.init () in
   let ui, ui_cmd = Kitchen_sink_ui.init () in
   let form, form_cmd = Kitchen_sink_form.init () in
+  let text_input, text_input_cmd = Kitchen_sink_text_input.init () in
   ( {
       button_clicks = 0;
       input_text = "";
@@ -277,12 +280,14 @@ let init () =
       tauri_store_state = TauriStoreIdle;
       ui;
       form;
+      text_input;
     },
     Nopal_mvu.Cmd.batch
       [
         Nopal_mvu.Cmd.map (fun m -> SubCounterMsg m) sub_cmd;
         Nopal_mvu.Cmd.map (fun m -> Ui_msg m) ui_cmd;
         Nopal_mvu.Cmd.map (fun m -> Form_msg m) form_cmd;
+        Nopal_mvu.Cmd.map (fun m -> Text_input_msg m) text_input_cmd;
       ] )
 
 let clamp_pane_dw dw = Domain_window.clamp ~data_min:0.0 ~data_max:9.0 dw
@@ -338,6 +343,12 @@ let update model = function
   | Form_msg form_msg ->
       let form, form_cmd = Kitchen_sink_form.update model.form form_msg in
       ({ model with form }, Nopal_mvu.Cmd.map (fun m -> Form_msg m) form_cmd)
+  | Text_input_msg ti_msg ->
+      let text_input, ti_cmd =
+        Kitchen_sink_text_input.update model.text_input ti_msg
+      in
+      ( { model with text_input },
+        Nopal_mvu.Cmd.map (fun m -> Text_input_msg m) ti_cmd )
   | DrawPointerMove (x, y) ->
       ({ model with draw_pointer = Some (x, y) }, Nopal_mvu.Cmd.none)
   | DrawPointerLeave -> ({ model with draw_pointer = None }, Nopal_mvu.Cmd.none)
@@ -2646,6 +2657,12 @@ let view vp model =
              Element.map
                (fun m -> Form_msg m)
                (Kitchen_sink_form.view vp model.form);
+           ];
+         view_section "Text Input"
+           [
+             Element.map
+               (fun m -> Text_input_msg m)
+               (Kitchen_sink_text_input.view vp model.text_input);
            ];
          view_images model;
          view_scroll model;

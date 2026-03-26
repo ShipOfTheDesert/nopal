@@ -148,9 +148,8 @@ let of_style (style : t) =
   let acc =
     match layout.wrap with
     | Some true -> add acc "flex-wrap" "wrap"
-    | Some false
-    | None ->
-        acc
+    | Some false -> add acc "flex-wrap" "nowrap"
+    | None -> acc
   in
   let acc =
     match layout.gap with

@@ -1,3 +1,11 @@
 (test
  (name test_button)
  (libraries nopal_ui nopal_test nopal_element nopal_style alcotest test_util))
+
+(test
+ (name test_text_input)
+ (libraries nopal_ui nopal_test nopal_element nopal_style alcotest test_util))
+
+(test
+ (name test_slug)
+ (libraries nopal_ui alcotest))

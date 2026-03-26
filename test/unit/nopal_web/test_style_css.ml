@@ -176,6 +176,18 @@ let test_wrap_produces_css () =
   let props = of_style style in
   check_has_prop "flex-wrap" "wrap" props
 
+let test_wrap_false_produces_nowrap () =
+  let style = with_layout (fun l -> { l with wrap = Some false }) default in
+  let props = of_style style in
+  check_has_prop "flex-wrap" "nowrap" props
+
+let test_wrap_none_omits_property () =
+  let style =
+    with_layout (fun l -> { l with gap = Some 1.; wrap = None }) default
+  in
+  let props = of_style style in
+  check_no_prop "flex-wrap" props
+
 let test_size_hug_produces_no_property () =
   let style =
     with_layout (fun l -> { l with width = Some Hug; gap = Some 1. }) default
@@ -676,6 +688,10 @@ let () =
           Alcotest.test_case "cross align stretch produces css" `Quick
             test_cross_align_stretch_produces_css;
           Alcotest.test_case "wrap produces css" `Quick test_wrap_produces_css;
+          Alcotest.test_case "wrap false produces nowrap" `Quick
+            test_wrap_false_produces_nowrap;
+          Alcotest.test_case "wrap none omits property" `Quick
+            test_wrap_none_omits_property;
         ] );
       ( "to_inline_string",
         [
