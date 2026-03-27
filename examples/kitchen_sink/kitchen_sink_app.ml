@@ -114,6 +114,7 @@ type model = {
   tauri_store_state : tauri_store_state;
   ui : Kitchen_sink_ui.model;
   form : Kitchen_sink_form.model;
+  form_controls : Kitchen_sink_form_controls.model;
 }
 
 (* Messages *)
@@ -129,6 +130,7 @@ type msg =
   | SubCounterMsg of Sub_counter.msg
   | Ui_msg of Kitchen_sink_ui.msg
   | Form_msg of Kitchen_sink_form.msg
+  | Form_controls_msg of Kitchen_sink_form_controls.msg
   | DrawPointerMove of float * float
   | DrawPointerLeave
   | ChartHovered of Hover.t
@@ -231,6 +233,7 @@ let init () =
   let sub_counter, sub_cmd = Sub_counter.init () in
   let ui, ui_cmd = Kitchen_sink_ui.init () in
   let form, form_cmd = Kitchen_sink_form.init () in
+  let form_controls, form_controls_cmd = Kitchen_sink_form_controls.init () in
   ( {
       button_clicks = 0;
       input_text = "";
@@ -277,12 +280,14 @@ let init () =
       tauri_store_state = TauriStoreIdle;
       ui;
       form;
+      form_controls;
     },
     Nopal_mvu.Cmd.batch
       [
         Nopal_mvu.Cmd.map (fun m -> SubCounterMsg m) sub_cmd;
         Nopal_mvu.Cmd.map (fun m -> Ui_msg m) ui_cmd;
         Nopal_mvu.Cmd.map (fun m -> Form_msg m) form_cmd;
+        Nopal_mvu.Cmd.map (fun m -> Form_controls_msg m) form_controls_cmd;
       ] )
 
 let clamp_pane_dw dw = Domain_window.clamp ~data_min:0.0 ~data_max:9.0 dw
@@ -338,6 +343,12 @@ let update model = function
   | Form_msg form_msg ->
       let form, form_cmd = Kitchen_sink_form.update model.form form_msg in
       ({ model with form }, Nopal_mvu.Cmd.map (fun m -> Form_msg m) form_cmd)
+  | Form_controls_msg fc_msg ->
+      let form_controls, fc_cmd =
+        Kitchen_sink_form_controls.update model.form_controls fc_msg
+      in
+      ( { model with form_controls },
+        Nopal_mvu.Cmd.map (fun m -> Form_controls_msg m) fc_cmd )
   | DrawPointerMove (x, y) ->
       ({ model with draw_pointer = Some (x, y) }, Nopal_mvu.Cmd.none)
   | DrawPointerLeave -> ({ model with draw_pointer = None }, Nopal_mvu.Cmd.none)
@@ -2646,6 +2657,14 @@ let view vp model =
              Element.map
                (fun m -> Form_msg m)
                (Kitchen_sink_form.view vp model.form);
+           ];
+         view_section
+           ~attrs:[ ("data-testid", "form-controls-wrapper") ]
+           "Form Controls"
+           [
+             Element.map
+               (fun m -> Form_controls_msg m)
+               (Kitchen_sink_form_controls.view vp model.form_controls);
            ];
          view_images model;
          view_scroll model;
