@@ -36,6 +36,20 @@ let test_pure_numeric () =
     "pure numeric preserved" "123"
     (Nopal_ui.Slug.slugify "123")
 
+let test_uppercase_to_lowercase () =
+  Alcotest.(check string) "uppercase" "hello" (Nopal_ui.Slug.slugify "HELLO")
+
+let test_digits_preserved () =
+  Alcotest.(check string) "digits" "field-1" (Nopal_ui.Slug.slugify "Field 1")
+
+let test_already_hyphenated () =
+  Alcotest.(check string)
+    "already hyphenated" "pre-filled"
+    (Nopal_ui.Slug.slugify "pre-filled")
+
+let test_all_uppercase () =
+  Alcotest.(check string) "all caps" "email" (Nopal_ui.Slug.slugify "EMAIL")
+
 let () =
   Alcotest.run "nopal_ui_slug"
     [
@@ -51,5 +65,10 @@ let () =
           Alcotest.test_case "leading special chars" `Quick
             test_leading_special_chars;
           Alcotest.test_case "pure numeric" `Quick test_pure_numeric;
+          Alcotest.test_case "uppercase to lowercase" `Quick
+            test_uppercase_to_lowercase;
+          Alcotest.test_case "digits preserved" `Quick test_digits_preserved;
+          Alcotest.test_case "already hyphenated" `Quick test_already_hyphenated;
+          Alcotest.test_case "all uppercase" `Quick test_all_uppercase;
         ] );
     ]

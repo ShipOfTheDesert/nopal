@@ -5,7 +5,8 @@
   sub_counter
   kitchen_sink_ui
   kitchen_sink_form
-  kitchen_sink_form_controls)
+  kitchen_sink_form_controls
+  kitchen_sink_text_input)
  (libraries
   nopal_element
   nopal_mvu
