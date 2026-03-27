@@ -114,6 +114,7 @@ type model = {
   tauri_store_state : tauri_store_state;
   ui : Kitchen_sink_ui.model;
   form : Kitchen_sink_form.model;
+  form_controls : Kitchen_sink_form_controls.model;
   text_input : Kitchen_sink_text_input.model;
 }
 
@@ -130,6 +131,7 @@ type msg =
   | SubCounterMsg of Sub_counter.msg
   | Ui_msg of Kitchen_sink_ui.msg
   | Form_msg of Kitchen_sink_form.msg
+  | Form_controls_msg of Kitchen_sink_form_controls.msg
   | Text_input_msg of Kitchen_sink_text_input.msg
   | DrawPointerMove of float * float
   | DrawPointerLeave
@@ -233,6 +235,7 @@ let init () =
   let sub_counter, sub_cmd = Sub_counter.init () in
   let ui, ui_cmd = Kitchen_sink_ui.init () in
   let form, form_cmd = Kitchen_sink_form.init () in
+  let form_controls, form_controls_cmd = Kitchen_sink_form_controls.init () in
   let text_input, text_input_cmd = Kitchen_sink_text_input.init () in
   ( {
       button_clicks = 0;
@@ -280,6 +283,7 @@ let init () =
       tauri_store_state = TauriStoreIdle;
       ui;
       form;
+      form_controls;
       text_input;
     },
     Nopal_mvu.Cmd.batch
@@ -287,6 +291,7 @@ let init () =
         Nopal_mvu.Cmd.map (fun m -> SubCounterMsg m) sub_cmd;
         Nopal_mvu.Cmd.map (fun m -> Ui_msg m) ui_cmd;
         Nopal_mvu.Cmd.map (fun m -> Form_msg m) form_cmd;
+        Nopal_mvu.Cmd.map (fun m -> Form_controls_msg m) form_controls_cmd;
         Nopal_mvu.Cmd.map (fun m -> Text_input_msg m) text_input_cmd;
       ] )
 
@@ -343,6 +348,12 @@ let update model = function
   | Form_msg form_msg ->
       let form, form_cmd = Kitchen_sink_form.update model.form form_msg in
       ({ model with form }, Nopal_mvu.Cmd.map (fun m -> Form_msg m) form_cmd)
+  | Form_controls_msg fc_msg ->
+      let form_controls, fc_cmd =
+        Kitchen_sink_form_controls.update model.form_controls fc_msg
+      in
+      ( { model with form_controls },
+        Nopal_mvu.Cmd.map (fun m -> Form_controls_msg m) fc_cmd )
   | Text_input_msg ti_msg ->
       let text_input, ti_cmd =
         Kitchen_sink_text_input.update model.text_input ti_msg
@@ -2657,6 +2668,14 @@ let view vp model =
              Element.map
                (fun m -> Form_msg m)
                (Kitchen_sink_form.view vp model.form);
+           ];
+         view_section
+           ~attrs:[ ("data-testid", "form-controls-wrapper") ]
+           "Form Controls"
+           [
+             Element.map
+               (fun m -> Form_controls_msg m)
+               (Kitchen_sink_form_controls.view vp model.form_controls);
            ];
          view_section "Text Input"
            [

@@ -1,6 +1,6 @@
 (** URL-safe slug generation from human-readable strings. *)
 
 val slugify : string -> string
-(** [slugify s] lowercases [s] and replaces every non-alphanumeric character
-    with ['-']. Used internally for deterministic ID generation (e.g.
-    [aria-describedby] linkage). *)
+(** [slugify s] lowercases [s], replaces whitespace and non-alphanumeric
+    characters with hyphens, collapses consecutive hyphens, and trims
+    leading/trailing hyphens. *)
