@@ -36,6 +36,13 @@ val on_viewport_change : string -> (Nopal_element.Viewport.t -> 'msg) -> 'msg t
 (** [on_viewport_change key f] subscribes to viewport changes. [f] receives the
     new viewport. *)
 
+val on_keydown_prevent : string -> (string -> ('msg * bool) option) -> 'msg t
+(** [on_keydown_prevent key f] subscribes to global keydown events with
+    preventDefault support. [f] receives the key string and returns:
+    - [Some (msg, true)] to dispatch [msg] and call [preventDefault]
+    - [Some (msg, false)] to dispatch [msg] without preventing default
+    - [None] to ignore the key entirely *)
+
 val custom : string -> ('msg dispatch -> unit -> unit) -> 'msg t
 (** [custom key setup] creates an arbitrary subscription. [setup] receives a
     dispatch function and returns a cleanup function. *)
@@ -74,6 +81,11 @@ val extract_on_viewport_change :
     [on_viewport_change] subscription. Returns [None] if [sub] is not an
     [on_viewport_change]. *)
 
+val extract_on_keydown_prevent :
+  'msg t -> (string -> ('msg * bool) option) option
+(** [extract_on_keydown_prevent sub] extracts the callback from an
+    [on_keydown_prevent] subscription. Returns [None] if not a match. *)
+
 val extract_custom : 'msg t -> ('msg dispatch -> unit -> unit) option
 (** [extract_custom sub] extracts the setup function from a [custom]
     subscription. Returns [None] if [sub] is not a [custom]. *)
@@ -81,6 +93,12 @@ val extract_custom : 'msg t -> ('msg dispatch -> unit -> unit) option
 val extract_customs : 'msg t -> (string * ('msg dispatch -> unit -> unit)) list
 (** [extract_customs sub] flattens [sub] and returns all [custom] entries as
     [(key, setup)] pairs. Traverses [batch] nodes recursively. *)
+
+val extract_on_keydown_prevents :
+  'msg t -> (string * (string -> ('msg * bool) option)) list
+(** [extract_on_keydown_prevents sub] flattens [sub] and returns all
+    [on_keydown_prevent] entries as [(key, f)] pairs. Traverses [batch] nodes
+    recursively. *)
 
 val extract_on_viewport_changes :
   'msg t -> (string * (Nopal_element.Viewport.t -> 'msg)) list

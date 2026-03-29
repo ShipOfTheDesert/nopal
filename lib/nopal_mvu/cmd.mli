@@ -75,6 +75,11 @@ val after : int -> 'msg -> 'msg t
     This is a convenience over [task] for the common case of a single delayed
     message. *)
 
+val focus : string -> 'msg t
+(** [focus id] requests that the element with the given [id] receives focus. The
+    runtime interprets this by calling the platform's focus mechanism. Focus
+    commands carry no message — they are pure side effects. *)
+
 val map : ('a -> 'b) -> 'a t -> 'b t
 (** Transform the message type of a command. *)
 
@@ -88,14 +93,24 @@ val extract_after : 'msg t -> (int * 'msg) option
 (** [extract_after cmd] extracts the delay and message from an [after] command.
     Returns [None] if [cmd] is not an [after]. *)
 
+val extract_focus : 'msg t -> string option
+(** [extract_focus cmd] extracts the element id from a [focus] command. Returns
+    [None] if [cmd] is not a [focus]. *)
+
+val extract_focuses : 'msg t -> string list
+(** [extract_focuses cmd] collects all focus ids from a command tree, recursing
+    into [batch]. *)
+
 val interpret :
+  focus:(string -> unit) ->
   dispatch:'msg dispatch ->
   schedule_after:(int -> 'msg -> unit) ->
   'msg t ->
   unit
-(** [interpret ~dispatch ~schedule_after cmd] processes the entire command tree
-    in a single pass. [Perform] and [Task] nodes are executed with [dispatch].
-    [After] nodes are passed to [schedule_after]. [None] is ignored.
+(** [interpret ~focus ~dispatch ~schedule_after cmd] processes the entire
+    command tree in a single pass. [Perform] and [Task] nodes are executed with
+    [dispatch]. [After] nodes are passed to [schedule_after]. [Focus] nodes call
+    [focus] with the element id. [None] is ignored.
 
     Note: [schedule_after] receives the raw message (['msg]), not a callback.
     The runtime wraps this to produce the [(int -> (unit -> unit) -> unit)]

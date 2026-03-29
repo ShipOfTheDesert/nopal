@@ -8,8 +8,16 @@ module Make (A : Nopal_mvu.App.S) : sig
   type t
   (** Opaque runtime handle. *)
 
-  val create : ?schedule_after:(int -> (unit -> unit) -> unit) -> unit -> t
-  (** [create ?schedule_after ()] builds a runtime for the app [A].
+  val create :
+    ?focus:(string -> unit) ->
+    ?schedule_after:(int -> (unit -> unit) -> unit) ->
+    unit ->
+    t
+  (** [create ?focus ?schedule_after ()] builds a runtime for the app [A].
+
+      [focus id] is a platform-provided callback used to implement
+      {!Nopal_mvu.Cmd.focus}. Defaults to a no-op. The web backend passes a
+      callback that calls [document.getElementById(id).focus()].
 
       [schedule_after ms callback] is a platform-provided timer used to
       implement {!Nopal_mvu.Cmd.after}. Defaults to a no-op that silently drops

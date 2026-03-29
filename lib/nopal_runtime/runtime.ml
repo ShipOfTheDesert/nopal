@@ -13,6 +13,7 @@ module Make (A : Nopal_mvu.App.S) = struct
            limit. Acceptable for PoC — subscription count is typically small
            and cascading dispatches are shallow. Revisit if profiling shows
            unbounded growth in real applications. *)
+    focus : string -> unit;
     schedule_after : int -> (unit -> unit) -> unit;
     mutable processing : bool;
         (* mutable: re-entrancy guard for dispatch loop —
@@ -22,7 +23,7 @@ module Make (A : Nopal_mvu.App.S) = struct
            Checked on dispatch, start, and shutdown to enforce valid transitions. *)
   }
 
-  let create ?(schedule_after = fun _ms _f -> ()) () =
+  let create ?(focus = fun _id -> ()) ?(schedule_after = fun _ms _f -> ()) () =
     let init_model, init_cmd = A.init () in
     let model_var = Lwd.var init_model in
     let viewport_var = Lwd.var Nopal_element.Viewport.desktop in
@@ -33,6 +34,7 @@ module Make (A : Nopal_mvu.App.S) = struct
       init_cmd;
       sub_mgr = Sub_manager.create ();
       queue = Queue.create ();
+      focus;
       schedule_after;
       processing = false;
       lifecycle = Created;
@@ -81,7 +83,7 @@ module Make (A : Nopal_mvu.App.S) = struct
       process_queue rt)
 
   and execute_cmd rt cmd =
-    Nopal_mvu.Cmd.interpret
+    Nopal_mvu.Cmd.interpret ~focus:rt.focus
       ~dispatch:(fun msg -> dispatch rt msg)
       ~schedule_after:(fun ms msg ->
         rt.schedule_after ms (fun () ->

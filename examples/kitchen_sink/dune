@@ -1,4 +1,9 @@
 (library
+ (name focus_keyboard)
+ (modules focus_keyboard)
+ (libraries nopal_element nopal_mvu))
+
+(library
  (name kitchen_sink_app)
  (modules
   kitchen_sink_app
@@ -14,7 +19,8 @@
   nopal_draw
   nopal_charts
   nopal_http
-  nopal_ui))
+  nopal_ui
+  focus_keyboard))
 
 (executable
  (name main)

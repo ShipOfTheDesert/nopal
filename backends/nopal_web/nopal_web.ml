@@ -59,11 +59,16 @@ let read_viewport safe_area =
   let height = Jv.to_int (Jv.get w "innerHeight") in
   Nopal_element.Viewport.make ~width ~height ~safe_area ()
 
+let focus_element id =
+  let document = Jv.get Jv.global "document" in
+  let el = Jv.call document "getElementById" [| Jv.of_string id |] in
+  if not (Jv.is_none el) then ignore (Jv.call el "focus" [||])
+
 let mount (type model msg)
     (module A : Nopal_mvu.App.S with type model = model and type msg = msg)
     (target : Brr.El.t) =
   let module R = Nopal_runtime.Runtime.Make (A) in
-  let rt = R.create ~schedule_after () in
+  let rt = R.create ~focus:focus_element ~schedule_after () in
   (* Inject CSS custom properties bridging env() safe area values into JS-readable
      form. Must run before read_safe_area. Runs once on startup (REQ-N3). *)
   inject_safe_area_style ();
@@ -86,16 +91,6 @@ let mount (type model msg)
     (* mutable: holds the rAF callback so each frame can schedule the next *)
     ref (fun (_ts : float) -> ())
   in
-  (raf_loop :=
-     fun _ts ->
-       if Lwd.is_damaged root then begin
-         let new_element = Lwd.quick_sample root in
-         Renderer.update ~dispatch:(R.dispatch rt) handle new_element
-       end;
-       let w = Jv.get Jv.global "window" in
-       ignore (Jv.call w "requestAnimationFrame" [| Jv.repr !raf_loop |]));
-  let w = Jv.get Jv.global "window" in
-  ignore (Jv.call w "requestAnimationFrame" [| Jv.repr !raf_loop |]);
   (* Set up ResizeObserver to track viewport changes (REQ-F4, REQ-N2).
      The observer watches [target] as a resize trigger but [read_viewport]
      reads from [window.innerWidth]/[window.innerHeight], so the viewport
@@ -107,4 +102,67 @@ let mount (type model msg)
         R.set_viewport rt new_vp)
   in
   let observer = Jv.new' (Jv.get Jv.global "ResizeObserver") [| resize_cb |] in
-  ignore (Jv.call observer "observe" [| Brr.El.to_jv target |])
+  ignore (Jv.call observer "observe" [| Brr.El.to_jv target |]);
+  (* keydown_prevent subscription management: a single global keydown listener
+     dispatches to the current On_keydown_prevent callbacks. The callbacks ref
+     is updated each rAF frame from the model's subscriptions.
+     NOTE: This subscription type is managed here rather than through
+     Sub_manager because it requires platform-specific preventDefault
+     behavior that the platform-agnostic runtime cannot express. See
+     Task 4 reflections in tasks/current.md for the full rationale. *)
+  let keydown_prevent_cbs : (string * (string -> (msg * bool) option)) list ref
+      =
+    (* mutable: updated each rAF frame with the current model's
+       On_keydown_prevent callbacks so the global keydown listener
+       always dispatches against the latest subscription set *)
+    ref []
+  in
+  let keydown_listener =
+    (* mutable: holds the listener reference so it can be removed when no
+       On_keydown_prevent subscriptions are active *)
+    ref Jv.null
+  in
+  let update_keydown_prevent () =
+    let subs = A.subscriptions (R.model rt) in
+    let cbs = Nopal_mvu.Sub.extract_on_keydown_prevents subs in
+    keydown_prevent_cbs := cbs;
+    let w = Jv.get Jv.global "window" in
+    match cbs with
+    | [] ->
+        if not (Jv.is_none !keydown_listener) then (
+          ignore
+            (Jv.call w "removeEventListener"
+               [| Jv.of_string "keydown"; !keydown_listener |]);
+          keydown_listener := Jv.null)
+    | _ ->
+        if Jv.is_none !keydown_listener then (
+          let listener =
+            Jv.callback ~arity:1 (fun event ->
+                let key = Jv.to_string (Jv.get event "key") in
+                List.iter
+                  (fun (_sub_key, f) ->
+                    match f key with
+                    | Some (msg, prevent) ->
+                        if prevent then
+                          ignore (Jv.call event "preventDefault" [||]);
+                        R.dispatch rt msg
+                    | Option.None -> ())
+                  !keydown_prevent_cbs)
+          in
+          keydown_listener := listener;
+          ignore
+            (Jv.call w "addEventListener"
+               [| Jv.of_string "keydown"; listener |]))
+  in
+  (raf_loop :=
+     fun _ts ->
+       if Lwd.is_damaged root then begin
+         let new_element = Lwd.quick_sample root in
+         Renderer.update ~dispatch:(R.dispatch rt) handle new_element
+       end;
+       update_keydown_prevent ();
+       let w = Jv.get Jv.global "window" in
+       ignore (Jv.call w "requestAnimationFrame" [| Jv.repr !raf_loop |]));
+  let w = Jv.get Jv.global "window" in
+  ignore (Jv.call w "requestAnimationFrame" [| Jv.repr !raf_loop |]);
+  update_keydown_prevent ()

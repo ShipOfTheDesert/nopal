@@ -116,6 +116,7 @@ type model = {
   form : Kitchen_sink_form.model;
   form_controls : Kitchen_sink_form_controls.model;
   text_input : Kitchen_sink_text_input.model;
+  focus_keyboard : Focus_keyboard.model;
 }
 
 (* Messages *)
@@ -133,6 +134,7 @@ type msg =
   | Form_msg of Kitchen_sink_form.msg
   | Form_controls_msg of Kitchen_sink_form_controls.msg
   | Text_input_msg of Kitchen_sink_text_input.msg
+  | Focus_keyboard_msg of Focus_keyboard.msg
   | DrawPointerMove of float * float
   | DrawPointerLeave
   | ChartHovered of Hover.t
@@ -237,6 +239,7 @@ let init () =
   let form, form_cmd = Kitchen_sink_form.init () in
   let form_controls, form_controls_cmd = Kitchen_sink_form_controls.init () in
   let text_input, text_input_cmd = Kitchen_sink_text_input.init () in
+  let focus_keyboard, focus_keyboard_cmd = Focus_keyboard.init () in
   ( {
       button_clicks = 0;
       input_text = "";
@@ -285,6 +288,7 @@ let init () =
       form;
       form_controls;
       text_input;
+      focus_keyboard;
     },
     Nopal_mvu.Cmd.batch
       [
@@ -293,6 +297,7 @@ let init () =
         Nopal_mvu.Cmd.map (fun m -> Form_msg m) form_cmd;
         Nopal_mvu.Cmd.map (fun m -> Form_controls_msg m) form_controls_cmd;
         Nopal_mvu.Cmd.map (fun m -> Text_input_msg m) text_input_cmd;
+        Nopal_mvu.Cmd.map (fun m -> Focus_keyboard_msg m) focus_keyboard_cmd;
       ] )
 
 let clamp_pane_dw dw = Domain_window.clamp ~data_min:0.0 ~data_max:9.0 dw
@@ -360,6 +365,12 @@ let update model = function
       in
       ( { model with text_input },
         Nopal_mvu.Cmd.map (fun m -> Text_input_msg m) ti_cmd )
+  | Focus_keyboard_msg fk_msg ->
+      let focus_keyboard, fk_cmd =
+        Focus_keyboard.update model.focus_keyboard fk_msg
+      in
+      ( { model with focus_keyboard },
+        Nopal_mvu.Cmd.map (fun m -> Focus_keyboard_msg m) fk_cmd )
   | DrawPointerMove (x, y) ->
       ({ model with draw_pointer = Some (x, y) }, Nopal_mvu.Cmd.none)
   | DrawPointerLeave -> ({ model with draw_pointer = None }, Nopal_mvu.Cmd.none)
@@ -2683,6 +2694,12 @@ let view vp model =
                (fun m -> Text_input_msg m)
                (Kitchen_sink_text_input.view vp model.text_input);
            ];
+         view_section "Focus & Keyboard"
+           [
+             Element.map
+               (fun m -> Focus_keyboard_msg m)
+               (Focus_keyboard.view vp model.focus_keyboard);
+           ];
          view_images model;
          view_scroll model;
          view_keyed model;
@@ -2707,4 +2724,7 @@ let view vp model =
          view_storage model;
        ])
 
-let subscriptions _model = Nopal_mvu.Sub.none
+let subscriptions model =
+  Nopal_mvu.Sub.map
+    (fun m -> Focus_keyboard_msg m)
+    (Focus_keyboard.subscriptions model.focus_keyboard)

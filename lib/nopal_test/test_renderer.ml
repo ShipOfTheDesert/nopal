@@ -890,3 +890,15 @@ let run_app ~init ~update ~view ?(viewport = Nopal_element.Viewport.desktop)
       model msgs
   in
   (final_model, render (view viewport final_model))
+
+let run_app_with_cmds ~init ~update ~view
+    ?(viewport = Nopal_element.Viewport.desktop) msgs =
+  let model, init_cmd = init () in
+  let final_model, cmds =
+    List.fold_left
+      (fun (m, acc_cmds) msg ->
+        let m', cmd = update m msg in
+        (m', cmd :: acc_cmds))
+      (model, [ init_cmd ]) msgs
+  in
+  (final_model, render (view viewport final_model), List.rev cmds)
