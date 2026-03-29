@@ -115,6 +115,7 @@ let test_cmd_interpret_single_pass () =
       ]
   in
   Nopal_mvu.Cmd.interpret
+    ~focus:(fun _id -> ())
     ~dispatch:(fun msg -> dispatched := msg :: !dispatched)
     ~schedule_after:(fun ms msg -> scheduled := (ms, msg) :: !scheduled)
     cmd;

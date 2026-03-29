@@ -243,3 +243,15 @@ val run_app :
     renders the result. [viewport] defaults to
     {!Nopal_element.Viewport.desktop}. Returns the final model and the rendered
     output. *)
+
+val run_app_with_cmds :
+  init:(unit -> 'model * 'msg Nopal_mvu.Cmd.t) ->
+  update:('model -> 'msg -> 'model * 'msg Nopal_mvu.Cmd.t) ->
+  view:(Nopal_element.Viewport.t -> 'model -> 'msg Nopal_element.Element.t) ->
+  ?viewport:Nopal_element.Viewport.t ->
+  'msg list ->
+  'model * 'msg rendered * 'msg Nopal_mvu.Cmd.t list
+(** [run_app_with_cmds ~init ~update ~view ?viewport msgs] is like {!run_app}
+    but also collects all commands produced during [init] and each [update].
+    Returns the final model, rendered output, and the list of commands in order
+    (init command first, then one per update message). *)

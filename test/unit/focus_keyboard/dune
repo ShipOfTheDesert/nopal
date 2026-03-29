@@ -1,0 +1,9 @@
+(tests
+ (names test_cmd_focus test_sub_keydown_prevent)
+ (modules test_cmd_focus test_sub_keydown_prevent)
+ (libraries nopal_mvu alcotest))
+
+(test
+ (name test_focus_kitchen_sink)
+ (modules test_focus_kitchen_sink)
+ (libraries focus_keyboard nopal_mvu nopal_test alcotest))
