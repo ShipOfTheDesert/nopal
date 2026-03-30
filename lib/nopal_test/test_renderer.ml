@@ -3,6 +3,7 @@ type node =
   | Text of { content : string; text_style : Nopal_style.Text.t option }
   | Element of {
       tag : string;
+      style : Nopal_style.Style.t;
       attrs : (string * string) list;
       children : node list;
       interaction : Nopal_style.Interaction.t;
@@ -58,7 +59,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
     | Text { content; text_style } -> Text { content; text_style }
     | Box
         {
-          style = _;
+          style;
           interaction;
           attrs;
           children;
@@ -89,27 +90,30 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
         Element
           {
             tag = "box";
+            style;
             attrs;
             children = go_children rev_path children;
             interaction;
           }
-    | Row { style = _; interaction; attrs; children } ->
+    | Row { style; interaction; attrs; children } ->
         Element
           {
             tag = "row";
+            style;
             attrs;
             children = go_children rev_path children;
             interaction;
           }
-    | Column { style = _; interaction; attrs; children } ->
+    | Column { style; interaction; attrs; children } ->
         Element
           {
             tag = "column";
+            style;
             attrs;
             children = go_children rev_path children;
             interaction;
           }
-    | Button { style = _; interaction; attrs; on_click; on_dblclick; child } ->
+    | Button { style; interaction; attrs; on_click; on_dblclick; child } ->
         handlers :=
           {
             path = List.rev rev_path;
@@ -125,13 +129,14 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
         Element
           {
             tag = "button";
+            style;
             attrs;
             children = [ go (0 :: rev_path) child ];
             interaction;
           }
     | Input
         {
-          style = _;
+          style;
           interaction;
           attrs;
           value;
@@ -156,12 +161,12 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
         Element
           {
             tag = "input";
+            style;
             attrs = [ ("value", value); ("placeholder", placeholder) ] @ attrs;
             children = [];
             interaction;
           }
-    | Checkbox { style = _; interaction; attrs; checked; disabled; on_toggle }
-      ->
+    | Checkbox { style; interaction; attrs; checked; disabled; on_toggle } ->
         if not disabled then
           handlers :=
             {
@@ -178,6 +183,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
         Element
           {
             tag = "checkbox";
+            style;
             attrs =
               [
                 ("checked", string_of_bool checked);
@@ -187,8 +193,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             children = [];
             interaction;
           }
-    | Radio
-        { style = _; interaction; attrs; name; checked; disabled; on_select } ->
+    | Radio { style; interaction; attrs; name; checked; disabled; on_select } ->
         if not disabled then
           handlers :=
             {
@@ -205,6 +210,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
         Element
           {
             tag = "radio";
+            style;
             attrs =
               [
                 ("name", name);
@@ -216,15 +222,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             interaction;
           }
     | Select
-        {
-          style = _;
-          interaction;
-          attrs;
-          options;
-          selected;
-          disabled;
-          on_change;
-        } ->
+        { style; interaction; attrs; options; selected; disabled; on_change } ->
         if not disabled then
           handlers :=
             {
@@ -244,6 +242,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
               Element
                 {
                   tag = "option";
+                  style = Nopal_style.Style.default;
                   attrs =
                     [
                       ("value", opt.value);
@@ -258,24 +257,27 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
         Element
           {
             tag = "select";
+            style;
             attrs =
               [ ("selected", selected); ("disabled", string_of_bool disabled) ]
               @ attrs;
             children = option_children;
             interaction;
           }
-    | Image { style = _; src; alt } ->
+    | Image { style; src; alt } ->
         Element
           {
             tag = "image";
+            style;
             attrs = [ ("src", src); ("alt", alt) ];
             children = [];
             interaction = Nopal_style.Interaction.default;
           }
-    | Scroll { style = _; child } ->
+    | Scroll { style; child } ->
         Element
           {
             tag = "scroll";
+            style;
             attrs = [];
             children = [ go (0 :: rev_path) child ];
             interaction = Nopal_style.Interaction.default;
@@ -284,6 +286,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
         Element
           {
             tag = "keyed";
+            style = Nopal_style.Style.default;
             attrs = [ ("key", key) ];
             children = [ go (0 :: rev_path) child ];
             interaction = Nopal_style.Interaction.default;
@@ -315,6 +318,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
         Element
           {
             tag = "canvas";
+            style = Nopal_style.Style.default;
             attrs =
               [
                 ("width", string_of_float width);
@@ -464,6 +468,13 @@ let find_all sel node =
         acc
   in
   List.rev (go [] node)
+
+let style node =
+  match node with
+  | Element { style; _ } -> Some style
+  | Empty
+  | Text _ ->
+      None
 
 let interaction node =
   match node with

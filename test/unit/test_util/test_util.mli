@@ -17,3 +17,7 @@ val check_node :
   Nopal_test.Test_renderer.node ->
   Nopal_test.Test_renderer.node ->
   unit
+
+val count_unique : ('a -> 'a -> bool) -> 'a list -> int
+(** [count_unique eq lst] returns the number of distinct elements in [lst] using
+    [eq] for equality comparison. *)

@@ -3,6 +3,7 @@ module E = Nopal_element.Element
 module Ix = Nopal_style.Interaction
 
 let ix0 = Ix.default
+let s0 = Nopal_style.Style.default
 let check_node = Test_util.check_node
 
 type msg =
@@ -21,6 +22,7 @@ let checkbox_renders_as_checkbox_tag () =
     (Element
        {
          tag = "checkbox";
+         style = s0;
          attrs = [ ("checked", "true"); ("disabled", "false") ];
          children = [];
          interaction = ix0;
@@ -67,6 +69,7 @@ let radio_renders_as_radio_tag_with_name () =
     (Element
        {
          tag = "radio";
+         style = s0;
          attrs =
            [ ("name", "color"); ("checked", "false"); ("disabled", "false") ];
          children = [];
@@ -114,12 +117,14 @@ let select_renders_as_select_tag_with_options () =
     (Element
        {
          tag = "select";
+         style = s0;
          attrs = [ ("selected", "a"); ("disabled", "false") ];
          children =
            [
              Element
                {
                  tag = "option";
+                 style = s0;
                  attrs =
                    [ ("value", "a"); ("label", "Alpha"); ("disabled", "false") ];
                  children = [];
@@ -128,6 +133,7 @@ let select_renders_as_select_tag_with_options () =
              Element
                {
                  tag = "option";
+                 style = s0;
                  attrs =
                    [ ("value", "b"); ("label", "Beta"); ("disabled", "false") ];
                  children = [];
@@ -136,6 +142,7 @@ let select_renders_as_select_tag_with_options () =
              Element
                {
                  tag = "option";
+                 style = s0;
                  attrs =
                    [ ("value", "c"); ("label", "Gamma"); ("disabled", "true") ];
                  children = [];

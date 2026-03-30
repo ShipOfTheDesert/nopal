@@ -21,6 +21,7 @@ nopal_charts    ← Composable interactive charts (Bar, Line, Area, Pie, Scatter
                    Heat_map, Trading.Candlestick, Trading.Drawdown, Chart_pane,
                    Color_scale, Domain_window, Viewport, Downsample, Snap)
 nopal_http      ← Pure HTTP types + backend abstraction — no platform deps
+nopal_ui        ← High-level UI components (Button, Checkbox, Radio, Select, Toast) — no platform deps
 nopal_runtime   ← Lwd reactive integration + MVU loop
 nopal_test      ← Pure OCaml test renderer — no js_of_ocaml
 nopal_web       ← js_of_ocaml + Brr DOM renderer (only browser-dependent package)
@@ -290,6 +291,91 @@ type Text.t = {
   text_overflow  : text_overflow option;   (* Clip | Ellipsis | Wrap | No_wrap *)
   italic         : bool option;
 }
+```
+
+### UI Components (`nopal_ui`)
+
+High-level UI components built on `nopal_element` and `nopal_style`. No platform dependencies — compiles native.
+
+#### Toast
+
+Dismissible toast notifications with variant-based styling and optional auto-dismiss.
+
+```ocaml
+(* Variants *)
+type variant = Info | Success | Warning | Error
+
+(* A single toast notification *)
+type toast = { id : string; variant : variant; message : string }
+
+(* Configuration for rendering a toast stack *)
+type 'msg config = {
+  dismiss : string -> 'msg;
+  style : Style.t option;
+  interaction : Interaction.t option;
+  attrs : (string * string) list;
+}
+
+(* Constructor — style/interaction/attrs default to None/[] *)
+val make : dismiss:(string -> 'msg) -> 'msg config
+
+(* State helpers *)
+val add : variant:variant -> message:string -> id:string -> ?duration_ms:int
+  -> dismiss:(string -> 'msg) -> toast list -> toast list * 'msg Cmd.t
+(* Appends a toast. When duration_ms is provided, returned Cmd schedules
+   auto-dismiss via Cmd.after. Otherwise returns Cmd.none. *)
+
+val dismiss : string -> toast list -> toast list
+(* Remove toast with matching id. No-op if id not found. *)
+
+(* View *)
+val view : 'msg config -> toast list -> 'msg Element.t
+(* Renders a column container. Each toast carries aria-live per variant:
+   Info/Success="polite", Warning/Error="assertive". config.style controls
+   container layout only — toast styling always uses default_style_for.
+   Each toast is a button with on_click dispatching config.dismiss id,
+   data-variant attr, and aria-label. Empty list renders empty container. *)
+
+(* Accessibility *)
+val aria_live_for : variant -> string
+(* Returns "polite" for Info/Success, "assertive" for Warning/Error. *)
+
+(* Styling *)
+val default_style_for : variant -> Style.t
+(* Info=blue, Success=green, Warning=amber, Error=red with padding and
+   border radius. Exposed for extending rather than replacing styling. *)
+
+val default_interaction_for : variant -> Interaction.t
+(* Hover/pressed overrides per variant — each variant gets distinct hover
+   and pressed background colors. Exposed for extending rather than
+   replacing interaction styling. *)
+```
+
+Usage pattern — subapp integration:
+
+```ocaml
+(* Model *)
+type model = { toasts : Toast.toast list; next_id : int }
+
+(* Messages *)
+type msg = ShowInfo | Dismiss of string
+
+(* Update *)
+let update model = function
+  | ShowInfo ->
+      let id = "toast-" ^ string_of_int model.next_id in
+      let toasts, cmd =
+        Toast.add ~variant:Info ~message:"Hello!" ~id ~duration_ms:3000
+          ~dismiss:(fun id -> Dismiss id) model.toasts
+      in
+      ({ toasts; next_id = model.next_id + 1 }, cmd)
+  | Dismiss id ->
+      ({ model with toasts = Toast.dismiss id model.toasts }, Cmd.none)
+
+(* View *)
+let view model =
+  let config = Toast.make ~dismiss:(fun id -> Dismiss id) in
+  Toast.view config model.toasts
 ```
 
 ### Routing (`nopal_router`)
@@ -950,6 +1036,7 @@ lib/
                        Trading.Candlestick, Trading.Drawdown, Chart_pane,
                        Color_scale, Domain_window, Viewport, Downsample, Snap
   nopal_http/        — Pure HTTP types + backend abstraction
+  nopal_ui/          — High-level UI components (Button, Checkbox, Radio, Select, Toast)
   nopal_runtime/     — Lwd integration + MVU loop
   nopal_test/        — Pure OCaml test renderer
 backends/

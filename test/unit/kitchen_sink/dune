@@ -1,3 +1,7 @@
 (test
  (name test_http_section)
  (libraries kitchen_sink_app nopal_test nopal_http test_util alcotest))
+
+(test
+ (name test_toast_section)
+ (libraries kitchen_sink_app nopal_test nopal_element test_util alcotest))

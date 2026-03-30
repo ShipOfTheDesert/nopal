@@ -139,6 +139,7 @@ let msg_pp fmt msg =
   | Form_controls_msg _ -> Format.fprintf fmt "Form_controls_msg _"
   | Text_input_msg _ -> Format.fprintf fmt "Text_input_msg _"
   | Focus_keyboard_msg _ -> Format.fprintf fmt "Focus_keyboard_msg _"
+  | Toast_msg _ -> Format.fprintf fmt "Toast_msg _"
 
 let msg_testable = Alcotest.testable msg_pp ( = )
 
@@ -309,9 +310,9 @@ let test_tauri_event_received_caps_at_20 () =
   let model = { model with tauri_events = events } in
   let model', _ = update model (TauriEventReceived "overflow") in
   Alcotest.(check int) "capped at 20" 20 (List.length model'.tauri_events);
-  Alcotest.(check string)
-    "newest is first" "overflow"
-    (List.hd model'.tauri_events)
+  match model'.tauri_events with
+  | first :: _ -> Alcotest.(check string) "newest is first" "overflow" first
+  | [] -> Alcotest.fail "expected non-empty tauri_events"
 
 let test_got_tauri_unlisten_stores () =
   let model = idle_model () in
