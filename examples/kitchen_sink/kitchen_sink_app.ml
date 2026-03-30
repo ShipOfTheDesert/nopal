@@ -117,6 +117,7 @@ type model = {
   form_controls : Kitchen_sink_form_controls.model;
   text_input : Kitchen_sink_text_input.model;
   focus_keyboard : Focus_keyboard.model;
+  toast : Sub_toast.model;
 }
 
 (* Messages *)
@@ -135,6 +136,7 @@ type msg =
   | Form_controls_msg of Kitchen_sink_form_controls.msg
   | Text_input_msg of Kitchen_sink_text_input.msg
   | Focus_keyboard_msg of Focus_keyboard.msg
+  | Toast_msg of Sub_toast.msg
   | DrawPointerMove of float * float
   | DrawPointerLeave
   | ChartHovered of Hover.t
@@ -240,6 +242,7 @@ let init () =
   let form_controls, form_controls_cmd = Kitchen_sink_form_controls.init () in
   let text_input, text_input_cmd = Kitchen_sink_text_input.init () in
   let focus_keyboard, focus_keyboard_cmd = Focus_keyboard.init () in
+  let toast, toast_cmd = Sub_toast.init () in
   ( {
       button_clicks = 0;
       input_text = "";
@@ -289,6 +292,7 @@ let init () =
       form_controls;
       text_input;
       focus_keyboard;
+      toast;
     },
     Nopal_mvu.Cmd.batch
       [
@@ -298,6 +302,7 @@ let init () =
         Nopal_mvu.Cmd.map (fun m -> Form_controls_msg m) form_controls_cmd;
         Nopal_mvu.Cmd.map (fun m -> Text_input_msg m) text_input_cmd;
         Nopal_mvu.Cmd.map (fun m -> Focus_keyboard_msg m) focus_keyboard_cmd;
+        Nopal_mvu.Cmd.map (fun m -> Toast_msg m) toast_cmd;
       ] )
 
 let clamp_pane_dw dw = Domain_window.clamp ~data_min:0.0 ~data_max:9.0 dw
@@ -371,6 +376,9 @@ let update model = function
       in
       ( { model with focus_keyboard },
         Nopal_mvu.Cmd.map (fun m -> Focus_keyboard_msg m) fk_cmd )
+  | Toast_msg toast_msg ->
+      let toast, toast_cmd = Sub_toast.update model.toast toast_msg in
+      ({ model with toast }, Nopal_mvu.Cmd.map (fun m -> Toast_msg m) toast_cmd)
   | DrawPointerMove (x, y) ->
       ({ model with draw_pointer = Some (x, y) }, Nopal_mvu.Cmd.none)
   | DrawPointerLeave -> ({ model with draw_pointer = None }, Nopal_mvu.Cmd.none)
@@ -2699,6 +2707,12 @@ let view vp model =
              Element.map
                (fun m -> Focus_keyboard_msg m)
                (Focus_keyboard.view vp model.focus_keyboard);
+           ];
+         view_section
+           ~attrs:[ ("data-testid", "toast-section") ]
+           "Toast Notifications"
+           [
+             Element.map (fun m -> Toast_msg m) (Sub_toast.view vp model.toast);
            ];
          view_images model;
          view_scroll model;

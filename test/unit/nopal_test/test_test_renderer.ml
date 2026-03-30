@@ -3,6 +3,7 @@ module E = Nopal_element.Element
 module Ix = Nopal_style.Interaction
 
 let ix0 = Ix.default
+let s0 = Nopal_style.Style.default
 let check_node = Test_util.check_node
 
 (* Task 1: Rendering tests *)
@@ -23,6 +24,7 @@ let render_box () =
     (Element
        {
          tag = "box";
+         style = s0;
          attrs = [];
          children =
            [
@@ -39,6 +41,7 @@ let render_row () =
     (Element
        {
          tag = "row";
+         style = s0;
          attrs = [];
          children = [ Text { content = "a"; text_style = None } ];
          interaction = ix0;
@@ -51,6 +54,7 @@ let render_column () =
     (Element
        {
          tag = "column";
+         style = s0;
          attrs = [];
          children = [ Text { content = "a"; text_style = None } ];
          interaction = ix0;
@@ -63,6 +67,7 @@ let render_button () =
     (Element
        {
          tag = "button";
+         style = s0;
          attrs = [];
          children = [ Text { content = "click me"; text_style = None } ];
          interaction = ix0;
@@ -75,6 +80,7 @@ let render_input_attrs () =
     (Element
        {
          tag = "input";
+         style = s0;
          attrs = [ ("value", "val"); ("placeholder", "ph") ];
          children = [];
          interaction = ix0;
@@ -87,6 +93,7 @@ let render_image_attrs () =
     (Element
        {
          tag = "image";
+         style = s0;
          attrs = [ ("src", "a.png"); ("alt", "pic") ];
          children = [];
          interaction = ix0;
@@ -99,6 +106,7 @@ let render_scroll () =
     (Element
        {
          tag = "scroll";
+         style = s0;
          attrs = [];
          children = [ Text { content = "content"; text_style = None } ];
          interaction = ix0;
@@ -111,6 +119,7 @@ let render_keyed () =
     (Element
        {
          tag = "keyed";
+         style = s0;
          attrs = [ ("key", "k1") ];
          children = [ Text { content = "child"; text_style = None } ];
          interaction = ix0;
@@ -129,12 +138,14 @@ let render_nested () =
     (Element
        {
          tag = "box";
+         style = s0;
          attrs = [];
          children =
            [
              Element
                {
                  tag = "row";
+                 style = s0;
                  attrs = [];
                  children =
                    [
@@ -142,6 +153,7 @@ let render_nested () =
                      Element
                        {
                          tag = "column";
+                         style = s0;
                          attrs = [];
                          children =
                            [

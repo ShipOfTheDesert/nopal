@@ -21,3 +21,14 @@
 (test
  (name test_select_input)
  (libraries nopal_ui nopal_test nopal_element nopal_style alcotest test_util))
+
+(test
+ (name test_toast)
+ (libraries
+  nopal_ui
+  nopal_test
+  nopal_element
+  nopal_style
+  nopal_mvu
+  alcotest
+  test_util))

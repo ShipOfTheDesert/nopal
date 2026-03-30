@@ -11,7 +11,8 @@
   kitchen_sink_ui
   kitchen_sink_form
   kitchen_sink_form_controls
-  kitchen_sink_text_input)
+  kitchen_sink_text_input
+  sub_toast)
  (libraries
   nopal_element
   nopal_mvu

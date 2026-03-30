@@ -43,6 +43,7 @@ let test_render_draw_node () =
     (Element
        {
          tag = "canvas";
+         style = Nopal_style.Style.default;
          attrs = [ ("width", "200."); ("height", "100."); ("scene-nodes", "1") ];
          children = [];
          interaction = Nopal_style.Interaction.default;

@@ -11,6 +11,7 @@ type node =
   | Text of { content : string; text_style : Nopal_style.Text.t option }
   | Element of {
       tag : string;
+      style : Nopal_style.Style.t;
       attrs : (string * string) list;
       children : node list;
       interaction : Nopal_style.Interaction.t;
@@ -68,6 +69,10 @@ val text_content : node -> string
 val text_style : node -> Nopal_style.Text.t option
 (** [text_style node] returns [Some style] if the node is a [Text] with a text
     style set, [None] for plain [Text], [Empty], and [Element] nodes. *)
+
+val style : node -> Nopal_style.Style.t option
+(** [style node] returns [Some style] if the node is an [Element], [None] for
+    [Empty] and [Text]. *)
 
 val interaction : node -> Nopal_style.Interaction.t option
 (** [interaction node] returns [Some interaction] if the node is an [Element],
