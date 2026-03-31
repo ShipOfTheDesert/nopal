@@ -218,6 +218,37 @@ Element.draw : ?on_pointer_move:(pointer_event -> 'msg) -> ?on_click:(pointer_ev
   -> ?cursor:Cursor.t -> ?aria_label:string
   -> width:float -> height:float -> Scene.t list -> 'msg Element.t
 
+(* Virtualized list — renders only visible items for large datasets *)
+module Virtual_list : sig
+  module Positive_float : sig
+    type t
+    val of_float : float -> t option   (* None if <= 0 *)
+    val to_float : t -> float
+  end
+  module Natural : sig
+    type t
+    val of_int : int -> t option       (* None if < 0 *)
+    val to_int : t -> int
+  end
+  type fixed
+  type 'height scroll_state
+  val scroll_state : offset:float -> fixed scroll_state  (* clamps negative to 0 *)
+  val offset : _ scroll_state -> float
+  type range = { first : int; last : int }
+  val visible_range :
+    scroll_state:fixed scroll_state -> row_height:Positive_float.t ->
+    container_height:Positive_float.t -> item_count:Natural.t ->
+    overscan:Natural.t -> range
+end
+
+Element.virtual_list :
+  ?style:Style.t -> ?on_scroll:(float -> 'msg) ->
+  item_count:Virtual_list.Natural.t -> row_height:Virtual_list.Positive_float.t ->
+  container_height:Virtual_list.Positive_float.t ->
+  scroll_state:Virtual_list.fixed Virtual_list.scroll_state ->
+  overscan:Virtual_list.Natural.t ->
+  (int -> 'msg Element.t) -> 'msg Element.t
+
 (* Message transform for component embedding *)
 Element.map : ('a -> 'b) -> 'a Element.t -> 'b Element.t
 ```
@@ -1207,7 +1238,7 @@ let subscriptions model =
 ```
 lib/
   nopal_mvu/         — Cmd, Sub, App — zero UI deps
-  nopal_element/     — Element.t DSL — zero platform deps
+  nopal_element/     — Element.t DSL + Virtual_list — zero platform deps
   nopal_style/       — Style.t, Text.t, Interaction.t, Cursor.t
   nopal_router/      — Router.t, Platform.S
   nopal_scene/       — Pure scene types: Color, Paint, Transform, Path, Scene

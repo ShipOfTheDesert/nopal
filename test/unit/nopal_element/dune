@@ -25,3 +25,11 @@
 (test
  (name test_element_form)
  (libraries nopal_element nopal_style nopal_test test_util alcotest))
+
+(test
+ (name test_virtual_list)
+ (libraries nopal_element alcotest))
+
+(test
+ (name test_virtual_list_structural)
+ (libraries nopal_element nopal_test nopal_style alcotest))

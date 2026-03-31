@@ -95,6 +95,16 @@ type 'msg t =
       cursor : Nopal_style.Cursor.t option;
       aria_label : string option;
     }
+  | Virtual_list of {
+      style : Nopal_style.Style.t;
+      item_count : Virtual_list.Natural.t;
+      row_height : Virtual_list.Positive_float.t;
+      container_height : Virtual_list.Positive_float.t;
+      scroll_state : Virtual_list.fixed Virtual_list.scroll_state;
+      overscan : Virtual_list.Natural.t;
+      render_item : int -> 'msg t;
+      on_scroll : (float -> 'msg) option;
+    }
 
 let empty = Empty
 let text s = Text { content = s; text_style = None }
@@ -186,6 +196,20 @@ let draw ?on_pointer_move ?on_click ?on_pointer_leave ?on_pointer_down
       on_wheel;
       cursor;
       aria_label;
+    }
+
+let virtual_list ?(style = Nopal_style.Style.empty) ?on_scroll ~item_count
+    ~row_height ~container_height ~scroll_state ~overscan render_item =
+  Virtual_list
+    {
+      style;
+      item_count;
+      row_height;
+      container_height;
+      scroll_state;
+      overscan;
+      render_item;
+      on_scroll;
     }
 
 let rec map f = function
@@ -316,6 +340,28 @@ let rec map f = function
           on_wheel = Option.map (fun g we -> f (g we)) on_wheel;
           cursor;
           aria_label;
+        }
+  | Virtual_list
+      {
+        style;
+        item_count;
+        row_height;
+        container_height;
+        scroll_state;
+        overscan;
+        render_item;
+        on_scroll;
+      } ->
+      Virtual_list
+        {
+          style;
+          item_count;
+          row_height;
+          container_height;
+          scroll_state;
+          overscan;
+          render_item = (fun i -> map f (render_item i));
+          on_scroll = Option.map (fun g offset -> f (g offset)) on_scroll;
         }
 
 let responsive vp ~compact ?medium ~expanded () =
@@ -578,9 +624,43 @@ let rec equal a b =
       && String.equal sel1 sel2
       && Bool.equal d1 d2
       && Option.equal ( == ) oc1 oc2
+  | ( Virtual_list
+        {
+          style = s1;
+          item_count = ic1;
+          row_height = rh1;
+          container_height = ch1;
+          scroll_state = ss1;
+          overscan = o1;
+          render_item = ri1;
+          on_scroll = os1;
+        },
+      Virtual_list
+        {
+          style = s2;
+          item_count = ic2;
+          row_height = rh2;
+          container_height = ch2;
+          scroll_state = ss2;
+          overscan = o2;
+          render_item = ri2;
+          on_scroll = os2;
+        } ) ->
+      Nopal_style.Style.equal s1 s2
+      && Virtual_list.Natural.to_int ic1 = Virtual_list.Natural.to_int ic2
+      && Float.equal
+           (Virtual_list.Positive_float.to_float rh1)
+           (Virtual_list.Positive_float.to_float rh2)
+      && Float.equal
+           (Virtual_list.Positive_float.to_float ch1)
+           (Virtual_list.Positive_float.to_float ch2)
+      && Float.equal (Virtual_list.offset ss1) (Virtual_list.offset ss2)
+      && Virtual_list.Natural.to_int o1 = Virtual_list.Natural.to_int o2
+      && ri1 == ri2
+      && Option.equal ( == ) os1 os2
   | ( ( Empty | Text _ | Box _ | Row _ | Column _ | Button _ | Input _
       | Checkbox _ | Radio _ | Select _ | Image _ | Scroll _ | Keyed _ | Draw _
-        ),
+      | Virtual_list _ ),
       _ ) ->
       false
 

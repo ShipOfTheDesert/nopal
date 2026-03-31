@@ -59,6 +59,15 @@ function main() {
     };
   }
 
+  // Read virtual list results
+  const virtualListResults = readJsonFile(path.join(RESULTS_DIR, "virtual_list.json"));
+  for (const r of virtualListResults) {
+    metrics[`virtual_list/${r.name}`] = {
+      value: r.median ?? r.value ?? 0,
+      unit: r.unit,
+    };
+  }
+
   // Read bundle results
   const bundleResults = readJsonFile(path.join(RESULTS_DIR, "bundle.json"));
   for (const r of bundleResults) {

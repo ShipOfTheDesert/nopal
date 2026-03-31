@@ -23,7 +23,8 @@ let test_draw_builder_defaults () =
     | Element.Radio _
     | Element.Select _
     | Element.Scroll _
-    | Element.Keyed _ ->
+    | Element.Keyed _
+    | Element.Virtual_list _ ->
         false);
   Alcotest.(check bool)
     "draw defaults: no callbacks, no cursor, no aria_label" true
@@ -51,7 +52,8 @@ let test_draw_builder_defaults () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_draw_with_callbacks () =
@@ -97,7 +99,8 @@ let test_draw_with_callbacks () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 type wrapper = Wrapped of msg
@@ -131,7 +134,8 @@ let test_draw_map () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_draw_equal () =

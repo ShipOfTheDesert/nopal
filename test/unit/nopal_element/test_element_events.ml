@@ -20,7 +20,8 @@ let test_button_dblclick_some () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_input_blur_some () =
@@ -41,7 +42,8 @@ let test_input_blur_some () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_input_keydown_some () =
@@ -68,7 +70,8 @@ let test_input_keydown_some () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 type wrapper = Wrapped of msg
@@ -93,7 +96,8 @@ let test_map_preserves_dblclick () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_map_preserves_blur () =
@@ -116,7 +120,8 @@ let test_map_preserves_blur () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_map_preserves_keydown () =
@@ -145,7 +150,8 @@ let test_map_preserves_keydown () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let () =

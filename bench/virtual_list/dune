@@ -1,0 +1,11 @@
+(library
+ (name virtual_list_bench)
+ (modules virtual_list_bench)
+ (libraries nopal_mvu nopal_element nopal_style))
+
+(executable
+ (name main)
+ (modules main)
+ (libraries virtual_list_bench nopal_web nopal_runtime lwd brr)
+ (modes js)
+ (js_of_ocaml))
