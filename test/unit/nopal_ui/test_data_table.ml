@@ -324,6 +324,100 @@ let test_custom_attrs_on_container () =
     "aria-label present" (Some "People")
     (List.assoc_opt "aria-label" a)
 
+(* --- inner style passthrough tests --- *)
+
+let red_bg =
+  {
+    Nopal_style.Style.default with
+    paint =
+      {
+        Nopal_style.Style.default_paint with
+        background = Some (Nopal_style.Style.hex "#f00");
+      };
+  }
+
+let blue_bg =
+  {
+    Nopal_style.Style.default with
+    paint =
+      {
+        Nopal_style.Style.default_paint with
+        background = Some (Nopal_style.Style.hex "#00f");
+      };
+  }
+
+let green_bg =
+  {
+    Nopal_style.Style.default with
+    paint =
+      {
+        Nopal_style.Style.default_paint with
+        background = Some (Nopal_style.Style.hex "#0f0");
+      };
+  }
+
+let has_bg hex node =
+  match style node with
+  | Some { paint = { background = Some (Hex h); _ }; _ } -> String.equal h hex
+  | _ -> false
+
+let test_header_style_applied_to_header_cells () =
+  let config =
+    DT.make ~columns:[ name_col; age_col ] ~rows:[ alice ] ~key:key_fn ~on_sort
+      ~header_style:red_bg ~attrs:[] ()
+  in
+  let r = render (DT.view config) in
+  let root = tree r in
+  match children_of root with
+  | header_row :: _ ->
+      List.iter
+        (fun cell ->
+          Alcotest.(check bool)
+            "header cell has red bg" true (has_bg "#f00" cell))
+        (children_of header_row)
+  | [] -> Alcotest.fail "expected header row"
+
+let test_cell_style_applied_to_data_cells () =
+  let config =
+    DT.make ~columns:[ name_col ] ~rows:[ alice ] ~key:key_fn ~on_sort
+      ~cell_style:blue_bg ~attrs:[] ()
+  in
+  let r = render (DT.view config) in
+  let root = tree r in
+  match children_of root with
+  | _ :: data_rows ->
+      List.iter
+        (fun keyed_row ->
+          match children_of keyed_row with
+          | [ actual_row ] ->
+              List.iter
+                (fun cell ->
+                  Alcotest.(check bool)
+                    "data cell has blue bg" true (has_bg "#00f" cell))
+                (children_of actual_row)
+          | _ -> Alcotest.fail "expected keyed to wrap one row")
+        data_rows
+  | [] -> Alcotest.fail "expected children"
+
+let test_row_style_applied_to_data_rows () =
+  let config =
+    DT.make ~columns:[ name_col ] ~rows:[ alice ] ~key:key_fn ~on_sort
+      ~row_style:green_bg ~attrs:[] ()
+  in
+  let r = render (DT.view config) in
+  let root = tree r in
+  match children_of root with
+  | _ :: data_rows ->
+      List.iter
+        (fun keyed_row ->
+          match children_of keyed_row with
+          | [ actual_row ] ->
+              Alcotest.(check bool)
+                "data row has green bg" true (has_bg "#0f0" actual_row)
+          | _ -> Alcotest.fail "expected keyed to wrap one row")
+        data_rows
+  | [] -> Alcotest.fail "expected children"
+
 (* --- Test runner --- *)
 
 let () =
@@ -380,5 +474,14 @@ let () =
             test_interaction_passed_to_container;
           Alcotest.test_case "custom attrs on container" `Quick
             test_custom_attrs_on_container;
+        ] );
+      ( "inner styles",
+        [
+          Alcotest.test_case "header_style applied to header cells" `Quick
+            test_header_style_applied_to_header_cells;
+          Alcotest.test_case "cell_style applied to data cells" `Quick
+            test_cell_style_applied_to_data_cells;
+          Alcotest.test_case "row_style applied to data rows" `Quick
+            test_row_style_applied_to_data_rows;
         ] );
     ]

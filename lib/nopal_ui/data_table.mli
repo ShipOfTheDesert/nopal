@@ -22,6 +22,9 @@ type ('row, 'msg) config = {
   sort : sort option;
   on_sort : string -> 'msg;
   style : Nopal_style.Style.t option;
+  header_style : Nopal_style.Style.t option;
+  row_style : Nopal_style.Style.t option;
+  cell_style : Nopal_style.Style.t option;
   interaction : Nopal_style.Interaction.t option;
   attrs : (string * string) list;
 }
@@ -46,6 +49,9 @@ val make :
   on_sort:(string -> 'msg) ->
   ?sort:sort ->
   ?style:Nopal_style.Style.t ->
+  ?header_style:Nopal_style.Style.t ->
+  ?row_style:Nopal_style.Style.t ->
+  ?cell_style:Nopal_style.Style.t ->
   ?interaction:Nopal_style.Interaction.t ->
   ?attrs:(string * string) list ->
   unit ->
