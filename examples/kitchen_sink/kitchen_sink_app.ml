@@ -118,6 +118,7 @@ type model = {
   text_input : Kitchen_sink_text_input.model;
   focus_keyboard : Focus_keyboard.model;
   toast : Sub_toast.model;
+  data_table : Sub_data_table.model;
 }
 
 (* Messages *)
@@ -137,6 +138,7 @@ type msg =
   | Text_input_msg of Kitchen_sink_text_input.msg
   | Focus_keyboard_msg of Focus_keyboard.msg
   | Toast_msg of Sub_toast.msg
+  | Data_table_msg of Sub_data_table.msg
   | DrawPointerMove of float * float
   | DrawPointerLeave
   | ChartHovered of Hover.t
@@ -243,6 +245,7 @@ let init () =
   let text_input, text_input_cmd = Kitchen_sink_text_input.init () in
   let focus_keyboard, focus_keyboard_cmd = Focus_keyboard.init () in
   let toast, toast_cmd = Sub_toast.init () in
+  let data_table, data_table_cmd = Sub_data_table.init () in
   ( {
       button_clicks = 0;
       input_text = "";
@@ -293,6 +296,7 @@ let init () =
       text_input;
       focus_keyboard;
       toast;
+      data_table;
     },
     Nopal_mvu.Cmd.batch
       [
@@ -303,6 +307,7 @@ let init () =
         Nopal_mvu.Cmd.map (fun m -> Text_input_msg m) text_input_cmd;
         Nopal_mvu.Cmd.map (fun m -> Focus_keyboard_msg m) focus_keyboard_cmd;
         Nopal_mvu.Cmd.map (fun m -> Toast_msg m) toast_cmd;
+        Nopal_mvu.Cmd.map (fun m -> Data_table_msg m) data_table_cmd;
       ] )
 
 let clamp_pane_dw dw = Domain_window.clamp ~data_min:0.0 ~data_max:9.0 dw
@@ -379,6 +384,10 @@ let update model = function
   | Toast_msg toast_msg ->
       let toast, toast_cmd = Sub_toast.update model.toast toast_msg in
       ({ model with toast }, Nopal_mvu.Cmd.map (fun m -> Toast_msg m) toast_cmd)
+  | Data_table_msg dt_msg ->
+      let data_table, dt_cmd = Sub_data_table.update model.data_table dt_msg in
+      ( { model with data_table },
+        Nopal_mvu.Cmd.map (fun m -> Data_table_msg m) dt_cmd )
   | DrawPointerMove (x, y) ->
       ({ model with draw_pointer = Some (x, y) }, Nopal_mvu.Cmd.none)
   | DrawPointerLeave -> ({ model with draw_pointer = None }, Nopal_mvu.Cmd.none)
@@ -2665,6 +2674,62 @@ let view_storage model =
         ];
     ]
 
+(* SVG Export *)
+let view_svg_export _model =
+  let cat = Color.categorical in
+  let bar_data =
+    [
+      ("Jan", 30.0);
+      ("Feb", 45.0);
+      ("Mar", 25.0);
+      ("Apr", 60.0);
+      ("May", 35.0);
+      ("Jun", 50.0);
+    ]
+  in
+  let chart_w = 400.0 in
+  let chart_h = 250.0 in
+  let scene =
+    Bar.scene ~data:bar_data
+      ~label:(fun (l, _) -> l)
+      ~value:(fun (_, v) -> v)
+      ~color:(fun _ -> cat.(0))
+      ~width:chart_w ~height:chart_h ()
+  in
+  let svg_string = Nopal_svg.render ~width:chart_w ~height:chart_h scene in
+  let code_style =
+    Text.default |> Text.font_size 0.75 |> Text.font_family Monospace
+  in
+  let pre_style =
+    Style.default
+    |> Style.with_layout (fun l -> Style.padding_all 12.0 l)
+    |> Style.with_paint (fun p -> { p with background = Some bg_muted })
+  in
+  let truncated =
+    let limit = 500 in
+    if String.length svg_string > limit then
+      let cut =
+        let rec find_last_gt i =
+          if i < 0 then limit
+          else if svg_string.[i] = '>' then i + 1
+          else find_last_gt (i - 1)
+        in
+        find_last_gt (limit - 1)
+      in
+      String.sub svg_string 0 cut ^ "\n..."
+    else svg_string
+  in
+  view_section
+    ~attrs:[ ("data-testid", "svg-export-section") ]
+    "SVG Export"
+    [
+      Element.text "Chart rendered to SVG string via Nopal_svg.render:";
+      Element.draw ~width:chart_w ~height:chart_h scene;
+      Element.text "Generated SVG output (truncated):";
+      Element.box ~style:pre_style
+        [ Element.styled_text ~text_style:code_style truncated ];
+    ]
+
 (* Main view — all sections in a scrollable column (REQ-F10, REQ-F12) *)
 let view vp model =
   Element.scroll
@@ -2714,6 +2779,14 @@ let view vp model =
            [
              Element.map (fun m -> Toast_msg m) (Sub_toast.view vp model.toast);
            ];
+         view_section
+           ~attrs:[ ("data-testid", "data-table-section") ]
+           "Data Table"
+           [
+             Element.map
+               (fun m -> Data_table_msg m)
+               (Sub_data_table.view vp model.data_table);
+           ];
          view_images model;
          view_scroll model;
          view_keyed model;
@@ -2724,6 +2797,7 @@ let view vp model =
          view_draw model;
          view_charts model;
          view_chart_extensions model;
+         view_svg_export model;
          view_responsive vp model;
          view_http model;
          view_http_post model;

@@ -7,6 +7,24 @@
     [domain_window] is provided with [x], data is clipped via [Viewport.clip]
     with [buffer=0]. *)
 
+val scene :
+  data:'a list ->
+  label:('a -> string) ->
+  value:('a -> float) ->
+  color:('a -> Nopal_draw.Color.t) ->
+  ?x:('a -> float) ->
+  width:float ->
+  height:float ->
+  ?padding:Padding.t ->
+  ?x_axis:Axis.config ->
+  ?y_axis:Axis.config ->
+  ?domain_window:Domain_window.t ->
+  unit ->
+  Nopal_scene.Scene.t list
+(** [scene ~data ~label ~value ~color ~width ~height ()] returns the scene nodes
+    for a bar chart without wrapping in an element or adding interaction
+    handlers. Use for SVG export or embedding in composite scenes. *)
+
 val view :
   data:'a list ->
   label:('a -> string) ->

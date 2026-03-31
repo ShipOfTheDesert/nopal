@@ -5,6 +5,23 @@
     provided, data is clipped via [Viewport.clip] with [buffer=1]. Uses
     vertical-band hit testing and standard tooltip support. *)
 
+val scene :
+  data:'a list ->
+  x:('a -> float) ->
+  y:('a -> float) ->
+  width:float ->
+  height:float ->
+  ?padding:Padding.t ->
+  ?fill_color:Nopal_draw.Color.t ->
+  ?x_axis:Axis.config ->
+  ?y_axis:Axis.config ->
+  ?domain_window:Domain_window.t ->
+  unit ->
+  Nopal_scene.Scene.t list
+(** [scene ~data ~x ~y ~width ~height ()] returns the scene nodes for a drawdown
+    chart without wrapping in an element or adding interaction handlers. Use for
+    SVG export or embedding in composite scenes. *)
+
 val view :
   data:'a list ->
   x:('a -> float) ->

@@ -2,6 +2,7 @@
 
 module Button = Button
 module Checkbox = Checkbox
+module Data_table = Data_table
 module Radio_group = Radio_group
 module Select_input = Select_input
 module Slug = Slug

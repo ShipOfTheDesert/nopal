@@ -1,10 +1,9 @@
 let default_bullish = Nopal_draw.Color.rgb ~r:0.16 ~g:0.68 ~b:0.34
 let default_bearish = Nopal_draw.Color.rgb ~r:0.84 ~g:0.18 ~b:0.18
 
-let view ~data ~x ~open_ ~high ~low ~close ~width ~height
+let scene ~data ~x ~open_ ~high ~low ~close ~width ~height
     ?(padding = Padding.default) ?bullish_color ?bearish_color
-    ?(x_axis = Axis.default_config) ?y_axis ?format_tooltip ?on_hover ?on_leave
-    ?hover ?domain_window () =
+    ?(x_axis = Axis.default_config) ?y_axis ?domain_window () =
   (* Apply domain window clipping if provided *)
   let visible_data =
     match domain_window with
@@ -12,7 +11,7 @@ let view ~data ~x ~open_ ~high ~low ~close ~width ~height
     | None -> data
   in
   match visible_data with
-  | [] -> Nopal_element.Element.draw ~width ~height []
+  | [] -> []
   | _ ->
       let bull_color =
         match bullish_color with
@@ -63,9 +62,9 @@ let view ~data ~x ~open_ ~high ~low ~close ~width ~height
       let candle_slot = chart_width /. Float.of_int n in
       let candle_w = candle_slot *. 0.8 in
       (* Build scene: one wick line + one body rect per candle *)
-      let candle_scenes, hit_map =
+      let candle_scenes =
         List.fold_left
-          (fun (scenes, hmap) (i, d) ->
+          (fun scenes (_, d) ->
             let px = Nopal_draw.Scale.apply x_scale (x d) in
             let high_y = Nopal_draw.Scale.apply y_scale (high d) in
             let low_y = Nopal_draw.Scale.apply y_scale (low d) in
@@ -93,19 +92,8 @@ let view ~data ~x ~open_ ~high ~low ~close ~width ~height
                 ~x:(px -. (candle_w /. 2.0))
                 ~y:body_top ~w:candle_w ~h:body_h ()
             in
-            (* Hit region: covers full wick range *)
-            let region =
-              Hit_map.Rect_region
-                {
-                  x = px -. (candle_w /. 2.0);
-                  y = high_y;
-                  w = candle_w;
-                  h = low_y -. high_y;
-                  hit = { index = i; series = 0 };
-                }
-            in
-            (wick :: body :: scenes, Hit_map.add region hmap))
-          ([], Hit_map.empty)
+            wick :: body :: scenes)
+          []
           (List.mapi (fun i d -> (i, d)) visible_data)
       in
       let candle_scenes = List.rev candle_scenes in
@@ -122,7 +110,81 @@ let view ~data ~x ~open_ ~high ~low ~close ~width ~height
         Axis.render_y y_axis_cfg ~ticks:y_ticks ~scale:y_scale ~chart_x ~chart_y
           ~chart_height
       in
-      let all_scene = candle_scenes @ x_axis_scene @ y_axis_scene in
+      candle_scenes @ x_axis_scene @ y_axis_scene
+
+let view ~data ~x ~open_ ~high ~low ~close ~width ~height
+    ?(padding = Padding.default) ?bullish_color ?bearish_color
+    ?(x_axis = Axis.default_config) ?y_axis ?format_tooltip ?on_hover ?on_leave
+    ?hover ?domain_window () =
+  let all_scene =
+    scene ~data ~x ~open_ ~high ~low ~close ~width ~height ~padding
+      ?bullish_color ?bearish_color ~x_axis ?y_axis ?domain_window ()
+  in
+  match all_scene with
+  | [] -> Nopal_element.Element.draw ~width ~height []
+  | _ ->
+      (* Recompute clipped data and scales for hit map *)
+      let visible_data =
+        match domain_window with
+        | Some window -> Viewport.clip ~x ~data ~window ~buffer:0
+        | None -> data
+      in
+      let chart_x = padding.Padding.left in
+      let chart_y = padding.Padding.top in
+      let chart_width = width -. padding.left -. padding.right in
+      let chart_height = height -. padding.top -. padding.bottom in
+      let all_x = List.map (fun d -> x d) visible_data in
+      let x_min = List.fold_left Float.min Float.infinity all_x in
+      let x_max = List.fold_left Float.max Float.neg_infinity all_x in
+      let all_highs = List.map (fun d -> high d) visible_data in
+      let all_lows = List.map (fun d -> low d) visible_data in
+      let data_y_min = List.fold_left Float.min Float.infinity all_lows in
+      let data_y_max = List.fold_left Float.max Float.neg_infinity all_highs in
+      let y_axis_cfg =
+        match y_axis with
+        | Some cfg -> cfg
+        | None -> Axis.default_config
+      in
+      let y_lo, y_hi =
+        Axis.compute_domain y_axis_cfg ~data_min:data_y_min ~data_max:data_y_max
+      in
+      let x_lo, x_hi =
+        match domain_window with
+        | Some window -> (window.x_min, window.x_max)
+        | None -> Axis.compute_domain x_axis ~data_min:x_min ~data_max:x_max
+      in
+      let x_scale =
+        Nopal_draw.Scale.create ~domain:(x_lo, x_hi)
+          ~range:(chart_x, chart_x +. chart_width)
+      in
+      let y_scale =
+        Nopal_draw.Scale.create ~domain:(y_lo, y_hi)
+          ~range:(chart_y +. chart_height, chart_y)
+      in
+      let n = List.length visible_data in
+      let candle_slot = chart_width /. Float.of_int n in
+      let candle_w = candle_slot *. 0.8 in
+      (* Build hit map *)
+      let hit_map =
+        List.fold_left
+          (fun hmap (i, d) ->
+            let px = Nopal_draw.Scale.apply x_scale (x d) in
+            let high_y = Nopal_draw.Scale.apply y_scale (high d) in
+            let low_y = Nopal_draw.Scale.apply y_scale (low d) in
+            let region =
+              Hit_map.Rect_region
+                {
+                  x = px -. (candle_w /. 2.0);
+                  y = high_y;
+                  w = candle_w;
+                  h = low_y -. high_y;
+                  hit = { index = i; series = 0 };
+                }
+            in
+            Hit_map.add region hmap)
+          Hit_map.empty
+          (List.mapi (fun i d -> (i, d)) visible_data)
+      in
       (* Build on_pointer_move handler *)
       let on_pointer_move =
         match (on_hover, on_leave) with

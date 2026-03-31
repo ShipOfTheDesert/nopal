@@ -5,6 +5,28 @@
     open) use distinct colors. When [domain_window] is provided, data is clipped
     via [Viewport.clip] with [buffer=0]. *)
 
+val scene :
+  data:'a list ->
+  x:('a -> float) ->
+  open_:('a -> float) ->
+  high:('a -> float) ->
+  low:('a -> float) ->
+  close:('a -> float) ->
+  width:float ->
+  height:float ->
+  ?padding:Padding.t ->
+  ?bullish_color:Nopal_draw.Color.t ->
+  ?bearish_color:Nopal_draw.Color.t ->
+  ?x_axis:Axis.config ->
+  ?y_axis:Axis.config ->
+  ?domain_window:Domain_window.t ->
+  unit ->
+  Nopal_scene.Scene.t list
+(** [scene ~data ~x ~open_ ~high ~low ~close ~width ~height ()] returns the
+    scene nodes for a candlestick chart without wrapping in an element or adding
+    interaction handlers. Use for SVG export or embedding in composite scenes.
+*)
+
 val view :
   data:'a list ->
   x:('a -> float) ->

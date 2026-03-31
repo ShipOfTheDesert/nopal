@@ -3,6 +3,18 @@
     Renders a small line chart with no axes, labels, or interaction. Suitable
     for embedding in table cells and list items. *)
 
+val scene :
+  data:float list ->
+  width:float ->
+  height:float ->
+  ?color:Nopal_draw.Color.t ->
+  ?stroke_width:float ->
+  unit ->
+  Nopal_scene.Scene.t list
+(** [scene ~data ~width ~height ()] returns the scene nodes for a sparkline
+    without wrapping in an element. Use for SVG export or embedding in composite
+    scenes. Empty or single-point data produces an empty list. *)
+
 val view :
   data:float list ->
   width:float ->
