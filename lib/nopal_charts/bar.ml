@@ -134,9 +134,20 @@ let view ~data ~label ~value ~color ?x ~width ~height
                     | Solid c ->
                         Nopal_draw.Scene.Rect
                           { r with fill = Solid (lighten c) }
-                    | Linear_gradient _ | Radial_gradient _ | No_paint -> node)
-                | Rect _ | Circle _ | Ellipse _ | Line _ | Path _ | Polygon _
-                | Polyline _ | Text _ | Group _ | Clip _ ->
+                    | Linear_gradient _
+                    | Radial_gradient _
+                    | No_paint ->
+                        node)
+                | Rect _
+                | Circle _
+                | Ellipse _
+                | Line _
+                | Path _
+                | Polygon _
+                | Polyline _
+                | Text _
+                | Group _
+                | Clip _ ->
                     node)
               base_scene
         | None -> base_scene
