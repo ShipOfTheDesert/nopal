@@ -99,7 +99,8 @@ let interaction_of (el : 'msg Nopal_element.Element.t) =
   | Image _
   | Scroll _
   | Keyed _
-  | Draw _ ->
+  | Draw _
+  | Virtual_list _ ->
       None
 
 let add_class el class_name =
@@ -653,6 +654,100 @@ let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
           base_id = None;
           interaction_id = None;
         }
+  | Virtual_list
+      {
+        style;
+        item_count;
+        row_height;
+        container_height;
+        scroll_state;
+        overscan;
+        render_item;
+        on_scroll;
+      } ->
+      let ic = Nopal_element.Virtual_list.Natural.to_int item_count in
+      let rh = Nopal_element.Virtual_list.Positive_float.to_float row_height in
+      let ch =
+        Nopal_element.Virtual_list.Positive_float.to_float container_height
+      in
+      let range =
+        Nopal_element.Virtual_list.visible_range ~scroll_state ~row_height
+          ~container_height ~item_count ~overscan
+      in
+      (* Outer container: fixed height, scrollable *)
+      let outer = Brr.El.v (Jstr.v "div") [] in
+      Brr.El.set_inline_style (Jstr.v "overflow-y") (Jstr.v "auto") outer;
+      Brr.El.set_inline_style (Jstr.v "height")
+        (Jstr.v (Printf.sprintf "%.0fpx" ch))
+        outer;
+      apply_style outer style;
+      (* Always enforce overflow-y: auto regardless of style *)
+      Brr.El.set_inline_style (Jstr.v "overflow-y") (Jstr.v "auto") outer;
+      (* Inner spacer: total content height *)
+      let total_height = Float.of_int ic *. rh in
+      let spacer = Brr.El.v (Jstr.v "div") [] in
+      Brr.El.set_inline_style (Jstr.v "height")
+        (Jstr.v (Printf.sprintf "%.0fpx" total_height))
+        spacer;
+      Brr.El.set_inline_style (Jstr.v "position") (Jstr.v "relative") spacer;
+      ignore
+        (Jv.call (Brr.El.to_jv outer) "appendChild" [| Brr.El.to_jv spacer |]);
+      (* Row wrapper: positioned at first visible item's offset *)
+      let translate_y = Float.of_int range.first *. rh in
+      let row_wrapper = Brr.El.v (Jstr.v "div") [] in
+      Brr.El.set_inline_style (Jstr.v "transform")
+        (Jstr.v (Printf.sprintf "translateY(%.0fpx)" translate_y))
+        row_wrapper;
+      Brr.El.set_inline_style (Jstr.v "position") (Jstr.v "absolute")
+        row_wrapper;
+      Brr.El.set_inline_style (Jstr.v "width") (Jstr.v "100%") row_wrapper;
+      ignore
+        (Jv.call (Brr.El.to_jv spacer) "appendChild"
+           [| Brr.El.to_jv row_wrapper |]);
+      (* Render only visible items *)
+      let live_children =
+        if range.first > range.last then []
+        else
+          List.init
+            (range.last - range.first + 1)
+            (fun i ->
+              let item_el = render_item (range.first + i) in
+              create_and_append ~sheet ~dispatch row_wrapper item_el)
+      in
+      (* rAF-gated scroll listener *)
+      let raf_pending = ref false in
+      let listeners =
+        match on_scroll with
+        | None -> []
+        | Some f ->
+            [
+              Brr.Ev.listen Brr.Ev.scroll
+                (fun _ev ->
+                  if not !raf_pending then begin
+                    raf_pending := true;
+                    ignore
+                      (Jv.call Jv.global "requestAnimationFrame"
+                         [|
+                           Jv.callback ~arity:1 (fun _timestamp ->
+                               raf_pending := false;
+                               let scroll_top =
+                                 Jv.Float.get (Brr.El.to_jv outer) "scrollTop"
+                               in
+                               dispatch (f scroll_top));
+                         |])
+                  end)
+                (Brr.El.as_target outer);
+            ]
+      in
+      Live_node
+        {
+          dom = outer;
+          element;
+          children = live_children;
+          listeners;
+          base_id = None;
+          interaction_id = None;
+        }
 
 and create_and_append ~sheet ~dispatch parent
     (element : 'msg Nopal_element.Element.t) =
@@ -705,11 +800,12 @@ let same_variant (a : 'msg Nopal_element.Element.t)
   | Draw _, Draw _
   | Checkbox _, Checkbox _
   | Radio _, Radio _
-  | Select _, Select _ ->
+  | Select _, Select _
+  | Virtual_list _, Virtual_list _ ->
       true
   | ( ( Empty | Text _ | Box _ | Row _ | Column _ | Button _ | Input _
       | Checkbox _ | Radio _ | Select _ | Image _ | Scroll _ | Keyed _ | Draw _
-        ),
+      | Virtual_list _ ),
       _ ) ->
       false
 
@@ -718,7 +814,8 @@ let extract_keyed_pairs elements =
     | [] -> Some (List.rev acc)
     | Keyed { key; child } :: rest -> go ((key, child) :: acc) rest
     | ( Empty | Text _ | Box _ | Row _ | Column _ | Button _ | Input _
-      | Checkbox _ | Radio _ | Select _ | Image _ | Scroll _ | Draw _ )
+      | Checkbox _ | Radio _ | Select _ | Image _ | Scroll _ | Draw _
+      | Virtual_list _ )
       :: _ ->
         None
   in
@@ -758,7 +855,8 @@ let attrs_of (el : 'msg Nopal_element.Element.t) =
   | Image _
   | Scroll _
   | Keyed _
-  | Draw _ ->
+  | Draw _
+  | Virtual_list _ ->
       []
 
 let maybe_apply_attrs el old_element new_element =
@@ -787,7 +885,8 @@ let style_of (el : 'msg Nopal_element.Element.t) =
   | Scroll { style; _ }
   | Checkbox { style; _ }
   | Radio { style; _ }
-  | Select { style; _ } ->
+  | Select { style; _ }
+  | Virtual_list { style; _ } ->
       Some style
   | Empty
   | Text _
@@ -927,10 +1026,12 @@ and reconcile_live ~sheet ~dispatch parent_el (old_live : 'msg live)
       Live_node old_n
   | ( Live_text _,
       ( Empty | Box _ | Row _ | Column _ | Button _ | Input _ | Checkbox _
-      | Radio _ | Select _ | Image _ | Scroll _ | Keyed _ | Draw _ ) )
+      | Radio _ | Select _ | Image _ | Scroll _ | Keyed _ | Draw _
+      | Virtual_list _ ) )
   | ( Live_comment _,
       ( Text _ | Box _ | Row _ | Column _ | Button _ | Input _ | Checkbox _
-      | Radio _ | Select _ | Image _ | Scroll _ | Keyed _ | Draw _ ) )
+      | Radio _ | Select _ | Image _ | Scroll _ | Keyed _ | Draw _
+      | Virtual_list _ ) )
   | Live_node _, _ ->
       (* Different variant or same_variant returned false — replace *)
       let new_live = create_live ~sheet ~dispatch new_element in
@@ -1123,7 +1224,8 @@ and reconcile_node ~sheet ~dispatch (old_n : 'msg live_node)
       | Image _
       | Scroll _
       | Keyed _
-      | Draw _ ->
+      | Draw _
+      | Virtual_list _ ->
           Brr.El.set_at (Jstr.v "placeholder") (Some (Jstr.v placeholder)) el);
       maybe_apply_attrs el old_n.element new_el;
       unlisten_all old_n.listeners;
@@ -1148,7 +1250,8 @@ and reconcile_node ~sheet ~dispatch (old_n : 'msg live_node)
       | Select _
       | Scroll _
       | Keyed _
-      | Draw _ ->
+      | Draw _
+      | Virtual_list _ ->
           (* Unreachable: reconcile_node is only called when same_variant
              returns true, so old_n.element is always Image here *)
           Brr.El.set_at (Jstr.v "src") (Some (Jstr.v src)) el;
@@ -1187,7 +1290,8 @@ and reconcile_node ~sheet ~dispatch (old_n : 'msg live_node)
         | Radio _
         | Select _
         | Scroll _
-        | Keyed _ ->
+        | Keyed _
+        | Virtual_list _ ->
             (0.0, 0.0)
       in
       if (not (Float.equal old_w width)) || not (Float.equal old_h height) then
@@ -1280,6 +1384,96 @@ and reconcile_node ~sheet ~dispatch (old_n : 'msg live_node)
                 (Brr.El.as_target el);
             ]
         | _ -> [])
+  | Virtual_list
+      {
+        style = _;
+        item_count;
+        row_height;
+        container_height;
+        scroll_state;
+        overscan;
+        render_item;
+        on_scroll;
+      } ->
+      let ic = Nopal_element.Virtual_list.Natural.to_int item_count in
+      let rh = Nopal_element.Virtual_list.Positive_float.to_float row_height in
+      let ch =
+        Nopal_element.Virtual_list.Positive_float.to_float container_height
+      in
+      let range =
+        Nopal_element.Virtual_list.visible_range ~scroll_state ~row_height
+          ~container_height ~item_count ~overscan
+      in
+      (* Update container height *)
+      Brr.El.set_inline_style (Jstr.v "height")
+        (Jstr.v (Printf.sprintf "%.0fpx" ch))
+        el;
+      (* Always enforce overflow-y: auto *)
+      Brr.El.set_inline_style (Jstr.v "overflow-y") (Jstr.v "auto") el;
+      (* Rebuild spacer and row wrapper inside the outer container.
+         This is simpler and correct — the virtual list's inner structure
+         is not independently reconcilable since it's generated from
+         render_item closures, not from the element tree. *)
+      let parent_jv = Brr.El.to_jv el in
+      (* Unlisten old children before removing them *)
+      List.iter (unlisten_tree ~sheet) old_n.children;
+      Jv.set parent_jv "innerHTML" (Jv.of_string "");
+      (* Inner spacer: total content height *)
+      let total_height = Float.of_int ic *. rh in
+      let spacer = Brr.El.v (Jstr.v "div") [] in
+      Brr.El.set_inline_style (Jstr.v "height")
+        (Jstr.v (Printf.sprintf "%.0fpx" total_height))
+        spacer;
+      Brr.El.set_inline_style (Jstr.v "position") (Jstr.v "relative") spacer;
+      ignore (Jv.call parent_jv "appendChild" [| Brr.El.to_jv spacer |]);
+      (* Row wrapper *)
+      let translate_y = Float.of_int range.first *. rh in
+      let row_wrapper = Brr.El.v (Jstr.v "div") [] in
+      Brr.El.set_inline_style (Jstr.v "transform")
+        (Jstr.v (Printf.sprintf "translateY(%.0fpx)" translate_y))
+        row_wrapper;
+      Brr.El.set_inline_style (Jstr.v "position") (Jstr.v "absolute")
+        row_wrapper;
+      Brr.El.set_inline_style (Jstr.v "width") (Jstr.v "100%") row_wrapper;
+      ignore
+        (Jv.call (Brr.El.to_jv spacer) "appendChild"
+           [| Brr.El.to_jv row_wrapper |]);
+      (* Render visible items *)
+      let live_children =
+        if range.first > range.last then []
+        else
+          List.init
+            (range.last - range.first + 1)
+            (fun i ->
+              let item_el = render_item (range.first + i) in
+              create_and_append ~sheet ~dispatch row_wrapper item_el)
+      in
+      old_n.children <- live_children;
+      (* Rewire scroll listener *)
+      unlisten_all old_n.listeners;
+      let raf_pending = ref false in
+      old_n.listeners <-
+        (match on_scroll with
+        | None -> []
+        | Some f ->
+            [
+              Brr.Ev.listen Brr.Ev.scroll
+                (fun _ev ->
+                  if not !raf_pending then begin
+                    raf_pending := true;
+                    ignore
+                      (Jv.call Jv.global "requestAnimationFrame"
+                         [|
+                           Jv.callback ~arity:1 (fun _timestamp ->
+                               raf_pending := false;
+                               let scroll_top =
+                                 Jv.Float.get (Brr.El.to_jv el) "scrollTop"
+                               in
+                               dispatch (f scroll_top));
+                         |])
+                  end)
+                (Brr.El.as_target el);
+            ])
   | Empty
   | Text _
   | Keyed _ ->

@@ -328,6 +328,63 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             children = [];
             interaction = Nopal_style.Interaction.default;
           }
+    | Virtual_list
+        {
+          style;
+          item_count;
+          row_height;
+          container_height;
+          scroll_state;
+          overscan;
+          render_item;
+          on_scroll;
+        } ->
+        let range =
+          Nopal_element.Virtual_list.visible_range ~scroll_state ~row_height
+            ~container_height ~item_count ~overscan
+        in
+        let has_on_scroll = Option.is_some on_scroll in
+        if has_on_scroll then
+          handlers :=
+            {
+              path = List.rev rev_path;
+              on_click = None;
+              on_dblclick = None;
+              on_change = None;
+              on_submit = None;
+              on_blur = None;
+              on_keydown = None;
+              on_toggle = None;
+            }
+            :: !handlers;
+        let children =
+          if range.first > range.last then []
+          else
+            List.init
+              (range.last - range.first + 1)
+              (fun i ->
+                go
+                  ((range.first + i) :: rev_path)
+                  (render_item (range.first + i)))
+        in
+        let ic = Nopal_element.Virtual_list.Natural.to_int item_count in
+        let rh =
+          Nopal_element.Virtual_list.Positive_float.to_float row_height
+        in
+        let off = Nopal_element.Virtual_list.offset scroll_state in
+        Element
+          {
+            tag = "virtual_list";
+            style;
+            attrs =
+              [
+                ("item-count", string_of_int ic);
+                ("row-height", string_of_int (Float.to_int rh));
+                ("offset", string_of_int (Float.to_int off));
+              ];
+            children;
+            interaction = Nopal_style.Interaction.default;
+          }
   and go_children rev_path children =
     List.mapi (fun i c -> go (i :: rev_path) c) children
   in

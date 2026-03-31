@@ -108,6 +108,16 @@ type 'msg t =
       cursor : Nopal_style.Cursor.t option;
       aria_label : string option;
     }
+  | Virtual_list of {
+      style : Nopal_style.Style.t;
+      item_count : Virtual_list.Natural.t;
+      row_height : Virtual_list.Positive_float.t;
+      container_height : Virtual_list.Positive_float.t;
+      scroll_state : Virtual_list.fixed Virtual_list.scroll_state;
+      overscan : Virtual_list.Natural.t;
+      render_item : int -> 'msg t;
+      on_scroll : (float -> 'msg) option;
+    }
 
 (** {1 Builders}
 
@@ -243,6 +253,21 @@ val draw :
 (** [draw ~width ~height scene] creates a 2D drawing canvas element. The scene
     list describes shapes rendered onto the canvas. Optional pointer callbacks
     receive canvas-local coordinates. *)
+
+val virtual_list :
+  ?style:Nopal_style.Style.t ->
+  ?on_scroll:(float -> 'msg) ->
+  item_count:Virtual_list.Natural.t ->
+  row_height:Virtual_list.Positive_float.t ->
+  container_height:Virtual_list.Positive_float.t ->
+  scroll_state:Virtual_list.fixed Virtual_list.scroll_state ->
+  overscan:Virtual_list.Natural.t ->
+  (int -> 'msg t) ->
+  'msg t
+(** [virtual_list ~item_count ~row_height ~container_height ~scroll_state
+     ~overscan render_item] creates a virtualized list that renders only the
+    visible window of items. [render_item] is called with each visible index.
+    [on_scroll] fires with the new scroll offset when the user scrolls. *)
 
 (** {1 Transforms} *)
 

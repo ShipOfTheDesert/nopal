@@ -27,5 +27,11 @@ export default defineConfig({
       port: 3002,
       reuseExistingServer: !process.env.CI,
     },
+    {
+      command:
+        "cd ../.. && cp bench/virtual_list/index.html _build/default/bench/virtual_list/ && npx serve -l 3003 _build/default/bench/virtual_list",
+      port: 3003,
+      reuseExistingServer: !process.env.CI,
+    },
   ],
 });

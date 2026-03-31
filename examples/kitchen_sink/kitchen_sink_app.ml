@@ -119,6 +119,7 @@ type model = {
   focus_keyboard : Focus_keyboard.model;
   toast : Sub_toast.model;
   data_table : Sub_data_table.model;
+  virtual_list : Sub_virtual_list.model;
 }
 
 (* Messages *)
@@ -139,6 +140,7 @@ type msg =
   | Focus_keyboard_msg of Focus_keyboard.msg
   | Toast_msg of Sub_toast.msg
   | Data_table_msg of Sub_data_table.msg
+  | Virtual_list_msg of Sub_virtual_list.msg
   | DrawPointerMove of float * float
   | DrawPointerLeave
   | ChartHovered of Hover.t
@@ -246,6 +248,7 @@ let init () =
   let focus_keyboard, focus_keyboard_cmd = Focus_keyboard.init () in
   let toast, toast_cmd = Sub_toast.init () in
   let data_table, data_table_cmd = Sub_data_table.init () in
+  let virtual_list, virtual_list_cmd = Sub_virtual_list.init () in
   ( {
       button_clicks = 0;
       input_text = "";
@@ -297,6 +300,7 @@ let init () =
       focus_keyboard;
       toast;
       data_table;
+      virtual_list;
     },
     Nopal_mvu.Cmd.batch
       [
@@ -308,6 +312,7 @@ let init () =
         Nopal_mvu.Cmd.map (fun m -> Focus_keyboard_msg m) focus_keyboard_cmd;
         Nopal_mvu.Cmd.map (fun m -> Toast_msg m) toast_cmd;
         Nopal_mvu.Cmd.map (fun m -> Data_table_msg m) data_table_cmd;
+        Nopal_mvu.Cmd.map (fun m -> Virtual_list_msg m) virtual_list_cmd;
       ] )
 
 let clamp_pane_dw dw = Domain_window.clamp ~data_min:0.0 ~data_max:9.0 dw
@@ -388,6 +393,12 @@ let update model = function
       let data_table, dt_cmd = Sub_data_table.update model.data_table dt_msg in
       ( { model with data_table },
         Nopal_mvu.Cmd.map (fun m -> Data_table_msg m) dt_cmd )
+  | Virtual_list_msg vl_msg ->
+      let virtual_list, vl_cmd =
+        Sub_virtual_list.update model.virtual_list vl_msg
+      in
+      ( { model with virtual_list },
+        Nopal_mvu.Cmd.map (fun m -> Virtual_list_msg m) vl_cmd )
   | DrawPointerMove (x, y) ->
       ({ model with draw_pointer = Some (x, y) }, Nopal_mvu.Cmd.none)
   | DrawPointerLeave -> ({ model with draw_pointer = None }, Nopal_mvu.Cmd.none)
@@ -2786,6 +2797,14 @@ let view vp model =
              Element.map
                (fun m -> Data_table_msg m)
                (Sub_data_table.view vp model.data_table);
+           ];
+         view_section
+           ~attrs:[ ("data-testid", "virtual-list-section") ]
+           "Virtual List"
+           [
+             Element.map
+               (fun m -> Virtual_list_msg m)
+               (Sub_virtual_list.view vp model.virtual_list);
            ];
          view_images model;
          view_scroll model;

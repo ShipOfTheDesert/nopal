@@ -19,7 +19,8 @@ let test_empty_builder () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_text_builder () =
@@ -40,7 +41,8 @@ let test_text_builder () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_default_styles () =
@@ -60,7 +62,8 @@ let test_default_styles () =
       | Element.Button _
       | Element.Input _
       | Element.Keyed _
-      | Element.Draw _ ->
+      | Element.Draw _
+      | Element.Virtual_list _ ->
           Alcotest.fail (label ^ ": unexpected variant")
     in
     Alcotest.(check bool)
@@ -102,7 +105,8 @@ let test_box_preserves_children () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_button_no_handler () =
@@ -123,7 +127,8 @@ let test_button_no_handler () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_button_with_handler () =
@@ -144,7 +149,8 @@ let test_button_with_handler () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_button_child () =
@@ -167,7 +173,8 @@ let test_button_child () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_input_defaults () =
@@ -198,7 +205,8 @@ let test_input_defaults () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_input_placeholder () =
@@ -219,7 +227,8 @@ let test_input_placeholder () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_input_on_change () =
@@ -247,7 +256,8 @@ let test_input_on_change () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_input_on_submit () =
@@ -268,7 +278,8 @@ let test_input_on_submit () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_image_required_fields () =
@@ -289,7 +300,8 @@ let test_image_required_fields () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_scroll_child () =
@@ -311,7 +323,8 @@ let test_scroll_child () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_keyed_preserves_fields () =
@@ -332,7 +345,8 @@ let test_keyed_preserves_fields () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false);
   Alcotest.(check bool)
     "keyed preserves child" true
@@ -351,7 +365,8 @@ let test_keyed_preserves_fields () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 type wrapper = Wrapped of msg
@@ -376,7 +391,8 @@ let test_map_transforms_click () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_map_transforms_input () =
@@ -404,7 +420,8 @@ let test_map_transforms_input () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_map_recursive () =
@@ -447,7 +464,8 @@ let test_map_recursive () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_map_column () =
@@ -477,7 +495,8 @@ let test_map_column () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_map_image () =
@@ -500,7 +519,8 @@ let test_map_image () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_map_scroll () =
@@ -525,7 +545,8 @@ let test_map_scroll () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_map_keyed () =
@@ -555,7 +576,8 @@ let test_map_keyed () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_map_empty_noop () =
@@ -576,7 +598,8 @@ let test_map_empty_noop () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_map_text_noop () =
@@ -598,7 +621,8 @@ let test_map_text_noop () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_equal_text_same () =
@@ -723,7 +747,8 @@ let test_box_default_interaction () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let hover_style = Nopal_style.Style.empty
@@ -750,7 +775,8 @@ let test_button_with_interaction () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_input_with_interaction () =
@@ -772,7 +798,8 @@ let test_input_with_interaction () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_map_preserves_interaction () =
@@ -793,7 +820,8 @@ let test_map_preserves_interaction () =
       | Element.Image _
       | Element.Scroll _
       | Element.Keyed _
-      | Element.Draw _ ->
+      | Element.Draw _
+      | Element.Virtual_list _ ->
           Alcotest.fail (label ^ ": unexpected variant")
     in
     Alcotest.(check bool)
@@ -851,7 +879,8 @@ let test_styled_text_carries_style () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let test_styled_text_with_default_is_some () =
@@ -873,7 +902,8 @@ let test_styled_text_with_default_is_some () =
     | Element.Select _
     | Element.Scroll _
     | Element.Keyed _
-    | Element.Draw _ ->
+    | Element.Draw _
+    | Element.Virtual_list _ ->
         false)
 
 let () =
