@@ -12,13 +12,15 @@
   kitchen_sink_form
   kitchen_sink_form_controls
   kitchen_sink_text_input
-  sub_toast)
+  sub_toast
+  sub_data_table)
  (libraries
   nopal_element
   nopal_mvu
   nopal_style
   nopal_draw
   nopal_charts
+  nopal_svg
   nopal_http
   nopal_ui
   focus_keyboard))

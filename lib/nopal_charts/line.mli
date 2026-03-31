@@ -26,6 +26,21 @@ val series :
 (** Convenience constructor. Defaults: [smooth=false], [area_fill=false],
     [show_points=false]. *)
 
+val scene :
+  series:'a series list ->
+  x:('a -> float) ->
+  width:float ->
+  height:float ->
+  ?padding:Padding.t ->
+  ?x_axis:Axis.config ->
+  ?y_axis:Axis.config ->
+  ?domain_window:Domain_window.t ->
+  unit ->
+  Nopal_scene.Scene.t list
+(** [scene ~series ~x ~width ~height ()] returns the scene nodes for a
+    multi-series line chart without wrapping in an element or adding interaction
+    handlers. Use for SVG export or embedding in composite scenes. *)
+
 val view :
   series:'a series list ->
   x:('a -> float) ->

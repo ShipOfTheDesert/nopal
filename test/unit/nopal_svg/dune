@@ -1,0 +1,10 @@
+(tests
+ (names test_svg_fmt test_nopal_svg test_chart_svg_integration)
+ (libraries
+  nopal_svg
+  nopal_scene
+  nopal_style
+  nopal_charts
+  nopal_draw
+  test_util
+  alcotest))

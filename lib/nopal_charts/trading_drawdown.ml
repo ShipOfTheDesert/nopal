@@ -1,8 +1,7 @@
 let default_fill_color = Nopal_draw.Color.rgba ~r:0.9 ~g:0.2 ~b:0.2 ~a:0.5
 
-let view ~data ~x ~y ~width ~height ?(padding = Padding.default) ?fill_color
-    ?(x_axis = Axis.default_config) ?y_axis ?format_tooltip ?on_hover ?on_leave
-    ?hover ?domain_window () =
+let scene ~data ~x ~y ~width ~height ?(padding = Padding.default) ?fill_color
+    ?(x_axis = Axis.default_config) ?y_axis ?domain_window () =
   (* Apply domain window clipping if provided *)
   let visible_data =
     match domain_window with
@@ -10,7 +9,7 @@ let view ~data ~x ~y ~width ~height ?(padding = Padding.default) ?fill_color
     | None -> data
   in
   match visible_data with
-  | [] -> Nopal_element.Element.draw ~width ~height []
+  | [] -> []
   | _ ->
       let chart_x = padding.Padding.left in
       let chart_y = padding.Padding.top in
@@ -65,7 +64,11 @@ let view ~data ~x ~y ~width ~height ?(padding = Padding.default) ?fill_color
         match points with
         | [] -> []
         | (first_x, _) :: _ ->
-            let last_x, _ = List.nth points (List.length points - 1) in
+            let last_x, _ =
+              match List.rev points with
+              | last :: _ -> last
+              | [] -> (first_x, 0.0)
+            in
             let area_points =
               points @ [ (last_x, baseline_y); (first_x, baseline_y) ]
             in
@@ -74,7 +77,41 @@ let view ~data ~x ~y ~width ~height ?(padding = Padding.default) ?fill_color
               Nopal_draw.Scene.path ~fill:(Nopal_draw.Paint.solid fill) segments;
             ]
       in
-      (* Build hit map: vertical bands, one per data point *)
+      (* Axes *)
+      let x_ticks = Axis.compute_ticks x_axis ~data_min:x_min ~data_max:x_max in
+      let x_axis_scene =
+        Axis.render_x x_axis ~ticks:x_ticks ~scale:x_scale ~chart_x
+          ~chart_y:(chart_y +. chart_height) ~chart_width
+      in
+      let y_ticks =
+        Axis.compute_ticks y_axis ~data_min:data_y_min ~data_max:data_y_max
+      in
+      let y_axis_scene =
+        Axis.render_y y_axis ~ticks:y_ticks ~scale:y_scale ~chart_x ~chart_y
+          ~chart_height
+      in
+      area_scene @ x_axis_scene @ y_axis_scene
+
+let view ~data ~x ~y ~width ~height ?(padding = Padding.default) ?fill_color
+    ?(x_axis = Axis.default_config) ?y_axis ?format_tooltip ?on_hover ?on_leave
+    ?hover ?domain_window () =
+  let all_scene =
+    scene ~data ~x ~y ~width ~height ~padding ?fill_color ~x_axis ?y_axis
+      ?domain_window ()
+  in
+  match all_scene with
+  | [] -> Nopal_element.Element.draw ~width ~height []
+  | _ ->
+      (* Recompute clipped data and scales for hit map *)
+      let visible_data =
+        match domain_window with
+        | Some window -> Viewport.clip ~x ~data ~window ~buffer:1
+        | None -> data
+      in
+      let chart_x = padding.Padding.left in
+      let chart_y = padding.Padding.top in
+      let chart_width = width -. padding.left -. padding.right in
+      let chart_height = height -. padding.top -. padding.bottom in
       let n_points = List.length visible_data in
       let band_width =
         if n_points <= 1 then chart_width
@@ -98,20 +135,6 @@ let view ~data ~x ~y ~width ~height ?(padding = Padding.default) ?fill_color
           (Hit_map.empty, 0) visible_data
         |> fst
       in
-      (* Axes *)
-      let x_ticks = Axis.compute_ticks x_axis ~data_min:x_min ~data_max:x_max in
-      let x_axis_scene =
-        Axis.render_x x_axis ~ticks:x_ticks ~scale:x_scale ~chart_x
-          ~chart_y:(chart_y +. chart_height) ~chart_width
-      in
-      let y_ticks =
-        Axis.compute_ticks y_axis ~data_min:data_y_min ~data_max:data_y_max
-      in
-      let y_axis_scene =
-        Axis.render_y y_axis ~ticks:y_ticks ~scale:y_scale ~chart_x ~chart_y
-          ~chart_height
-      in
-      let all_scene = area_scene @ x_axis_scene @ y_axis_scene in
       (* Build on_pointer_move handler *)
       let on_pointer_move =
         match (on_hover, on_leave) with

@@ -9,10 +9,9 @@ type 'a series = {
 
 let series ~label ~color ~y data = { data; y; color; label }
 
-let view ~series ~x ~width ~height ?(mode = Overlapping)
+let scene ~series ~x ~width ~height ?(mode = Overlapping)
     ?(padding = Padding.default) ?(x_axis = Axis.default_config)
-    ?(y_axis = Axis.default_config) ?format_tooltip ?on_hover ?on_leave ?hover
-    ?domain_window () =
+    ?(y_axis = Axis.default_config) ?domain_window () =
   (* Apply domain window clipping if provided *)
   let series =
     match domain_window with
@@ -30,7 +29,7 @@ let view ~series ~x ~width ~height ?(mode = Overlapping)
       series
   in
   match all_data with
-  | [] -> Nopal_element.Element.draw ~width ~height []
+  | [] -> []
   | _ ->
       let chart_x = padding.Padding.left in
       let chart_y = padding.Padding.top in
@@ -64,10 +63,9 @@ let view ~series ~x ~width ~height ?(mode = Overlapping)
               let sum = ref 0.0 in
               List.iter
                 (fun (s : _ series) ->
-                  if i < List.length s.data then begin
-                    let d = List.nth s.data i in
-                    sum := !sum +. s.y d
-                  end)
+                  match List.nth_opt s.data i with
+                  | Some d -> sum := !sum +. s.y d
+                  | None -> ())
                 series;
               if !sum > !max_sum then max_sum := !sum
             done;
@@ -151,12 +149,54 @@ let view ~series ~x ~width ~height ?(mode = Overlapping)
                 ])
           series
       in
-      (* Build hit map: vertical bands, one per X index *)
+      (* Axes *)
+      let x_ticks = Axis.compute_ticks x_axis ~data_min:x_min ~data_max:x_max in
+      let x_axis_scene =
+        Axis.render_x x_axis ~ticks:x_ticks ~scale:x_scale ~chart_x
+          ~chart_y:(chart_y +. chart_height) ~chart_width
+      in
+      let y_ticks =
+        Axis.compute_ticks y_axis ~data_min:data_y_min ~data_max:data_y_max
+      in
+      let y_axis_scene =
+        Axis.render_y y_axis ~ticks:y_ticks ~scale:y_scale ~chart_x ~chart_y
+          ~chart_height
+      in
+      scene_nodes @ x_axis_scene @ y_axis_scene
+
+let view ~series ~x ~width ~height ?(mode = Overlapping)
+    ?(padding = Padding.default) ?(x_axis = Axis.default_config)
+    ?(y_axis = Axis.default_config) ?format_tooltip ?on_hover ?on_leave ?hover
+    ?domain_window () =
+  let all_scene =
+    scene ~series ~x ~width ~height ~mode ~padding ~x_axis ~y_axis
+      ?domain_window ()
+  in
+  match all_scene with
+  | [] -> Nopal_element.Element.draw ~width ~height []
+  | _ ->
+      (* Recompute hit map for interaction *)
+      let clipped_series =
+        match domain_window with
+        | Some window ->
+            List.map
+              (fun (s : _ series) ->
+                {
+                  s with
+                  data = Viewport.clip ~x ~data:s.data ~window ~buffer:1;
+                })
+              series
+        | None -> series
+      in
+      let chart_x = padding.Padding.left in
+      let chart_y = padding.Padding.top in
+      let chart_width = width -. padding.left -. padding.right in
+      let chart_height = height -. padding.top -. padding.bottom in
       let unique_x_values =
         let xs =
           List.concat_map
             (fun (s : _ series) -> List.mapi (fun i d -> (i, x d)) s.data)
-            series
+            clipped_series
         in
         let seen = Hashtbl.create 16 in
         List.filter_map
@@ -189,21 +229,6 @@ let view ~series ~x ~width ~height ?(mode = Overlapping)
             Hit_map.add region hmap)
           Hit_map.empty unique_x_values
       in
-      (* Axes *)
-      let x_ticks = Axis.compute_ticks x_axis ~data_min:x_min ~data_max:x_max in
-      let x_axis_scene =
-        Axis.render_x x_axis ~ticks:x_ticks ~scale:x_scale ~chart_x
-          ~chart_y:(chart_y +. chart_height) ~chart_width
-      in
-      let y_ticks =
-        Axis.compute_ticks y_axis ~data_min:data_y_min ~data_max:data_y_max
-      in
-      let y_axis_scene =
-        Axis.render_y y_axis ~ticks:y_ticks ~scale:y_scale ~chart_x ~chart_y
-          ~chart_height
-      in
-      let all_scene = scene_nodes @ x_axis_scene @ y_axis_scene in
-      (* Build on_pointer_move handler *)
       let on_pointer_move =
         match (on_hover, on_leave) with
         | Some handler, Some leave_msg ->
@@ -225,19 +250,16 @@ let view ~series ~x ~width ~height ?(mode = Overlapping)
         Nopal_element.Element.draw ?on_pointer_move ?on_pointer_leave:on_leave
           ~width ~height all_scene
       in
-      (* Compose with tooltip if hovered *)
       let tooltip =
         match (hover, format_tooltip) with
         | Some h, Some fmt when h.Hover.index >= 0 ->
             let entries =
               List.filter_map
                 (fun (s : _ series) ->
-                  let n_data = List.length s.data in
-                  if h.Hover.index < n_data then
-                    let datum = List.nth s.data h.Hover.index in
-                    Some (s.label, s.y datum)
-                  else None)
-                series
+                  match List.nth_opt s.data h.Hover.index with
+                  | Some datum -> Some (s.label, s.y datum)
+                  | None -> None)
+                clipped_series
             in
             let tip = fmt entries in
             Some

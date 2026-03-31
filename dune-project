@@ -204,6 +204,17 @@
   nopal_mvu))
 
 (package
+ (name nopal_svg)
+ (synopsis "SVG scene renderer for Nopal")
+ (depends
+  (alcotest
+   (and
+    (>= 1.9.1)
+    :with-test))
+  ocaml
+  nopal_scene))
+
+(package
  (name nopal_examples)
  (allow_empty)
  (synopsis "Example applications for Nopal")

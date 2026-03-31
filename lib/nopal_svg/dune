@@ -1,0 +1,4 @@
+(library
+ (name nopal_svg)
+ (public_name nopal_svg)
+ (libraries nopal_scene))

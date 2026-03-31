@@ -17,11 +17,12 @@ nopal_style     ← Typed layout/paint — no platform deps
 nopal_router    ← Type-safe bidirectional routing — no platform deps
 nopal_scene     ← Pure scene types (Color, Paint, Transform, Path segments, Scene) — no platform deps
 nopal_draw      ← 2D drawing DSL (Scale + higher-level Path algorithms) — depends on nopal_scene
+nopal_svg       ← Pure SVG 1.1 string renderer for nopal_scene — no platform deps
 nopal_charts    ← Composable interactive charts (Bar, Line, Area, Pie, Scatter, Sparkline,
                    Heat_map, Trading.Candlestick, Trading.Drawdown, Chart_pane,
                    Color_scale, Domain_window, Viewport, Downsample, Snap)
 nopal_http      ← Pure HTTP types + backend abstraction — no platform deps
-nopal_ui        ← High-level UI components (Button, Checkbox, Radio, Select, Toast) — no platform deps
+nopal_ui        ← High-level UI components (Button, Checkbox, Data_table, Radio, Select, Toast) — no platform deps
 nopal_runtime   ← Lwd reactive integration + MVU loop
 nopal_test      ← Pure OCaml test renderer — no js_of_ocaml
 nopal_web       ← js_of_ocaml + Brr DOM renderer (only browser-dependent package)
@@ -378,6 +379,99 @@ let view model =
   Toast.view config model.toasts
 ```
 
+#### Data_table
+
+Sortable data table with ARIA table semantics and keyed rows.
+
+```ocaml
+(* Sort types *)
+type sort_direction = Ascending | Descending
+
+type sort = {
+  column : string;
+  direction : sort_direction;
+}
+
+(* A column definition *)
+type ('row, 'msg) column = {
+  header : string;
+  cell : 'row -> 'msg Element.t;
+  sort_key : string option;
+}
+
+(* Configuration for rendering a data table *)
+type ('row, 'msg) config = {
+  columns : ('row, 'msg) column list;
+  rows : 'row list;
+  key : 'row -> string;
+  sort : sort option;
+  on_sort : string -> 'msg;
+  style : Style.t option;
+  interaction : Interaction.t option;
+  attrs : (string * string) list;
+}
+
+(* Constructor — sort_key defaults to None *)
+val column : header:string -> cell:('row -> 'msg Element.t)
+  -> ?sort_key:string -> unit -> ('row, 'msg) column
+
+(* Constructor — sort/style/interaction/attrs default to None/[] *)
+val make : columns:('row, 'msg) column list -> rows:'row list
+  -> key:('row -> string) -> on_sort:(string -> 'msg)
+  -> ?sort:sort -> ?style:Style.t -> ?interaction:Interaction.t
+  -> ?attrs:(string * string) list -> unit -> ('row, 'msg) config
+
+(* View *)
+val view : ('row, 'msg) config -> 'msg Element.t
+(* Renders a column container with role="table". Header row contains
+   role="columnheader" cells — sortable columns wrap a button inside
+   the columnheader box that dispatches on_sort with the column's
+   sort_key. Active sort column carries aria-sort="ascending" or
+   "descending". Data rows have role="row", cells have role="cell".
+   Each data row is wrapped in Element.keyed using config.key. *)
+```
+
+Usage pattern — subapp integration:
+
+```ocaml
+(* Model *)
+type model = { people : person list; sort : Data_table.sort option }
+
+(* Messages *)
+type msg = Sort of string
+
+(* Update *)
+let update model = function
+  | Sort key ->
+      let direction = match model.sort with
+        | Some s when s.column = key && s.direction = Ascending -> Descending
+        | _ -> Ascending
+      in
+      let sort = Some Data_table.{ column = key; direction } in
+      let people = sort_by key direction model.people in
+      ({ people; sort }, Cmd.none)
+
+(* View *)
+let view model =
+  let config =
+    Data_table.make
+      ~columns:[
+        Data_table.column ~header:"Name"
+          ~cell:(fun p -> Element.text p.name)
+          ~sort_key:"name" ();
+        Data_table.column ~header:"Age"
+          ~cell:(fun p -> Element.text (string_of_int p.age))
+          ~sort_key:"age" ();
+      ]
+      ~rows:model.people
+      ~key:(fun p -> p.name)
+      ~on_sort:(fun key -> Sort key)
+      ?sort:model.sort
+      ()
+  in
+  Data_table.view config
+```
+
 ### Routing (`nopal_router`)
 
 Type-safe bidirectional routing:
@@ -439,6 +533,40 @@ Scale.apply  : Scale.t -> float -> float
 Scale.invert : Scale.t -> float -> float
 ```
 
+### SVG Renderer (`nopal_svg`)
+
+Pure SVG 1.1 string renderer for `nopal_scene` types. No platform deps — compiles native.
+
+```ocaml
+Nopal_svg.render : width:float -> height:float -> Scene.t list -> string
+(* Renders a list of scene nodes to a complete SVG document string.
+   Emits <defs> for gradients and clip paths. Output includes xmlns and viewBox. *)
+
+(* Low-level formatting module, re-exported for unit testing *)
+module Svg_fmt : sig
+  type ctx
+  val create_ctx          : unit -> ctx
+  val color_to_css        : Color.t -> string
+  val paint_to_fill_attr  : ctx -> Paint.t -> string
+  val stroke_to_attrs     : ctx -> Paint.stroke -> string
+  val transform_to_attr   : Transform.t -> string
+  val transforms_to_attr  : Transform.t list -> string
+  val path_to_d           : Path.segment list -> string
+  val blend_to_css        : Scene.blend -> string
+  val line_cap_to_string  : Paint.line_cap -> string
+  val line_join_to_string : Paint.line_join -> string
+  val render_node         : ctx -> Buffer.t -> Scene.t -> unit
+  val defs_to_string      : ctx -> string
+end
+```
+
+Typical usage with charts:
+
+```ocaml
+let scene = Bar.scene ~data ~label ~value ~color ~width:400.0 ~height:250.0 () in
+let svg_string = Nopal_svg.render ~width:400.0 ~height:250.0 scene
+```
+
 ### Charts (`nopal_charts`)
 
 Composable interactive charts built on `nopal_draw`:
@@ -491,6 +619,58 @@ Sparkline.view : data:float list -> width:float -> height:float
 ```
 
 Chart hover state: `Hover.t = { index: int; series: int; cursor_x: float; cursor_y: float }`
+
+#### Scene Functions
+
+Every chart module exposes a `scene` function that returns `Scene.t list` for
+pure SVG export or embedding in composite scenes. Scene functions accept the
+same data/layout parameters as `view` but omit interaction parameters
+(`on_hover`, `on_leave`, `hover`, `format_tooltip`, event handlers).
+
+```ocaml
+Bar.scene       : data:'a list -> label:('a -> string) -> value:('a -> float)
+  -> color:('a -> Color.t) -> ?x:('a -> float) -> width:float -> height:float
+  -> ?padding:Padding.t -> ?x_axis:Axis.config -> ?y_axis:Axis.config
+  -> ?domain_window:Domain_window.t -> unit -> Scene.t list
+
+Line.scene      : series:'a Line.series list -> x:('a -> float) -> width:float -> height:float
+  -> ?padding:Padding.t -> ?x_axis:Axis.config -> ?y_axis:Axis.config
+  -> ?domain_window:Domain_window.t -> unit -> Scene.t list
+
+Area.scene      : series:'a Area.series list -> x:('a -> float) -> width:float -> height:float
+  -> ?mode:Area.mode -> ?padding:Padding.t -> ?x_axis:Axis.config -> ?y_axis:Axis.config
+  -> ?domain_window:Domain_window.t -> unit -> Scene.t list
+
+Pie.scene       : data:'a list -> value:('a -> float) -> label:('a -> string)
+  -> color:('a -> Color.t) -> width:float -> height:float
+  -> ?inner_radius:float -> ?label_threshold:float -> unit -> Scene.t list
+
+Scatter.scene   : data:'a list -> x:('a -> float) -> y:('a -> float)
+  -> ?radius:('a -> float) -> color:('a -> Color.t) -> width:float -> height:float
+  -> ?padding:Padding.t -> ?x_axis:Axis.config -> ?y_axis:Axis.config
+  -> ?domain_window:Domain_window.t -> unit -> Scene.t list
+
+Heat_map.scene  : data:'a list -> row:('a -> int) -> col:('a -> int)
+  -> value:('a -> float) -> row_count:int -> col_count:int
+  -> ?row_labels:string list -> ?col_labels:string list
+  -> scale:Color_scale.t -> width:float -> height:float
+  -> ?padding:Padding.t -> unit -> Scene.t list
+
+Sparkline.scene : data:float list -> width:float -> height:float
+  -> ?color:Color.t -> ?stroke_width:float -> unit -> Scene.t list
+
+Trading.Candlestick.scene : data:'a list -> x:('a -> float)
+  -> open_:('a -> float) -> high:('a -> float) -> low:('a -> float) -> close:('a -> float)
+  -> width:float -> height:float -> ?padding:Padding.t
+  -> ?bullish_color:Color.t -> ?bearish_color:Color.t
+  -> ?x_axis:Axis.config -> ?y_axis:Axis.config
+  -> ?domain_window:Domain_window.t -> unit -> Scene.t list
+
+Trading.Drawdown.scene : data:'a list -> x:('a -> float) -> y:('a -> float)
+  -> width:float -> height:float -> ?padding:Padding.t
+  -> ?fill_color:Color.t -> ?x_axis:Axis.config -> ?y_axis:Axis.config
+  -> ?domain_window:Domain_window.t -> unit -> Scene.t list
+```
 
 #### Heat Map
 
@@ -1036,7 +1216,7 @@ lib/
                        Trading.Candlestick, Trading.Drawdown, Chart_pane,
                        Color_scale, Domain_window, Viewport, Downsample, Snap
   nopal_http/        — Pure HTTP types + backend abstraction
-  nopal_ui/          — High-level UI components (Button, Checkbox, Radio, Select, Toast)
+  nopal_ui/          — High-level UI components (Button, Checkbox, Data_table, Radio, Select, Toast)
   nopal_runtime/     — Lwd integration + MVU loop
   nopal_test/        — Pure OCaml test renderer
 backends/

@@ -21,7 +21,16 @@
   test_trading_drawdown
   test_trading_candlestick
   test_chart_pane
-  test_domain_window_integration)
+  test_domain_window_integration
+  test_line_scene
+  test_area_scene
+  test_bar_scene
+  test_scatter_scene
+  test_pie_scene
+  test_heat_map_scene
+  test_trading_candlestick_scene
+  test_trading_drawdown_scene
+  test_sparkline_scene)
  (libraries
   chart_test_helpers
   nopal_charts

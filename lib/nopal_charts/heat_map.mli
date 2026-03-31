@@ -6,6 +6,26 @@
 
     Uses the accessor pattern for API consistency with other chart types. *)
 
+val scene :
+  data:'a list ->
+  row:('a -> int) ->
+  col:('a -> int) ->
+  value:('a -> float) ->
+  row_count:int ->
+  col_count:int ->
+  ?row_labels:string list ->
+  ?col_labels:string list ->
+  scale:Color_scale.t ->
+  width:float ->
+  height:float ->
+  ?padding:Padding.t ->
+  unit ->
+  Nopal_scene.Scene.t list
+(** [scene ~data ~row ~col ~value ~row_count ~col_count ~scale ~width ~height
+     ()] returns the scene nodes for a heat map without wrapping in an element
+    or adding interaction handlers. Use for SVG export or embedding in composite
+    scenes. *)
+
 val view :
   data:'a list ->
   row:('a -> int) ->

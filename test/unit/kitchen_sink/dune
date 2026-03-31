@@ -5,3 +5,7 @@
 (test
  (name test_toast_section)
  (libraries kitchen_sink_app nopal_test nopal_element test_util alcotest))
+
+(test
+ (name test_data_table_section)
+ (libraries kitchen_sink_app nopal_ui alcotest))

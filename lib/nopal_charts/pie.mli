@@ -1,3 +1,18 @@
+val scene :
+  data:'a list ->
+  value:('a -> float) ->
+  label:('a -> string) ->
+  color:('a -> Nopal_draw.Color.t) ->
+  width:float ->
+  height:float ->
+  ?inner_radius:float ->
+  ?label_threshold:float ->
+  unit ->
+  Nopal_scene.Scene.t list
+(** [scene ~data ~value ~label ~color ~width ~height ()] returns the scene nodes
+    for a pie/donut chart without wrapping in an element or adding interaction
+    handlers. Use for SVG export or embedding in composite scenes. *)
+
 val view :
   data:'a list ->
   value:('a -> float) ->

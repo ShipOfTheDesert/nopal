@@ -3,13 +3,12 @@ let highlight_amount = 0.3
 let lighten (c : Nopal_draw.Color.t) =
   Nopal_draw.Color.lerp c Nopal_draw.Color.white highlight_amount
 
-let view ~data ~row ~col ~value ~row_count ~col_count ?(row_labels = [])
-    ?(col_labels = []) ~scale ~width ~height ?(padding = Padding.default)
-    ?format_tooltip ?on_hover ?on_leave ?hover () =
+let scene ~data ~row ~col ~value ~row_count ~col_count ?(row_labels = [])
+    ?(col_labels = []) ~scale ~width ~height ?(padding = Padding.default) () =
   match (row_count, col_count) with
   | 0, _
   | _, 0 ->
-      Nopal_element.Element.draw ~width ~height []
+      []
   | _ ->
       let chart_x = padding.left in
       let chart_y = padding.top in
@@ -18,6 +17,73 @@ let view ~data ~row ~col ~value ~row_count ~col_count ?(row_labels = [])
       let cell_w = chart_width /. Float.of_int col_count in
       let cell_h = chart_height /. Float.of_int row_count in
       (* Compute min/max values across all data *)
+      let vmin, vmax =
+        List.fold_left
+          (fun (lo, hi) datum ->
+            let v = value datum in
+            (Float.min lo v, Float.max hi v))
+          (Float.infinity, Float.neg_infinity)
+          data
+      in
+      (* Build scene rects *)
+      let cell_scenes =
+        List.rev_map
+          (fun datum ->
+            let r = row datum in
+            let c = col datum in
+            let v = value datum in
+            let base_color = Color_scale.apply scale ~min:vmin ~max:vmax v in
+            let cx = chart_x +. (Float.of_int c *. cell_w) in
+            let cy = chart_y +. (Float.of_int r *. cell_h) in
+            Nopal_draw.Scene.rect
+              ~fill:(Nopal_draw.Paint.solid base_color)
+              ~x:cx ~y:cy ~w:cell_w ~h:cell_h ())
+          data
+        |> List.rev
+      in
+      (* Row labels *)
+      let row_label_scenes =
+        List.mapi
+          (fun i lbl ->
+            let y_pos =
+              chart_y +. (Float.of_int i *. cell_h) +. (cell_h /. 2.0)
+            in
+            Nopal_draw.Scene.text ~font_size:11.0 ~anchor:End_anchor
+              ~baseline:Middle_baseline ~x:(chart_x -. 4.0) ~y:y_pos lbl)
+          row_labels
+      in
+      (* Column labels *)
+      let col_label_scenes =
+        List.mapi
+          (fun i lbl ->
+            let x_pos =
+              chart_x +. (Float.of_int i *. cell_w) +. (cell_w /. 2.0)
+            in
+            Nopal_draw.Scene.text ~font_size:11.0 ~anchor:Middle ~baseline:Top
+              ~x:x_pos
+              ~y:(chart_y +. chart_height +. 4.0)
+              lbl)
+          col_labels
+      in
+      cell_scenes @ row_label_scenes @ col_label_scenes
+
+let view ~data ~row ~col ~value ~row_count ~col_count ?(row_labels = [])
+    ?(col_labels = []) ~scale ~width ~height ?(padding = Padding.default)
+    ?format_tooltip ?on_hover ?on_leave ?hover () =
+  let all_scene =
+    scene ~data ~row ~col ~value ~row_count ~col_count ~row_labels ~col_labels
+      ~scale ~width ~height ~padding ()
+  in
+  match all_scene with
+  | [] -> Nopal_element.Element.draw ~width ~height []
+  | _ ->
+      (* Recompute for hit map and hover highlighting *)
+      let chart_x = padding.left in
+      let chart_y = padding.top in
+      let chart_width = width -. padding.left -. padding.right in
+      let chart_height = height -. padding.top -. padding.bottom in
+      let cell_w = chart_width /. Float.of_int col_count in
+      let cell_h = chart_height /. Float.of_int row_count in
       let vmin, vmax =
         List.fold_left
           (fun (lo, hi) datum ->

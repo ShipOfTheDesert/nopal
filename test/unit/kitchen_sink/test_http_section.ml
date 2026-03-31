@@ -140,6 +140,7 @@ let msg_pp fmt msg =
   | Text_input_msg _ -> Format.fprintf fmt "Text_input_msg _"
   | Focus_keyboard_msg _ -> Format.fprintf fmt "Focus_keyboard_msg _"
   | Toast_msg _ -> Format.fprintf fmt "Toast_msg _"
+  | Data_table_msg _ -> Format.fprintf fmt "Data_table_msg _"
 
 let msg_testable = Alcotest.testable msg_pp ( = )
 

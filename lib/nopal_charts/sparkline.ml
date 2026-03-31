@@ -1,8 +1,8 @@
-let view ~data ~width ~height ?(color = Nopal_draw.Color.categorical.(0))
+let scene ~data ~width ~height ?(color = Nopal_draw.Color.categorical.(0))
     ?(stroke_width = 1.5) () =
   match data with
-  | [] -> Nopal_element.Element.draw ~width ~height []
-  | [ _ ] -> Nopal_element.Element.draw ~width ~height []
+  | [] -> []
+  | [ _ ] -> []
   | _ ->
       let n = List.length data in
       let data_min = List.fold_left Float.min Float.infinity data in
@@ -30,4 +30,10 @@ let view ~data ~width ~height ?(color = Nopal_draw.Color.categorical.(0))
           (Nopal_draw.Paint.solid color)
       in
       let line = Nopal_draw.Scene.polyline ~stroke points in
-      Nopal_element.Element.draw ~width ~height [ line ]
+      [ line ]
+
+let view ~data ~width ~height ?(color = Nopal_draw.Color.categorical.(0))
+    ?(stroke_width = 1.5) () =
+  match scene ~data ~width ~height ~color ~stroke_width () with
+  | [] -> Nopal_element.Element.draw ~width ~height []
+  | nodes -> Nopal_element.Element.draw ~width ~height nodes
