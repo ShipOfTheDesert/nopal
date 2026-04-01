@@ -135,9 +135,7 @@ let view config =
           [ backdrop; dialog ]
       | None -> [ dialog ]
     in
-    E.box ~style:overlay_style
-      ~attrs:[ ("data-testid", "modal-root") ]
-      children
+    E.box ~style:overlay_style ~attrs:[ ("data-testid", "modal-root") ] children
 
 let subscriptions config =
   if not config.open_ then Sub.none

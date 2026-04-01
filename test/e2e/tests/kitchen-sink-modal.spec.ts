@@ -111,8 +111,8 @@ test("backdrop click closes the modal", async ({ page }) => {
   await page.locator(OPEN_BUTTON).click();
   await expect(page.locator(DIALOG)).toBeVisible();
 
-  // Click the backdrop (force: true in case it's behind the dialog)
-  await page.locator(BACKDROP).click({ force: true });
+  // Click the backdrop outside the dialog (top-left corner)
+  await page.locator(BACKDROP).click({ position: { x: 5, y: 5 } });
   await expect(page.locator(DIALOG)).not.toBeVisible();
 });
 

@@ -565,8 +565,7 @@ let test_equal_layout_position () =
     { default_layout with position = Some Pos_absolute; z_index = Some 10 }
   in
   Alcotest.(check bool)
-    "different position layouts not equal" false
-    (equal_layout l1 l3)
+    "different position layouts not equal" false (equal_layout l1 l3)
 
 (* --- Test runner --- *)
 
