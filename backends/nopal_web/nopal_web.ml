@@ -138,7 +138,13 @@ let mount (type model msg)
         if Jv.is_none !keydown_listener then (
           let listener =
             Jv.callback ~arity:1 (fun event ->
-                let key = Jv.to_string (Jv.get event "key") in
+                let raw_key = Jv.to_string (Jv.get event "key") in
+                let shift = Jv.to_bool (Jv.get event "shiftKey") in
+                let key =
+                  if shift && not (String.equal raw_key "Shift") then
+                    "Shift+" ^ raw_key
+                  else raw_key
+                in
                 List.iter
                   (fun (_sub_key, f) ->
                     match f key with

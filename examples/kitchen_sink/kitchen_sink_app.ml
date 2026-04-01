@@ -120,6 +120,8 @@ type model = {
   toast : Sub_toast.model;
   data_table : Sub_data_table.model;
   virtual_list : Sub_virtual_list.model;
+  navigation_bar : Sub_navigation_bar.model;
+  modal : Sub_modal.model;
 }
 
 (* Messages *)
@@ -141,6 +143,8 @@ type msg =
   | Toast_msg of Sub_toast.msg
   | Data_table_msg of Sub_data_table.msg
   | Virtual_list_msg of Sub_virtual_list.msg
+  | Navigation_bar_msg of Sub_navigation_bar.msg
+  | Modal_msg of Sub_modal.msg
   | DrawPointerMove of float * float
   | DrawPointerLeave
   | ChartHovered of Hover.t
@@ -249,6 +253,8 @@ let init () =
   let toast, toast_cmd = Sub_toast.init () in
   let data_table, data_table_cmd = Sub_data_table.init () in
   let virtual_list, virtual_list_cmd = Sub_virtual_list.init () in
+  let navigation_bar, navigation_bar_cmd = Sub_navigation_bar.init () in
+  let modal, modal_cmd = Sub_modal.init () in
   ( {
       button_clicks = 0;
       input_text = "";
@@ -301,6 +307,8 @@ let init () =
       toast;
       data_table;
       virtual_list;
+      navigation_bar;
+      modal;
     },
     Nopal_mvu.Cmd.batch
       [
@@ -313,6 +321,8 @@ let init () =
         Nopal_mvu.Cmd.map (fun m -> Toast_msg m) toast_cmd;
         Nopal_mvu.Cmd.map (fun m -> Data_table_msg m) data_table_cmd;
         Nopal_mvu.Cmd.map (fun m -> Virtual_list_msg m) virtual_list_cmd;
+        Nopal_mvu.Cmd.map (fun m -> Navigation_bar_msg m) navigation_bar_cmd;
+        Nopal_mvu.Cmd.map (fun m -> Modal_msg m) modal_cmd;
       ] )
 
 let clamp_pane_dw dw = Domain_window.clamp ~data_min:0.0 ~data_max:9.0 dw
@@ -399,6 +409,15 @@ let update model = function
       in
       ( { model with virtual_list },
         Nopal_mvu.Cmd.map (fun m -> Virtual_list_msg m) vl_cmd )
+  | Navigation_bar_msg nb_msg ->
+      let navigation_bar, nb_cmd =
+        Sub_navigation_bar.update model.navigation_bar nb_msg
+      in
+      ( { model with navigation_bar },
+        Nopal_mvu.Cmd.map (fun m -> Navigation_bar_msg m) nb_cmd )
+  | Modal_msg modal_msg ->
+      let modal, modal_cmd = Sub_modal.update model.modal modal_msg in
+      ({ model with modal }, Nopal_mvu.Cmd.map (fun m -> Modal_msg m) modal_cmd)
   | DrawPointerMove (x, y) ->
       ({ model with draw_pointer = Some (x, y) }, Nopal_mvu.Cmd.none)
   | DrawPointerLeave -> ({ model with draw_pointer = None }, Nopal_mvu.Cmd.none)
@@ -2806,6 +2825,20 @@ let view vp model =
                (fun m -> Virtual_list_msg m)
                (Sub_virtual_list.view vp model.virtual_list);
            ];
+         view_section
+           ~attrs:[ ("data-testid", "navigation-bar-section") ]
+           "Navigation Bar"
+           [
+             Element.map
+               (fun m -> Navigation_bar_msg m)
+               (Sub_navigation_bar.view vp model.navigation_bar);
+           ];
+         view_section
+           ~attrs:[ ("data-testid", "modal-section") ]
+           "Modal"
+           [
+             Element.map (fun m -> Modal_msg m) (Sub_modal.view vp model.modal);
+           ];
          view_images model;
          view_scroll model;
          view_keyed model;
@@ -2832,6 +2865,12 @@ let view vp model =
        ])
 
 let subscriptions model =
-  Nopal_mvu.Sub.map
-    (fun m -> Focus_keyboard_msg m)
-    (Focus_keyboard.subscriptions model.focus_keyboard)
+  Nopal_mvu.Sub.batch
+    [
+      Nopal_mvu.Sub.map
+        (fun m -> Focus_keyboard_msg m)
+        (Focus_keyboard.subscriptions model.focus_keyboard);
+      Nopal_mvu.Sub.map
+        (fun m -> Modal_msg m)
+        (Sub_modal.subscriptions model.modal);
+    ]

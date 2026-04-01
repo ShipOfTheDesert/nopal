@@ -14,7 +14,9 @@
   kitchen_sink_text_input
   sub_toast
   sub_data_table
-  sub_virtual_list)
+  sub_virtual_list
+  sub_navigation_bar
+  sub_modal)
  (libraries
   nopal_element
   nopal_mvu

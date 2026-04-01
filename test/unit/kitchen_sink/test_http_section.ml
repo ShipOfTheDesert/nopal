@@ -142,6 +142,8 @@ let msg_pp fmt msg =
   | Toast_msg _ -> Format.fprintf fmt "Toast_msg _"
   | Data_table_msg _ -> Format.fprintf fmt "Data_table_msg _"
   | Virtual_list_msg _ -> Format.fprintf fmt "Virtual_list_msg _"
+  | Navigation_bar_msg _ -> Format.fprintf fmt "Navigation_bar_msg _"
+  | Modal_msg _ -> Format.fprintf fmt "Modal_msg _"
 
 let msg_testable = Alcotest.testable msg_pp ( = )
 
