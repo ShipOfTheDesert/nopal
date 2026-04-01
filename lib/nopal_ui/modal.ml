@@ -39,6 +39,35 @@ let with_interaction interaction config =
 
 let with_attrs attrs config = { config with attrs }
 
+let overlay_style =
+  let open Nopal_style.Style in
+  default
+  |> with_layout (fun l ->
+      {
+        l with
+        position = Some Pos_fixed;
+        top = Some 0.0;
+        left = Some 0.0;
+        width = Some Fill;
+        height = Some Fill;
+        z_index = Some 1000;
+        main_align = Some Center;
+        cross_align = Some Center;
+      })
+
+let default_backdrop_style =
+  let open Nopal_style.Style in
+  default
+  |> with_layout (fun l ->
+      {
+        l with
+        position = Some Pos_absolute;
+        top = Some 0.0;
+        left = Some 0.0;
+        width = Some Fill;
+        height = Some Fill;
+      })
+
 let view config =
   if not config.open_ then E.empty
   else
@@ -51,8 +80,26 @@ let view config =
       ]
     in
     let dialog_attrs = aria_attrs @ config.attrs in
+    (* When a backdrop is present it is position:absolute, so the dialog
+       must also be positioned to stack above it via DOM order. *)
+    let ensure_positioned style =
+      let open Nopal_style.Style in
+      style
+      |> with_layout (fun l ->
+          match l.position with
+          | Some _ -> l
+          | None -> { l with position = Some Pos_relative })
+    in
+    let has_backdrop = Option.is_some config.on_backdrop_click in
+    let dialog_style =
+      match (config.style, has_backdrop) with
+      | Some s, true -> Some (ensure_positioned s)
+      | Some s, false -> Some s
+      | None, true -> Some (ensure_positioned Nopal_style.Style.default)
+      | None, false -> None
+    in
     let dialog =
-      match (config.style, config.interaction) with
+      match (dialog_style, config.interaction) with
       | Some s, Some i ->
           E.column ~style:s ~interaction:i ~attrs:dialog_attrs [ config.body ]
       | Some s, None -> E.column ~style:s ~attrs:dialog_attrs [ config.body ]
@@ -64,19 +111,33 @@ let view config =
       match config.on_backdrop_click with
       | Some msg ->
           let backdrop_attrs = [ ("data-testid", "modal-backdrop") ] in
-          let backdrop =
+          let bs =
             match config.backdrop_style with
             | Some s ->
-                E.box ~style:s ~attrs:backdrop_attrs
-                  ~on_pointer_down:(fun _pe -> msg)
-                  []
-            | None ->
-                E.box ~attrs:backdrop_attrs ~on_pointer_down:(fun _pe -> msg) []
+                let open Nopal_style.Style in
+                s
+                |> with_layout (fun l ->
+                    {
+                      l with
+                      position = Some Pos_absolute;
+                      top = Some 0.0;
+                      left = Some 0.0;
+                      width = Some Fill;
+                      height = Some Fill;
+                    })
+            | None -> default_backdrop_style
+          in
+          let backdrop =
+            E.box ~style:bs ~attrs:backdrop_attrs
+              ~on_pointer_down:(fun _pe -> msg)
+              []
           in
           [ backdrop; dialog ]
       | None -> [ dialog ]
     in
-    E.box ~attrs:[ ("data-testid", "modal-root") ] children
+    E.box ~style:overlay_style
+      ~attrs:[ ("data-testid", "modal-root") ]
+      children
 
 let subscriptions config =
   if not config.open_ then Sub.none

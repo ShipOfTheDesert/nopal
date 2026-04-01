@@ -27,6 +27,7 @@ type border = {
 
 type shadow = { x : float; y : float; blur : float; color : color }
 type overflow = Visible | Hidden
+type position = Pos_static | Pos_relative | Pos_absolute | Pos_fixed
 
 (** {1 Layout and Paint} *)
 
@@ -43,6 +44,12 @@ type layout = {
   width : size option;
   height : size option;
   flex_grow : float option;
+  position : position option;
+  top : float option;
+  right : float option;
+  bottom : float option;
+  left : float option;
+  z_index : int option;
 }
 
 type paint = {

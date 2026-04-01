@@ -223,6 +223,39 @@ let of_style (style : t) =
     | Some g -> add acc "flex-grow" (Printf.sprintf "%g" g)
     | None -> acc
   in
+  let acc =
+    match layout.position with
+    | Some Pos_static -> add acc "position" "static"
+    | Some Pos_relative -> add acc "position" "relative"
+    | Some Pos_absolute -> add acc "position" "absolute"
+    | Some Pos_fixed -> add acc "position" "fixed"
+    | None -> acc
+  in
+  let acc =
+    match layout.top with
+    | Some v -> add acc "top" (Printf.sprintf "%gpx" v)
+    | None -> acc
+  in
+  let acc =
+    match layout.right with
+    | Some v -> add acc "right" (Printf.sprintf "%gpx" v)
+    | None -> acc
+  in
+  let acc =
+    match layout.bottom with
+    | Some v -> add acc "bottom" (Printf.sprintf "%gpx" v)
+    | None -> acc
+  in
+  let acc =
+    match layout.left with
+    | Some v -> add acc "left" (Printf.sprintf "%gpx" v)
+    | None -> acc
+  in
+  let acc =
+    match layout.z_index with
+    | Some z -> add acc "z-index" (Printf.sprintf "%d" z)
+    | None -> acc
+  in
   (* Paint properties — only emit when different from default *)
   let acc =
     if not (equal_paint paint default_paint) then

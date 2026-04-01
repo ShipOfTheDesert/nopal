@@ -33,7 +33,21 @@ let test_default_layout_values () =
     "height is None" true
     (Option.is_none default_layout.height);
   Alcotest.(check (option (float 0.001)))
-    "flex_grow is None" None default_layout.flex_grow
+    "flex_grow is None" None default_layout.flex_grow;
+  Alcotest.(check bool)
+    "position is None" true
+    (Option.is_none default_layout.position);
+  Alcotest.(check bool) "top is None" true (Option.is_none default_layout.top);
+  Alcotest.(check bool)
+    "right is None" true
+    (Option.is_none default_layout.right);
+  Alcotest.(check bool)
+    "bottom is None" true
+    (Option.is_none default_layout.bottom);
+  Alcotest.(check bool) "left is None" true (Option.is_none default_layout.left);
+  Alcotest.(check bool)
+    "z_index is None" true
+    (Option.is_none default_layout.z_index)
 
 (* --- Default paint tests --- *)
 
@@ -435,7 +449,21 @@ let test_default_layout_all_none () =
     (Option.is_none default_layout.height);
   Alcotest.(check bool)
     "flex_grow is None" true
-    (Option.is_none default_layout.flex_grow)
+    (Option.is_none default_layout.flex_grow);
+  Alcotest.(check bool)
+    "position is None" true
+    (Option.is_none default_layout.position);
+  Alcotest.(check bool) "top is None" true (Option.is_none default_layout.top);
+  Alcotest.(check bool)
+    "right is None" true
+    (Option.is_none default_layout.right);
+  Alcotest.(check bool)
+    "bottom is None" true
+    (Option.is_none default_layout.bottom);
+  Alcotest.(check bool) "left is None" true (Option.is_none default_layout.left);
+  Alcotest.(check bool)
+    "z_index is None" true
+    (Option.is_none default_layout.z_index)
 
 let test_padding_helpers_wrap_some () =
   let l = padding 1. 2. 3. 4. default_layout in
@@ -495,6 +523,50 @@ let test_equal_layout_none_fields () =
   let l1 = { default_layout with direction = Some Row_dir; gap = Some 4.0 } in
   let l2 = { default_layout with direction = Some Row_dir; gap = Some 4.0 } in
   Alcotest.(check bool) "same Some values equal" true (equal_layout l1 l2)
+
+(* --- Position tests --- *)
+
+let test_position_fixed () =
+  let l = { default_layout with position = Some Pos_fixed } in
+  Alcotest.(check bool)
+    "position is Fixed" true
+    (match l.position with
+    | Some Pos_fixed -> true
+    | Some Pos_static
+    | Some Pos_relative
+    | Some Pos_absolute
+    | None ->
+        false)
+
+let test_position_offsets () =
+  let l =
+    {
+      default_layout with
+      position = Some Pos_absolute;
+      top = Some 0.0;
+      left = Some 10.0;
+      z_index = Some 100;
+    }
+  in
+  Alcotest.(check (option (float 0.001))) "top" (Some 0.0) l.top;
+  Alcotest.(check (option (float 0.001))) "left" (Some 10.0) l.left;
+  Alcotest.(check bool) "right is None" true (Option.is_none l.right);
+  Alcotest.(check (option int)) "z_index" (Some 100) l.z_index
+
+let test_equal_layout_position () =
+  let l1 =
+    { default_layout with position = Some Pos_fixed; z_index = Some 10 }
+  in
+  let l2 =
+    { default_layout with position = Some Pos_fixed; z_index = Some 10 }
+  in
+  Alcotest.(check bool) "same position layouts equal" true (equal_layout l1 l2);
+  let l3 =
+    { default_layout with position = Some Pos_absolute; z_index = Some 10 }
+  in
+  Alcotest.(check bool)
+    "different position layouts not equal" false
+    (equal_layout l1 l3)
 
 (* --- Test runner --- *)
 
@@ -592,6 +664,13 @@ let () =
             test_padding_helpers_wrap_some;
           Alcotest.test_case "equal_layout_none_fields" `Quick
             test_equal_layout_none_fields;
+        ] );
+      ( "Position",
+        [
+          Alcotest.test_case "position_fixed" `Quick test_position_fixed;
+          Alcotest.test_case "position_offsets" `Quick test_position_offsets;
+          Alcotest.test_case "equal_layout_position" `Quick
+            test_equal_layout_position;
         ] );
       ( "Text integration",
         [
