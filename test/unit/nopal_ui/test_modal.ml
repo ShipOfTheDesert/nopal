@@ -143,7 +143,10 @@ let custom_interaction =
       Some
         (Nopal_style.Style.default
         |> Nopal_style.Style.with_paint (fun p ->
-            { p with background = Some (Nopal_style.Style.rgba 100 100 100 1.0) }));
+            {
+              p with
+              background = Some (Nopal_style.Style.rgba 100 100 100 1.0);
+            }));
   }
 
 let test_with_style_overrides_dialog () =
