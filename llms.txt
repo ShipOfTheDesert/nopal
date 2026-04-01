@@ -22,7 +22,7 @@ nopal_charts    ← Composable interactive charts (Bar, Line, Area, Pie, Scatter
                    Heat_map, Trading.Candlestick, Trading.Drawdown, Chart_pane,
                    Color_scale, Domain_window, Viewport, Downsample, Snap)
 nopal_http      ← Pure HTTP types + backend abstraction — no platform deps
-nopal_ui        ← High-level UI components (Button, Checkbox, Data_table, Radio, Select, Toast) — no platform deps
+nopal_ui        ← High-level UI components (Button, Checkbox, Data_table, Modal, Navigation_bar, Radio, Select, Toast) — no platform deps
 nopal_runtime   ← Lwd reactive integration + MVU loop
 nopal_test      ← Pure OCaml test renderer — no js_of_ocaml
 nopal_web       ← js_of_ocaml + Brr DOM renderer (only browser-dependent package)
@@ -408,6 +408,193 @@ let update model = function
 let view model =
   let config = Toast.make ~dismiss:(fun id -> Dismiss id) in
   Toast.view config model.toasts
+```
+
+#### Navigation_bar
+
+Accessible navigation bar (tablist) with active-tab tracking and optional icons.
+
+```ocaml
+(* A single navigation tab *)
+type 'msg item
+val item : ?icon:'msg Element.t -> id:string -> string -> 'msg item
+(* [item ~id label] creates a navigation item.
+   id: unique identifier used in on_select callback
+   icon: optional element rendered alongside the label *)
+
+(* Configuration for the navigation bar *)
+type 'msg config
+val make :
+  items:'msg item list ->
+  active:string ->
+  on_select:(string -> 'msg) ->
+  'msg config
+(* [make ~items ~active ~on_select] creates a navigation bar config.
+   items: non-empty list of navigation items
+   active: ID of the currently active tab
+   on_select: callback producing a message from the selected tab's ID *)
+
+val with_style : Style.t -> 'msg config -> 'msg config
+(* Override the container (tablist) style. *)
+
+val with_tab_style : Style.t -> 'msg config -> 'msg config
+(* Override the base style for all tab items. *)
+
+val with_active_tab_style : Style.t -> 'msg config -> 'msg config
+(* Override the style applied to the active tab (merged atop tab style). *)
+
+val with_interaction : Interaction.t -> 'msg config -> 'msg config
+(* Override hover/pressed interaction for inactive tabs. *)
+
+val with_attrs : (string * string) list -> 'msg config -> 'msg config
+(* Additional attributes on the container element. *)
+
+val view : 'msg config -> 'msg Element.t
+(* Renders the navigation bar. Container carries role="tablist".
+   Each item is a Button with role="tab" and aria-selected.
+   Clicking the active tab is a no-op.
+   Clicking an inactive tab invokes on_select with that tab's ID. *)
+```
+
+Usage pattern — subapp integration:
+
+```ocaml
+(* Model *)
+type tab = Home | Settings | About
+type model = { active_tab : tab }
+
+(* Messages *)
+type msg = SelectTab of string
+
+(* Update *)
+let update _model = function
+  | SelectTab id -> ({ active_tab = id_to_tab id }, Cmd.none)
+
+(* View *)
+let view model =
+  let active_id = tab_to_id model.active_tab in
+  let items =
+    [ Navigation_bar.item ~id:"home" "Home";
+      Navigation_bar.item ~id:"settings" "Settings";
+      Navigation_bar.item ~id:"about" "About" ]
+  in
+  let config =
+    Navigation_bar.make ~items ~active:active_id
+      ~on_select:(fun id -> SelectTab id)
+  in
+  Element.column [
+    Navigation_bar.view config;
+    view_content model.active_tab;
+  ]
+```
+
+#### Modal
+
+Accessible modal dialog with ARIA attributes, optional backdrop, Escape-key subscription, and pure focus-cycling helper.
+
+```ocaml
+(* Configuration — opaque, constructed via make + with_* *)
+type 'msg config
+
+val make :
+  open_:bool ->
+  title_id:string ->
+  on_close:'msg ->
+  body:'msg Element.t ->
+  'msg config
+(* [make ~open_ ~title_id ~on_close ~body] creates a modal config.
+   open_: whether the modal is currently visible
+   title_id: element ID referenced by aria-labelledby
+   on_close: message dispatched when Escape is pressed
+   body: content rendered inside the dialog *)
+
+val with_on_backdrop_click : 'msg -> 'msg config -> 'msg config
+(* When set, renders a backdrop overlay behind the dialog. Clicking the
+   backdrop dispatches the provided message. When not set, no backdrop. *)
+
+val with_style : Style.t -> 'msg config -> 'msg config
+val with_backdrop_style : Style.t -> 'msg config -> 'msg config
+val with_interaction : Interaction.t -> 'msg config -> 'msg config
+val with_attrs : (string * string) list -> 'msg config -> 'msg config
+
+val view : 'msg config -> 'msg Element.t
+(* When open_=false, returns Element.empty.
+   When open_=true, renders:
+     Box [data-testid="modal-root"]
+       +- Box [data-testid="modal-backdrop"; on_pointer_down=msg]
+       |     (only when on_backdrop_click is set)
+       +- Column [role="dialog"; aria-modal="true";
+                  aria-labelledby=title_id;
+                  data-testid="modal-dialog"]
+             +- body *)
+
+val subscriptions : 'msg config -> 'msg Sub.t
+(* When open_=false, returns Sub.none.
+   When open_=true, returns Sub.on_keydown_prevent keyed "modal-escape"
+   that intercepts Escape -> Some (on_close, true).
+   All other keys are ignored (None). *)
+
+val next_focus :
+  focusable_ids:string list ->
+  current:string ->
+  key:string ->
+  string option
+(* Pure helper for Tab cycling within a modal.
+   "Tab": next element after current, wrapping last->first
+   "Shift+Tab": previous element before current, wrapping first->last
+   Other keys: None
+   Returns None if current not in list or list is empty. *)
+```
+
+Usage pattern — subapp integration:
+
+```ocaml
+(* Model *)
+type model = { open_ : bool; focused : string }
+
+(* Messages *)
+type msg = OpenModal | CloseModal | FocusChanged of string
+
+(* Update *)
+let focusable_ids = [ "input-name"; "input-email"; "btn-close" ]
+
+let update model = function
+  | OpenModal -> ({ open_ = true; focused = "input-name" },
+      Cmd.focus "input-name")
+  | CloseModal -> ({ model with open_ = false }, Cmd.none)
+  | FocusChanged id -> ({ model with focused = id }, Cmd.focus id)
+
+(* View *)
+let view model =
+  let modal_config =
+    Modal.make ~open_:model.open_ ~title_id:"modal-title"
+      ~on_close:CloseModal
+      ~body:(Element.column [
+        Element.text "Dialog content";
+        Element.button ~on_click:CloseModal (Element.text "Close");
+      ])
+    |> Modal.with_on_backdrop_click CloseModal
+  in
+  Element.column [
+    Element.button ~on_click:OpenModal (Element.text "Open Modal");
+    Modal.view modal_config;
+  ]
+
+(* Subscriptions — wire Escape + Tab trap *)
+let subscriptions model =
+  let modal_config =
+    Modal.make ~open_:model.open_ ~title_id:"modal-title"
+      ~on_close:CloseModal ~body:Element.empty
+  in
+  Sub.batch [
+    Modal.subscriptions modal_config;
+    (if model.open_ then
+       Sub.on_keydown_prevent ~key:"modal-tab" (fun key ->
+         match Modal.next_focus ~focusable_ids ~current:model.focused ~key with
+         | Some id -> Some (FocusChanged id, true)
+         | None -> None)
+     else Sub.none);
+  ]
 ```
 
 #### Data_table
@@ -1247,7 +1434,7 @@ lib/
                        Trading.Candlestick, Trading.Drawdown, Chart_pane,
                        Color_scale, Domain_window, Viewport, Downsample, Snap
   nopal_http/        — Pure HTTP types + backend abstraction
-  nopal_ui/          — High-level UI components (Button, Checkbox, Data_table, Radio, Select, Toast)
+  nopal_ui/          — High-level UI components (Button, Checkbox, Data_table, Modal, Navigation_bar, Radio, Select, Toast)
   nopal_runtime/     — Lwd integration + MVU loop
   nopal_test/        — Pure OCaml test renderer
 backends/

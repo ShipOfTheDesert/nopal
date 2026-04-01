@@ -383,7 +383,9 @@ let update model msg =
   | Kitchen_sink_app.Focus_keyboard_msg _
   | Kitchen_sink_app.Toast_msg _
   | Kitchen_sink_app.Data_table_msg _
-  | Kitchen_sink_app.Virtual_list_msg _ ->
+  | Kitchen_sink_app.Virtual_list_msg _
+  | Kitchen_sink_app.Navigation_bar_msg _
+  | Kitchen_sink_app.Modal_msg _ ->
       (model', cmd)
 
 let () =
