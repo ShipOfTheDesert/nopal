@@ -128,6 +128,12 @@ let of_style (style : t) =
   let paint = style.paint in
   let acc = [] in
   let add acc property value = { property; value } :: acc in
+  let opt prop fmt field acc =
+    match field with
+    | Some v -> add acc prop (fmt v)
+    | None -> acc
+  in
+  let px v = Printf.sprintf "%gpx" v in
   (* Layout properties — emit per-field, only when Some *)
   let acc =
     match layout.direction with
@@ -136,14 +142,9 @@ let of_style (style : t) =
     | None -> acc
   in
   let acc =
-    match layout.main_align with
-    | Some a -> add acc "justify-content" (align_to_justify a)
-    | None -> acc
-  in
-  let acc =
-    match layout.cross_align with
-    | Some a -> add acc "align-items" (align_to_items a)
-    | None -> acc
+    acc
+    |> opt "justify-content" align_to_justify layout.main_align
+    |> opt "align-items" align_to_items layout.cross_align
   in
   let acc =
     match layout.wrap with
@@ -153,8 +154,7 @@ let of_style (style : t) =
   in
   let acc =
     match layout.gap with
-    | Some g when not (Float.equal g 0.) ->
-        add acc "gap" (Printf.sprintf "%gpx" g)
+    | Some g when not (Float.equal g 0.) -> add acc "gap" (px g)
     | Some _
     | None ->
         acc
@@ -178,59 +178,49 @@ let of_style (style : t) =
         else acc
     | _ ->
         (* Emit individual padding properties for partially-set padding *)
-        let acc =
-          match layout.padding_top with
-          | Some v when not (Float.equal v 0.) ->
-              add acc "padding-top" (Printf.sprintf "%gpx" v)
-          | _ -> acc
-        in
-        let acc =
-          match layout.padding_right with
-          | Some v when not (Float.equal v 0.) ->
-              add acc "padding-right" (Printf.sprintf "%gpx" v)
-          | _ -> acc
-        in
-        let acc =
-          match layout.padding_bottom with
-          | Some v when not (Float.equal v 0.) ->
-              add acc "padding-bottom" (Printf.sprintf "%gpx" v)
-          | _ -> acc
-        in
-        let acc =
-          match layout.padding_left with
-          | Some v when not (Float.equal v 0.) ->
-              add acc "padding-left" (Printf.sprintf "%gpx" v)
-          | _ -> acc
-        in
+        let nonzero_px v = if Float.equal v 0. then None else Some (px v) in
         acc
+        |> opt "padding-top" Fun.id (Option.bind layout.padding_top nonzero_px)
+        |> opt "padding-right" Fun.id
+             (Option.bind layout.padding_right nonzero_px)
+        |> opt "padding-bottom" Fun.id
+             (Option.bind layout.padding_bottom nonzero_px)
+        |> opt "padding-left" Fun.id
+             (Option.bind layout.padding_left nonzero_px)
   in
-  let acc =
-    match layout.width with
+  let size prop field acc =
+    match field with
     | Some s ->
-        let w = size_to_css s in
-        if not (String.equal w "") then add acc "width" w else acc
+        let v = size_to_css s in
+        if not (String.equal v "") then add acc prop v else acc
     | None -> acc
   in
   let acc =
-    match layout.height with
-    | Some s ->
-        let h = size_to_css s in
-        if not (String.equal h "") then add acc "height" h else acc
+    acc
+    |> size "width" layout.width
+    |> size "height" layout.height
+    |> opt "flex-grow" (Printf.sprintf "%g") layout.flex_grow
+  in
+  let acc =
+    match layout.position with
+    | Some Pos_static -> add acc "position" "static"
+    | Some Pos_relative -> add acc "position" "relative"
+    | Some Pos_absolute -> add acc "position" "absolute"
+    | Some Pos_fixed -> add acc "position" "fixed"
     | None -> acc
   in
   let acc =
-    match layout.flex_grow with
-    | Some g -> add acc "flex-grow" (Printf.sprintf "%g" g)
-    | None -> acc
+    acc
+    |> opt "top" px layout.top
+    |> opt "right" px layout.right
+    |> opt "bottom" px layout.bottom
+    |> opt "left" px layout.left
+    |> opt "z-index" (Printf.sprintf "%d") layout.z_index
   in
   (* Paint properties — only emit when different from default *)
   let acc =
     if not (equal_paint paint default_paint) then
-      let acc =
-        match paint.background with
-        | Some c -> add acc "background-color" (color_to_css c)
-        | None -> acc
-      in
+      let acc = acc |> opt "background-color" color_to_css paint.background in
       let acc =
         match paint.border with
         | Some b ->
@@ -241,7 +231,7 @@ let of_style (style : t) =
                    (color_to_css b.color))
             in
             if not (Float.equal b.radius 0.) then
-              add acc "border-radius" (Printf.sprintf "%gpx" b.radius)
+              add acc "border-radius" (px b.radius)
             else acc
         | None -> acc
       in
@@ -251,12 +241,12 @@ let of_style (style : t) =
         else acc
       in
       let acc =
-        match paint.shadow with
-        | Some s ->
-            add acc "box-shadow"
-              (Printf.sprintf "%gpx %gpx %gpx %s" s.x s.y s.blur
+        acc
+        |> opt "box-shadow"
+             (fun s ->
+               Printf.sprintf "%gpx %gpx %gpx %s" s.x s.y s.blur
                  (color_to_css s.color))
-        | None -> acc
+             paint.shadow
       in
       let acc =
         match paint.overflow with

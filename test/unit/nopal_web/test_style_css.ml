@@ -640,6 +640,12 @@ let test_css_emits_multiple_set_fields () =
           width = Some Fill;
           height = Some (Fixed 100.);
           flex_grow = Some 2.;
+          position = None;
+          top = None;
+          right = None;
+          bottom = None;
+          left = None;
+          z_index = None;
         })
       default
   in

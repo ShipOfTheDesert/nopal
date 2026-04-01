@@ -19,6 +19,7 @@ type border = {
 
 type shadow = { x : float; y : float; blur : float; color : color }
 type overflow = Visible | Hidden
+type position = Pos_static | Pos_relative | Pos_absolute | Pos_fixed
 
 type layout = {
   direction : direction option;
@@ -33,6 +34,12 @@ type layout = {
   width : size option;
   height : size option;
   flex_grow : float option;
+  position : position option;
+  top : float option;
+  right : float option;
+  bottom : float option;
+  left : float option;
+  z_index : int option;
 }
 
 type paint = {
@@ -64,6 +71,12 @@ let default_layout =
     width = None;
     height = None;
     flex_grow = None;
+    position = None;
+    top = None;
+    right = None;
+    bottom = None;
+    left = None;
+    z_index = None;
   }
 
 let default_paint =
@@ -158,6 +171,14 @@ let equal_align a b =
   | Space_between, Space_between -> true
   | (Start | Center | End_ | Stretch | Space_between), _ -> false
 
+let equal_position a b =
+  match (a, b) with
+  | Pos_static, Pos_static -> true
+  | Pos_relative, Pos_relative -> true
+  | Pos_absolute, Pos_absolute -> true
+  | Pos_fixed, Pos_fixed -> true
+  | (Pos_static | Pos_relative | Pos_absolute | Pos_fixed), _ -> false
+
 let equal_layout a b =
   Option.equal equal_direction a.direction b.direction
   && Option.equal equal_align a.main_align b.main_align
@@ -171,6 +192,12 @@ let equal_layout a b =
   && Option.equal equal_size a.width b.width
   && Option.equal equal_size a.height b.height
   && Option.equal Float.equal a.flex_grow b.flex_grow
+  && Option.equal equal_position a.position b.position
+  && Option.equal Float.equal a.top b.top
+  && Option.equal Float.equal a.right b.right
+  && Option.equal Float.equal a.bottom b.bottom
+  && Option.equal Float.equal a.left b.left
+  && Option.equal Int.equal a.z_index b.z_index
 
 let equal_overflow a b =
   match (a, b) with

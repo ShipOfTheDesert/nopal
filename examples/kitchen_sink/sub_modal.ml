@@ -74,8 +74,6 @@ let close_button_interaction =
 
 let backdrop_style =
   Style.default
-  |> Style.with_layout (fun l ->
-      { l with width = Some (Fixed 10000.0); height = Some (Fixed 10000.0) })
   |> Style.with_paint (fun p ->
       { p with background = Some (Style.rgba 0 0 0 0.5) })
 
