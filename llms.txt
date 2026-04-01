@@ -22,7 +22,7 @@ nopal_charts    ← Composable interactive charts (Bar, Line, Area, Pie, Scatter
                    Heat_map, Trading.Candlestick, Trading.Drawdown, Chart_pane,
                    Color_scale, Domain_window, Viewport, Downsample, Snap)
 nopal_http      ← Pure HTTP types + backend abstraction — no platform deps
-nopal_ui        ← High-level UI components (Button, Checkbox, Data_table, Modal, Navigation_bar, Radio, Select, Toast) — no platform deps
+nopal_ui        ← High-level UI components (Button, Checkbox, Data_table, Modal, Navigation_bar, Radio_group, Select_input, Slug, Text_input, Toast) — no platform deps
 nopal_runtime   ← Lwd reactive integration + MVU loop
 nopal_test      ← Pure OCaml test renderer — no js_of_ocaml
 nopal_web       ← js_of_ocaml + Brr DOM renderer (only browser-dependent package)
@@ -130,6 +130,7 @@ Cmd.batch : 'msg Cmd.t list -> 'msg Cmd.t     (* combine multiple commands *)
 Cmd.perform : (('msg -> unit) -> unit) -> 'msg Cmd.t  (* general effect — zero, one, or many dispatches *)
 Cmd.task : 'msg Task.t -> 'msg Cmd.t                  (* async task effect *)
 Cmd.after : int -> 'msg -> 'msg Cmd.t         (* delay message by N ms *)
+Cmd.focus : string -> 'msg Cmd.t              (* request focus on element by id *)
 Cmd.map : ('a -> 'b) -> 'a Cmd.t -> 'b Cmd.t  (* transform message type *)
 ```
 
@@ -173,6 +174,8 @@ Sub.on_keydown : string -> (string -> 'msg) -> 'msg Sub.t       (* global keydow
 Sub.on_keyup : string -> (string -> 'msg) -> 'msg Sub.t         (* global keyup *)
 Sub.on_resize : string -> (int -> int -> 'msg) -> 'msg Sub.t    (* window resize *)
 Sub.on_visibility_change : string -> (bool -> 'msg) -> 'msg Sub.t
+Sub.on_viewport_change : string -> (Nopal_element.Viewport.t -> 'msg) -> 'msg Sub.t  (* viewport changes *)
+Sub.on_keydown_prevent : string -> (string -> ('msg * bool) option) -> 'msg Sub.t    (* keydown + preventDefault *)
 Sub.custom : string -> (('msg -> unit) -> unit -> unit) -> 'msg Sub.t  (* setup returns cleanup *)
 Sub.map : ('a -> 'b) -> 'a Sub.t -> 'b Sub.t
 ```
@@ -203,6 +206,15 @@ Element.button : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string 
 Element.input : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
   -> ?placeholder:string -> ?on_change:(string -> 'msg) -> ?on_submit:'msg
   -> ?on_blur:'msg -> ?on_keydown:(string -> 'msg option) -> string -> 'msg Element.t
+Element.checkbox : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
+  -> ?disabled:bool -> ?on_toggle:(bool -> 'msg) -> bool -> 'msg Element.t
+Element.radio : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
+  -> ?checked:bool -> ?disabled:bool -> ?on_select:'msg -> name:string -> unit -> 'msg Element.t
+type select_option = { value : string; label : string; disabled : bool }
+Element.select_option : ?disabled:bool -> value:string -> string -> select_option
+Element.select : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
+  -> ?disabled:bool -> ?on_change:(string -> 'msg) -> selected:string
+  -> select_option list -> 'msg Element.t
 
 (* Media and scrolling *)
 Element.image  : ?style:Style.t -> src:string -> alt:string -> unit -> 'msg Element.t
@@ -251,6 +263,51 @@ Element.virtual_list :
 
 (* Message transform for component embedding *)
 Element.map : ('a -> 'b) -> 'a Element.t -> 'b Element.t
+
+(* Responsive combinators — select subtree or style by viewport size class *)
+Element.responsive : Viewport.t -> compact:'msg Element.t -> ?medium:'msg Element.t
+  -> expanded:'msg Element.t -> unit -> 'msg Element.t
+Element.responsive_style : Viewport.t -> compact:Style.t -> ?medium:Style.t
+  -> expanded:Style.t -> unit -> Style.t
+
+(* Structural equality — functions compared by physical identity *)
+Element.equal : 'msg Element.t -> 'msg Element.t -> bool
+```
+
+### Viewport (`nopal_element`)
+
+Describes the current display surface — dimensions, size class, orientation, safe area insets.
+
+```ocaml
+type orientation = Portrait | Landscape
+Viewport.make : width:int -> height:int -> ?safe_area:safe_area -> unit -> Viewport.t
+Viewport.width : Viewport.t -> int
+Viewport.height : Viewport.t -> int
+Viewport.size_class : Viewport.t -> Size_class.t  (* Compact | Medium | Expanded *)
+Viewport.orientation : Viewport.t -> orientation
+Viewport.is_compact : Viewport.t -> bool
+Viewport.is_medium : Viewport.t -> bool
+Viewport.is_expanded : Viewport.t -> bool
+
+(* Safe area insets *)
+type safe_area
+Viewport.make_safe_area : top:int -> right:int -> bottom:int -> left:int -> unit -> safe_area
+Viewport.zero_insets : safe_area
+Viewport.safe_area : Viewport.t -> safe_area
+Viewport.safe_area_top : safe_area -> int
+Viewport.safe_area_right : safe_area -> int
+Viewport.safe_area_bottom : safe_area -> int
+Viewport.safe_area_left : safe_area -> int
+
+(* Equality *)
+Viewport.equal_orientation : orientation -> orientation -> bool
+Viewport.equal : Viewport.t -> Viewport.t -> bool
+
+(* Test presets *)
+Viewport.phone : Viewport.t            (* 375×812, Compact, Portrait *)
+Viewport.phone_landscape : Viewport.t  (* 812×375, Medium, Landscape *)
+Viewport.tablet : Viewport.t           (* 768×1024, Medium, Portrait *)
+Viewport.desktop : Viewport.t          (* 1440×900, Expanded, Landscape *)
 ```
 
 ### Style System (`nopal_style`)
@@ -688,6 +745,175 @@ let view model =
       ()
   in
   Data_table.view config
+```
+
+#### Button
+
+Button with variants (Primary, Secondary, Destructive, Ghost, Icon), loading and disabled states.
+
+```ocaml
+(* Variants *)
+type variant = Primary | Secondary | Destructive | Ghost | Icon
+
+(* Configuration — all fields except variant have sensible defaults *)
+type 'msg config = {
+  variant : variant;
+  disabled : bool;
+  loading : bool;
+  on_click : 'msg option;
+  style : Style.t option;
+  interaction : Interaction.t option;
+  attrs : (string * string) list;
+}
+
+val default : variant -> 'msg config
+(* [default v] returns a config for variant [v] with disabled=false,
+   loading=false, on_click=None, default style/interaction, empty attrs. *)
+
+val view : 'msg config -> 'msg Element.t -> 'msg Element.t
+(* [view config child] renders a button element.
+   When disabled: includes aria-disabled="true", click suppressed.
+   When loading: includes aria-busy="true", click suppressed.
+   style/interaction override variant defaults when Some.
+   User attrs merged with ARIA attrs (user attrs take precedence). *)
+
+val variant_to_string : variant -> string
+(* Lowercase string name for test/debug. *)
+```
+
+#### Checkbox
+
+Labelled checkbox component.
+
+```ocaml
+type 'msg config = {
+  label : string;
+  checked : bool;
+  disabled : bool;
+  on_toggle : (bool -> 'msg) option;
+  style : Style.t option;
+  interaction : Interaction.t option;
+  attrs : (string * string) list;
+}
+
+val make : label:string -> checked:bool -> 'msg config
+(* [make ~label ~checked] returns a config with disabled=false,
+   on_toggle=None, no style/interaction override, empty attrs. *)
+
+val view : 'msg config -> 'msg Element.t
+(* Renders a horizontal Row containing an Element.checkbox and an
+   Element.text label. When disabled, on_toggle is suppressed. *)
+```
+
+#### Radio_group
+
+Accessible radio button group component.
+
+```ocaml
+type radio_option = { label : string; value : string; disabled : bool }
+
+type 'msg config = {
+  label : string;
+  options : radio_option list;
+  selected : string;
+  disabled : bool;
+  name : string option;
+  on_select : (string -> 'msg) option;
+  style : Style.t option;
+  interaction : Interaction.t option;
+  attrs : (string * string) list;
+}
+
+val radio_option : ?disabled:bool -> value:string -> string -> radio_option
+(* [radio_option ~value label] creates a radio option. disabled defaults to false. *)
+
+val make : label:string -> options:radio_option list -> selected:string -> 'msg config
+(* [make ~label ~options ~selected] returns a config with name=None
+   (auto-generated from slugified label), disabled=false, on_select=None,
+   no style/interaction override, empty attrs. *)
+
+val view : 'msg config -> 'msg Element.t
+(* Renders a Column with role="radiogroup" and aria-label=config.label
+   containing one Row per option. Each Row has an Element.radio (sharing
+   the group name) and an Element.text label. When config.disabled is true,
+   all radios are disabled and on_select is suppressed. Per-option disabled
+   is also respected. *)
+```
+
+#### Select_input
+
+Labelled select dropdown component.
+
+```ocaml
+type 'msg config = {
+  label : string;
+  options : Element.select_option list;
+  selected : string;
+  placeholder : string option;
+  disabled : bool;
+  on_change : (string -> 'msg) option;
+  style : Style.t option;
+  interaction : Interaction.t option;
+  attrs : (string * string) list;
+}
+
+val make : label:string -> options:Element.select_option list
+  -> selected:string -> 'msg config
+(* [make ~label ~options ~selected] returns a config with placeholder=None,
+   disabled=false, on_change=None, no style/interaction override, empty attrs. *)
+
+val view : 'msg config -> 'msg Element.t
+(* Renders a vertical Column containing a text label and an Element.select.
+   When placeholder is Some text, a disabled option with value="" is prepended.
+   When disabled, on_change is suppressed. *)
+```
+
+#### Slug
+
+URL-safe slug generation from human-readable strings.
+
+```ocaml
+val slugify : string -> string
+(* [slugify s] lowercases [s], replaces whitespace and non-alphanumeric
+   characters with hyphens, collapses consecutive hyphens, and trims
+   leading/trailing hyphens. *)
+```
+
+#### Text_input
+
+Accessible text input with label and optional error message linked via aria-describedby.
+
+```ocaml
+type 'msg config = {
+  label : string;
+  value : string;
+  placeholder : string option;
+  error : string option;
+  disabled : bool;
+  id : string option;
+  on_change : (string -> 'msg) option;
+  on_submit : 'msg option;
+  on_blur : 'msg option;
+  style : Style.t option;
+  interaction : Interaction.t option;
+  attrs : (string * string) list;
+}
+
+val make : label:string -> value:string -> 'msg config
+(* [make ~label ~value] returns a config with all optional fields None,
+   disabled=false, attrs=[]. *)
+
+val error_id : 'msg config -> string
+(* Returns the identifier used for aria-describedby linkage. If config.id
+   is Some id, returns id ^ "-error". Otherwise derives from slugified label. *)
+
+val view : 'msg config -> 'msg Element.t
+(* Renders a vertical column containing:
+   1. A label (Element.text)
+   2. An input (Element.input) with value, placeholder, and event handlers
+   3. When config.error is Some msg, an error text with role="alert" and
+      id=error_id; the input gains aria-describedby=error_id
+   When disabled, input carries disabled="" and event handlers are suppressed. *)
 ```
 
 ### Routing (`nopal_router`)
@@ -1434,7 +1660,7 @@ lib/
                        Trading.Candlestick, Trading.Drawdown, Chart_pane,
                        Color_scale, Domain_window, Viewport, Downsample, Snap
   nopal_http/        — Pure HTTP types + backend abstraction
-  nopal_ui/          — High-level UI components (Button, Checkbox, Data_table, Modal, Navigation_bar, Radio, Select, Toast)
+  nopal_ui/          — High-level UI components (Button, Checkbox, Data_table, Modal, Navigation_bar, Radio_group, Select_input, Slug, Text_input, Toast)
   nopal_runtime/     — Lwd integration + MVU loop
   nopal_test/        — Pure OCaml test renderer
 backends/
