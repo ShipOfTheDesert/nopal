@@ -84,8 +84,7 @@ let set_icon path =
       Fut.await fut (function
         | Ok () -> resolve ()
         | Error err ->
-            Brr.Console.(
-              error [ str "nopal_tauri: Tray.set_icon failed"; err ])))
+            Brr.Console.(error [ str "nopal_tauri: Tray.set_icon failed"; err ])))
 
 let set_tooltip text =
   Nopal_mvu.Task.from_callback (fun resolve ->
