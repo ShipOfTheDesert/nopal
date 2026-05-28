@@ -11,7 +11,7 @@ type model = {
   input : string;
   editing : editing option;
   next_id : int;
-  router : route Nopal_router.Router.t;
+  router : route Nopal_platform.Router.t;
 }
 
 type msg =
@@ -58,7 +58,7 @@ let init (module S : Storage) router () =
     | [] -> 1
     | _ -> 1 + List.fold_left (fun acc (t : todo) -> max acc t.id) 0 todos
   in
-  let route = Nopal_router.Router.current router in
+  let route = Nopal_platform.Router.current router in
   ( {
       todos;
       filter = filter_of_route route;
@@ -152,7 +152,7 @@ let update (module S : Storage) model msg =
       save_and_return (module S) { model with todos }
   | Navigate_to route ->
       ( { model with filter = filter_of_route route },
-        Nopal_router.Router.push model.router route )
+        Nopal_platform.Router.push model.router route )
   | Route_changed route ->
       ({ model with filter = filter_of_route route }, Nopal_mvu.Cmd.none)
 
@@ -631,5 +631,5 @@ let view _vp model =
     ]
 
 let subscriptions model =
-  Nopal_router.Router.on_navigate model.router (fun route ->
+  Nopal_platform.Router.on_navigate model.router (fun route ->
       Route_changed route)

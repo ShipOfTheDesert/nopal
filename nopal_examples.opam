@@ -18,7 +18,7 @@ depends: [
   "nopal_http"
   "nopal_http_web"
   "nopal_runtime"
-  "nopal_router"
+  "nopal_platform"
   "nopal_web"
   "brr"
   "js_of_ocaml"

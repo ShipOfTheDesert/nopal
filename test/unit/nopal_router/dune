@@ -1,4 +1,0 @@
-(tests
- (names test_nopal_router)
- (package nopal_router)
- (libraries nopal_router nopal_mvu nopal_element nopal_test alcotest))

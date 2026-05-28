@@ -79,7 +79,7 @@ let make_mock_platform initial_path =
       let on_popstate callback =
         popstate_listener := Some callback;
         fun () -> popstate_listener := None
-    end : Nopal_router.Platform.S)
+    end : Nopal_platform.Platform.NAV)
   in
   let controls =
     {
@@ -96,19 +96,19 @@ let make_mock_platform initial_path =
   (platform, controls)
 
 let make_router platform =
-  Nopal_router.Router.create ~platform ~parse ~to_path ~not_found:NotFound
+  Nopal_platform.Router.create ~platform ~parse ~to_path ~not_found:NotFound
 
 let test_current_returns_parsed_route () =
   let platform, _controls = make_mock_platform "/" in
   let router = make_router platform in
   Alcotest.check route_testable "current is Home" Home
-    (Nopal_router.Router.current router)
+    (Nopal_platform.Router.current router)
 
 let test_current_unknown_path_returns_not_found () =
   let platform, _controls = make_mock_platform "/unknown" in
   let router = make_router platform in
   Alcotest.check route_testable "current is NotFound" NotFound
-    (Nopal_router.Router.current router)
+    (Nopal_platform.Router.current router)
 
 let test_roundtrip_static_routes () =
   let check route =
@@ -133,14 +133,14 @@ let test_roundtrip_dynamic_segment () =
 let test_push_updates_platform_path () =
   let platform, controls = make_mock_platform "/" in
   let router = make_router platform in
-  let cmd = Nopal_router.Router.push router About in
+  let cmd = Nopal_platform.Router.push router About in
   Nopal_mvu.Cmd.execute ignore cmd;
   Alcotest.(check string) "path is /about" "/about" (controls.get_path ())
 
 let test_push_adds_history_entry () =
   let platform, controls = make_mock_platform "/" in
   let router = make_router platform in
-  let cmd = Nopal_router.Router.push router About in
+  let cmd = Nopal_platform.Router.push router About in
   Nopal_mvu.Cmd.execute ignore cmd;
   Alcotest.(check int)
     "history has 2 entries" 2
@@ -149,14 +149,14 @@ let test_push_adds_history_entry () =
 let test_replace_updates_platform_path () =
   let platform, controls = make_mock_platform "/" in
   let router = make_router platform in
-  let cmd = Nopal_router.Router.replace router About in
+  let cmd = Nopal_platform.Router.replace router About in
   Nopal_mvu.Cmd.execute ignore cmd;
   Alcotest.(check string) "path is /about" "/about" (controls.get_path ())
 
 let test_replace_no_new_history_entry () =
   let platform, controls = make_mock_platform "/" in
   let router = make_router platform in
-  let cmd = Nopal_router.Router.replace router About in
+  let cmd = Nopal_platform.Router.replace router About in
   Nopal_mvu.Cmd.execute ignore cmd;
   Alcotest.(check int)
     "history still has 1 entry" 1
@@ -165,25 +165,25 @@ let test_replace_no_new_history_entry () =
 let test_back_navigates_previous () =
   let platform, controls = make_mock_platform "/" in
   let router = make_router platform in
-  let push_cmd = Nopal_router.Router.push router About in
+  let push_cmd = Nopal_platform.Router.push router About in
   Nopal_mvu.Cmd.execute ignore push_cmd;
-  let back_cmd = Nopal_router.Router.back router in
+  let back_cmd = Nopal_platform.Router.back router in
   Nopal_mvu.Cmd.execute ignore back_cmd;
   Alcotest.(check string) "path is /" "/" (controls.get_path ())
 
 let test_current_after_push () =
   let platform, _controls = make_mock_platform "/" in
   let router = make_router platform in
-  let cmd = Nopal_router.Router.push router (Item 7) in
+  let cmd = Nopal_platform.Router.push router (Item 7) in
   Nopal_mvu.Cmd.execute ignore cmd;
   Alcotest.check route_testable "current is Item 7 after push" (Item 7)
-    (Nopal_router.Router.current router)
+    (Nopal_platform.Router.current router)
 
 let test_on_navigate_dispatches_on_popstate () =
   let platform, controls = make_mock_platform "/" in
   let router = make_router platform in
   let received = ref None in
-  let sub = Nopal_router.Router.on_navigate router (fun route -> route) in
+  let sub = Nopal_platform.Router.on_navigate router (fun route -> route) in
   let setup = Option.get (Nopal_mvu.Sub.extract_custom sub) in
   let cleanup = setup (fun msg -> received := Some msg) in
   controls.simulate_popstate "/about";
@@ -196,7 +196,7 @@ let test_on_navigate_unknown_returns_not_found () =
   let platform, controls = make_mock_platform "/" in
   let router = make_router platform in
   let received = ref None in
-  let sub = Nopal_router.Router.on_navigate router (fun route -> route) in
+  let sub = Nopal_platform.Router.on_navigate router (fun route -> route) in
   let setup = Option.get (Nopal_mvu.Sub.extract_custom sub) in
   let cleanup = setup (fun msg -> received := Some msg) in
   controls.simulate_popstate "/unknown/path";
@@ -209,7 +209,7 @@ let test_on_navigate_dynamic_segment () =
   let platform, controls = make_mock_platform "/" in
   let router = make_router platform in
   let received = ref None in
-  let sub = Nopal_router.Router.on_navigate router (fun route -> route) in
+  let sub = Nopal_platform.Router.on_navigate router (fun route -> route) in
   let setup = Option.get (Nopal_mvu.Sub.extract_custom sub) in
   let cleanup = setup (fun msg -> received := Some msg) in
   controls.simulate_popstate "/items/99";
@@ -222,7 +222,7 @@ let test_on_navigate_cleanup_stops_listener () =
   let platform, controls = make_mock_platform "/" in
   let router = make_router platform in
   let received = ref None in
-  let sub = Nopal_router.Router.on_navigate router (fun route -> route) in
+  let sub = Nopal_platform.Router.on_navigate router (fun route -> route) in
   let setup = Option.get (Nopal_mvu.Sub.extract_custom sub) in
   let cleanup = setup (fun msg -> received := Some msg) in
   cleanup ();
@@ -232,7 +232,7 @@ let test_on_navigate_cleanup_stops_listener () =
     "no dispatch after cleanup" None !received
 
 let () =
-  Alcotest.run "nopal_router"
+  Alcotest.run "nopal_platform"
     [
       ( "current",
         [

@@ -20,7 +20,7 @@ type model = {
   input : string;
   editing : editing option;
   next_id : int;
-  router : route Nopal_router.Router.t;
+  router : route Nopal_platform.Router.t;
 }
 (** The full application model. *)
 
@@ -57,7 +57,7 @@ val filter_of_route : route -> filter
 
 val init :
   (module Storage) ->
-  route Nopal_router.Router.t ->
+  route Nopal_platform.Router.t ->
   unit ->
   model * msg Nopal_mvu.Cmd.t
 (** [init storage router ()] loads todos from storage, reads the current route,

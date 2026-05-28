@@ -1,5 +1,5 @@
 type 'route t = {
-  platform : (module Platform.S);
+  platform : (module Platform.NAV);
   parse : string -> 'route option;
   to_path : 'route -> string;
   not_found : 'route;
@@ -9,7 +9,7 @@ let create ~platform ~parse ~to_path ~not_found =
   { platform; parse; to_path; not_found }
 
 let current t =
-  let module P = (val t.platform : Platform.S) in
+  let module P = (val t.platform : Platform.NAV) in
   let path = P.current_path () in
   match t.parse path with
   | Some route -> route
@@ -17,22 +17,22 @@ let current t =
 
 let push t route =
   Nopal_mvu.Cmd.perform (fun _dispatch ->
-      let module P = (val t.platform : Platform.S) in
+      let module P = (val t.platform : Platform.NAV) in
       P.push_state (t.to_path route))
 
 let replace t route =
   Nopal_mvu.Cmd.perform (fun _dispatch ->
-      let module P = (val t.platform : Platform.S) in
+      let module P = (val t.platform : Platform.NAV) in
       P.replace_state (t.to_path route))
 
 let back t =
   Nopal_mvu.Cmd.perform (fun _dispatch ->
-      let module P = (val t.platform : Platform.S) in
+      let module P = (val t.platform : Platform.NAV) in
       P.back ())
 
 let on_navigate t to_msg =
-  Nopal_mvu.Sub.custom "nopal_router:on_navigate" (fun dispatch ->
-      let module P = (val t.platform : Platform.S) in
+  Nopal_mvu.Sub.custom "nopal_platform:on_navigate" (fun dispatch ->
+      let module P = (val t.platform : Platform.NAV) in
       let callback path =
         let route =
           match t.parse path with

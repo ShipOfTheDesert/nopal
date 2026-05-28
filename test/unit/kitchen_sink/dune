@@ -1,6 +1,13 @@
 (test
  (name test_http_section)
- (libraries kitchen_sink_app nopal_test nopal_http test_util alcotest))
+ (libraries
+  kitchen_sink_app
+  nopal_test
+  nopal_http
+  nopal_platform
+  nopal_storage
+  test_util
+  alcotest))
 
 (test
  (name test_toast_section)
@@ -9,3 +16,14 @@
 (test
  (name test_data_table_section)
  (libraries kitchen_sink_app nopal_ui alcotest))
+
+(test
+ (name test_storage_section)
+ (libraries
+  kitchen_sink_app
+  nopal_test
+  nopal_element
+  nopal_platform
+  nopal_storage
+  test_util
+  alcotest))

@@ -1,0 +1,13 @@
+(test
+ (name test_indexeddb)
+ (package nopal_storage_web)
+ (libraries
+  nopal_storage_web
+  nopal_storage
+  nopal_mvu
+  alcotest
+  brr
+  js_of_ocaml)
+ (modes js)
+ (js_of_ocaml
+  (javascript_files indexeddb_shim.js)))

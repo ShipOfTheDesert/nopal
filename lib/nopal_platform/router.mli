@@ -8,7 +8,7 @@
 type 'route t
 
 val create :
-  platform:(module Platform.S) ->
+  platform:(module Platform.NAV) ->
   parse:(string -> 'route option) ->
   to_path:('route -> string) ->
   not_found:'route ->

@@ -98,8 +98,20 @@
   lwd))
 
 (package
- (name nopal_router)
- (synopsis "Type-safe bidirectional router for Nopal")
+ (name nopal_platform)
+ (synopsis "Platform capability signatures and routing for Nopal")
+ (depends
+  (alcotest
+   (and
+    (>= 1.9.1)
+    :with-test))
+  ocaml
+  nopal_mvu
+  nopal_storage))
+
+(package
+ (name nopal_storage)
+ (synopsis "Backend-agnostic async key-value storage abstraction for Nopal")
  (depends
   (alcotest
    (and
@@ -107,6 +119,16 @@
     :with-test))
   ocaml
   nopal_mvu))
+
+(package
+ (name nopal_fs_key)
+ (synopsis "Native-clean key-filename encoding for filesystem-backed storage")
+ (depends
+  (alcotest
+   (and
+    (>= 1.9.1)
+    :with-test))
+  ocaml))
 
 (package
  (name nopal_test)
@@ -172,6 +194,34 @@
   js_of_ocaml))
 
 (package
+ (name nopal_storage_web)
+ (synopsis "IndexedDB storage backend for Nopal")
+ (depends
+  (alcotest
+   (and
+    (>= 1.9.1)
+    :with-test))
+  ocaml
+  nopal_storage
+  nopal_mvu
+  brr
+  js_of_ocaml))
+
+(package
+ (name nopal_storage_tauri)
+ (synopsis "Filesystem storage backend for Nopal via tauri-plugin-fs")
+ (depends
+  (alcotest
+   (and
+    (>= 1.9.1)
+    :with-test))
+  ocaml
+  nopal_storage
+  nopal_mvu
+  brr
+  js_of_ocaml))
+
+(package
  (name nopal_web)
  (synopsis "Web renderer backend for Nopal")
  (depends
@@ -185,7 +235,9 @@
   nopal_style
   nopal_draw
   nopal_mvu
-  nopal_router
+  nopal_platform
+  nopal_storage
+  nopal_storage_web
   lwd
   brr
   js_of_ocaml))
@@ -228,7 +280,7 @@
   nopal_http
   nopal_http_web
   nopal_runtime
-  nopal_router
+  nopal_platform
   nopal_web
   brr
   js_of_ocaml

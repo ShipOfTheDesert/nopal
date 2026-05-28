@@ -274,6 +274,40 @@ callers in examples and application code would need to handle the `Error` arm.
 This should be done as a single coordinated migration rather than piecemeal per
 module, to keep the API surface consistent.
 
+### Encrypted Storage
+
+**Packages:** `nopal_storage_web`, `nopal_storage_tauri` (extensions)
+**Depends on:** `nopal_storage`, `nopal_storage_web`, `nopal_storage_tauri`
+
+A `Storage.Encrypted` functor that wraps any `Nopal_storage.S` backend with
+transparent at-rest encryption, for applications storing sensitive local data
+(tokens, personal records) on shared or recoverable devices. Encryption is a
+wrapper concern, not a backend concern — `Nopal_storage.S` stays a pure string
+interface (see RFC 0107), so the functor composes over the existing IndexedDB
+and filesystem backends without changing them.
+
+The solution should provide:
+
+- A **`Storage.Encrypted` functor** `(Store : Nopal_storage.S) -> Nopal_storage.S`
+  that encrypts values on `set` and decrypts on `get`, leaving keys (and thus
+  prefix listing) in the clear so `keys`/`delete`/`clear` are unaffected. The
+  wrapped module satisfies the same `Nopal_storage.S`, so application and view
+  code are unchanged — only the entry-point wiring differs.
+- **AES-GCM** as the cipher, via the platform crypto primitive: `SubtleCrypto`
+  (`crypto.subtle`) on web, and the equivalent on the Tauri side.
+- **Key storage** outside the value store: `tauri-plugin-keychain` (or the OS
+  keychain) on Tauri, and a SubtleCrypto non-extractable key persisted via
+  IndexedDB on web. The data-encryption key is never written into the same
+  store as the ciphertext.
+- A **decryption-failure path** surfaced as a `Nopal_storage.error`
+  (`Backend_error`) or a dedicated wrapper error, never a raise — a wrong key or
+  tampered ciphertext must be recoverable.
+
+Because the web and Tauri crypto primitives are asynchronous, the functor's
+operations remain `Nopal_mvu.Task.t`-returning, matching `Nopal_storage.S`. The
+abstract `nopal_storage` package gains no dependency — the functor and its
+crypto bindings live in the backend packages.
+
 ## Performance
 
 Performance-related improvements tracked here. None of these are regressions —

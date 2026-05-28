@@ -1,3 +1,7 @@
+(* The kitchen sink is platform-agnostic; the concrete web platform (and thus
+   its IndexedDB-backed storage) is selected here, the only place Brr appears. *)
+module App = Kitchen_sink_app.Make (Nopal_web.Platform_web)
+
 let has_tauri () =
   not (Jv.is_undefined (Jv.get Jv.global "__TAURI_INTERNALS__"))
 
@@ -7,385 +11,394 @@ let tauri_fetch_cmd =
       Nopal_mvu.Cmd.task
         (let open Nopal_mvu.Task.Syntax in
          let+ s = Nopal_tauri.App.get_name in
-         Kitchen_sink_app.GotAppName s);
+         App.GotAppName s);
       Nopal_mvu.Cmd.task
         (let open Nopal_mvu.Task.Syntax in
          let+ s = Nopal_tauri.App.get_version in
-         Kitchen_sink_app.GotAppVersion s);
+         App.GotAppVersion s);
       Nopal_mvu.Cmd.task
         (let open Nopal_mvu.Task.Syntax in
          let+ s = Nopal_tauri.App.get_tauri_version in
-         Kitchen_sink_app.GotTauriVersion s);
+         App.GotTauriVersion s);
       Nopal_mvu.Cmd.task
         (let open Nopal_mvu.Task.Syntax in
          let+ p = Nopal_tauri.Os.platform in
-         Kitchen_sink_app.GotPlatform (Nopal_tauri.Os.to_string p));
+         App.GotPlatform (Nopal_tauri.Os.to_string p));
     ]
 
 let tauri_listen_cmd =
   Nopal_mvu.Cmd.perform (fun dispatch ->
       Nopal_tauri.Event.listen "nopal:kitchen-sink"
-        (fun ev -> dispatch (Kitchen_sink_app.TauriEventReceived ev.payload))
-        (fun unlisten -> dispatch (Kitchen_sink_app.GotTauriUnlisten unlisten)))
+        (fun ev -> dispatch (App.TauriEventReceived ev.payload))
+        (fun unlisten -> dispatch (App.GotTauriUnlisten unlisten)))
 
 let init () =
-  let model, cmd = Kitchen_sink_app.init () in
+  let model, cmd = App.init () in
   if has_tauri () then
     (model, Nopal_mvu.Cmd.batch [ cmd; tauri_fetch_cmd; tauri_listen_cmd ])
   else (model, cmd)
 
 let update model msg =
-  let model', cmd = Kitchen_sink_app.update model msg in
+  let model', cmd = App.update model msg in
   match msg with
-  | Kitchen_sink_app.FetchTauriInfo when has_tauri () ->
+  | App.FetchTauriInfo when has_tauri () ->
       (model', Nopal_mvu.Cmd.batch [ cmd; tauri_fetch_cmd ])
-  | Kitchen_sink_app.EmitTauriEvent when has_tauri () ->
+  | App.EmitTauriEvent when has_tauri () ->
       let emit_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
            let+ () =
              Nopal_tauri.Event.emit "nopal:kitchen-sink" "hello from nopal"
            in
-           Kitchen_sink_app.TauriEventEmitted)
+           App.TauriEventEmitted)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; emit_cmd ])
-  | Kitchen_sink_app.ListenTauriEvents when has_tauri () ->
+  | App.ListenTauriEvents when has_tauri () ->
       (model', Nopal_mvu.Cmd.batch [ cmd; tauri_listen_cmd ])
-  | Kitchen_sink_app.UnlistenTauriEvents when has_tauri () ->
+  | App.UnlistenTauriEvents when has_tauri () ->
       let unlisten_cmd =
         match model.tauri_event_unlisten with
         | Some f -> Nopal_mvu.Cmd.perform (fun _dispatch -> f ())
         | None -> Nopal_mvu.Cmd.none
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; unlisten_cmd ])
-  | Kitchen_sink_app.SetTauriWindowTitle when has_tauri () ->
+  | App.SetTauriWindowTitle when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
            let+ () = Nopal_tauri.Window.set_title model.tauri_window_title in
-           Kitchen_sink_app.TauriWindowTitleSet)
+           App.TauriWindowTitleSet)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
-  | Kitchen_sink_app.SetTauriFullscreen flag when has_tauri () ->
+  | App.SetTauriFullscreen flag when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
            let* () = Nopal_tauri.Window.set_fullscreen flag in
            let+ v = Nopal_tauri.Window.is_fullscreen in
-           Kitchen_sink_app.GotTauriFullscreen v)
+           App.GotTauriFullscreen v)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
-  | Kitchen_sink_app.QueryTauriFullscreen when has_tauri () ->
+  | App.QueryTauriFullscreen when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
            let+ v = Nopal_tauri.Window.is_fullscreen in
-           Kitchen_sink_app.GotTauriFullscreen v)
+           App.GotTauriFullscreen v)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
-  | Kitchen_sink_app.MinimizeTauriWindow when has_tauri () ->
+  | App.MinimizeTauriWindow when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
            let+ () = Nopal_tauri.Window.minimize in
-           Kitchen_sink_app.TauriWindowMinimized)
+           App.TauriWindowMinimized)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
-  | Kitchen_sink_app.MaximizeTauriWindow when has_tauri () ->
+  | App.MaximizeTauriWindow when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
            let* () = Nopal_tauri.Window.maximize in
            let+ v = Nopal_tauri.Window.is_maximized in
-           Kitchen_sink_app.GotTauriMaximized v)
+           App.GotTauriMaximized v)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
-  | Kitchen_sink_app.UnmaximizeTauriWindow when has_tauri () ->
+  | App.UnmaximizeTauriWindow when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
            let* () = Nopal_tauri.Window.unmaximize in
            let+ v = Nopal_tauri.Window.is_maximized in
-           Kitchen_sink_app.GotTauriMaximized v)
+           App.GotTauriMaximized v)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
-  | Kitchen_sink_app.QueryTauriMaximized when has_tauri () ->
+  | App.QueryTauriMaximized when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
            let+ v = Nopal_tauri.Window.is_maximized in
-           Kitchen_sink_app.GotTauriMaximized v)
+           App.GotTauriMaximized v)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
-  | Kitchen_sink_app.ShowTauriWindow when has_tauri () ->
+  | App.ShowTauriWindow when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
            let* () = Nopal_tauri.Window.show in
            let+ v = Nopal_tauri.Window.is_visible in
-           Kitchen_sink_app.GotTauriVisible v)
+           App.GotTauriVisible v)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
-  | Kitchen_sink_app.HideTauriWindow when has_tauri () ->
+  | App.HideTauriWindow when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
            let* () = Nopal_tauri.Window.hide in
            let+ v = Nopal_tauri.Window.is_visible in
-           Kitchen_sink_app.GotTauriVisible v)
+           App.GotTauriVisible v)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
-  | Kitchen_sink_app.QueryTauriVisible when has_tauri () ->
+  | App.QueryTauriVisible when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
            let+ v = Nopal_tauri.Window.is_visible in
-           Kitchen_sink_app.GotTauriVisible v)
+           App.GotTauriVisible v)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
-  | Kitchen_sink_app.SetTauriWindowFocus when has_tauri () ->
+  | App.SetTauriWindowFocus when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
            let+ () = Nopal_tauri.Window.set_focus in
-           Kitchen_sink_app.TauriWindowFocused)
+           App.TauriWindowFocused)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
-  | Kitchen_sink_app.CenterTauriWindow when has_tauri () ->
+  | App.CenterTauriWindow when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
            let+ () = Nopal_tauri.Window.center in
-           Kitchen_sink_app.TauriWindowCentered)
+           App.TauriWindowCentered)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
-  | Kitchen_sink_app.CloseTauriWindow when has_tauri () ->
+  | App.CloseTauriWindow when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
            let+ () = Nopal_tauri.Window.close in
-           Kitchen_sink_app.TauriWindowClosed)
+           App.TauriWindowClosed)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
-  | Kitchen_sink_app.SetTauriWindowSize (w, h) when has_tauri () ->
+  | App.SetTauriWindowSize (w, h) when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
            let+ () = Nopal_tauri.Window.set_size { width = w; height = h } in
-           Kitchen_sink_app.TauriWindowSizeSet)
+           App.TauriWindowSizeSet)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
-  | Kitchen_sink_app.QueryTauriInnerSize when has_tauri () ->
+  | App.QueryTauriInnerSize when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
            let+ size = Nopal_tauri.Window.inner_size in
-           Kitchen_sink_app.GotWindowInnerSize (size.width, size.height))
+           App.GotWindowInnerSize (size.width, size.height))
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; window_cmd ])
-  | Kitchen_sink_app.HideToTray when has_tauri () ->
+  | App.HideToTray when has_tauri () ->
       let hide_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
            let+ () = Nopal_tauri.Window.hide in
-           Kitchen_sink_app.TrayHidden)
+           App.TrayHidden)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; hide_cmd ])
-  | Kitchen_sink_app.TrayClicked when has_tauri () ->
+  | App.TrayClicked when has_tauri () ->
       let restore_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
            let* () = Nopal_tauri.Window.show in
            let+ () = Nopal_tauri.Window.set_focus in
-           Kitchen_sink_app.TrayRestored)
+           App.TrayRestored)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; restore_cmd ])
-  | Kitchen_sink_app.SetTrayTooltip when has_tauri () ->
+  | App.SetTrayTooltip when has_tauri () ->
       let tooltip_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
            let+ () = Nopal_tauri.Tray.set_tooltip model.tray_tooltip_input in
-           Kitchen_sink_app.TrayTooltipSet)
+           App.TrayTooltipSet)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; tooltip_cmd ])
-  | Kitchen_sink_app.SetTrayIconVisible flag when has_tauri () ->
+  | App.SetTrayIconVisible flag when has_tauri () ->
       let visible_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
            let+ () = Nopal_tauri.Tray.set_visible flag in
-           Kitchen_sink_app.TrayIconVisibleSet)
+           App.TrayIconVisibleSet)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; visible_cmd ])
-  | Kitchen_sink_app.TauriStoreSet when has_tauri () ->
+  | App.TauriStoreSet when has_tauri () ->
       let store_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
            let+ r =
              Nopal_tauri.Store.set model.tauri_store_key model.tauri_store_value
            in
-           Kitchen_sink_app.TauriStoreSetResult r)
+           App.TauriStoreSetResult r)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; store_cmd ])
-  | Kitchen_sink_app.TauriStoreGet when has_tauri () ->
+  | App.TauriStoreGet when has_tauri () ->
       let store_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
            let+ r = Nopal_tauri.Store.get model.tauri_store_key in
-           Kitchen_sink_app.TauriStoreGetResult r)
+           App.TauriStoreGetResult r)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; store_cmd ])
-  | Kitchen_sink_app.TauriStoreDelete when has_tauri () ->
+  | App.TauriStoreDelete when has_tauri () ->
       let store_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
            let+ r = Nopal_tauri.Store.delete model.tauri_store_key in
-           Kitchen_sink_app.TauriStoreDeleteResult r)
+           App.TauriStoreDeleteResult r)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; store_cmd ])
-  | Kitchen_sink_app.TauriStoreClear when has_tauri () ->
+  | App.TauriStoreClear when has_tauri () ->
       let store_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
            let+ r = Nopal_tauri.Store.clear () in
-           Kitchen_sink_app.TauriStoreClearResult r)
+           App.TauriStoreClearResult r)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; store_cmd ])
-  | Kitchen_sink_app.TauriStoreSave when has_tauri () ->
+  | App.TauriStoreSave when has_tauri () ->
       let store_cmd =
         Nopal_mvu.Cmd.task
           (let open Nopal_mvu.Task.Syntax in
            let+ r = Nopal_tauri.Store.save () in
-           Kitchen_sink_app.TauriStoreSaveResult r)
+           App.TauriStoreSaveResult r)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; store_cmd ])
-  | Kitchen_sink_app.StorageSet ->
-      Nopal_web.Storage.set model.storage_key model.storage_value;
-      ({ model' with storage_state = Stored }, cmd)
-  | Kitchen_sink_app.StorageGet ->
-      let state =
-        match Nopal_web.Storage.get model.storage_key with
-        | Some v -> Kitchen_sink_app.Retrieved v
-        | None -> Kitchen_sink_app.NotFound
+  | App.StorageReload ->
+      let reload_cmd =
+        Nopal_mvu.Cmd.perform (fun _dispatch ->
+            let w = Jv.get Jv.global "window" in
+            let location = Jv.get w "location" in
+            ignore (Jv.call location "reload" [||]))
       in
-      ({ model' with storage_state = state }, cmd)
-  | Kitchen_sink_app.StorageRemove ->
-      Nopal_web.Storage.remove model.storage_key;
-      ({ model' with storage_state = Removed }, cmd)
-  | Kitchen_sink_app.StorageClear ->
-      Nopal_web.Storage.clear ();
-      ({ model' with storage_state = Cleared }, cmd)
-  | Kitchen_sink_app.ButtonClicked
-  | Kitchen_sink_app.InputChanged _
-  | Kitchen_sink_app.SubmitInputChanged _
-  | Kitchen_sink_app.InputSubmitted
-  | Kitchen_sink_app.AddKeyedItem
-  | Kitchen_sink_app.RemoveKeyedItem _
-  | Kitchen_sink_app.MoveKeyedItemUp _
-  | Kitchen_sink_app.ToggleInteraction
-  | Kitchen_sink_app.SubCounterMsg _
-  | Kitchen_sink_app.DrawPointerMove _
-  | Kitchen_sink_app.DrawPointerLeave
-  | Kitchen_sink_app.ChartHovered _
-  | Kitchen_sink_app.ChartLeft
-  | Kitchen_sink_app.PieHovered _
-  | Kitchen_sink_app.PieLeft
-  | Kitchen_sink_app.ScatterHovered _
-  | Kitchen_sink_app.ScatterLeft
-  | Kitchen_sink_app.HeatMapHovered _
-  | Kitchen_sink_app.HeatMapLeft
-  | Kitchen_sink_app.TradingHovered _
-  | Kitchen_sink_app.TradingLeft
-  | Kitchen_sink_app.PanePointerDown _
-  | Kitchen_sink_app.PanePointerMove _
-  | Kitchen_sink_app.PanePointerUp
-  | Kitchen_sink_app.PanePointerLeave
-  | Kitchen_sink_app.LinePointerDown _
-  | Kitchen_sink_app.LinePointerMove _
-  | Kitchen_sink_app.LinePointerUp
-  | Kitchen_sink_app.LinePointerLeave
-  | Kitchen_sink_app.LineWheelZoom _
-  | Kitchen_sink_app.ZoomIn
-  | Kitchen_sink_app.ZoomOut
-  | Kitchen_sink_app.FetchClicked
-  | Kitchen_sink_app.FetchResult _
-  | Kitchen_sink_app.PostClicked
-  | Kitchen_sink_app.PostResult _
-  | Kitchen_sink_app.PutClicked
-  | Kitchen_sink_app.PutResult _
-  | Kitchen_sink_app.TimeoutClicked
-  | Kitchen_sink_app.TimeoutResult _
-  | Kitchen_sink_app.FetchTauriInfo
-  | Kitchen_sink_app.GotAppName _
-  | Kitchen_sink_app.GotAppVersion _
-  | Kitchen_sink_app.GotTauriVersion _
-  | Kitchen_sink_app.EmitTauriEvent
-  | Kitchen_sink_app.TauriEventReceived _
-  | Kitchen_sink_app.TauriEventEmitted
-  | Kitchen_sink_app.ListenTauriEvents
-  | Kitchen_sink_app.UnlistenTauriEvents
-  | Kitchen_sink_app.GotTauriUnlisten _
-  | Kitchen_sink_app.SetTauriWindowTitle
-  | Kitchen_sink_app.TauriWindowTitleSet
-  | Kitchen_sink_app.UpdateTauriWindowTitleInput _
-  | Kitchen_sink_app.SetTauriFullscreen _
-  | Kitchen_sink_app.QueryTauriFullscreen
-  | Kitchen_sink_app.GotTauriFullscreen _
-  | Kitchen_sink_app.MinimizeTauriWindow
-  | Kitchen_sink_app.TauriWindowMinimized
-  | Kitchen_sink_app.MaximizeTauriWindow
-  | Kitchen_sink_app.UnmaximizeTauriWindow
-  | Kitchen_sink_app.QueryTauriMaximized
-  | Kitchen_sink_app.GotTauriMaximized _
-  | Kitchen_sink_app.CloseTauriWindow
-  | Kitchen_sink_app.TauriWindowClosed
-  | Kitchen_sink_app.UpdateTauriWindowWidth _
-  | Kitchen_sink_app.UpdateTauriWindowHeight _
-  | Kitchen_sink_app.SetTauriWindowSize _
-  | Kitchen_sink_app.TauriWindowSizeSet
-  | Kitchen_sink_app.QueryTauriInnerSize
-  | Kitchen_sink_app.GotWindowInnerSize _
-  | Kitchen_sink_app.ShowTauriWindow
-  | Kitchen_sink_app.HideTauriWindow
-  | Kitchen_sink_app.QueryTauriVisible
-  | Kitchen_sink_app.GotTauriVisible _
-  | Kitchen_sink_app.SetTauriWindowFocus
-  | Kitchen_sink_app.TauriWindowFocused
-  | Kitchen_sink_app.CenterTauriWindow
-  | Kitchen_sink_app.TauriWindowCentered
-  | Kitchen_sink_app.GotPlatform _
-  | Kitchen_sink_app.HideToTray
-  | Kitchen_sink_app.TrayHidden
-  | Kitchen_sink_app.TrayClicked
-  | Kitchen_sink_app.TrayRestored
-  | Kitchen_sink_app.UpdateTrayTooltipInput _
-  | Kitchen_sink_app.SetTrayTooltip
-  | Kitchen_sink_app.TrayTooltipSet
-  | Kitchen_sink_app.SetTrayIconVisible _
-  | Kitchen_sink_app.TrayIconVisibleSet
-  | Kitchen_sink_app.StorageKeyChanged _
-  | Kitchen_sink_app.StorageValueChanged _
-  | Kitchen_sink_app.TauriStoreKeyChanged _
-  | Kitchen_sink_app.TauriStoreValueChanged _
-  | Kitchen_sink_app.TauriStoreSet
-  | Kitchen_sink_app.TauriStoreSetResult _
-  | Kitchen_sink_app.TauriStoreGet
-  | Kitchen_sink_app.TauriStoreGetResult _
-  | Kitchen_sink_app.TauriStoreDelete
-  | Kitchen_sink_app.TauriStoreDeleteResult _
-  | Kitchen_sink_app.TauriStoreClear
-  | Kitchen_sink_app.TauriStoreClearResult _
-  | Kitchen_sink_app.TauriStoreSave
-  | Kitchen_sink_app.TauriStoreSaveResult _
-  | Kitchen_sink_app.Ui_msg _
-  | Kitchen_sink_app.Form_msg _
-  | Kitchen_sink_app.Form_controls_msg _
-  | Kitchen_sink_app.Text_input_msg _
-  | Kitchen_sink_app.Focus_keyboard_msg _
-  | Kitchen_sink_app.Toast_msg _
-  | Kitchen_sink_app.Data_table_msg _
-  | Kitchen_sink_app.Virtual_list_msg _
-  | Kitchen_sink_app.Navigation_bar_msg _
-  | Kitchen_sink_app.Modal_msg _ ->
+      (model', Nopal_mvu.Cmd.batch [ cmd; reload_cmd ])
+  | App.ButtonClicked
+  | App.InputChanged _
+  | App.SubmitInputChanged _
+  | App.InputSubmitted
+  | App.AddKeyedItem
+  | App.RemoveKeyedItem _
+  | App.MoveKeyedItemUp _
+  | App.ToggleInteraction
+  | App.SubCounterMsg _
+  | App.DrawPointerMove _
+  | App.DrawPointerLeave
+  | App.ChartHovered _
+  | App.ChartLeft
+  | App.PieHovered _
+  | App.PieLeft
+  | App.ScatterHovered _
+  | App.ScatterLeft
+  | App.HeatMapHovered _
+  | App.HeatMapLeft
+  | App.TradingHovered _
+  | App.TradingLeft
+  | App.PanePointerDown _
+  | App.PanePointerMove _
+  | App.PanePointerUp
+  | App.PanePointerLeave
+  | App.LinePointerDown _
+  | App.LinePointerMove _
+  | App.LinePointerUp
+  | App.LinePointerLeave
+  | App.LineWheelZoom _
+  | App.ZoomIn
+  | App.ZoomOut
+  | App.FetchClicked
+  | App.FetchResult _
+  | App.PostClicked
+  | App.PostResult _
+  | App.PutClicked
+  | App.PutResult _
+  | App.TimeoutClicked
+  | App.TimeoutResult _
+  | App.FetchTauriInfo
+  | App.GotAppName _
+  | App.GotAppVersion _
+  | App.GotTauriVersion _
+  | App.EmitTauriEvent
+  | App.TauriEventReceived _
+  | App.TauriEventEmitted
+  | App.ListenTauriEvents
+  | App.UnlistenTauriEvents
+  | App.GotTauriUnlisten _
+  | App.SetTauriWindowTitle
+  | App.TauriWindowTitleSet
+  | App.UpdateTauriWindowTitleInput _
+  | App.SetTauriFullscreen _
+  | App.QueryTauriFullscreen
+  | App.GotTauriFullscreen _
+  | App.MinimizeTauriWindow
+  | App.TauriWindowMinimized
+  | App.MaximizeTauriWindow
+  | App.UnmaximizeTauriWindow
+  | App.QueryTauriMaximized
+  | App.GotTauriMaximized _
+  | App.CloseTauriWindow
+  | App.TauriWindowClosed
+  | App.UpdateTauriWindowWidth _
+  | App.UpdateTauriWindowHeight _
+  | App.SetTauriWindowSize _
+  | App.TauriWindowSizeSet
+  | App.QueryTauriInnerSize
+  | App.GotWindowInnerSize _
+  | App.ShowTauriWindow
+  | App.HideTauriWindow
+  | App.QueryTauriVisible
+  | App.GotTauriVisible _
+  | App.SetTauriWindowFocus
+  | App.TauriWindowFocused
+  | App.CenterTauriWindow
+  | App.TauriWindowCentered
+  | App.GotPlatform _
+  | App.HideToTray
+  | App.TrayHidden
+  | App.TrayClicked
+  | App.TrayRestored
+  | App.UpdateTrayTooltipInput _
+  | App.SetTrayTooltip
+  | App.TrayTooltipSet
+  | App.SetTrayIconVisible _
+  | App.TrayIconVisibleSet
+  | App.StorageKeyChanged _
+  | App.StorageValueChanged _
+  | App.StorageSet
+  | App.StorageSetResult _
+  | App.StorageGet
+  | App.StorageGetResult _
+  | App.StorageDelete
+  | App.StorageDeleteResult _
+  | App.StorageList
+  | App.StorageListResult _
+  | App.StorageClear
+  | App.StorageClearResult _
+  | App.CodecIncrement
+  | App.CodecSave
+  | App.CodecSaveResult _
+  | App.CodecLoad
+  | App.CodecLoadResult _
+  | App.CodecCorrupt
+  | App.CodecCorruptResult _
+  | App.TauriStoreKeyChanged _
+  | App.TauriStoreValueChanged _
+  | App.TauriStoreSet
+  | App.TauriStoreSetResult _
+  | App.TauriStoreGet
+  | App.TauriStoreGetResult _
+  | App.TauriStoreDelete
+  | App.TauriStoreDeleteResult _
+  | App.TauriStoreClear
+  | App.TauriStoreClearResult _
+  | App.TauriStoreSave
+  | App.TauriStoreSaveResult _
+  | App.Ui_msg _
+  | App.Form_msg _
+  | App.Form_controls_msg _
+  | App.Text_input_msg _
+  | App.Focus_keyboard_msg _
+  | App.Toast_msg _
+  | App.Data_table_msg _
+  | App.Virtual_list_msg _
+  | App.Navigation_bar_msg _
+  | App.Modal_msg _ ->
       (model', cmd)
 
 let () =
@@ -404,18 +417,18 @@ let () =
   in
   Nopal_web.mount
     (module struct
-      type model = Kitchen_sink_app.model
-      type msg = Kitchen_sink_app.msg
+      type model = App.model
+      type msg = App.msg
 
       let init = init
       let update = update
-      let view = Kitchen_sink_app.view
+      let view = App.view
 
       let subscriptions model =
-        let base = Kitchen_sink_app.subscriptions model in
+        let base = App.subscriptions model in
         if has_tauri () then
           Nopal_mvu.Sub.batch
-            [ base; Nopal_tauri.Tray.on_click Kitchen_sink_app.TrayClicked ]
+            [ base; Nopal_tauri.Tray.on_click App.TrayClicked ]
         else base
     end)
     target

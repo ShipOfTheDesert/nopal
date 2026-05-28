@@ -1,0 +1,9 @@
+(test
+ (name test_nopal_storage)
+ (modules test_nopal_storage)
+ (libraries nopal_storage nopal_mvu alcotest))
+
+(test
+ (name test_with_codec)
+ (modules test_with_codec)
+ (libraries nopal_storage nopal_mvu alcotest))
