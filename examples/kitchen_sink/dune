@@ -26,6 +26,8 @@
   nopal_svg
   nopal_http
   nopal_ui
+  nopal_platform
+  nopal_storage
   focus_keyboard))
 
 (executable

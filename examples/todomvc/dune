@@ -1,6 +1,6 @@
 (library
  (name todomvc)
- (libraries nopal_mvu nopal_element nopal_router)
+ (libraries nopal_mvu nopal_element nopal_platform)
  (modules todomvc))
 
 (executable

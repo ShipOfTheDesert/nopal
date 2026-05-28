@@ -97,8 +97,16 @@ let read_response response resolve =
         let body = Jstr.to_string body_jstr in
         resolve (Ok { Nopal_http.status; body; headers = resp_headers }))
 
+(* Maps an exception thrown *synchronously* while building/issuing the request
+   (e.g. [prepare_request], [Fetch.Request.init], [Fetch.url]) to a
+   [Network_error], for {!Nopal_mvu.Task.guard} — otherwise it would escape the
+   task body and leave the request unresolved. *)
+let error_of_exn = function
+  | Jv.Error e -> Nopal_http.Network_error (Jstr.to_string (Jv.Error.message e))
+  | e -> Nopal_http.Network_error (Printexc.to_string e)
+
 let send (request : Nopal_http.request) =
-  Nopal_mvu.Task.from_callback (fun resolve ->
+  Nopal_mvu.Task.guard ~on_exn:error_of_exn (fun resolve ->
       let method', headers, body = prepare_request request in
       let signal, timer_id =
         match request.timeout with
@@ -150,7 +158,7 @@ let send_cancellable (request : Nopal_http.request) =
         Nopal_mvu.Task.set_on_cancel token (fun () ->
             aborted_by_cancel := true;
             Brr.Abort.abort controller);
-        Nopal_mvu.Task.from_callback (fun resolve ->
+        Nopal_mvu.Task.guard ~on_exn:error_of_exn (fun resolve ->
             let method', headers, body = prepare_request request in
             let timer_id =
               match request.timeout with

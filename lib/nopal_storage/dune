@@ -1,0 +1,4 @@
+(library
+ (name nopal_storage)
+ (public_name nopal_storage)
+ (libraries nopal_mvu))

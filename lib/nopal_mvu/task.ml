@@ -2,6 +2,11 @@ type 'a t = ('a -> unit) -> unit
 
 let return x resolve = resolve x
 let from_callback f = f
+
+let guard ~on_exn f resolve =
+  try f resolve with
+  | e -> resolve (Error (on_exn e))
+
 let map f task resolve = task (fun x -> resolve (f x))
 let bind f task resolve = task (fun x -> f x resolve)
 let run task resolve = task resolve

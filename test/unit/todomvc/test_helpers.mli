@@ -11,10 +11,10 @@ val tracking_storage :
 (** Storage that records every save call. Returns the storage module and a ref
     to the list of saved states (most recent first). *)
 
-val make_mock_platform : string -> (module Nopal_router.Platform.S)
+val make_mock_platform : string -> (module Nopal_platform.Platform.NAV)
 (** [make_mock_platform initial_path] creates a mock platform for router testing
     without a browser. *)
 
 val make_router :
-  ?initial_path:string -> unit -> Todomvc.route Nopal_router.Router.t
+  ?initial_path:string -> unit -> Todomvc.route Nopal_platform.Router.t
 (** [make_router ?initial_path ()] creates a router using a mock platform. *)

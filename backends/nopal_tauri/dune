@@ -2,4 +2,10 @@
  (name nopal_tauri)
  (public_name nopal_tauri)
  (private_modules ipc)
- (libraries brr js_of_ocaml nopal_mvu nopal_router))
+ (libraries
+  brr
+  js_of_ocaml
+  nopal_mvu
+  nopal_platform
+  nopal_storage
+  nopal_storage_tauri))

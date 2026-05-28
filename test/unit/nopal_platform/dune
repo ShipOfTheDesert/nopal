@@ -1,0 +1,4 @@
+(tests
+ (names test_nopal_platform)
+ (package nopal_platform)
+ (libraries nopal_platform nopal_mvu nopal_element nopal_test alcotest))

@@ -1,26 +1,14 @@
-(** Tauri platform navigation via the browser History API.
+(** Tauri platform capabilities: History-API navigation + filesystem storage.
 
-    Implements [Nopal_router.Platform.S] using [window.history] for
-    push/replace/back and the [popstate] event for navigation listening. Pass
-    [(module Platform_tauri)] to [Router.create] for Tauri applications.
+    Implements {!Nopal_platform.Platform.S}. Tauri applications run in a
+    webview, so navigation maps onto [window.history] (push/replace/back) and
+    the [popstate] event exactly as the web backend does; [storage] is a
+    filesystem-backed {!Nopal_storage.S} via {!Nopal_storage_tauri.Make}
+    ([tauri-plugin-fs]). Pass [(module Platform_tauri)] to
+    {!Nopal_platform.Router.create} (which needs only [NAV]) or to an
+    application functor over {!Nopal_platform.Platform.S}.
 
-    Under the hood, Tauri applications run in a webview, so the navigation
-    primitives are identical to the web backend. This module exists as a
-    distinct entry point so applications can depend on [nopal_tauri] without
-    pulling in [nopal_web]. *)
+    This module exists as a distinct entry point so applications can depend on
+    [nopal_tauri] without pulling in [nopal_web]. *)
 
-val current_path : unit -> string
-(** Reads [window.location.pathname]. *)
-
-val push_state : string -> unit
-(** Calls [history.pushState]. *)
-
-val replace_state : string -> unit
-(** Calls [history.replaceState]. *)
-
-val back : unit -> unit
-(** Calls [history.back]. *)
-
-val on_popstate : (string -> unit) -> unit -> unit
-(** Listens for the [popstate] event on [window]. Returns a cleanup function
-    that removes the listener. *)
+include Nopal_platform.Platform.S

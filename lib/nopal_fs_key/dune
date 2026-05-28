@@ -1,0 +1,3 @@
+(library
+ (name nopal_fs_key)
+ (public_name nopal_fs_key))

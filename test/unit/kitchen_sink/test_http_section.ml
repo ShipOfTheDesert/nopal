@@ -1,5 +1,21 @@
-open Kitchen_sink_app
 open Nopal_test.Test_renderer
+
+(* Native-clean platform to instantiate the kitchen sink functor: navigation is
+   stubbed and storage is the in-memory backend, keeping these tests
+   browser-free. *)
+module Test_platform : Nopal_platform.Platform.S = struct
+  let current_path () = "/"
+  let push_state (_ : string) = ()
+  let replace_state (_ : string) = ()
+  let back () = ()
+  let on_popstate (_ : string -> unit) () = ()
+
+  module Store = Nopal_storage.In_memory ()
+
+  let storage = (module Store : Nopal_storage.S)
+end
+
+open Kitchen_sink_app.Make (Test_platform)
 
 let pp_selector fmt sel =
   match sel with
@@ -118,9 +134,23 @@ let msg_pp fmt msg =
   | StorageKeyChanged s -> Format.fprintf fmt "StorageKeyChanged(%s)" s
   | StorageValueChanged s -> Format.fprintf fmt "StorageValueChanged(%s)" s
   | StorageSet -> Format.fprintf fmt "StorageSet"
+  | StorageSetResult _ -> Format.fprintf fmt "StorageSetResult _"
   | StorageGet -> Format.fprintf fmt "StorageGet"
-  | StorageRemove -> Format.fprintf fmt "StorageRemove"
+  | StorageGetResult _ -> Format.fprintf fmt "StorageGetResult _"
+  | StorageDelete -> Format.fprintf fmt "StorageDelete"
+  | StorageDeleteResult _ -> Format.fprintf fmt "StorageDeleteResult _"
+  | StorageList -> Format.fprintf fmt "StorageList"
+  | StorageListResult _ -> Format.fprintf fmt "StorageListResult _"
   | StorageClear -> Format.fprintf fmt "StorageClear"
+  | StorageClearResult _ -> Format.fprintf fmt "StorageClearResult _"
+  | StorageReload -> Format.fprintf fmt "StorageReload"
+  | CodecIncrement -> Format.fprintf fmt "CodecIncrement"
+  | CodecSave -> Format.fprintf fmt "CodecSave"
+  | CodecSaveResult _ -> Format.fprintf fmt "CodecSaveResult _"
+  | CodecLoad -> Format.fprintf fmt "CodecLoad"
+  | CodecLoadResult _ -> Format.fprintf fmt "CodecLoadResult _"
+  | CodecCorrupt -> Format.fprintf fmt "CodecCorrupt"
+  | CodecCorruptResult _ -> Format.fprintf fmt "CodecCorruptResult _"
   | TauriStoreKeyChanged s -> Format.fprintf fmt "TauriStoreKeyChanged(%s)" s
   | TauriStoreValueChanged s ->
       Format.fprintf fmt "TauriStoreValueChanged(%s)" s

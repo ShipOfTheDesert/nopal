@@ -45,9 +45,11 @@ let () =
         El.append_children body [ div ];
         div
   in
-  let platform = (module Nopal_web.Platform_web : Nopal_router.Platform.S) in
+  let platform =
+    (module Nopal_web.Platform_web : Nopal_platform.Platform.NAV)
+  in
   let router =
-    Nopal_router.Router.create ~platform ~parse:Todomvc.parse
+    Nopal_platform.Router.create ~platform ~parse:Todomvc.parse
       ~to_path:Todomvc.to_path ~not_found:Todomvc.All_route
   in
   let storage = (module Storage_local : Todomvc.Storage) in

@@ -14,7 +14,8 @@ Every concern is a separate opam package with strict one-way dependency flow:
 nopal_mvu       ← MVU core (Cmd, Sub, App) — no UI or platform deps
 nopal_element   ← Element.t DSL — no platform deps
 nopal_style     ← Typed layout/paint — no platform deps
-nopal_router    ← Type-safe bidirectional routing — no platform deps
+nopal_storage   ← Backend-agnostic async key-value storage contract (module type S, In_memory, With_codec) — no platform deps
+nopal_platform  ← Type-safe bidirectional routing + platform-capability signatures (Platform.NAV, Platform.S) — depends on nopal_storage; no platform deps (renamed from nopal_router)
 nopal_scene     ← Pure scene types (Color, Paint, Transform, Path segments, Scene) — no platform deps
 nopal_draw      ← 2D drawing DSL (Scale + higher-level Path algorithms) — depends on nopal_scene
 nopal_svg       ← Pure SVG 1.1 string renderer for nopal_scene — no platform deps
@@ -27,10 +28,12 @@ nopal_runtime   ← Lwd reactive integration + MVU loop
 nopal_test      ← Pure OCaml test renderer — no js_of_ocaml
 nopal_web       ← js_of_ocaml + Brr DOM renderer (only browser-dependent package)
 nopal_http_web  ← Browser Fetch API backend for nopal_http — js_of_ocaml + Brr
-nopal_tauri     ← Tauri desktop/mobile bindings — depends on nopal_mvu (for Task.t), nopal_router (for Platform.S)
+nopal_storage_web   ← IndexedDB backend implementing Nopal_storage.S — js_of_ocaml + Brr
+nopal_storage_tauri ← Filesystem (tauri-plugin-fs) backend implementing Nopal_storage.S — js_of_ocaml + Brr
+nopal_tauri     ← Tauri desktop/mobile bindings — depends on nopal_mvu (for Task.t), nopal_platform (for Platform.S)
 ```
 
-Critical boundary: `nopal_element`, `nopal_style`, `nopal_test`, `nopal_router` must compile on native OCaml without js_of_ocaml. Application view code never imports `nopal_web` or `Brr`.
+Critical boundary: `nopal_element`, `nopal_style`, `nopal_test`, `nopal_platform`, `nopal_storage` must compile on native OCaml without js_of_ocaml. Application view code never imports `nopal_web` or `Brr`.
 
 ## Quick Start
 
@@ -916,12 +919,12 @@ val view : 'msg config -> 'msg Element.t
    When disabled, input carries disabled="" and event handlers are suppressed. *)
 ```
 
-### Routing (`nopal_router`)
+### Routing (`nopal_platform`)
 
-Type-safe bidirectional routing:
+Type-safe bidirectional routing. `Router.create` consumes `(module Platform.NAV)` — routing needs only the navigation capability, so routing-only call sites are not forced to carry storage:
 
 ```ocaml
-Router.create : platform:(module Platform.S) -> parse:(string -> 'route option)
+Router.create : platform:(module Platform.NAV) -> parse:(string -> 'route option)
   -> to_path:('route -> string) -> not_found:'route -> 'route Router.t
 
 Router.current  : 'route Router.t -> 'route                    (* read current *)
@@ -929,6 +932,101 @@ Router.push     : 'route Router.t -> 'route -> 'msg Cmd.t      (* push history *
 Router.replace  : 'route Router.t -> 'route -> 'msg Cmd.t      (* replace current *)
 Router.back     : 'route Router.t -> 'msg Cmd.t                (* go back *)
 Router.on_navigate : 'route Router.t -> ('route -> 'msg) -> 'msg Sub.t  (* subscribe *)
+```
+
+### Platform Capabilities (`nopal_platform`)
+
+`Platform` declares the capability signatures a backend must satisfy. `NAV` is the
+navigation capability (consumed by `Router`); `S` bundles `NAV` with the storage
+capability. Backends (`Platform_web`, `Platform_tauri`) ascribe `Platform.S`.
+
+```ocaml
+module Platform : sig
+  module type NAV = sig
+    val current_path  : unit -> string
+    val push_state    : string -> unit
+    val replace_state : string -> unit
+    val back          : unit -> unit
+    val on_popstate   : (string -> unit) -> unit -> unit
+  end
+
+  module type S = sig
+    include NAV
+    val storage : (module Nopal_storage.S)   (* the linked platform's storage backend *)
+  end
+end
+```
+
+### Offline Storage (`nopal_storage`)
+
+Backend-agnostic, asynchronous key-value storage. Application code targets the
+abstract `module type S` unchanged on every platform; the concrete backend is
+supplied at the entry point via `Nopal_platform.Platform.S.storage`. Operations
+return `Nopal_mvu.Task.t` — lift them into commands with `Cmd.task` from `update`.
+`S` is a pure `string`-to-`string` interface (encryption/compression are wrapper
+concerns, never backend concerns). No platform dependencies.
+
+```ocaml
+type Nopal_storage.error =
+  | Quota_exceeded      of string
+  | Permission_denied   of string
+  | Backend_unavailable of string
+  | Backend_error       of string   (* catch-all; carries the raw backend message *)
+
+val Nopal_storage.message : error -> string   (* human-readable, for display *)
+
+module type Nopal_storage.S = sig
+  val get    : string -> (string option, error) result Nopal_mvu.Task.t
+    (* Ok (Some v) when present, Ok None when absent *)
+  val set    : key:string -> value:string -> (unit, error) result Nopal_mvu.Task.t
+    (* labelled: both args are string *)
+  val delete : string -> (unit, error) result Nopal_mvu.Task.t
+    (* deleting an absent key resolves Ok () *)
+  val keys   : ?prefix:string -> unit -> (string list, error) result Nopal_mvu.Task.t
+    (* order unspecified; ?prefix restricts to matching keys *)
+  val clear  : unit -> (unit, error) result Nopal_mvu.Task.t
+    (* clears this abstraction's namespace only — never localStorage / Nopal_tauri.Store *)
+end
+
+(* Generative in-memory backend; isolated per application, resolves synchronously.
+   Native-clean — ideal for tests. *)
+module Nopal_storage.In_memory () : sig
+  include Nopal_storage.S
+  val reset : unit -> unit   (* empties the store, for test isolation *)
+end
+
+(* Typed encode/decode wrapper over any Nopal_storage.S backend. *)
+module Nopal_storage.With_codec (Store : Nopal_storage.S) : sig
+  type typed_error = Storage of error | Decode of string
+  val get : string -> decode:(string -> ('a, string) result)
+            -> ('a option, typed_error) result Nopal_mvu.Task.t
+  val set : key:string -> value:'a -> encode:('a -> string)
+            -> (unit, error) result Nopal_mvu.Task.t
+end
+```
+
+Concrete backends (each `module Make () : Nopal_storage.S`, selected by which
+platform module is linked):
+
+```ocaml
+module Nopal_storage_web.Make   () : Nopal_storage.S
+  (* IndexedDB (database nopal_storage, object store kv). Survives reloads; no ~5 MB cap. *)
+module Nopal_storage_tauri.Make () : Nopal_storage.S
+  (* One file per key under a scoped app-data subdirectory via tauri-plugin-fs. Survives relaunch. *)
+```
+
+Application usage (native-clean functor pattern; the concrete platform appears
+only in `main.ml`):
+
+```ocaml
+(* app.ml — platform-agnostic *)
+module Make (Platform : Nopal_platform.Platform.S) = struct
+  module Storage = (val Platform.storage)
+  (* update: Cmd.task (Task.map to_msg (Storage.get key)) *)
+end
+
+(* main.ml *)
+module App = App.Make (Platform_web)
 ```
 
 ### Scene Types (`nopal_scene`)
@@ -1489,8 +1587,8 @@ Nopal_web.mount :
   (module Nopal_mvu.App.S with type model = 'model and type msg = 'msg)
   -> Brr.El.t -> unit
 
-(* Browser platform for routing *)
-module Platform_web : Nopal_router.Platform.S
+(* Browser platform: navigation + storage capabilities *)
+module Platform_web : Nopal_platform.Platform.S   (* storage = Nopal_storage_web.Make () *)
 ```
 
 ### Web Storage (`nopal_web`)
@@ -1538,8 +1636,8 @@ val Window.hide           : unit Nopal_mvu.Task.t
 val Window.set_focus      : unit Nopal_mvu.Task.t
 val Window.center         : unit Nopal_mvu.Task.t
 
-(* Platform — routing support for Tauri webview *)
-module Platform_tauri : Nopal_router.Platform.S
+(* Platform — navigation + storage capabilities for Tauri webview *)
+module Platform_tauri : Nopal_platform.Platform.S   (* storage = Nopal_storage_tauri.Make () *)
 
 (* Tray — system tray icon subscriptions + task bindings *)
 (* Requires tray-icon:default capability and trayIcon in tauri.conf.json *)
@@ -1653,7 +1751,8 @@ lib/
   nopal_mvu/         — Cmd, Sub, App — zero UI deps
   nopal_element/     — Element.t DSL + Virtual_list — zero platform deps
   nopal_style/       — Style.t, Text.t, Interaction.t, Cursor.t
-  nopal_router/      — Router.t, Platform.S
+  nopal_storage/     — Nopal_storage.S, In_memory, With_codec (async key-value contract)
+  nopal_platform/    — Router.t, Platform.NAV, Platform.S (storage capability) [renamed from nopal_router]
   nopal_scene/       — Pure scene types: Color, Paint, Transform, Path, Scene
   nopal_draw/        — Scale + higher-level Path algorithms (re-exports nopal_scene)
   nopal_charts/      — Bar, Line, Area, Pie, Scatter, Sparkline, Heat_map,
@@ -1666,7 +1765,9 @@ lib/
 backends/
   nopal_web/         — js_of_ocaml + Brr DOM renderer
   nopal_http_web/    — Browser Fetch API backend for nopal_http
-  nopal_tauri/       — Tauri desktop/mobile bindings (depends on nopal_mvu, nopal_router)
+  nopal_storage_web/   — IndexedDB backend implementing Nopal_storage.S
+  nopal_storage_tauri/ — Filesystem (tauri-plugin-fs) backend implementing Nopal_storage.S
+  nopal_tauri/       — Tauri desktop/mobile bindings (depends on nopal_mvu, nopal_platform)
 examples/
   counter/           — Hello world
   todomvc/           — Complex app with routing & localStorage

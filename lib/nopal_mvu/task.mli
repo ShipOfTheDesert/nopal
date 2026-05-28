@@ -15,6 +15,21 @@ val from_callback : (('a -> unit) -> unit) -> 'a t
     receives a resolver and must call it exactly once when the operation
     completes. This is the bridge for platform-specific async primitives. *)
 
+val guard :
+  on_exn:(exn -> 'e) -> ((('a, 'e) result -> unit) -> unit) -> ('a, 'e) result t
+(** [guard ~on_exn f] is {!from_callback} for a result-typed task that also
+    catches any exception raised {e synchronously} while [f] runs, resolving
+    [Error (on_exn e)] instead of letting it escape. Platform backends bridge
+    JavaScript interop here: a call such as [IDBObjectStore.transaction] or
+    [Fetch.Request.init] can throw synchronously, and an uncaught exception
+    would leave the task unresolved forever (the resolver is never called).
+
+    Only synchronous exceptions are caught. A failure surfaced later from an
+    asynchronous callback (e.g. an [onerror] event or a rejected promise) fires
+    on the event loop, outside [f], and must be resolved explicitly by [f]
+    itself. [f] must resolve at most once before returning — [guard] does not
+    deduplicate, so a body that resolves and then raises would resolve twice. *)
+
 val map : ('a -> 'b) -> 'a t -> 'b t
 (** [map f task] transforms the result of [task] by applying [f]. *)
 

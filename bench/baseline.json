@@ -1,54 +1,78 @@
 {
   "version": 1,
-  "timestamp": "2026-03-10T06:08:36.978Z",
+  "timestamp": "2026-05-27T22:31:43.587Z",
   "runner": "local",
   "metrics": {
     "jsfb/create_1000": {
-      "value": 85.5,
+      "value": 103,
       "unit": "ms"
     },
     "jsfb/replace_1000": {
-      "value": 45.80000000447035,
+      "value": 81.40000000596046,
       "unit": "ms"
     },
     "jsfb/partial_update": {
-      "value": 78.40000000596046,
+      "value": 88.90000000596046,
       "unit": "ms"
     },
     "jsfb/select_row": {
-      "value": 80,
+      "value": 93.59999999403954,
       "unit": "ms"
     },
     "jsfb/swap_rows": {
-      "value": 44.100000001490116,
+      "value": 51.39999997615814,
       "unit": "ms"
     },
     "jsfb/remove_row": {
-      "value": 81.19999999552965,
+      "value": 91.90000000596046,
       "unit": "ms"
     },
     "jsfb/create_10000": {
-      "value": 332.3999999985099,
+      "value": 388.59999999403954,
       "unit": "ms"
     },
     "jsfb/append_1000": {
-      "value": 92.69999999552965,
+      "value": 118.7000000178814,
       "unit": "ms"
     },
     "jsfb/clear_rows": {
-      "value": 55.399999998509884,
+      "value": 59.70000001788139,
       "unit": "ms"
     },
     "custom/incremental_update_1000": {
-      "value": 40.69999999552965,
+      "value": 44.80000001192093,
       "unit": "ms"
     },
     "custom/message_throughput_10000": {
-      "value": 4.299999997019768,
+      "value": 4.700000017881393,
+      "unit": "ms"
+    },
+    "charts/candlestick_1k": {
+      "value": 68,
+      "unit": "ms"
+    },
+    "charts/heat_map_50x50": {
+      "value": 75.80000001192093,
+      "unit": "ms"
+    },
+    "charts/line_100k_clipped": {
+      "value": 74.69999998807907,
+      "unit": "ms"
+    },
+    "charts/lttb_100k_to_1k": {
+      "value": 70.80000001192093,
+      "unit": "ms"
+    },
+    "virtual_list/initial_render_10000": {
+      "value": 36.200097650289536,
+      "unit": "ms"
+    },
+    "virtual_list/scroll_10000": {
+      "value": 1.5999999940395355,
       "unit": "ms"
     },
     "bundle/main_bc_js": {
-      "value": 3661832,
+      "value": 3829957,
       "unit": "bytes"
     }
   }

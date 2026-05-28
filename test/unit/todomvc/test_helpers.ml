@@ -38,10 +38,10 @@ let make_mock_platform initial_path =
       let on_popstate callback =
         _popstate_listener := Some callback;
         fun () -> _popstate_listener := None
-    end : Nopal_router.Platform.S)
+    end : Nopal_platform.Platform.NAV)
   in
   platform
 
 let make_router ?(initial_path = "/") () =
   let platform = make_mock_platform initial_path in
-  Nopal_router.Router.create ~platform ~parse ~to_path ~not_found:All_route
+  Nopal_platform.Router.create ~platform ~parse ~to_path ~not_found:All_route

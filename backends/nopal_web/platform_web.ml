@@ -31,3 +31,5 @@ let on_popstate callback =
     ignore
       (Jv.call window "removeEventListener"
          [| Jv.of_string "popstate"; listener |])
+
+let storage = (module Nopal_storage_web.Make () : Nopal_storage.S)

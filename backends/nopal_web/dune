@@ -8,7 +8,9 @@
   nopal_scene
   nopal_draw
   nopal_mvu
-  nopal_router
+  nopal_platform
+  nopal_storage
+  nopal_storage_web
   lwd
   brr
   js_of_ocaml))

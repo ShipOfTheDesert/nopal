@@ -63,6 +63,37 @@ let test_syntax_let_star () =
   let result = run_capture t in
   Alcotest.(check int) "let* sequences" 7 result
 
+let test_guard_catches_synchronous_exception () =
+  let t = guard ~on_exn:(fun _ -> "caught") (fun _resolve -> failwith "boom") in
+  Alcotest.(check (result int string))
+    "synchronous raise becomes Error" (Error "caught") (run_capture t)
+
+let test_guard_maps_the_raised_exception () =
+  let t =
+    guard
+      ~on_exn:(function
+        | Failure m -> m
+        | _ -> "other")
+      (fun _resolve -> failwith "kaboom")
+  in
+  Alcotest.(check (result int string))
+    "on_exn receives the raised exception" (Error "kaboom") (run_capture t)
+
+let test_guard_passes_through_ok () =
+  let t = guard ~on_exn:(fun _ -> "x") (fun resolve -> resolve (Ok 42)) in
+  Alcotest.(check (result int string))
+    "a normally-resolved Ok is untouched" (Ok 42) (run_capture t)
+
+let test_guard_passes_through_error () =
+  let t =
+    guard
+      ~on_exn:(fun _ -> "mapped")
+      (fun resolve -> resolve (Error "original"))
+  in
+  Alcotest.(check (result int string))
+    "an explicitly-resolved Error is untouched" (Error "original")
+    (run_capture t)
+
 let test_syntax_let_plus () =
   let open Syntax in
   let t =
@@ -91,6 +122,17 @@ let () =
       ( "combinators",
         [
           Alcotest.test_case "map transforms" `Quick test_map_transforms_result;
+        ] );
+      ( "guard",
+        [
+          Alcotest.test_case "catches synchronous exception" `Quick
+            test_guard_catches_synchronous_exception;
+          Alcotest.test_case "maps the raised exception" `Quick
+            test_guard_maps_the_raised_exception;
+          Alcotest.test_case "passes through Ok" `Quick
+            test_guard_passes_through_ok;
+          Alcotest.test_case "passes through Error" `Quick
+            test_guard_passes_through_error;
         ] );
       ( "syntax",
         [
