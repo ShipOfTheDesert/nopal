@@ -83,6 +83,15 @@ val focus : string -> 'msg t
 val map : ('a -> 'b) -> 'a t -> 'b t
 (** Transform the message type of a command. *)
 
+val is_none : 'msg t -> bool
+(** [is_none cmd] is [true] iff [cmd] is {!none}. Lets callers skip empty
+    commands without depending on the [{!describe}] ["none"] label string. *)
+
+val describe : 'msg t -> string
+(** A stable label naming the command's top-level constructor ([none] | [batch]
+    | [perform] | [task] | [after] | [focus]), for telemetry [Command] events.
+    Total over the variant. *)
+
 val execute : 'msg dispatch -> 'msg t -> unit
 (** [execute dispatch cmd] interprets a command tree, calling [dispatch] for
     each message produced. Ignores [after] nodes — use {!interpret} when [after]

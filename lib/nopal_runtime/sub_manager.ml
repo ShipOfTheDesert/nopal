@@ -3,7 +3,7 @@ type 'msg t = { active : (string, cleanup) Hashtbl.t }
 
 let create () = { active = Hashtbl.create 8 }
 
-let diff ~dispatch new_subs mgr =
+let diff ?(on_fire = fun _label -> ()) ~dispatch new_subs mgr =
   (* Only Custom subscriptions are managed here. Built-in types (Every,
      On_keydown, On_keyup, On_resize, On_visibility_change) require
      platform-specific interpreters (e.g. setInterval, DOM event listeners)
@@ -29,7 +29,17 @@ let diff ~dispatch new_subs mgr =
            re-entrant diffs (setup dispatching a message that triggers
            refresh -> diff) see this key as already active. *)
         Hashtbl.replace mgr.active k (fun () -> ());
-        let cleanup_fn = setup dispatch in
+        (* The firing seam: every message this subscription dispatches is
+           preceded by [on_fire] with its describe label. Only [Custom]
+           subscriptions are managed here (built-ins are platform-backend
+           handled), so the label is the custom node's [Sub.describe] output,
+           obtained from the [(key, setup)] pair we already hold. *)
+        let label = Nopal_mvu.Sub.describe (Nopal_mvu.Sub.custom k setup) in
+        let recording_dispatch msg =
+          on_fire label;
+          dispatch msg
+        in
+        let cleanup_fn = setup recording_dispatch in
         Hashtbl.replace mgr.active k cleanup_fn))
     new_customs
 

@@ -7,5 +7,7 @@
   js_of_ocaml
   nopal_mvu
   nopal_platform
+  nopal_runtime
   nopal_storage
-  nopal_storage_tauri))
+  nopal_storage_tauri
+  nopal_telemetry_wire))

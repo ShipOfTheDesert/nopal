@@ -54,6 +54,12 @@ val keys : 'msg t -> string list
 val map : ('a -> 'b) -> 'a t -> 'b t
 (** Transform the message type of a subscription. *)
 
+val describe : 'msg t -> string
+(** A stable label naming the subscription's top-level constructor ([none] |
+    [batch] | [every] | [on_keydown] | [on_keyup] | [on_resize] |
+    [on_visibility_change] | [on_viewport_change] | [on_keydown_prevent] |
+    [custom]), for telemetry [Subscription] events. Total over the variant. *)
+
 val extract_every : 'msg t -> (int * (unit -> 'msg)) option
 (** [extract_every sub] extracts the interval and callback from an [every]
     subscription. Returns [None] if [sub] is not an [every]. *)

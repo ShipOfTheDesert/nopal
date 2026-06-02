@@ -64,25 +64,30 @@ let focus_element id =
   let el = Jv.call document "getElementById" [| Jv.of_string id |] in
   if not (Jv.is_none el) then ignore (Jv.call el "focus" [||])
 
-let mount (type model msg)
-    (module A : Nopal_mvu.App.S with type model = model and type msg = msg)
-    (target : Brr.El.t) =
-  let module R = Nopal_runtime.Runtime.Make (A) in
-  let rt = R.create ~focus:focus_element ~schedule_after () in
+(* Shared DOM wiring for both {!mount} and {!mount_with_telemetry}. It is given
+   the runtime operations as closures (already bound to a concrete runtime
+   value), plus an optional telemetry handle: when present, the
+   [window.__nopal_telemetry__] bridge is installed over it (Layer 2). Keeping
+   runtime construction in the two entry points lets them own the [focus] /
+   [schedule_after] platform callbacks, so those never leak into the public API.
+   The on/off distinction is the entry point's name and return type, never an
+   optional argument (RFC 0110, Implementation Decision 2). *)
+let drive (type msg) ~(start : unit -> unit)
+    ~(set_viewport : Nopal_element.Viewport.t -> unit)
+    ~(view_lwd : msg Nopal_element.Element.t Lwd.t) ~(dispatch : msg -> unit)
+    ~(subscriptions : unit -> msg Nopal_mvu.Sub.t)
+    ~(bridge : Nopal_runtime.Telemetry.handle option) (target : Brr.El.t) =
   (* Inject CSS custom properties bridging env() safe area values into JS-readable
      form. Must run before read_safe_area. Runs once on startup (REQ-N3). *)
   inject_safe_area_style ();
   let safe_area = read_safe_area () in
-  R.start rt;
+  start ();
   (* Set initial viewport after start so dispatch is valid if subscriptions exist *)
   let initial_vp = read_viewport safe_area in
-  R.set_viewport rt initial_vp;
-  let view_lwd = R.view rt in
+  set_viewport initial_vp;
   let root = Lwd.observe view_lwd in
   let initial_element = Lwd.quick_sample root in
-  let handle =
-    Renderer.create ~dispatch:(R.dispatch rt) ~parent:target initial_element
-  in
+  let handle = Renderer.create ~dispatch ~parent:target initial_element in
   (* A ref is used because OCaml's value restriction prevents directly
      defining a recursive closure that is passed to Jv.repr. The ref
      lets us tie the knot: each frame's callback reads !raf_loop to
@@ -99,7 +104,7 @@ let mount (type model msg)
   let resize_cb =
     Jv.callback ~arity:1 (fun _entries ->
         let new_vp = read_viewport safe_area in
-        R.set_viewport rt new_vp)
+        set_viewport new_vp)
   in
   let observer = Jv.new' (Jv.get Jv.global "ResizeObserver") [| resize_cb |] in
   ignore (Jv.call observer "observe" [| Brr.El.to_jv target |]);
@@ -123,7 +128,7 @@ let mount (type model msg)
     ref Jv.null
   in
   let update_keydown_prevent () =
-    let subs = A.subscriptions (R.model rt) in
+    let subs = subscriptions () in
     let cbs = Nopal_mvu.Sub.extract_on_keydown_prevents subs in
     keydown_prevent_cbs := cbs;
     let w = Jv.get Jv.global "window" in
@@ -151,7 +156,7 @@ let mount (type model msg)
                     | Some (msg, prevent) ->
                         if prevent then
                           ignore (Jv.call event "preventDefault" [||]);
-                        R.dispatch rt msg
+                        dispatch msg
                     | Option.None -> ())
                   !keydown_prevent_cbs)
           in
@@ -164,11 +169,47 @@ let mount (type model msg)
      fun _ts ->
        if Lwd.is_damaged root then begin
          let new_element = Lwd.quick_sample root in
-         Renderer.update ~dispatch:(R.dispatch rt) handle new_element
+         Renderer.update ~dispatch handle new_element
        end;
        update_keydown_prevent ();
        let w = Jv.get Jv.global "window" in
        ignore (Jv.call w "requestAnimationFrame" [| Jv.repr !raf_loop |]));
+  (* Install the browser telemetry bridge over the driven runtime's handle
+     (Layer 2). Only [mount_with_telemetry] supplies a handle; [mount] passes
+     [None] and installs nothing. *)
+  (match bridge with
+  | Some handle -> Telemetry_bridge.install handle
+  | None -> ());
   let w = Jv.get Jv.global "window" in
   ignore (Jv.call w "requestAnimationFrame" [| Jv.repr !raf_loop |]);
   update_keydown_prevent ()
+
+let mount (type model msg)
+    (module A : Nopal_mvu.App.S with type model = model and type msg = msg)
+    (target : Brr.El.t) =
+  let module R = Nopal_runtime.Runtime.Make (A) in
+  let rt = R.create ~focus:focus_element ~schedule_after () in
+  drive
+    ~start:(fun () -> R.start rt)
+    ~set_viewport:(fun vp -> R.set_viewport rt vp)
+    ~view_lwd:(R.view rt)
+    ~dispatch:(fun msg -> R.dispatch rt msg)
+    ~subscriptions:(fun () -> A.subscriptions (R.model rt))
+    ~bridge:None target
+
+let mount_with_telemetry (type model msg)
+    (module A : Nopal_mvu.App.S with type model = model and type msg = msg)
+    ?serialize_msg ?serialize_model (target : Brr.El.t) =
+  let module R = Nopal_runtime.Runtime.Make (A) in
+  let rt, handle =
+    R.create_with_telemetry ~focus:focus_element ~schedule_after ?serialize_msg
+      ?serialize_model ()
+  in
+  drive
+    ~start:(fun () -> R.start rt)
+    ~set_viewport:(fun vp -> R.set_viewport rt vp)
+    ~view_lwd:(R.view rt)
+    ~dispatch:(fun msg -> R.dispatch rt msg)
+    ~subscriptions:(fun () -> A.subscriptions (R.model rt))
+    ~bridge:(Some handle) target;
+  handle

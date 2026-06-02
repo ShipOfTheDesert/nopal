@@ -177,6 +177,21 @@
     :with-test))
   ocaml
   brr
+  js_of_ocaml
+  nopal_runtime
+  nopal_telemetry_wire))
+
+(package
+ (name nopal_telemetry_wire)
+ (synopsis "Shared telemetry wire codec for Nopal web and Tauri backends")
+ (depends
+  (alcotest
+   (and
+    (>= 1.9.1)
+    :with-test))
+  ocaml
+  nopal_runtime
+  brr
   js_of_ocaml))
 
 (package
@@ -238,6 +253,7 @@
   nopal_platform
   nopal_storage
   nopal_storage_web
+  nopal_telemetry_wire
   lwd
   brr
   js_of_ocaml))

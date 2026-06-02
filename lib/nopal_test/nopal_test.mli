@@ -4,3 +4,6 @@
     platform dependencies and compiles on native OCaml. *)
 
 module Test_renderer = Test_renderer
+
+module Telemetry_test = Telemetry_test
+(** Native MVU telemetry harness + assertion helpers (RFC 0110). *)
