@@ -12,13 +12,25 @@ type 'msg t
 val create : unit -> 'msg t
 (** Create an empty subscription manager. *)
 
-val diff : dispatch:('msg -> unit) -> 'msg Nopal_mvu.Sub.t -> 'msg t -> unit
+val diff :
+  ?on_fire:(string -> unit) ->
+  dispatch:('msg -> unit) ->
+  'msg Nopal_mvu.Sub.t ->
+  'msg t ->
+  unit
 (** [diff ~dispatch new_subs mgr] compares [new_subs] against currently active
     subscriptions. Starts subscriptions whose keys are new, stops subscriptions
     whose keys disappeared, leaves stable keys untouched.
 
     Each new subscription's setup function is called with [dispatch] and the
     returned cleanup is stored.
+
+    [on_fire label] is invoked with the firing subscription's
+    {!Nopal_mvu.Sub.describe} label immediately before each message that
+    subscription dispatches. This is the seam the runtime uses to record a
+    {!Nopal_runtime.Telemetry} [Subscription] event. It defaults to a no-op, so
+    subscription firings are unobserved unless a hook is supplied — the manager
+    itself stays telemetry-agnostic.
 
     Only {!Nopal_mvu.Sub.custom} subscriptions are managed here. Built-in
     subscription types ([every], [on_keydown], [on_keyup], [on_resize],

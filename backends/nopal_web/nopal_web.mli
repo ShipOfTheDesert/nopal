@@ -28,9 +28,40 @@ val mount :
     is embedded in a larger page and does not resize with the window, viewport
     updates may not fire.
 
-    This is the only function application code calls from [nopal_web]. It wires
-    everything together: runtime creation, Lwd root subscription, DOM rendering,
-    and event dispatch. *)
+    This wires everything together: runtime creation, Lwd root subscription, DOM
+    rendering, and event dispatch. It records no telemetry and installs no
+    inspection surface — see {!mount_with_telemetry} for the telemetry sibling.
+*)
+
+val mount_with_telemetry :
+  (module Nopal_mvu.App.S with type model = 'model and type msg = 'msg) ->
+  ?serialize_msg:('msg -> string) ->
+  ?serialize_model:('model -> string) ->
+  Brr.El.t ->
+  Nopal_runtime.Telemetry.handle
+(** [mount_with_telemetry (module MyApp) ?serialize_msg ?serialize_model target]
+    is the telemetry sibling of {!mount}: it builds the runtime via
+    {!Nopal_runtime.Runtime.Make.create_with_telemetry}, drives it exactly as
+    {!mount} does, installs the [window.__nopal_telemetry__] browser bridge over
+    its handle (RFC 0110, Layer 2), and returns that handle.
+
+    The on/off distinction is the function name and the [handle] return type —
+    not an optional argument — mirroring the [create] / [create_with_telemetry]
+    split one layer up (RFC 0110, Implementation Decision 2). Because this
+    function both creates and drives the runtime, the bridge always backs the
+    runtime that is actually running, so it can never read an empty log.
+
+    [serialize_msg] / [serialize_model] render recorded values to the strings
+    stored in [Message] and [Model_transition] events; each defaults to
+    [fun _ -> "<opaque>"] (REQ-F4). The returned handle is unforgeable (it can
+    only come from here or {!Nopal_runtime.Runtime.Make.create_with_telemetry})
+    and is the input to Layer 3 ([Nopal_tauri.Telemetry.expose]).
+
+    The bridge exposes [getEvents()] (returns the recorded events, then clears)
+    and [waitForMessage(fragment, timeoutMs)] (resolves on the first [Message]
+    containing [fragment], rejects on timeout). Installing it is an explicit,
+    greppable opt-in; the application is responsible for gating reachability in
+    release builds (REQ-N2). *)
 
 val parse_css_px : string -> int
 (** [parse_css_px raw] parses a CSS pixel value string (e.g. ["42"], ["42px"],

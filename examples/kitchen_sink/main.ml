@@ -278,6 +278,7 @@ let update model msg =
   | App.RemoveKeyedItem _
   | App.MoveKeyedItemUp _
   | App.ToggleInteraction
+  | App.TelemetryPing _
   | App.SubCounterMsg _
   | App.DrawPointerMove _
   | App.DrawPointerLeave
@@ -401,6 +402,161 @@ let update model msg =
   | App.Modal_msg _ ->
       (model', cmd)
 
+(* Readable serialisers for the telemetry log (RFC 0110). Only the interactive
+   messages the E2E telemetry contract asserts on get distinct labels; every
+   other message is enumerated explicitly (no catch-all [_]) so a newly added
+   constructor forces a compile error here rather than silently collapsing to
+   the generic label. *)
+let serialize_msg : App.msg -> string = function
+  | App.ButtonClicked -> "ButtonClicked"
+  | App.InputChanged s -> "InputChanged:" ^ s
+  | App.SubmitInputChanged s -> "SubmitInputChanged:" ^ s
+  | App.InputSubmitted -> "InputSubmitted"
+  | App.AddKeyedItem -> "AddKeyedItem"
+  | App.RemoveKeyedItem id -> Printf.sprintf "RemoveKeyedItem:%d" id
+  | App.MoveKeyedItemUp id -> Printf.sprintf "MoveKeyedItemUp:%d" id
+  | App.ToggleInteraction -> "ToggleInteraction"
+  | App.TelemetryPing label -> "TelemetryPing:" ^ label
+  | App.SubCounterMsg _
+  | App.Ui_msg _
+  | App.Form_msg _
+  | App.Form_controls_msg _
+  | App.Text_input_msg _
+  | App.Focus_keyboard_msg _
+  | App.Toast_msg _
+  | App.Data_table_msg _
+  | App.Virtual_list_msg _
+  | App.Navigation_bar_msg _
+  | App.Modal_msg _
+  | App.DrawPointerMove _
+  | App.DrawPointerLeave
+  | App.ChartHovered _
+  | App.ChartLeft
+  | App.PieHovered _
+  | App.PieLeft
+  | App.ScatterHovered _
+  | App.ScatterLeft
+  | App.HeatMapHovered _
+  | App.HeatMapLeft
+  | App.TradingHovered _
+  | App.TradingLeft
+  | App.PanePointerDown _
+  | App.PanePointerMove _
+  | App.PanePointerUp
+  | App.PanePointerLeave
+  | App.LinePointerDown _
+  | App.LinePointerMove _
+  | App.LinePointerUp
+  | App.LinePointerLeave
+  | App.LineWheelZoom _
+  | App.ZoomIn
+  | App.ZoomOut
+  | App.FetchClicked
+  | App.FetchResult _
+  | App.PostClicked
+  | App.PostResult _
+  | App.PutClicked
+  | App.PutResult _
+  | App.TimeoutClicked
+  | App.TimeoutResult _
+  | App.FetchTauriInfo
+  | App.GotAppName _
+  | App.GotAppVersion _
+  | App.GotTauriVersion _
+  | App.EmitTauriEvent
+  | App.TauriEventReceived _
+  | App.TauriEventEmitted
+  | App.ListenTauriEvents
+  | App.UnlistenTauriEvents
+  | App.GotTauriUnlisten _
+  | App.SetTauriWindowTitle
+  | App.TauriWindowTitleSet
+  | App.UpdateTauriWindowTitleInput _
+  | App.SetTauriFullscreen _
+  | App.QueryTauriFullscreen
+  | App.GotTauriFullscreen _
+  | App.MinimizeTauriWindow
+  | App.TauriWindowMinimized
+  | App.MaximizeTauriWindow
+  | App.UnmaximizeTauriWindow
+  | App.QueryTauriMaximized
+  | App.GotTauriMaximized _
+  | App.CloseTauriWindow
+  | App.TauriWindowClosed
+  | App.UpdateTauriWindowWidth _
+  | App.UpdateTauriWindowHeight _
+  | App.SetTauriWindowSize _
+  | App.TauriWindowSizeSet
+  | App.QueryTauriInnerSize
+  | App.GotWindowInnerSize _
+  | App.ShowTauriWindow
+  | App.HideTauriWindow
+  | App.QueryTauriVisible
+  | App.GotTauriVisible _
+  | App.SetTauriWindowFocus
+  | App.TauriWindowFocused
+  | App.CenterTauriWindow
+  | App.TauriWindowCentered
+  | App.GotPlatform _
+  | App.HideToTray
+  | App.TrayHidden
+  | App.TrayClicked
+  | App.TrayRestored
+  | App.UpdateTrayTooltipInput _
+  | App.SetTrayTooltip
+  | App.TrayTooltipSet
+  | App.SetTrayIconVisible _
+  | App.TrayIconVisibleSet
+  | App.StorageKeyChanged _
+  | App.StorageValueChanged _
+  | App.StorageSet
+  | App.StorageSetResult _
+  | App.StorageGet
+  | App.StorageGetResult _
+  | App.StorageDelete
+  | App.StorageDeleteResult _
+  | App.StorageList
+  | App.StorageListResult _
+  | App.StorageClear
+  | App.StorageClearResult _
+  | App.StorageReload
+  | App.CodecIncrement
+  | App.CodecSave
+  | App.CodecSaveResult _
+  | App.CodecLoad
+  | App.CodecLoadResult _
+  | App.CodecCorrupt
+  | App.CodecCorruptResult _
+  | App.TauriStoreKeyChanged _
+  | App.TauriStoreValueChanged _
+  | App.TauriStoreSet
+  | App.TauriStoreSetResult _
+  | App.TauriStoreGet
+  | App.TauriStoreGetResult _
+  | App.TauriStoreDelete
+  | App.TauriStoreDeleteResult _
+  | App.TauriStoreClear
+  | App.TauriStoreClearResult _
+  | App.TauriStoreSave
+  | App.TauriStoreSaveResult _ ->
+      "<msg>"
+
+let serialize_model (model : App.model) =
+  let open App in
+  Printf.sprintf "{pings=%d; clicks=%d; input=%S}" model.telemetry_pings
+    model.button_clicks model.input_text
+
+(* The application owns telemetry policy: telemetry is on by default for the
+   kitchen sink (it is the live E2E target), and disabled with [?telemetry=off]
+   so the bridge-absent path is exercisable against the same app. *)
+let telemetry_enabled () =
+  let location = Jv.get (Jv.get Jv.global "window") "location" in
+  let params =
+    Jv.new' (Jv.get Jv.global "URLSearchParams") [| Jv.get location "search" |]
+  in
+  let value = Jv.call params "get" [| Jv.of_string "telemetry" |] in
+  Jv.is_null value || not (String.equal (Jv.to_string value) "off")
+
 let () =
   Nopal_http.register_backend { Nopal_http.send = Nopal_http_web.send };
   Nopal_http.register_cancellable_backend
@@ -415,20 +571,25 @@ let () =
         El.append_children body [ div ];
         div
   in
-  Nopal_web.mount
-    (module struct
-      type model = App.model
-      type msg = App.msg
+  let module Mounted = struct
+    type model = App.model
+    type msg = App.msg
 
-      let init = init
-      let update = update
-      let view = App.view
+    let init = init
+    let update = update
+    let view = App.view
 
-      let subscriptions model =
-        let base = App.subscriptions model in
-        if has_tauri () then
-          Nopal_mvu.Sub.batch
-            [ base; Nopal_tauri.Tray.on_click App.TrayClicked ]
-        else base
-    end)
-    target
+    let subscriptions model =
+      let base = App.subscriptions model in
+      if has_tauri () then
+        Nopal_mvu.Sub.batch [ base; Nopal_tauri.Tray.on_click App.TrayClicked ]
+      else base
+  end in
+  if telemetry_enabled () then
+    let (_ : Nopal_runtime.Telemetry.handle) =
+      Nopal_web.mount_with_telemetry
+        (module Mounted)
+        ~serialize_msg ~serialize_model target
+    in
+    ()
+  else Nopal_web.mount (module Mounted) target

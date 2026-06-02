@@ -41,6 +41,26 @@ let test_cmd_after_records_delay () =
       Alcotest.(check string) "msg is tick" "tick" msg
   | None -> Alcotest.fail "expected Some from extract_after"
 
+let test_cmd_is_none () =
+  Alcotest.(check bool)
+    "none is none" true
+    (Nopal_mvu.Cmd.is_none Nopal_mvu.Cmd.none);
+  Alcotest.(check bool)
+    "empty batch is not none (it is a batch)" false
+    (Nopal_mvu.Cmd.is_none (Nopal_mvu.Cmd.batch []));
+  Alcotest.(check bool)
+    "perform is not none" false
+    (Nopal_mvu.Cmd.is_none (Nopal_mvu.Cmd.perform (fun d -> d 1)));
+  Alcotest.(check bool)
+    "task is not none" false
+    (Nopal_mvu.Cmd.is_none (Nopal_mvu.Cmd.task (Nopal_mvu.Task.return 1)));
+  Alcotest.(check bool)
+    "after is not none" false
+    (Nopal_mvu.Cmd.is_none (Nopal_mvu.Cmd.after 10 1));
+  Alcotest.(check bool)
+    "focus is not none" false
+    (Nopal_mvu.Cmd.is_none (Nopal_mvu.Cmd.focus "id"))
+
 let test_cmd_map_transforms () =
   let results = ref [] in
   let dispatch msg = results := msg :: !results in
@@ -150,6 +170,7 @@ let () =
       ( "Cmd",
         [
           Alcotest.test_case "none is unit" `Quick test_cmd_none_is_unit;
+          Alcotest.test_case "is_none classifies" `Quick test_cmd_is_none;
           Alcotest.test_case "batch flattens" `Quick test_cmd_batch_flattens;
           Alcotest.test_case "batch empty" `Quick test_cmd_batch_empty;
           Alcotest.test_case "perform dispatches" `Quick

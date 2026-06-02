@@ -24,13 +24,14 @@ nopal_charts    ← Composable interactive charts (Bar, Line, Area, Pie, Scatter
                    Color_scale, Domain_window, Viewport, Downsample, Snap)
 nopal_http      ← Pure HTTP types + backend abstraction — no platform deps
 nopal_ui        ← High-level UI components (Button, Checkbox, Data_table, Modal, Navigation_bar, Radio_group, Select_input, Slug, Text_input, Toast) — no platform deps
-nopal_runtime   ← Lwd reactive integration + MVU loop
-nopal_test      ← Pure OCaml test renderer — no js_of_ocaml
+nopal_runtime   ← Lwd reactive integration + MVU loop; Telemetry (E2E event log)
+nopal_test      ← Pure OCaml test renderer + Telemetry_test harness — no js_of_ocaml
 nopal_web       ← js_of_ocaml + Brr DOM renderer (only browser-dependent package)
 nopal_http_web  ← Browser Fetch API backend for nopal_http — js_of_ocaml + Brr
 nopal_storage_web   ← IndexedDB backend implementing Nopal_storage.S — js_of_ocaml + Brr
 nopal_storage_tauri ← Filesystem (tauri-plugin-fs) backend implementing Nopal_storage.S — js_of_ocaml + Brr
 nopal_tauri     ← Tauri desktop/mobile bindings — depends on nopal_mvu (for Task.t), nopal_platform (for Platform.S)
+nopal_telemetry_wire ← Shared telemetry event ⇄ JS wire codec for nopal_web + nopal_tauri — js_of_ocaml + Brr
 ```
 
 Critical boundary: `nopal_element`, `nopal_style`, `nopal_test`, `nopal_platform`, `nopal_storage` must compile on native OCaml without js_of_ocaml. Application view code never imports `nopal_web` or `Brr`.
@@ -1578,6 +1579,36 @@ Test_renderer.run_app :
   'msg list -> 'model * 'msg rendered
 ```
 
+#### Telemetry harness (`Nopal_test.Telemetry_test`)
+
+Native, browser-free harness that drives a real app through the recording MVU
+loop (via `Runtime.create_with_telemetry` + an immediate scheduler) and asserts
+on the recorded event history. See the E2E Telemetry section for the layered
+model the events come from.
+
+```ocaml
+Telemetry_test.run_with_telemetry :
+  (module Nopal_mvu.App.S with type model = 'model and type msg = 'msg) ->
+  ?serialize_msg:('msg -> string) ->
+  ?serialize_model:('model -> string) ->
+  'msg list ->
+  'model * Nopal_runtime.Telemetry.event list
+(* Dispatches each message synchronously through the real loop, recording every
+   message/transition/command/subscription, then returns the final model and the
+   ordered event list. If application code raises mid-sequence, the recorded
+   history is dumped to stderr and the ORIGINAL exception is re-raised unchanged
+   (backtrace intact). The log is cleared on exit either way. *)
+
+(* Assertion helpers — each raises Failure with a diagnostic listing the actual
+   recorded events. fragment = substring match, the cross-language contract. *)
+Telemetry_test.assert_dispatched     : Telemetry.event list -> fragment:string -> unit
+  (* some Message contains fragment *)
+Telemetry_test.assert_sequence       : Telemetry.event list -> fragments:string list -> unit
+  (* each fragment appears as a Message in order; unrelated events allowed between *)
+Telemetry_test.assert_model_contains : Telemetry.event list -> fragment:string -> unit
+  (* some Model_transition.after contains fragment *)
+```
+
 ### Web Renderer (`nopal_web`)
 
 Mount an app to the DOM (the only package with browser dependencies):
@@ -1586,6 +1617,17 @@ Mount an app to the DOM (the only package with browser dependencies):
 Nopal_web.mount :
   (module Nopal_mvu.App.S with type model = 'model and type msg = 'msg)
   -> Brr.El.t -> unit
+(* Records no telemetry and installs no bridge. *)
+
+(* Telemetry sibling of mount — see the E2E Telemetry section (Layer 2) *)
+Nopal_web.mount_with_telemetry :
+  (module Nopal_mvu.App.S with type model = 'model and type msg = 'msg)
+  -> ?serialize_msg:('msg -> string)      (* default: fun _ -> "<opaque>" *)
+  -> ?serialize_model:('model -> string)  (* default: fun _ -> "<opaque>" *)
+  -> Brr.El.t -> Nopal_runtime.Telemetry.handle
+(* Builds a recording runtime, drives it, installs window.__nopal_telemetry__
+   over its handle, and returns that handle (the input to Layer 3). Presence is
+   the function name + handle return type, never an optional argument. *)
 
 (* Browser platform: navigation + storage capabilities *)
 module Platform_web : Nopal_platform.Platform.S   (* storage = Nopal_storage_web.Make () *)
@@ -1660,6 +1702,15 @@ type Event.event = { payload : string }
 type Event.unlisten = unit -> unit
 val Event.emit   : string -> string -> unit Nopal_mvu.Task.t
 val Event.listen : string -> (Event.event -> unit) -> (Event.unlisten -> unit) -> unit
+
+(* Telemetry — Layer 3 host surface (opt-in). See the E2E Telemetry section. *)
+val Telemetry.expose : Nopal_runtime.Telemetry.handle -> unit
+  (* Registers a forwarder mirroring each event into the Tauri host process,
+     enabling get_telemetry from outside the webview. No-op surface unless called. *)
+val Telemetry.get_telemetry :
+  unit -> (Nopal_runtime.Telemetry.event list, string) result Nopal_mvu.Task.t
+  (* Queries the host-side mirror via Ipc.invoke. Async (Task.t), not a sync
+     result — the IPC reply arrives via a promise (RFC 0110 Decision 3). *)
 ```
 
 Usage pattern — `Cmd.task` + `Task.Syntax` composition:
@@ -1730,6 +1781,132 @@ let subscriptions model =
     (model, Cmd.task task)
 ```
 
+## E2E Telemetry
+
+Nopal's cross-platform E2E correctness contract is the MVU telemetry log, not
+DOM assertions (ADR 0108): tests trigger interactions with standard automation,
+then assert that the right messages were dispatched and the model reached the
+right state. Telemetry is a **layered, explicit, type-tracked capability** — never
+build-gated, never default-on. Each more-exposed surface is a strictly more
+explicit opt-in built from the layer below.
+
+| Layer | Entry point | Grants | Exposure |
+|-------|-------------|--------|----------|
+| 0 | `Runtime.create` | A runtime that records nothing | none |
+| 1 | `Runtime.create_with_telemetry` | In-process recording + a `Telemetry.handle` (the only way to get one) | in-process |
+| 2 | `Nopal_web.mount_with_telemetry` (returns the handle) | `window.__nopal_telemetry__` browser bridge | browser/JS |
+| 3 | `Nopal_tauri.Telemetry.expose handle` | `get_telemetry` query + `simulate_*` synthetic IPC | Tauri host |
+
+A `Telemetry.handle` is **unforgeable**: the public `Telemetry` signature exposes
+`type handle` abstractly with query operations but no constructor, so the only way
+to obtain one is `create_with_telemetry` (or a mount that calls it). On/off is
+carried by *which constructor / which mount* you call — never an optional argument.
+Each higher layer consumes a handle, so you cannot install the browser bridge or
+the IPC surface without having explicitly mounted a telemetry-bearing runtime.
+Presence is therefore always greppable and deliberate.
+
+**Application-gating responsibility.** The framework guarantees telemetry is never
+*implicit* — every surface is explicit, type-tracked, and auditable. It does NOT
+strip telemetry from release builds (that would forbid legitimate release-build QA
+and release-only-defect diagnosis). The browser bridge and the Tauri synthetic/
+query commands expose application state and synthetic triggers, so **the application
+is responsible for gating their reachability** in release builds (e.g. behind
+authentication, a QA-only config flag, or remote config). The framework makes the
+choice explicit and greppable; it does not make it safe-by-fiat.
+
+```ocaml
+(* The application owns the policy; the framework provides composable capability. *)
+match Config.telemetry_mode config with   (* the app's enum, the app's config *)
+| Off ->
+    Nopal_web.mount (module App) target
+| Record_and_expose ->
+    let handle =
+      Nopal_web.mount_with_telemetry (module App)
+        ~serialize_msg ~serialize_model target
+    in
+    Nopal_tauri.Telemetry.expose handle    (* Layer 3, optional, from the same handle *)
+```
+
+### Telemetry event log (`Nopal_runtime.Telemetry`)
+
+The public re-export is the narrowed query view — `event`, abstract `handle`, and
+queries only. `recorder`, `create`, and the recording ops are hidden so a handle is
+unforgeable outside `Runtime`.
+
+```ocaml
+type Telemetry.event =
+  | Message of string                                    (* dispatched msg, serialised or "<opaque>" *)
+  | Model_transition of { before : string; after : string }  (* one update's state change *)
+  | Command of string                                    (* command issued, by Cmd.describe label *)
+  | Subscription of string                               (* subscription fired, by Sub.describe label *)
+
+type Telemetry.handle   (* abstract, no constructor *)
+val Telemetry.events    : handle -> event list           (* recorded events, oldest first *)
+val Telemetry.clear     : handle -> unit
+val Telemetry.on_record : handle -> (event -> unit) -> unit -> unit  (* sink per event; returns a disposer that unregisters it; sinks compose *)
+val Telemetry.pp_events : Format.formatter -> event list -> unit  (* failure diagnostics *)
+```
+
+Runtime constructors (`Nopal_runtime.Runtime.Make(A)`):
+
+```ocaml
+val create :
+  ?focus:(string -> unit) -> ?schedule_after:(int -> (unit -> unit) -> unit) ->
+  unit -> t
+(* Records nothing. Behaviour unchanged from the pre-telemetry runtime. *)
+
+val create_with_telemetry :
+  ?focus:(string -> unit) -> ?schedule_after:(int -> (unit -> unit) -> unit) ->
+  ?serialize_msg:(A.msg -> string) ->        (* default: fun _ -> "<opaque>" *)
+  ?serialize_model:(A.model -> string) ->    (* default: fun _ -> "<opaque>" *)
+  unit -> t * Telemetry.handle
+(* Records every dispatched message, model transition, command, and subscription
+   firing; returns the only handle in existence for this runtime. A plain `create`
+   runtime does zero per-message recording work (REQ-N1, by inspection). *)
+```
+
+Constructor labels for the `Command`/`Subscription` events (stable strings the
+fragment assertions depend on):
+
+```ocaml
+val Cmd.describe : 'msg Cmd.t -> string   (* "none" | "batch" | "perform" | "task" | "after" | "focus" *)
+val Sub.describe : 'msg Sub.t -> string   (* "none" | "batch" | "every" | "on_keydown" | ... | "custom" *)
+```
+
+### Browser bridge — `window.__nopal_telemetry__` (Layer 2)
+
+Installed only by `mount_with_telemetry`; absent on a plain `mount`.
+
+```ts
+interface NopalTelemetryBridge {
+  getEvents(): TelemetryEvent[];                              // full list, then clears
+  waitForMessage(fragment: string, timeoutMs: number): Promise<void>;
+                                                              // resolves on first matching Message; rejects on timeout
+}
+```
+
+### Playwright class — `NopalTelemetry` (`test/e2e/tests/nopal-telemetry.ts`)
+
+```ts
+class NopalTelemetry {
+  constructor(page: Page);                  // wraps window.__nopal_telemetry__ (Layer 2, web only)
+  events(): Promise<TelemetryEvent[]>;
+  waitForMessage(fragment: string, timeoutMs: number): Promise<void>;
+  assertDispatched(fragment: string): Promise<void>;
+  assertSequence(fragments: string[]): Promise<void>;
+  assertModelContains(fragment: string): Promise<void>;
+  attachHistory(testInfo: TestInfo): Promise<void>;   // attach event history to the report before cleanup
+}
+```
+
+The `NopalTelemetry` class is **web-only**: it wraps the Layer 2 browser bridge.
+Layer 3 (Tauri host) is queried from OCaml via `Nopal_tauri.Telemetry.get_telemetry`
+or, from a host-side driver, the raw `invoke("get_telemetry")` command. There is no
+CI Tauri runtime today (per RFC 0077/0107), so Layer 3 is validated by the manual
+checklist in `docs/guides/telemetry-tauri.md`. A headless Tauri E2E harness (which
+would let the same assertion spec run against web and Tauri) is tracked in
+`ROADMAP.md`.
+
 ## Coding Rules
 
 - Never `raise` for recoverable errors — return `('a, error) result`
@@ -1760,14 +1937,15 @@ lib/
                        Color_scale, Domain_window, Viewport, Downsample, Snap
   nopal_http/        — Pure HTTP types + backend abstraction
   nopal_ui/          — High-level UI components (Button, Checkbox, Data_table, Modal, Navigation_bar, Radio_group, Select_input, Slug, Text_input, Toast)
-  nopal_runtime/     — Lwd integration + MVU loop
-  nopal_test/        — Pure OCaml test renderer
+  nopal_runtime/     — Lwd integration + MVU loop; Telemetry (E2E event log)
+  nopal_test/        — Pure OCaml test renderer + Telemetry_test harness
 backends/
   nopal_web/         — js_of_ocaml + Brr DOM renderer
   nopal_http_web/    — Browser Fetch API backend for nopal_http
   nopal_storage_web/   — IndexedDB backend implementing Nopal_storage.S
   nopal_storage_tauri/ — Filesystem (tauri-plugin-fs) backend implementing Nopal_storage.S
   nopal_tauri/       — Tauri desktop/mobile bindings (depends on nopal_mvu, nopal_platform)
+  nopal_telemetry_wire/ — Shared telemetry event ⇄ JS wire codec (nopal_web + nopal_tauri)
 examples/
   counter/           — Hello world
   todomvc/           — Complex app with routing & localStorage

@@ -11,6 +11,7 @@
   nopal_platform
   nopal_storage
   nopal_storage_web
+  nopal_telemetry_wire
   lwd
   brr
   js_of_ocaml))

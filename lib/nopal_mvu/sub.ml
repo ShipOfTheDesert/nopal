@@ -45,6 +45,18 @@ let rec keys sub =
   | On_keydown_prevent { key; _ } -> [ key ]
   | Custom { key; _ } -> [ key ]
 
+let describe = function
+  | None -> "none"
+  | Batch _ -> "batch"
+  | Every _ -> "every"
+  | On_keydown _ -> "on_keydown"
+  | On_keyup _ -> "on_keyup"
+  | On_resize _ -> "on_resize"
+  | On_visibility_change _ -> "on_visibility_change"
+  | On_viewport_change _ -> "on_viewport_change"
+  | On_keydown_prevent _ -> "on_keydown_prevent"
+  | Custom _ -> "custom"
+
 let rec map f sub =
   match sub with
   | None -> None

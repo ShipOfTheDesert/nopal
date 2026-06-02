@@ -101,6 +101,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     keyed_items : (int * string) list;
     next_keyed_id : int;
     interaction_toggled : bool;
+    telemetry_pings : int;
     sub_counter : Sub_counter.model;
     draw_pointer : (float * float) option;
     chart_hover : Hover.t option;
@@ -161,6 +162,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | RemoveKeyedItem of int
     | MoveKeyedItemUp of int
     | ToggleInteraction
+    | TelemetryPing of string
     | SubCounterMsg of Sub_counter.msg
     | Ui_msg of Kitchen_sink_ui.msg
     | Form_msg of Kitchen_sink_form.msg
@@ -304,6 +306,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         keyed_items = [ (1, "Item 1"); (2, "Item 2"); (3, "Item 3") ];
         next_keyed_id = 4;
         interaction_toggled = false;
+        telemetry_pings = 0;
         sub_counter;
         draw_pointer = None;
         chart_hover = None;
@@ -410,6 +413,9 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           Nopal_mvu.Cmd.none )
     | ToggleInteraction ->
         ( { model with interaction_toggled = not model.interaction_toggled },
+          Nopal_mvu.Cmd.none )
+    | TelemetryPing _label ->
+        ( { model with telemetry_pings = model.telemetry_pings + 1 },
           Nopal_mvu.Cmd.none )
     | SubCounterMsg sub_msg ->
         let sub_counter, sub_cmd =
@@ -1136,6 +1142,48 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           (Element.text "Styled button");
         Element.button ~style:disabled_style
           (Element.text "Disabled-appearance button");
+      ]
+
+  (* Telemetry: a section whose interactions are recorded by the MVU telemetry
+     log (RFC 0110). When the kitchen sink is mounted with
+     [Nopal_web.mount_with_telemetry], each ping is a [Message] in
+     [window.__nopal_telemetry__]; the E2E bridge specs drive these buttons. *)
+  let view_telemetry model =
+    let ping_button_style =
+      Style.default
+      |> Style.with_layout (fun l -> l |> Style.padding 6.0 16.0 6.0 16.0)
+    in
+    let row_style =
+      Style.default
+      |> Style.with_layout (fun l ->
+          { l with gap = Some 8.0; cross_align = Some Center })
+    in
+    Element.column ~style:section_style
+      ~attrs:[ ("data-section", "telemetry") ]
+      [
+        Element.text "Telemetry";
+        Element.column ~style:section_body_style
+          [
+            Element.text
+              "Each ping dispatches a message recorded by the MVU telemetry \
+               log.";
+            Element.row ~style:row_style
+              [
+                Element.button ~style:ping_button_style
+                  ~attrs:[ ("data-testid", "telemetry-ping-alpha") ]
+                  ~on_click:(TelemetryPing "alpha")
+                  (Element.text "Ping alpha");
+                Element.button ~style:ping_button_style
+                  ~attrs:[ ("data-testid", "telemetry-ping-beta") ]
+                  ~on_click:(TelemetryPing "beta") (Element.text "Ping beta");
+                Element.box
+                  ~attrs:[ ("data-testid", "telemetry-ping-count") ]
+                  [
+                    Element.text
+                      ("Pings: " ^ string_of_int model.telemetry_pings);
+                  ];
+              ];
+          ];
       ]
 
   (* Section 4: Inputs (REQ-F4) *)
@@ -3071,6 +3119,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
            view_typography model;
            view_layout model;
            view_buttons model;
+           view_telemetry model;
            view_inputs model;
            view_section
              ~attrs:[ ("data-testid", "form-primitives-section") ]

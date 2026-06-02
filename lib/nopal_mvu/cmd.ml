@@ -22,6 +22,23 @@ let task t = Task t
 let after ms msg = After { ms; msg }
 let focus id = Focus { id }
 
+let is_none = function
+  | None -> true
+  | Batch _
+  | Perform _
+  | Task _
+  | After _
+  | Focus _ ->
+      false
+
+let describe = function
+  | None -> "none"
+  | Batch _ -> "batch"
+  | Perform _ -> "perform"
+  | Task _ -> "task"
+  | After _ -> "after"
+  | Focus _ -> "focus"
+
 let rec map f cmd =
   match cmd with
   | None -> None

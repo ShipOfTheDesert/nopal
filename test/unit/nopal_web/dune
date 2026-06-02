@@ -41,3 +41,23 @@
  (modes js)
  (js_of_ocaml
   (javascript_files browser_shim.js)))
+
+; mount_shim.js adds a ResizeObserver stub and a no-op requestAnimationFrame on
+; top of dom_shim.js, so the mount/drive path can be exercised synchronously
+; without an infinite rAF loop. See mount_shim.js for the rationale.
+
+(test
+ (name test_mount_telemetry)
+ (package nopal_web)
+ (libraries
+  nopal_web
+  nopal_element
+  nopal_style
+  nopal_runtime
+  nopal_mvu
+  alcotest
+  brr
+  js_of_ocaml)
+ (modes js)
+ (js_of_ocaml
+  (javascript_files dom_shim.js mount_shim.js)))

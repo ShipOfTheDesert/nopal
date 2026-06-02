@@ -21,3 +21,7 @@
   nopal_style
   test_util
   alcotest))
+
+(test
+ (name test_telemetry_harness)
+ (libraries nopal_test nopal_runtime nopal_mvu nopal_element alcotest))

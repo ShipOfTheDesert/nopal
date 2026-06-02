@@ -29,6 +29,33 @@ module Make (A : Nopal_mvu.App.S) : sig
       called. This means {!model} returns the init value immediately after
       [create], before [start] is called. *)
 
+  val create_with_telemetry :
+    ?focus:(string -> unit) ->
+    ?schedule_after:(int -> (unit -> unit) -> unit) ->
+    ?serialize_msg:(A.msg -> string) ->
+    ?serialize_model:(A.model -> string) ->
+    unit ->
+    t * Telemetry.handle
+  (** [create_with_telemetry ?focus ?schedule_after ?serialize_msg
+       ?serialize_model ()] builds a runtime that records every dispatched
+      message, model transition, issued command, and subscription firing into an
+      in-process log, and returns it alongside the {!Telemetry.handle} that
+      queries that log.
+
+      [focus] and [schedule_after] behave exactly as in {!create}. The returned
+      runtime has the same type [t] and identical loop semantics — telemetry
+      only observes, it never alters dispatch behaviour (REQ-N3).
+
+      [serialize_msg] / [serialize_model] render recorded values to the strings
+      stored in [Message] and [Model_transition] events. Each defaults to
+      [fun _ -> "<opaque>"]: omitting a serialiser still records the event, just
+      with the [<opaque>] placeholder for that side (REQ-F4).
+
+      The returned handle is the only one in existence for this runtime, and it
+      cannot be forged elsewhere — this is the sole way to obtain a
+      {!Telemetry.handle} (REQ-N1/N2). A runtime built by {!create} records
+      nothing and yields no handle. *)
+
   val start : t -> unit
   (** Execute the init command, set up initial subscriptions, and begin
       accepting dispatches. The initial model is already set at {!create} time.

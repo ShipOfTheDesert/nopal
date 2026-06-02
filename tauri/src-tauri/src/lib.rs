@@ -1,5 +1,34 @@
-#[cfg(not(target_os = "linux"))]
-use tauri::{Emitter, Manager};
+use serde_json::Value;
+use std::sync::Mutex;
+use tauri::{Emitter, Listener, Manager};
+
+// Host-side mirror of the in-webview telemetry log (RFC 0110, Layer 3). Always
+// compiled, but inert until the OCaml side calls `Nopal_tauri.Telemetry.expose`,
+// which registers a forwarder that emits each event as `nopal:telemetry`. The
+// listener registered in `run`'s setup appends those into this Vec, so
+// `get_telemetry` can return the log from outside the webview.
+struct TelemetryMirror(Mutex<Vec<Value>>);
+
+#[tauri::command]
+fn get_telemetry(mirror: tauri::State<'_, TelemetryMirror>) -> Vec<Value> {
+    match mirror.0.lock() {
+        Ok(log) => log.clone(),
+        Err(_) => Vec::new(),
+    }
+}
+
+#[tauri::command]
+fn simulate_tray_click(app: tauri::AppHandle) {
+    // Reuse the real tray-click signal; only the trigger is synthetic (REQ-F6).
+    let _ = app.emit("nopal:tray-click", "Left");
+}
+
+#[tauri::command]
+fn simulate_back_pressed(app: tauri::AppHandle) {
+    // Phase 3: replace with Appium-driven OS event.
+    // Desktop has no hardware back button, so nothing listens — a no-op there.
+    let _ = app.emit("nopal:back-pressed", ());
+}
 
 #[cfg(target_os = "linux")]
 mod tray_linux {
@@ -76,7 +105,27 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
+        .manage(TelemetryMirror(Mutex::new(Vec::new())))
+        .invoke_handler(tauri::generate_handler![
+            get_telemetry,
+            simulate_tray_click,
+            simulate_back_pressed
+        ])
         .setup(|app| {
+            // Feed the host-side mirror from the in-webview forwarder
+            // (RFC 0110, Layer 3). Inert until `Nopal_tauri.Telemetry.expose`
+            // starts emitting `nopal:telemetry`.
+            let mirror_handle = app.handle().clone();
+            app.listen("nopal:telemetry", move |event| {
+                if let Ok(value) = serde_json::from_str::<Value>(event.payload()) {
+                    if let Some(state) = mirror_handle.try_state::<TelemetryMirror>() {
+                        if let Ok(mut log) = state.0.lock() {
+                            log.push(value);
+                        }
+                    }
+                }
+            });
+
             #[cfg(target_os = "linux")]
             tray_linux::setup(app);
 

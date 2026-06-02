@@ -1,0 +1,4 @@
+(library
+ (name nopal_telemetry_wire)
+ (public_name nopal_telemetry_wire)
+ (libraries nopal_runtime brr js_of_ocaml))

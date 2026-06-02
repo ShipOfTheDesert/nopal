@@ -1,0 +1,6 @@
+(test
+ (name test_telemetry_wire)
+ (package nopal_telemetry_wire)
+ (libraries nopal_telemetry_wire nopal_runtime alcotest brr)
+ (modes js)
+ (js_of_ocaml))

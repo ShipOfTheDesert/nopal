@@ -1,7 +1,9 @@
 (tests
  (names
   test_cmd
+  test_cmd_describe
   test_sub
+  test_sub_describe
   test_sub_viewport
   test_app
   test_task

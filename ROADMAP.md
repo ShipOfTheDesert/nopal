@@ -241,6 +241,39 @@ any pane zooms all panes via the shared `Domain_window.t`. The E2E test
 not crash — update it to verify that the domain window actually changes
 after a wheel event.
 
+### Headless Tauri E2E Telemetry Harness
+
+**Package:** `test/e2e/`, `nopal_tauri`, `tauri/src-tauri/`
+
+Layer 3 of the E2E telemetry infrastructure (RFC 0110) — `Nopal_tauri.Telemetry`
+(`expose` / `get_telemetry`) and the Rust host commands (`get_telemetry`,
+`simulate_tray_click`, `simulate_back_pressed`) — is wired and compiles, but has
+**no automated test at any level**. The Tauri runtime is absent in CI (per RFC
+0077/0107), so today the only validation is the manual checklist in
+`docs/guides/telemetry-tauri.md`. The pure OCaml wire codec is unit-tested
+(`nopal_telemetry_wire`), but the IPC round-trip and the Rust commands are not.
+
+Playwright cannot drive a Tauri webview, so the documented "same spec runs against
+web and Tauri" symmetry does not yet exist in code (the `NopalTelemetry` Playwright
+class is web-only).
+
+The solution should provide:
+
+- A **headless Tauri E2E harness** — `tauri-driver` + WebDriverIO (the supported
+  Tauri automation path), with a `WebKitWebDriver` available in CI for Linux.
+- A **`NopalTelemetry.tauri(invoke)` factory** (or an equivalent WebDriver-side
+  wrapper) that queries the Layer 3 `get_telemetry` command, so the existing
+  assertion API (`assertDispatched` / `assertSequence` / `assertModelContains`)
+  runs unchanged against the Tauri host log — making the web/Tauri assertion
+  symmetry real.
+- A **Tauri telemetry spec** exercising the full round-trip: `expose` →
+  `simulate_tray_click` → app dispatch → recorder → forwarder → host mirror →
+  `get_telemetry`, plus the "absent without opt-in" and synthetic-trigger cases
+  currently in the manual checklist.
+
+Until this lands, `docs/guides/telemetry-tauri.md`'s manual checklist remains the
+acceptance gate for Layer 3.
+
 ### Multi-Browser E2E Testing
 
 **Package:** `test/e2e/`
