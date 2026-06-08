@@ -548,6 +548,7 @@ let view_header model =
   E.column ~style:header_style
     [
       E.input ~style:input_style ~interaction:input_interaction
+        ~attrs:[ ("data-field", "todo-title") ]
         ~placeholder:"What needs to be done?"
         ~on_change:(fun s -> Input_changed s)
         ~on_submit:Add_todo model.input;

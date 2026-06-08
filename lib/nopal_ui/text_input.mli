@@ -30,7 +30,11 @@ val error_id : 'msg config -> string
     derives the ID by slugifying [config.label] and appending ["-error"]. *)
 
 val view : 'msg config -> 'msg Nopal_element.Element.t
-(** [view config] renders a vertical column containing:
+(** Renders the text input, which carries [data-field=<input id>] (the [id],
+    defaulting to the slugified label when unset). This anchor is the E2E
+    selector contract (RFC 0112) and is asserted by [test_anchors.ml].
+
+    [view config] renders a vertical column containing:
 
     1. A label ([Element.text]) 2. An input ([Element.input]) with the config's
     value, placeholder, and event handlers 3. When [config.error] is [Some msg],

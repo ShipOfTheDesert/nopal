@@ -66,6 +66,8 @@ let view config =
           ("role", "tab");
           ("aria-selected", if is_active then "true" else "false");
           ("data-testid", "nav-tab-" ^ tab.id);
+          ("data-action", "nav-navigate");
+          ("data-field", tab.id);
         ]
       content
   in

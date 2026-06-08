@@ -2,6 +2,16 @@
    its IndexedDB-backed storage) is selected here, the only place Brr appears. *)
 module App = Kitchen_sink_app.Make (Nopal_web.Platform_web)
 
+(* Component sub-apps, re-exported by [Kitchen_sink_app] so [serialize_msg]
+   below can name their message constructors (RFC 0112, Step 5). *)
+module Kitchen_sink_ui = Kitchen_sink_app.Kitchen_sink_ui
+module Kitchen_sink_form_controls = Kitchen_sink_app.Kitchen_sink_form_controls
+module Kitchen_sink_text_input = Kitchen_sink_app.Kitchen_sink_text_input
+module Sub_toast = Kitchen_sink_app.Sub_toast
+module Sub_data_table = Kitchen_sink_app.Sub_data_table
+module Sub_navigation_bar = Kitchen_sink_app.Sub_navigation_bar
+module Sub_modal = Kitchen_sink_app.Sub_modal
+
 let has_tauri () =
   not (Jv.is_undefined (Jv.get Jv.global "__TAURI_INTERNALS__"))
 
@@ -371,6 +381,7 @@ let update model msg =
   | App.StorageListResult _
   | App.StorageClear
   | App.StorageClearResult _
+  | App.StorageRestored _
   | App.CodecIncrement
   | App.CodecSave
   | App.CodecSaveResult _
@@ -399,7 +410,8 @@ let update model msg =
   | App.Data_table_msg _
   | App.Virtual_list_msg _
   | App.Navigation_bar_msg _
-  | App.Modal_msg _ ->
+  | App.Modal_msg _
+  | App.SubWizardMsg _ ->
       (model', cmd)
 
 (* Readable serialisers for the telemetry log (RFC 0110). Only the interactive
@@ -417,17 +429,73 @@ let serialize_msg : App.msg -> string = function
   | App.MoveKeyedItemUp id -> Printf.sprintf "MoveKeyedItemUp:%d" id
   | App.ToggleInteraction -> "ToggleInteraction"
   | App.TelemetryPing label -> "TelemetryPing:" ^ label
+  (* Component messages the per-component E2E telemetry contract asserts on
+     (RFC 0112, Step 5). Each inner match is exhaustive so a newly added sub
+     constructor forces a compile error here rather than silently collapsing to
+     the generic "<msg>" label below. *)
+  | App.Ui_msg (Kitchen_sink_ui.ButtonClicked label) -> "ButtonClicked:" ^ label
+  | App.Form_controls_msg (Kitchen_sink_form_controls.Toggle_agree v) ->
+      "Toggle_agree:" ^ string_of_bool v
+  | App.Form_controls_msg (Kitchen_sink_form_controls.Select_color v) ->
+      "Select_color:" ^ v
+  | App.Form_controls_msg (Kitchen_sink_form_controls.Change_size v) ->
+      "Change_size:" ^ v
+  | App.Text_input_msg (Kitchen_sink_text_input.Default_changed v) ->
+      "Default_changed:" ^ v
+  | App.Text_input_msg Kitchen_sink_text_input.Default_submitted ->
+      "Default_submitted"
+  | App.Text_input_msg (Kitchen_sink_text_input.Placeholder_changed v) ->
+      "Placeholder_changed:" ^ v
+  | App.Text_input_msg (Kitchen_sink_text_input.Error_changed v) ->
+      "Error_changed:" ^ v
+  | App.Toast_msg Sub_toast.ShowInfo -> "Toast:ShowInfo"
+  | App.Toast_msg Sub_toast.ShowSuccess -> "Toast:ShowSuccess"
+  | App.Toast_msg Sub_toast.ShowWarning -> "Toast:ShowWarning"
+  | App.Toast_msg Sub_toast.ShowError -> "Toast:ShowError"
+  | App.Toast_msg (Sub_toast.Dismiss id) -> "Toast:Dismiss:" ^ id
+  | App.Data_table_msg (Sub_data_table.Sort key) -> "Sort:" ^ key
+  | App.Navigation_bar_msg (Sub_navigation_bar.SelectTab id) ->
+      "SelectTab:" ^ id
+  | App.Modal_msg Sub_modal.Open -> "Modal:Open"
+  | App.Modal_msg Sub_modal.Close -> "Modal:Close"
+  | App.Modal_msg (Sub_modal.FocusChanged id) -> "Modal:FocusChanged:" ^ id
+  | App.Modal_msg (Sub_modal.TabCycled id) -> "Modal:TabCycled:" ^ id
+  (* Storage persistence contract (RFC 0112, Step 6 / REQ-F3): [StorageSet] is
+     the write, [StorageRestored] the post-reload re-read. Only the restored
+     [Some] case emits a "Restored" fragment so the E2E wait does not trip on a
+     fresh-load empty restore. *)
+  | App.StorageSet -> "StorageSet"
+  | App.StorageSetResult (Ok ()) -> "StorageSetOk"
+  | App.StorageSetResult (Error _) -> "StorageSetError"
+  | App.StorageRestored (Ok (Some v)) -> "StorageRestored:" ^ v
+  | App.StorageRestored (Ok None) -> "StorageRestoreEmpty"
+  | App.StorageRestored (Error _) -> "StorageRestoreError"
+  (* Tauri window / tray / store messages the REQ-F5 WebdriverIO specs assert on
+     via the host-side [get_telemetry] mirror (RFC 0112, Step 7). The store [Get]
+     result carries the read-back value so the relaunch-persistence spec can
+     prove it via a message fragment. The remaining Tauri messages keep the
+     generic "<msg>" label below. *)
+  | App.TrayClicked -> "TrayClicked"
+  | App.SetTauriWindowTitle -> "SetTauriWindowTitle"
+  | App.TauriWindowTitleSet -> "TauriWindowTitleSet"
+  | App.ShowTauriWindow -> "ShowTauriWindow"
+  | App.HideTauriWindow -> "HideTauriWindow"
+  | App.QueryTauriVisible -> "QueryTauriVisible"
+  | App.GotTauriVisible v -> "GotTauriVisible:" ^ string_of_bool v
+  | App.TauriStoreSet -> "TauriStoreSet"
+  | App.TauriStoreSetResult (Ok ()) -> "TauriStoreSetOk"
+  | App.TauriStoreSetResult (Error _) -> "TauriStoreSetError"
+  | App.TauriStoreSave -> "TauriStoreSave"
+  | App.TauriStoreSaveResult (Ok ()) -> "TauriStoreSaveOk"
+  | App.TauriStoreSaveResult (Error _) -> "TauriStoreSaveError"
+  | App.TauriStoreGet -> "TauriStoreGet"
+  | App.TauriStoreGetResult (Ok (Some v)) -> "TauriStoreGetValue:" ^ v
+  | App.TauriStoreGetResult (Ok None) -> "TauriStoreGetEmpty"
+  | App.TauriStoreGetResult (Error _) -> "TauriStoreGetError"
   | App.SubCounterMsg _
-  | App.Ui_msg _
   | App.Form_msg _
-  | App.Form_controls_msg _
-  | App.Text_input_msg _
   | App.Focus_keyboard_msg _
-  | App.Toast_msg _
-  | App.Data_table_msg _
   | App.Virtual_list_msg _
-  | App.Navigation_bar_msg _
-  | App.Modal_msg _
   | App.DrawPointerMove _
   | App.DrawPointerLeave
   | App.ChartHovered _
@@ -469,8 +537,6 @@ let serialize_msg : App.msg -> string = function
   | App.ListenTauriEvents
   | App.UnlistenTauriEvents
   | App.GotTauriUnlisten _
-  | App.SetTauriWindowTitle
-  | App.TauriWindowTitleSet
   | App.UpdateTauriWindowTitleInput _
   | App.SetTauriFullscreen _
   | App.QueryTauriFullscreen
@@ -489,10 +555,6 @@ let serialize_msg : App.msg -> string = function
   | App.TauriWindowSizeSet
   | App.QueryTauriInnerSize
   | App.GotWindowInnerSize _
-  | App.ShowTauriWindow
-  | App.HideTauriWindow
-  | App.QueryTauriVisible
-  | App.GotTauriVisible _
   | App.SetTauriWindowFocus
   | App.TauriWindowFocused
   | App.CenterTauriWindow
@@ -500,7 +562,6 @@ let serialize_msg : App.msg -> string = function
   | App.GotPlatform _
   | App.HideToTray
   | App.TrayHidden
-  | App.TrayClicked
   | App.TrayRestored
   | App.UpdateTrayTooltipInput _
   | App.SetTrayTooltip
@@ -509,8 +570,6 @@ let serialize_msg : App.msg -> string = function
   | App.TrayIconVisibleSet
   | App.StorageKeyChanged _
   | App.StorageValueChanged _
-  | App.StorageSet
-  | App.StorageSetResult _
   | App.StorageGet
   | App.StorageGetResult _
   | App.StorageDelete
@@ -529,22 +588,45 @@ let serialize_msg : App.msg -> string = function
   | App.CodecCorruptResult _
   | App.TauriStoreKeyChanged _
   | App.TauriStoreValueChanged _
-  | App.TauriStoreSet
-  | App.TauriStoreSetResult _
-  | App.TauriStoreGet
-  | App.TauriStoreGetResult _
   | App.TauriStoreDelete
   | App.TauriStoreDeleteResult _
   | App.TauriStoreClear
   | App.TauriStoreClearResult _
-  | App.TauriStoreSave
-  | App.TauriStoreSaveResult _ ->
+  | App.SubWizardMsg _ ->
       "<msg>"
 
 let serialize_model (model : App.model) =
   let open App in
-  Printf.sprintf "{pings=%d; clicks=%d; input=%S}" model.telemetry_pings
-    model.button_clicks model.input_text
+  (* The storage value is part of the asserted model surface so the web
+     persistence spec can prove a reload-restored value via [assertModelContains]
+     (RFC 0112, Step 6 / REQ-F3), not just the message fragment. *)
+  let storage =
+    match model.storage_state with
+    | StorageIdle -> "idle"
+    | StorageOk msg -> msg
+    | StorageValue v -> v
+    | StorageRestoredValue v -> "restored:" ^ v
+    | StorageNotFound -> "not-found"
+    | StorageKeys keys -> String.concat "," keys
+    | StorageError e -> "error:" ^ e
+  in
+  (* The Tauri window visibility/title and store value are part of the asserted
+     model surface so the REQ-F5 WebdriverIO specs (RFC 0112, Step 7) can prove
+     a window transition or a relaunch-restored store value via
+     [assertModelContains] through the host [get_telemetry] mirror. *)
+  let tauri_store =
+    match model.tauri_store_state with
+    | TauriStoreIdle -> "idle"
+    | TauriStoreOk msg -> msg
+    | TauriStoreValue v -> v
+    | TauriStoreNotFound -> "not-found"
+    | TauriStoreError e -> "error:" ^ e
+  in
+  Printf.sprintf
+    "{pings=%d; clicks=%d; input=%S; storage=%s; win_visible=%b; win_title=%S; \
+     tauri_store=%s}"
+    model.telemetry_pings model.button_clicks model.input_text storage
+    model.tauri_is_visible model.tauri_window_title tauri_store
 
 (* The application owns telemetry policy: telemetry is on by default for the
    kitchen sink (it is the live E2E target), and disabled with [?telemetry=off]
@@ -585,11 +667,17 @@ let () =
         Nopal_mvu.Sub.batch [ base; Nopal_tauri.Tray.on_click App.TrayClicked ]
       else base
   end in
-  if telemetry_enabled () then
-    let (_ : Nopal_runtime.Telemetry.handle) =
+  if telemetry_enabled () then begin
+    let handle : Nopal_runtime.Telemetry.handle =
       Nopal_web.mount_with_telemetry
         (module Mounted)
         ~serialize_msg ~serialize_model target
     in
-    ()
+    (* Feed the Tauri host-side telemetry mirror so the WebdriverIO REQ-F5 specs
+       can read events through [Nopal_tauri.Telemetry.get_telemetry] from outside
+       the webview (RFC 0112, Step 7). The underlying [plugin:event|emit] IPC is
+       absent in a plain browser, so gate on [has_tauri]; the mirror is inert
+       until this call (RFC Risk: [get_telemetry] returns [[]] otherwise). *)
+    if has_tauri () then Nopal_tauri.Telemetry.expose handle
+  end
   else Nopal_web.mount (module Mounted) target

@@ -62,7 +62,12 @@ val make :
 (** {1 View} *)
 
 val view : ('row, 'msg) config -> 'msg Nopal_element.Element.t
-(** Render the data table. The outer container carries [role="table"]. Header
+(** Renders the table. Each sortable header carries
+    [data-action="datatable-sort"] plus [data-field=<column sort key>]. These
+    anchors are the E2E selector contract (RFC 0112) and are asserted by
+    [test_anchors.ml].
+
+    Render the data table. The outer container carries [role="table"]. Header
     cells carry [role="columnheader"]; the active sort column carries
     [aria-sort]. Data cells carry [role="cell"]. Each data row is wrapped in
     [Element.keyed] using the config's [key] function. *)

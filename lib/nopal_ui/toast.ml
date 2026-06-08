@@ -148,6 +148,7 @@ let view config toasts =
         let attrs =
           [
             ("data-testid", "toast-" ^ t.id);
+            ("data-action", "toast-dismiss");
             ("data-variant", variant_to_string t.variant);
             ("aria-live", aria_live_for t.variant);
             ("aria-label", "Dismiss: " ^ t.message);

@@ -1,0 +1,4 @@
+(test
+ (name test_router_demo)
+ (modules test_router_demo)
+ (libraries router_demo_app nopal_test nopal_mvu nopal_platform alcotest))

@@ -33,12 +33,30 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("clicking fetch shows loading then result", async ({ page }) => {
+  // Intercept the GET request to control timing — the http-status node only
+  // renders while Loading, so an un-held real fetch can resolve before the
+  // assertion under parallel load (and must never hit jsonplaceholder.typicode.com
+  // in CI). Holding the response makes the loading state deterministic, matching
+  // the POST/PUT cases below.
+  let fulfill: (() => void) | null = null;
+  await page.route("**/jsonplaceholder.typicode.com/todos/1", (route) => {
+    fulfill = () =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ id: 1, title: "nopal" }),
+      });
+  });
+
   const fetchBtn = page.locator(FETCH_BTN);
   await fetchBtn.click();
 
-  // Should show loading state
+  // Loading state is guaranteed visible because the response is held
   const status = page.locator(HTTP_STATUS);
   await expect(status).toContainText("Loading");
+
+  // Release the response
+  fulfill!();
 
   // Should eventually show result (success or error — both prove the MVU loop works)
   const outcome = page.locator(`${HTTP_RESULT}, ${HTTP_ERROR}`);

@@ -24,7 +24,11 @@ val make :
     empty attrs. *)
 
 val view : 'msg config -> 'msg Nopal_element.Element.t
-(** [view config] renders a vertical Column containing: 1. An [Element.text]
+(** Renders the select. The trigger carries [data-action="select-open"] plus
+    [data-field=slug(label)]. These anchors are the E2E selector contract (RFC
+    0112) and are asserted by [test_anchors.ml].
+
+    [view config] renders a vertical Column containing: 1. An [Element.text]
     label 2. An [Element.select] with the config's options, selected value,
     disabled state, and on_change handler. When [placeholder] is [Some text], a
     disabled option with [value = ""] and [label = text] is prepended to the

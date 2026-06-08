@@ -138,6 +138,14 @@ serve-site: site
 e2e: build
     cd test/e2e && npx playwright test
 
+# Build the kitchen-sink Tauri binary, then drive it with the WebdriverIO +
+# tauri-driver harness under a virtual display (REQ-F5). Main-only: the
+# WebKitWebDriver + xvfb toolchain is off the per-PR critical path. Assumes
+# `cargo install tauri-driver`, `webkit2gtk-driver`, and `cd test/e2e/tauri &&
+# npm ci` are already provisioned — see test/e2e/tauri/README.md.
+e2e-tauri: build-tauri
+    cd test/e2e/tauri && xvfb-run -a npm test
+
 # Benchmarks
 
 bench-setup:

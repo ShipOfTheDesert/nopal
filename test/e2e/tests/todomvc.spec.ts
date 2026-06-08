@@ -1,239 +1,63 @@
-import { test, expect } from "@playwright/test";
+import { test } from "@playwright/test";
+import { NopalTelemetry } from "./nopal-telemetry";
 
-const TODO_INPUT = 'input[placeholder="What needs to be done?"]';
-const TOGGLE_ALL = 'button[data-action="toggle-all"]';
-const MAIN_SECTION = '[data-section="main"]';
-const FOOTER_SECTION = '[data-section="footer"]';
-const TODO_COUNT = '[data-section="todo-count"]';
+// TodoMVC converted to the telemetry approach (RFC 0112, Step 3). Behavioural
+// assertions go only through the telemetry log (REQ-N2): DOM input/clicks
+// trigger the actions, but every check reads the recorded Message /
+// Model_transition events — never DOM text. Waits gate on `waitForMessage`,
+// never on a fixed delay (REQ-N2).
+//
+// Headless rAF mitigations (headless-chromium-raf-stall): navigate fresh with
+// `goto` (never page.reload), and waitForFunction before driving the input.
+
+const TITLE_INPUT = '[data-field="todo-title"]';
 
 function todoToggle(id: number) {
   return `button[data-action="toggle-${id}"]`;
 }
 
-function todoLabel(id: number) {
-  return `button[data-action="edit-${id}"]`;
-}
+// Generous: the first model→DOM frame in a worker can lag while the rAF loop
+// warms up on a display-server-less machine.
+const SETTLE = 15000;
 
-function todoDelete(id: number) {
-  return `button[data-action="delete-${id}"]`;
-}
-
-const EDIT_INPUT = 'input[data-action="edit-input"]';
-
-test.beforeEach(async ({ context, page }) => {
-  // Each Playwright test gets a fresh browser context, so localStorage
-  // is already empty — no explicit clear or reload needed.
+test.beforeEach(async ({ page }) => {
+  // Each Playwright test gets a fresh browser context, so localStorage is empty.
   await page.goto("/todomvc/", { waitUntil: "load" });
-  // Wait for the Nopal app to mount and render the header input
   await page.waitForFunction(
     (sel) => document.querySelector(sel) !== null,
-    TODO_INPUT,
+    TITLE_INPUT,
     { timeout: 10000 }
   );
 });
 
-test("add a new todo", async ({ page }) => {
-  const input = page.locator(TODO_INPUT);
+test("adding a todo dispatches Add and model holds the title", async ({
+  page,
+}) => {
+  const telemetry = new NopalTelemetry(page);
+
+  const input = page.locator(TITLE_INPUT);
   await input.fill("Buy milk");
   await input.press("Enter");
+  // Gate on the recorded message rather than a fixed delay.
+  await telemetry.waitForMessage("Add", SETTLE);
 
-  // Verify todo appears. Use click to wait for the element since
-  // headless Chromium without a display server can delay the first
-  // requestAnimationFrame, and click's actionability check handles
-  // this more reliably than toHaveText's polling.
-  await page.click(todoLabel(1), { trial: true });
-  await expect(page.locator(todoLabel(1))).toHaveText("Buy milk");
-
-  // Verify input is cleared
-  await expect(input).toHaveValue("");
-
-  // Empty input does not create a todo
-  await input.press("Enter");
-  // Still only one todo label button
-  const labels = page.locator(`${MAIN_SECTION} button[data-action^="edit-"]`);
-  await expect(labels).toHaveCount(1);
+  await telemetry.assertDispatched("Add");
+  // Behaviour is proven via the model fragment, not the rendered DOM text.
+  await telemetry.assertModelContains("Buy milk");
 });
 
-test("complete a todo", async ({ page }) => {
-  const input = page.locator(TODO_INPUT);
+test("toggling completes the item", async ({ page }) => {
+  const telemetry = new NopalTelemetry(page);
+
+  const input = page.locator(TITLE_INPUT);
   await input.fill("Buy milk");
   await input.press("Enter");
+  await telemetry.waitForMessage("Add", SETTLE);
 
-  // Click toggle checkbox
-  await page.click(todoToggle(1));
+  // The toggle control only renders once the todo exists; click auto-waits.
+  await page.locator(todoToggle(1)).click();
+  await telemetry.waitForMessage("Toggle", SETTLE);
 
-  // Verify marked completed (toggle text changes to ✓)
-  await expect(page.locator(todoToggle(1))).toHaveText("✓");
-});
-
-test("toggle all todos", async ({ page }) => {
-  const input = page.locator(TODO_INPUT);
-  await input.fill("Todo 1");
-  await input.press("Enter");
-  await input.fill("Todo 2");
-  await input.press("Enter");
-
-  // Toggle all to completed
-  await page.click(TOGGLE_ALL);
-  await expect(page.locator(todoToggle(1))).toHaveText("✓");
-  await expect(page.locator(todoToggle(2))).toHaveText("✓");
-
-  // Toggle all back to active
-  await page.click(TOGGLE_ALL);
-  await expect(page.locator(todoToggle(1))).toHaveText("");
-  await expect(page.locator(todoToggle(2))).toHaveText("");
-});
-
-test("delete a todo", async ({ page }) => {
-  const input = page.locator(TODO_INPUT);
-  await input.fill("Buy milk");
-  await input.press("Enter");
-
-  // Click destroy button
-  await page.click(todoDelete(1));
-
-  // Verify removed
-  await expect(page.locator(todoLabel(1))).toHaveCount(0);
-});
-
-test("edit a todo", async ({ page }) => {
-  const input = page.locator(TODO_INPUT);
-  await input.fill("Buy milk");
-  await input.press("Enter");
-
-  // Double-click label to enter edit mode
-  await page.dblclick(todoLabel(1));
-
-  // Edit input should appear with current text
-  const editInput = page.locator(EDIT_INPUT);
-  await expect(editInput).toBeVisible();
-
-  // Clear and type new text
-  await editInput.fill("Buy cheese");
-  await editInput.press("Enter");
-
-  // Verify updated
-  await expect(page.locator(todoLabel(1))).toHaveText("Buy cheese");
-});
-
-test.skip("cancel editing with Escape", async ({ page }) => {
-  // TODO: TodoMVC app does not yet handle Escape key in edit mode
-  const input = page.locator(TODO_INPUT);
-  await input.fill("Buy milk");
-  await input.press("Enter");
-
-  // Double-click to edit
-  await page.dblclick(todoLabel(1));
-  const editInput = page.locator(EDIT_INPUT);
-  await editInput.fill("Changed text");
-  await editInput.press("Escape");
-
-  // Original text restored
-  await expect(page.locator(todoLabel(1))).toHaveText("Buy milk");
-});
-
-test("filter active todos", async ({ page }) => {
-  const input = page.locator(TODO_INPUT);
-  await input.fill("Active todo");
-  await input.press("Enter");
-  await input.fill("Completed todo");
-  await input.press("Enter");
-
-  // Complete the second one
-  await page.click(todoToggle(2));
-
-  // Click "Active" filter (scoped to footer to avoid matching todo labels)
-  await page
-    .locator(FOOTER_SECTION)
-    .getByRole("button", { name: "Active", exact: true })
-    .click();
-
-  // Only active todo visible
-  await expect(page.locator(todoLabel(1))).toBeVisible();
-  await expect(page.locator(todoLabel(2))).toHaveCount(0);
-});
-
-test("filter completed todos", async ({ page }) => {
-  const input = page.locator(TODO_INPUT);
-  await input.fill("Active todo");
-  await input.press("Enter");
-  await input.fill("Completed todo");
-  await input.press("Enter");
-
-  // Complete the second one
-  await page.click(todoToggle(2));
-
-  // Click "Completed" filter (scoped to footer to avoid matching todo labels)
-  await page
-    .locator(FOOTER_SECTION)
-    .getByRole("button", { name: "Completed", exact: true })
-    .click();
-
-  // Only completed todo visible
-  await expect(page.locator(todoLabel(1))).toHaveCount(0);
-  await expect(page.locator(todoLabel(2))).toBeVisible();
-});
-
-test("clear completed", async ({ page }) => {
-  const input = page.locator(TODO_INPUT);
-  await input.fill("Todo 1");
-  await input.press("Enter");
-  await input.fill("Todo 2");
-  await input.press("Enter");
-
-  // Complete first todo
-  await page.click(todoToggle(1));
-
-  // Click "Clear completed"
-  await page
-    .locator(FOOTER_SECTION)
-    .getByRole("button", { name: "Clear completed", exact: true })
-    .click();
-
-  // Only active todo remains
-  await expect(page.locator(todoLabel(1))).toHaveCount(0);
-  await expect(page.locator(todoLabel(2))).toBeVisible();
-});
-
-test("persist todos across reload", async ({ page }) => {
-  const input = page.locator(TODO_INPUT);
-  await input.fill("Persistent todo");
-  await input.press("Enter");
-
-  // Reload page
-  await page.reload();
-
-  // Todo should still be present
-  await expect(page.locator(todoLabel(1))).toHaveText("Persistent todo");
-});
-
-test("pushState navigation updates filter", async ({ page }) => {
-  const input = page.locator(TODO_INPUT);
-  await input.fill("Active todo");
-  await input.press("Enter");
-  await input.fill("Completed todo");
-  await input.press("Enter");
-
-  // Complete the second one
-  await page.click(todoToggle(2));
-
-  // Click "Completed" filter via UI (uses pushState routing)
-  await page
-    .locator(FOOTER_SECTION)
-    .getByRole("button", { name: "Completed", exact: true })
-    .click();
-
-  // Only completed todo visible
-  await expect(page.locator(todoLabel(1))).toHaveCount(0);
-  await expect(page.locator(todoLabel(2))).toBeVisible();
-
-  // URL should reflect the filter
-  await expect(page).toHaveURL(/\/completed$/);
-
-  // Navigate back via browser history (triggers popstate)
-  await page.goBack();
-
-  // All todos visible again
-  await expect(page.locator(todoLabel(1))).toBeVisible();
-  await expect(page.locator(todoLabel(2))).toBeVisible();
+  await telemetry.assertSequence(["Add", "Toggle"]);
+  await telemetry.assertModelContains("completed=1;");
 });

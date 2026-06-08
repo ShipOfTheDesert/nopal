@@ -150,8 +150,10 @@ let view _vp model =
           Element.row ~style:row_style
             [
               Element.button ~style:button_base ~interaction:button_interaction
+                ~attrs:[ ("data-action", "counter-increment") ]
                 ~on_click:Increment (Element.text "+");
               Element.button ~style:button_base ~interaction:button_interaction
+                ~attrs:[ ("data-action", "counter-decrement") ]
                 ~on_click:Decrement (Element.text "-");
             ];
           Element.button ~style:reset_style ~interaction:reset_interaction

@@ -30,6 +30,9 @@ jobs:
       - name: Build
         run: just build
 
+      - name: Build native (DSL boundary)
+        run: just build-native
+
       - name: Test
         run: just test
 
@@ -62,3 +65,27 @@ jobs:
 
       - name: Build Tauri
         run: just build-tauri
+
+  e2e-web:
+    runs-on: ubuntu-latest
+    if: "!github.event.pull_request.draft"
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: extractions/setup-just@v3
+        with:
+          just-version: '1.46.0'
+      - uses: ./.github/actions/ocaml-deps
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Playwright dependencies
+        run: cd test/e2e && npm ci
+
+      - name: Install Playwright browsers
+        run: cd test/e2e && npx playwright install --with-deps chromium
+
+      - name: Run web E2E suite
+        run: just e2e

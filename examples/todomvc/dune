@@ -5,6 +5,6 @@
 
 (executable
  (name main)
- (libraries todomvc nopal_web brr)
+ (libraries todomvc nopal_web nopal_runtime brr)
  (modules main)
  (modes js))

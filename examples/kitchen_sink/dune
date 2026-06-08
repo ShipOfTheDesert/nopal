@@ -8,6 +8,7 @@
  (modules
   kitchen_sink_app
   sub_counter
+  sub_wizard
   kitchen_sink_ui
   kitchen_sink_form
   kitchen_sink_form_controls

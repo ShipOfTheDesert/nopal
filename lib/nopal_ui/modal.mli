@@ -44,7 +44,12 @@ val with_attrs : (string * string) list -> 'msg config -> 'msg config
 (** {1 View} *)
 
 val view : 'msg config -> 'msg Nopal_element.Element.t
-(** Renders the modal dialog.
+(** Renders the modal. The backdrop carries the interaction anchor
+    [data-action="modal-dismiss"] — its only clickable dismiss surface (there is
+    no dedicated close button). This anchor is the E2E selector contract (RFC
+    0112) and is asserted by [test_anchors.ml].
+
+    Renders the modal dialog.
 
     When [open_ = false], returns [Element.empty].
 

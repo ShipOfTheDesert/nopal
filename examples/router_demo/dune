@@ -1,0 +1,11 @@
+(library
+ (name router_demo_app)
+ (modules router_demo_app)
+ (libraries nopal_mvu nopal_element nopal_ui nopal_platform))
+
+(executable
+ (name main)
+ (modules main)
+ (libraries router_demo_app nopal_web nopal_runtime nopal_platform brr)
+ (modes js)
+ (js_of_ocaml))

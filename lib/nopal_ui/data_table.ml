@@ -64,8 +64,14 @@ let view config =
     match col.sort_key with
     | Some key ->
         let attrs = base_attrs @ aria_sort_for key in
+        let sort_attrs =
+          [ ("data-action", "datatable-sort"); ("data-field", key) ]
+        in
         E.box ~attrs ?style:config.header_style
-          [ E.button ~on_click:(config.on_sort key) (E.text col.header) ]
+          [
+            E.button ~attrs:sort_attrs ~on_click:(config.on_sort key)
+              (E.text col.header);
+          ]
     | None ->
         E.box ~attrs:base_attrs ?style:config.header_style [ E.text col.header ]
   in

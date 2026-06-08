@@ -29,7 +29,11 @@ val make :
     [on_select = None], no style/interaction override, and empty attrs. *)
 
 val view : 'msg config -> 'msg Nopal_element.Element.t
-(** [view config] renders a Column with [role="radiogroup"] and
+(** Renders the radio group. Each option carries [data-field=<group name>] (the
+    [name], defaulting to the slugified label). This anchor is the E2E selector
+    contract (RFC 0112) and is asserted by [test_anchors.ml].
+
+    [view config] renders a Column with [role="radiogroup"] and
     [aria-label=config.label] containing one Row per option. Each Row has an
     [Element.radio] (sharing the group name) and an [Element.text] label. When
     [config.disabled] is [true], all radios are disabled and [on_select] is
