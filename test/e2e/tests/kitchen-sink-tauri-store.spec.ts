@@ -1,14 +1,17 @@
 import { test, expect } from "@playwright/test";
 
+// Render-correctness DOM checks (ADR 0108): plain-browser markup assertions;
+// Tauri `invoke` is absent here. Selectors migrated to the data-action/data-field
+// anchors (REQ-F2); the real IPC behaviour is in test/e2e/tauri/store.e2e.ts.
 const SECTION = '[data-section="tauri-store"]';
-const KEY_INPUT = '[data-testid="tauri-store-key-input"]';
-const VALUE_INPUT = '[data-testid="tauri-store-value-input"]';
-const SET_BTN = '[data-testid="tauri-store-set-btn"]';
-const GET_BTN = '[data-testid="tauri-store-get-btn"]';
-const DELETE_BTN = '[data-testid="tauri-store-delete-btn"]';
-const CLEAR_BTN = '[data-testid="tauri-store-clear-btn"]';
-const SAVE_BTN = '[data-testid="tauri-store-save-btn"]';
-const RESULT = '[data-testid="tauri-store-result"]';
+const KEY_INPUT = '[data-field="tauri-store-key"]';
+const VALUE_INPUT = '[data-field="tauri-store-value"]';
+const SET_BTN = '[data-action="tauri-store-set"]';
+const GET_BTN = '[data-action="tauri-store-get"]';
+const DELETE_BTN = '[data-action="tauri-store-delete"]';
+const CLEAR_BTN = '[data-action="tauri-store-clear"]';
+const SAVE_BTN = '[data-action="tauri-store-save"]';
+const RESULT = '[data-field="tauri-store-result"]';
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/kitchen_sink/");

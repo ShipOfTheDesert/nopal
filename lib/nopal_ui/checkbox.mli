@@ -17,7 +17,10 @@ val make : label:string -> checked:bool -> 'msg config
     [on_toggle = None], no style/interaction override, and empty attrs. *)
 
 val view : 'msg config -> 'msg Nopal_element.Element.t
-(** [view config] renders a horizontal Row containing: 1. An [Element.checkbox]
+(** Renders the checkbox, which carries [data-field=slug(label)]. This anchor is
+    the E2E selector contract (RFC 0112) and is asserted by [test_anchors.ml].
+
+    [view config] renders a horizontal Row containing: 1. An [Element.checkbox]
     with the config's checked/disabled/on_toggle state 2. An [Element.text]
     label
 

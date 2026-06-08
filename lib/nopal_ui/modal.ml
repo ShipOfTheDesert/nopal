@@ -110,7 +110,11 @@ let view config =
     let children =
       match config.on_backdrop_click with
       | Some msg ->
-          let backdrop_attrs = [ ("data-testid", "modal-backdrop") ] in
+          let backdrop_attrs =
+            [
+              ("data-testid", "modal-backdrop"); ("data-action", "modal-dismiss");
+            ]
+          in
           let bs =
             match config.backdrop_style with
             | Some s ->

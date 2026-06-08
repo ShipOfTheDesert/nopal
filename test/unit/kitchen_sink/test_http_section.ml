@@ -54,6 +54,7 @@ let msg_pp fmt msg =
   | ToggleInteraction
   | TelemetryPing _
   | SubCounterMsg _
+  | SubWizardMsg _
   | DrawPointerMove _
   | DrawPointerLeave
   | ChartHovered _
@@ -132,6 +133,7 @@ let msg_pp fmt msg =
   | TrayTooltipSet -> Format.fprintf fmt "TrayTooltipSet"
   | SetTrayIconVisible b -> Format.fprintf fmt "SetTrayIconVisible(%b)" b
   | TrayIconVisibleSet -> Format.fprintf fmt "TrayIconVisibleSet"
+  | StorageRestored _ -> Format.fprintf fmt "StorageRestored _"
   | StorageKeyChanged s -> Format.fprintf fmt "StorageKeyChanged(%s)" s
   | StorageValueChanged s -> Format.fprintf fmt "StorageValueChanged(%s)" s
   | StorageSet -> Format.fprintf fmt "StorageSet"

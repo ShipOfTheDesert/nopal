@@ -6,6 +6,6 @@
 (executable
  (name main)
  (modules main)
- (libraries counter nopal_web nopal_mvu brr)
+ (libraries counter nopal_web nopal_mvu nopal_runtime brr)
  (modes js)
  (js_of_ocaml))

@@ -1,11 +1,14 @@
 import { test, expect } from "@playwright/test";
 
+// Render-correctness DOM checks (ADR 0108): plain-browser markup assertions;
+// Tauri `invoke` is absent here. Selectors migrated to the data-action/data-field
+// anchors (REQ-F2); the real IPC tray behaviour is in test/e2e/tauri/tray.e2e.ts.
 const SECTION = '[data-section="tauri-tray"]';
-const HIDE_BTN = '[data-testid="tray-hide-btn"]';
-const TOOLTIP_INPUT = '[data-testid="tray-tooltip-input"]';
-const SET_TOOLTIP_BTN = '[data-testid="tray-set-tooltip-btn"]';
-const SHOW_ICON_BTN = '[data-testid="tray-show-btn"]';
-const HIDE_ICON_BTN = '[data-testid="tray-hide-icon-btn"]';
+const HIDE_BTN = '[data-action="tauri-tray-hide-window"]';
+const TOOLTIP_INPUT = '[data-field="tauri-tray-tooltip"]';
+const SET_TOOLTIP_BTN = '[data-action="tauri-tray-set-tooltip"]';
+const SHOW_ICON_BTN = '[data-action="tauri-tray-show-icon"]';
+const HIDE_ICON_BTN = '[data-action="tauri-tray-hide-icon"]';
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/kitchen_sink/");

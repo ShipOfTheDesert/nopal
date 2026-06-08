@@ -44,7 +44,7 @@ let view config =
     in
     let radio =
       E.radio ?style:config.style ?interaction:config.interaction
-        ~attrs:[ ("aria-label", opt.label) ]
+        ~attrs:[ ("aria-label", opt.label); ("data-field", name) ]
         ~checked:(config.selected = opt.value)
         ~disabled ?on_select ~name ()
     in

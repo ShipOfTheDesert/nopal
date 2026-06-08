@@ -42,7 +42,11 @@ val with_attrs : (string * string) list -> 'msg config -> 'msg config
     ARIA attrs on conflict (last-writer-wins). *)
 
 val view : 'msg config -> 'msg Nopal_element.Element.t
-(** Renders the navigation bar. The container carries [role="tablist"]. Each
+(** Renders the navigation bar. Each item carries [data-action="nav-navigate"]
+    plus [data-field=<item id>]. These anchors are the E2E selector contract
+    (RFC 0112) and are asserted by [test_anchors.ml].
+
+    Renders the navigation bar. The container carries [role="tablist"]. Each
     item is a [Button] with [role="tab"] and [aria-selected] — the ARIA spec
     allows [role="tab"] on button elements. Clicking the active tab produces no
     message (no-op). Clicking an inactive tab invokes [on_select] with that

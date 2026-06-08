@@ -1,11 +1,15 @@
 import { test, expect } from "@playwright/test";
 
+// Render-correctness DOM checks (ADR 0108): these run in a plain browser where
+// Tauri `invoke` is absent, so they assert markup only. Selectors migrated to
+// the data-action/data-field anchors (REQ-F2); the real IPC behaviour is in
+// test/e2e/tauri/window.e2e.ts.
 const SECTION = '[data-section="tauri-window"]';
-const SHOW_BTN = '[data-testid="show-btn"]';
-const HIDE_BTN = '[data-testid="hide-btn"]';
-const QUERY_VISIBLE_BTN = '[data-testid="query-visible-btn"]';
-const SET_FOCUS_BTN = '[data-testid="set-focus-btn"]';
-const CENTER_BTN = '[data-testid="center-btn"]';
+const SHOW_BTN = '[data-action="tauri-window-show"]';
+const HIDE_BTN = '[data-action="tauri-window-hide"]';
+const QUERY_VISIBLE_BTN = '[data-action="tauri-window-query-visible"]';
+const SET_FOCUS_BTN = '[data-action="tauri-window-set-focus"]';
+const CENTER_BTN = '[data-action="tauri-window-center"]';
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/kitchen_sink/");

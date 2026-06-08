@@ -51,3 +51,7 @@
   nopal_mvu
   alcotest
   test_util))
+
+(test
+ (name test_anchors)
+ (libraries nopal_ui nopal_test nopal_element alcotest))

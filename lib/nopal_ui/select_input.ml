@@ -33,7 +33,12 @@ let view config =
         E.select_option ~disabled:true ~value:"" text :: config.options
     | None -> config.options
   in
-  let attrs = ("aria-label", config.label) :: config.attrs in
+  let attrs =
+    ("aria-label", config.label)
+    :: ("data-action", "select-open")
+    :: ("data-field", Slug.slugify config.label)
+    :: config.attrs
+  in
   let sel =
     E.select ?style:config.style ?interaction:config.interaction ~attrs
       ~disabled:config.disabled ?on_change ~selected:config.selected options

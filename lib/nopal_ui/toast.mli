@@ -50,7 +50,11 @@ val dismiss : string -> toast list -> toast list
 (** {1 View} *)
 
 val view : 'msg config -> toast list -> 'msg Nopal_element.Element.t
-(** Render the toast stack. Each toast carries [aria-live] per variant:
+(** Renders the toast stack. Each toast carries the interaction anchor
+    [data-action="toast-dismiss"]. This anchor is the E2E selector contract (RFC
+    0112) and is asserted by [test_anchors.ml].
+
+    Render the toast stack. Each toast carries [aria-live] per variant:
     Info/Success use ["polite"], Warning/Error use ["assertive"]. Each toast is
     a clickable element that dispatches [config.dismiss id] on click.
     [config.style] controls the container layout only — individual toast styling

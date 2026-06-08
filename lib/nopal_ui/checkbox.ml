@@ -23,7 +23,11 @@ let make ~label ~checked =
 
 let view config =
   let on_toggle = if config.disabled then None else config.on_toggle in
-  let attrs = ("aria-label", config.label) :: config.attrs in
+  let attrs =
+    ("aria-label", config.label)
+    :: ("data-field", Slug.slugify config.label)
+    :: config.attrs
+  in
   let checkbox =
     E.checkbox ?style:config.style ?interaction:config.interaction ~attrs
       ~disabled:config.disabled ?on_toggle config.checked

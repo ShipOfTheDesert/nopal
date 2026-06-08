@@ -111,6 +111,24 @@ let test_get_error_shows_error () =
     "shows error text" true
     (Test_util.string_contains (result_text model) ~sub:"boom")
 
+(* The init-time restore re-read (REQ-F3 persistence proof) is otherwise only
+   exercised by storage.spec.ts; cover its three result arms natively. *)
+let test_restored_some_shows_value () =
+  Alcotest.(check string)
+    "restored value surfaces" "kept"
+    (result_text (apply (StorageRestored (Ok (Some "kept")))))
+
+let test_restored_none_is_noop () =
+  Alcotest.(check string)
+    "empty restore leaves idle text" "No operation yet"
+    (result_text (apply (StorageRestored (Ok None))))
+
+let test_restored_error_shows_error () =
+  let model = apply (StorageRestored (Error (Backend_error "boom"))) in
+  Alcotest.(check bool)
+    "restore error surfaces" true
+    (Test_util.string_contains (result_text model) ~sub:"boom")
+
 let test_set_result_shows_stored () =
   Alcotest.(check string)
     "shows Stored" "Stored"
@@ -200,6 +218,12 @@ let () =
             test_get_none_shows_not_found;
           Alcotest.test_case "get error shows error" `Quick
             test_get_error_shows_error;
+          Alcotest.test_case "restored Some shows value" `Quick
+            test_restored_some_shows_value;
+          Alcotest.test_case "restored None is noop" `Quick
+            test_restored_none_is_noop;
+          Alcotest.test_case "restored error shows error" `Quick
+            test_restored_error_shows_error;
           Alcotest.test_case "set shows Stored" `Quick
             test_set_result_shows_stored;
           Alcotest.test_case "delete shows Deleted" `Quick

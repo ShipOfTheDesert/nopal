@@ -13,6 +13,12 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
 
   let codec_count_key = "codec:count"
 
+  (* Key the storage section reads on [init] to demonstrate web persistence
+     across a page reload (RFC 0112 Step 6 / REQ-F3). The restore dispatch is
+     the E2E proof that a value survives reload, since the in-memory telemetry
+     log is cleared by the reload itself. *)
+  let restore_demo_key = "kitchen-sink:restore-demo"
+
   (* Color palette *)
   let bg_page = Style.hex "#f8f9fa"
   let bg_section = Style.hex "#ffffff"
@@ -71,6 +77,8 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | StorageIdle
     | StorageOk of string  (** "Stored" / "Deleted" / "Cleared" *)
     | StorageValue of string  (** retrieved value *)
+    | StorageRestoredValue of string
+        (** value re-read from storage on [init] (REQ-F3) *)
     | StorageNotFound
     | StorageKeys of string list
     | StorageError of string
@@ -103,6 +111,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     interaction_toggled : bool;
     telemetry_pings : int;
     sub_counter : Sub_counter.model;
+    sub_wizard : Sub_wizard.model;
     draw_pointer : (float * float) option;
     chart_hover : Hover.t option;
     pie_hover : Hover.t option;
@@ -164,6 +173,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | ToggleInteraction
     | TelemetryPing of string
     | SubCounterMsg of Sub_counter.msg
+    | SubWizardMsg of Sub_wizard.msg
     | Ui_msg of Kitchen_sink_ui.msg
     | Form_msg of Kitchen_sink_form.msg
     | Form_controls_msg of Kitchen_sink_form_controls.msg
@@ -253,6 +263,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | TrayTooltipSet
     | SetTrayIconVisible of bool
     | TrayIconVisibleSet
+    | StorageRestored of (string option, Nopal_storage.error) result
     | StorageKeyChanged of string
     | StorageValueChanged of string
     | StorageSet
@@ -288,6 +299,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
 
   let init () =
     let sub_counter, sub_cmd = Sub_counter.init () in
+    let sub_wizard, sub_wizard_cmd = Sub_wizard.init () in
     let ui, ui_cmd = Kitchen_sink_ui.init () in
     let form, form_cmd = Kitchen_sink_form.init () in
     let form_controls, form_controls_cmd = Kitchen_sink_form_controls.init () in
@@ -308,6 +320,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         interaction_toggled = false;
         telemetry_pings = 0;
         sub_counter;
+        sub_wizard;
         draw_pointer = None;
         chart_hover = None;
         pie_hover = None;
@@ -359,6 +372,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
       Nopal_mvu.Cmd.batch
         [
           Nopal_mvu.Cmd.map (fun m -> SubCounterMsg m) sub_cmd;
+          Nopal_mvu.Cmd.map (fun m -> SubWizardMsg m) sub_wizard_cmd;
           Nopal_mvu.Cmd.map (fun m -> Ui_msg m) ui_cmd;
           Nopal_mvu.Cmd.map (fun m -> Form_msg m) form_cmd;
           Nopal_mvu.Cmd.map (fun m -> Form_controls_msg m) form_controls_cmd;
@@ -369,6 +383,12 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           Nopal_mvu.Cmd.map (fun m -> Virtual_list_msg m) virtual_list_cmd;
           Nopal_mvu.Cmd.map (fun m -> Navigation_bar_msg m) navigation_bar_cmd;
           Nopal_mvu.Cmd.map (fun m -> Modal_msg m) modal_cmd;
+          (* Re-read the persisted demo value so a reload dispatches a
+             [StorageRestored] message — the E2E persistence proof (REQ-F3). *)
+          Nopal_mvu.Cmd.task
+            (Nopal_mvu.Task.map
+               (fun r -> StorageRestored r)
+               (Storage.get restore_demo_key));
         ] )
 
   let clamp_pane_dw dw = Domain_window.clamp ~data_min:0.0 ~data_max:9.0 dw
@@ -423,6 +443,10 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         in
         ( { model with sub_counter },
           Nopal_mvu.Cmd.map (fun m -> SubCounterMsg m) sub_cmd )
+    | SubWizardMsg sub_msg ->
+        let sub_wizard, sub_cmd = Sub_wizard.update model.sub_wizard sub_msg in
+        ( { model with sub_wizard },
+          Nopal_mvu.Cmd.map (fun m -> SubWizardMsg m) sub_cmd )
     | Ui_msg ui_msg ->
         let ui, ui_cmd = Kitchen_sink_ui.update model.ui ui_msg in
         ({ model with ui }, Nopal_mvu.Cmd.map (fun m -> Ui_msg m) ui_cmd)
@@ -679,6 +703,13 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | TrayTooltipSet -> (model, Nopal_mvu.Cmd.none)
     | SetTrayIconVisible _ -> (model, Nopal_mvu.Cmd.none)
     | TrayIconVisibleSet -> (model, Nopal_mvu.Cmd.none)
+    | StorageRestored (Ok (Some v)) ->
+        ( { model with storage_state = StorageRestoredValue v },
+          Nopal_mvu.Cmd.none )
+    | StorageRestored (Ok None) -> (model, Nopal_mvu.Cmd.none)
+    | StorageRestored (Error e) ->
+        ( { model with storage_state = StorageError (Nopal_storage.message e) },
+          Nopal_mvu.Cmd.none )
     | StorageKeyChanged s -> ({ model with storage_key = s }, Nopal_mvu.Cmd.none)
     | StorageValueChanged s ->
         ({ model with storage_value = s }, Nopal_mvu.Cmd.none)
@@ -1572,6 +1603,18 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         Element.map
           (fun m -> SubCounterMsg m)
           (Sub_counter.view vp model.sub_counter);
+      ]
+
+  (* Section: Router Wizard (RFC 0112) — visual reference for the router-demo
+     wizard's interaction anchors. *)
+  let view_wizard vp model =
+    view_section "Router Wizard"
+      [
+        Element.text
+          "Wizard nav anchors (full routing in examples/router_demo):";
+        Element.map
+          (fun m -> SubWizardMsg m)
+          (Sub_wizard.view vp model.sub_wizard);
       ]
 
   (* Section 10: 2D Drawing (REQ-F13) *)
@@ -2801,20 +2844,20 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           [
             Element.input
               ~on_change:(fun s -> UpdateTauriWindowTitleInput s)
-              ~attrs:[ ("data-testid", "window-title-input") ]
+              ~attrs:[ ("data-field", "tauri-window-title") ]
               model.tauri_window_title;
             Element.button ~on_click:SetTauriWindowTitle
-              ~attrs:[ ("data-testid", "set-title-btn") ]
+              ~attrs:[ ("data-action", "tauri-window-set-title") ]
               (Element.text "Set Title");
           ];
         Element.row ~style:row_style
           [
             Element.button
               ~on_click:(SetTauriFullscreen (not model.tauri_is_fullscreen))
-              ~attrs:[ ("data-testid", "fullscreen-btn") ]
+              ~attrs:[ ("data-action", "tauri-window-fullscreen") ]
               (Element.text fullscreen_label);
             Element.button ~on_click:QueryTauriFullscreen
-              ~attrs:[ ("data-testid", "query-fullscreen-btn") ]
+              ~attrs:[ ("data-action", "tauri-window-query-fullscreen") ]
               (Element.text "Query Fullscreen");
             Element.text
               ("Fullscreen: " ^ string_of_bool model.tauri_is_fullscreen);
@@ -2822,13 +2865,13 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         Element.row ~style:row_style
           [
             Element.button ~on_click:MinimizeTauriWindow
-              ~attrs:[ ("data-testid", "minimize-btn") ]
+              ~attrs:[ ("data-action", "tauri-window-minimize") ]
               (Element.text "Minimize");
             Element.button ~on_click:maximized_action
-              ~attrs:[ ("data-testid", "maximize-btn") ]
+              ~attrs:[ ("data-action", "tauri-window-maximize") ]
               (Element.text maximized_label);
             Element.button ~on_click:QueryTauriMaximized
-              ~attrs:[ ("data-testid", "query-maximized-btn") ]
+              ~attrs:[ ("data-action", "tauri-window-query-maximized") ]
               (Element.text "Query Maximized");
             Element.text
               ("Maximized: " ^ string_of_bool model.tauri_is_maximized);
@@ -2836,43 +2879,43 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         Element.row ~style:row_style
           [
             Element.button ~on_click:ShowTauriWindow
-              ~attrs:[ ("data-testid", "show-btn") ]
+              ~attrs:[ ("data-action", "tauri-window-show") ]
               (Element.text "Show");
             Element.button ~on_click:HideTauriWindow
-              ~attrs:[ ("data-testid", "hide-btn") ]
+              ~attrs:[ ("data-action", "tauri-window-hide") ]
               (Element.text "Hide");
             Element.button ~on_click:QueryTauriVisible
-              ~attrs:[ ("data-testid", "query-visible-btn") ]
+              ~attrs:[ ("data-action", "tauri-window-query-visible") ]
               (Element.text "Query Visible");
             Element.text ("Visible: " ^ string_of_bool model.tauri_is_visible);
           ];
         Element.button ~on_click:SetTauriWindowFocus
-          ~attrs:[ ("data-testid", "set-focus-btn") ]
+          ~attrs:[ ("data-action", "tauri-window-set-focus") ]
           (Element.text "Set Focus");
         Element.button ~on_click:CenterTauriWindow
-          ~attrs:[ ("data-testid", "center-btn") ]
+          ~attrs:[ ("data-action", "tauri-window-center") ]
           (Element.text "Center");
         Element.button ~on_click:CloseTauriWindow
-          ~attrs:[ ("data-testid", "close-btn") ]
+          ~attrs:[ ("data-action", "tauri-window-close") ]
           (Element.text "Close Window");
         Element.row ~style:row_style
           [
             Element.input
               ~on_change:(fun s -> UpdateTauriWindowWidth s)
-              ~attrs:[ ("data-testid", "window-width-input") ]
+              ~attrs:[ ("data-field", "tauri-window-width") ]
               model.tauri_window_width;
             Element.input
               ~on_change:(fun s -> UpdateTauriWindowHeight s)
-              ~attrs:[ ("data-testid", "window-height-input") ]
+              ~attrs:[ ("data-field", "tauri-window-height") ]
               model.tauri_window_height;
             (match set_size_msg with
             | Some msg ->
                 Element.button ~on_click:msg
-                  ~attrs:[ ("data-testid", "set-size-btn") ]
+                  ~attrs:[ ("data-action", "tauri-window-set-size") ]
                   (Element.text "Set Size")
             | None -> Element.text "Set Size (enter valid numbers)");
             Element.button ~on_click:QueryTauriInnerSize
-              ~attrs:[ ("data-testid", "query-size-btn") ]
+              ~attrs:[ ("data-action", "tauri-window-query-size") ]
               (Element.text "Query Size");
             Element.text ("Inner size: " ^ size_display);
           ];
@@ -2889,26 +2932,26 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
       "Tray"
       [
         Element.button ~on_click:HideToTray
-          ~attrs:[ ("data-testid", "tray-hide-btn") ]
+          ~attrs:[ ("data-action", "tauri-tray-hide-window") ]
           (Element.text "Hide to Tray");
         Element.text "Click the tray icon to restore the window";
         Element.row ~style:row_style
           [
             Element.input
               ~on_change:(fun s -> UpdateTrayTooltipInput s)
-              ~attrs:[ ("data-testid", "tray-tooltip-input") ]
+              ~attrs:[ ("data-field", "tauri-tray-tooltip") ]
               model.tray_tooltip_input;
             Element.button ~on_click:SetTrayTooltip
-              ~attrs:[ ("data-testid", "tray-set-tooltip-btn") ]
+              ~attrs:[ ("data-action", "tauri-tray-set-tooltip") ]
               (Element.text "Set Tooltip");
           ];
         Element.row ~style:row_style
           [
             Element.button ~on_click:(SetTrayIconVisible true)
-              ~attrs:[ ("data-testid", "tray-show-btn") ]
+              ~attrs:[ ("data-action", "tauri-tray-show-icon") ]
               (Element.text "Show Tray Icon");
             Element.button ~on_click:(SetTrayIconVisible false)
-              ~attrs:[ ("data-testid", "tray-hide-icon-btn") ]
+              ~attrs:[ ("data-action", "tauri-tray-hide-icon") ]
               (Element.text "Hide Tray Icon");
           ];
       ]
@@ -2925,32 +2968,32 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
       [
         Element.input
           ~on_change:(fun s -> TauriStoreKeyChanged s)
-          ~attrs:[ ("data-testid", "tauri-store-key-input") ]
+          ~attrs:[ ("data-field", "tauri-store-key") ]
           ~placeholder:"Key" model.tauri_store_key;
         Element.input
           ~on_change:(fun s -> TauriStoreValueChanged s)
-          ~attrs:[ ("data-testid", "tauri-store-value-input") ]
+          ~attrs:[ ("data-field", "tauri-store-value") ]
           ~placeholder:"Value" model.tauri_store_value;
         Element.row ~style:button_row_style
           [
             Element.button ~on_click:TauriStoreSet
-              ~attrs:[ ("data-testid", "tauri-store-set-btn") ]
+              ~attrs:[ ("data-action", "tauri-store-set") ]
               (Element.text "Set");
             Element.button ~on_click:TauriStoreGet
-              ~attrs:[ ("data-testid", "tauri-store-get-btn") ]
+              ~attrs:[ ("data-action", "tauri-store-get") ]
               (Element.text "Get");
             Element.button ~on_click:TauriStoreDelete
-              ~attrs:[ ("data-testid", "tauri-store-delete-btn") ]
+              ~attrs:[ ("data-action", "tauri-store-delete") ]
               (Element.text "Delete");
             Element.button ~on_click:TauriStoreClear
-              ~attrs:[ ("data-testid", "tauri-store-clear-btn") ]
+              ~attrs:[ ("data-action", "tauri-store-clear") ]
               (Element.text "Clear");
             Element.button ~on_click:TauriStoreSave
-              ~attrs:[ ("data-testid", "tauri-store-save-btn") ]
+              ~attrs:[ ("data-action", "tauri-store-save") ]
               (Element.text "Save");
           ];
         Element.box
-          ~attrs:[ ("data-testid", "tauri-store-result") ]
+          ~attrs:[ ("data-field", "tauri-store-result") ]
           [
             Element.text
               (match model.tauri_store_state with
@@ -2975,16 +3018,27 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
       [
         Element.input
           ~on_change:(fun s -> StorageKeyChanged s)
-          ~attrs:[ ("data-testid", "storage-key-input") ]
+          ~attrs:
+            [
+              ("data-testid", "storage-key-input"); ("data-field", "storage-key");
+            ]
           ~placeholder:"Key" model.storage_key;
         Element.input
           ~on_change:(fun s -> StorageValueChanged s)
-          ~attrs:[ ("data-testid", "storage-value-input") ]
+          ~attrs:
+            [
+              ("data-testid", "storage-value-input");
+              ("data-field", "storage-value");
+            ]
           ~placeholder:"Value" model.storage_value;
         Element.row ~style:button_row_style
           [
             Element.button ~on_click:StorageSet
-              ~attrs:[ ("data-testid", "storage-set-btn") ]
+              ~attrs:
+                [
+                  ("data-testid", "storage-set-btn");
+                  ("data-action", "storage-set");
+                ]
               (Element.text "Set");
             Element.button ~on_click:StorageGet
               ~attrs:[ ("data-testid", "storage-get-btn") ]
@@ -3010,6 +3064,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
               | StorageIdle -> "No operation yet"
               | StorageOk msg -> msg
               | StorageValue v -> v
+              | StorageRestoredValue v -> v
               | StorageNotFound -> "Not found"
               | StorageKeys [] -> "(no keys)"
               | StorageKeys keys -> String.concat ", " keys
@@ -3196,6 +3251,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
            view_interaction_states model;
            Element.map (fun m -> Ui_msg m) (Kitchen_sink_ui.view vp model.ui);
            view_composition vp model;
+           view_wizard vp model;
            view_draw model;
            view_charts model;
            view_chart_extensions model;
@@ -3225,3 +3281,15 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           (Sub_modal.subscriptions model.modal);
       ]
 end
+
+(* Re-export the component sub-apps so the thin [main.ml] mount file can name
+   their message constructors when serialising the telemetry log for the
+   per-component E2E specs (RFC 0112, Step 5). These sub-apps are otherwise
+   wrapped inside this library and invisible to the executable. *)
+module Kitchen_sink_ui = Kitchen_sink_ui
+module Kitchen_sink_form_controls = Kitchen_sink_form_controls
+module Kitchen_sink_text_input = Kitchen_sink_text_input
+module Sub_toast = Sub_toast
+module Sub_data_table = Sub_data_table
+module Sub_navigation_bar = Sub_navigation_bar
+module Sub_modal = Sub_modal

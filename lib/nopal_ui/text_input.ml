@@ -52,7 +52,15 @@ let view config =
     | None -> []
   in
   let label_attrs = [ ("aria-label", config.label) ] in
-  let input_attrs = label_attrs @ disabled_attrs @ aria_attrs @ config.attrs in
+  let field =
+    match config.id with
+    | Some id -> id
+    | None -> Slug.slugify config.label
+  in
+  let field_attrs = [ ("data-field", field) ] in
+  let input_attrs =
+    label_attrs @ field_attrs @ disabled_attrs @ aria_attrs @ config.attrs
+  in
   let input_el =
     E.input ?style:config.style ?interaction:config.interaction
       ~attrs:input_attrs ?placeholder:config.placeholder ?on_change ?on_submit

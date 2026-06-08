@@ -1,3 +1,13 @@
+let serialize_msg : Counter.msg -> string = function
+  | Counter.Increment -> "Increment"
+  | Counter.Decrement -> "Decrement"
+  | Counter.Reset -> "Reset"
+
+(* Each field is terminated with ';' so substring assertions can't prefix-alias
+   (e.g. "count=1;" does not match "count=10;"). *)
+let serialize_model (model : Counter.model) =
+  Printf.sprintf "count=%d;" model.Counter.count
+
 let () =
   let open Brr in
   let target =
@@ -9,8 +19,11 @@ let () =
         El.append_children body [ div ];
         div
   in
-  Nopal_web.mount
-    (module Counter : Nopal_mvu.App.S
-      with type model = Counter.model
-       and type msg = Counter.msg)
-    target
+  let (_ : Nopal_runtime.Telemetry.handle) =
+    Nopal_web.mount_with_telemetry
+      (module Counter : Nopal_mvu.App.S
+        with type model = Counter.model
+         and type msg = Counter.msg)
+      ~serialize_msg ~serialize_model target
+  in
+  ()

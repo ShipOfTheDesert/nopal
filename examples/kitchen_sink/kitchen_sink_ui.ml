@@ -25,7 +25,16 @@ let view_variant_row variant =
   let name = Button.variant_to_string variant in
   let make_button label suffix config =
     let testid = "btn-" ^ name ^ suffix in
-    let config = { config with Button.attrs = [ ("data-testid", testid) ] } in
+    let config =
+      {
+        config with
+        Button.attrs =
+          [
+            ("data-testid", testid);
+            ("data-action", "ui-button-" ^ name ^ suffix);
+          ];
+      }
+    in
     Button.view config (Element.text label)
   in
   let default_config =

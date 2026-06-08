@@ -1,0 +1,21 @@
+{
+  "name": "nopal-e2e-tauri",
+  "private": true,
+  "description": "WebdriverIO + tauri-driver harness for the Nopal REQ-F5 Tauri E2E specs (RFC 0112, Step 7). Scoped separately from the Playwright web suite so its heavy WebDriver deps never enter the per-PR `just e2e` install. `tauri-driver` itself is a Cargo binary (`cargo install tauri-driver`), not an npm package — see README.md.",
+  "scripts": {
+    "test": "wdio run ./wdio.conf.ts"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^22.10.2",
+    "@wdio/cli": "^9.4.1",
+    "@wdio/globals": "^9.4.1",
+    "@wdio/local-runner": "^9.4.1",
+    "@wdio/mocha-framework": "^9.4.1",
+    "@wdio/spec-reporter": "^9.4.1",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "webdriverio": "^9.4.1"
+  }
+}
