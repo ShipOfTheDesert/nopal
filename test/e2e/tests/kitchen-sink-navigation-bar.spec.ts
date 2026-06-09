@@ -18,7 +18,7 @@ test("tab click switches content", async ({ page }) => {
   await expect(page.locator('[data-testid="nav-content-home"]')).toBeVisible();
 
   // Click Settings tab
-  await page.locator('[data-testid="nav-tab-settings"]').click();
+  await page.locator(`${NAV_BAR} [data-testid="nav-tab-settings"]`).click();
   await expect(
     page.locator('[data-testid="nav-content-settings"]')
   ).toBeVisible();
@@ -27,7 +27,7 @@ test("tab click switches content", async ({ page }) => {
   ).not.toBeVisible();
 
   // Click About tab
-  await page.locator('[data-testid="nav-tab-about"]').click();
+  await page.locator(`${NAV_BAR} [data-testid="nav-tab-about"]`).click();
   await expect(
     page.locator('[data-testid="nav-content-about"]')
   ).toBeVisible();
@@ -38,8 +38,10 @@ test("tab click switches content", async ({ page }) => {
 
 test("active tab is visually distinct", async ({ page }) => {
   // Home is active by default
-  const homeTab = page.locator('[data-testid="nav-tab-home"]');
-  const settingsTab = page.locator('[data-testid="nav-tab-settings"]');
+  const homeTab = page.locator(`${NAV_BAR} [data-testid="nav-tab-home"]`);
+  const settingsTab = page.locator(
+    `${NAV_BAR} [data-testid="nav-tab-settings"]`
+  );
 
   const homeBg = await homeTab.evaluate(
     (el) => getComputedStyle(el).backgroundColor
@@ -57,7 +59,7 @@ test("clicking active tab does not change state", async ({ page }) => {
   await expect(homeContent).toBeVisible();
 
   // Click the already-active Home tab
-  await page.locator('[data-testid="nav-tab-home"]').click();
+  await page.locator(`${NAV_BAR} [data-testid="nav-tab-home"]`).click();
 
   // Content should remain the same
   await expect(homeContent).toBeVisible();

@@ -158,6 +158,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     data_table : Sub_data_table.model;
     virtual_list : Sub_virtual_list.model;
     navigation_bar : Sub_navigation_bar.model;
+    bottom_tabs : Sub_bottom_tabs.model;
     modal : Sub_modal.model;
   }
 
@@ -183,6 +184,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | Data_table_msg of Sub_data_table.msg
     | Virtual_list_msg of Sub_virtual_list.msg
     | Navigation_bar_msg of Sub_navigation_bar.msg
+    | Bottom_tabs_msg of Sub_bottom_tabs.msg
     | Modal_msg of Sub_modal.msg
     | DrawPointerMove of float * float
     | DrawPointerLeave
@@ -309,6 +311,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     let data_table, data_table_cmd = Sub_data_table.init () in
     let virtual_list, virtual_list_cmd = Sub_virtual_list.init () in
     let navigation_bar, navigation_bar_cmd = Sub_navigation_bar.init () in
+    let bottom_tabs, bottom_tabs_cmd = Sub_bottom_tabs.init () in
     let modal, modal_cmd = Sub_modal.init () in
     ( {
         button_clicks = 0;
@@ -367,6 +370,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         data_table;
         virtual_list;
         navigation_bar;
+        bottom_tabs;
         modal;
       },
       Nopal_mvu.Cmd.batch
@@ -382,6 +386,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           Nopal_mvu.Cmd.map (fun m -> Data_table_msg m) data_table_cmd;
           Nopal_mvu.Cmd.map (fun m -> Virtual_list_msg m) virtual_list_cmd;
           Nopal_mvu.Cmd.map (fun m -> Navigation_bar_msg m) navigation_bar_cmd;
+          Nopal_mvu.Cmd.map (fun m -> Bottom_tabs_msg m) bottom_tabs_cmd;
           Nopal_mvu.Cmd.map (fun m -> Modal_msg m) modal_cmd;
           (* Re-read the persisted demo value so a reload dispatches a
              [StorageRestored] message — the E2E persistence proof (REQ-F3). *)
@@ -493,6 +498,12 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         in
         ( { model with navigation_bar },
           Nopal_mvu.Cmd.map (fun m -> Navigation_bar_msg m) nb_cmd )
+    | Bottom_tabs_msg bt_msg ->
+        let bottom_tabs, bt_cmd =
+          Sub_bottom_tabs.update model.bottom_tabs bt_msg
+        in
+        ( { model with bottom_tabs },
+          Nopal_mvu.Cmd.map (fun m -> Bottom_tabs_msg m) bt_cmd )
     | Modal_msg modal_msg ->
         let modal, modal_cmd = Sub_modal.update model.modal modal_msg in
         ( { model with modal },
@@ -3237,6 +3248,14 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                  (Sub_navigation_bar.view vp model.navigation_bar);
              ];
            view_section
+             ~attrs:[ ("data-testid", "bottom-tabs-section") ]
+             "Bottom Tabs"
+             [
+               Element.map
+                 (fun m -> Bottom_tabs_msg m)
+                 (Sub_bottom_tabs.view vp model.bottom_tabs);
+             ];
+           view_section
              ~attrs:[ ("data-testid", "modal-section") ]
              "Modal"
              [
@@ -3292,4 +3311,5 @@ module Kitchen_sink_text_input = Kitchen_sink_text_input
 module Sub_toast = Sub_toast
 module Sub_data_table = Sub_data_table
 module Sub_navigation_bar = Sub_navigation_bar
+module Sub_bottom_tabs = Sub_bottom_tabs
 module Sub_modal = Sub_modal

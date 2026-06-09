@@ -18,6 +18,10 @@
  (libraries kitchen_sink_app nopal_test nopal_element alcotest))
 
 (test
+ (name test_bottom_tabs_section)
+ (libraries kitchen_sink_app nopal_test nopal_mvu test_util alcotest))
+
+(test
  (name test_data_table_section)
  (libraries kitchen_sink_app nopal_ui alcotest))
 

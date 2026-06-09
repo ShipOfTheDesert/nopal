@@ -1,5 +1,6 @@
 (** High-level UI components for Nopal. *)
 
+module Bottom_tabs = Bottom_tabs
 module Button = Button
 module Checkbox = Checkbox
 module Data_table = Data_table
