@@ -17,6 +17,7 @@
   sub_data_table
   sub_virtual_list
   sub_navigation_bar
+  sub_bottom_tabs
   sub_modal)
  (libraries
   nopal_element
@@ -27,6 +28,7 @@
   nopal_svg
   nopal_http
   nopal_ui
+  nopal_navigation
   nopal_platform
   nopal_storage
   focus_keyboard))

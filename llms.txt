@@ -23,7 +23,8 @@ nopal_charts    ← Composable interactive charts (Bar, Line, Area, Pie, Scatter
                    Heat_map, Trading.Candlestick, Trading.Drawdown, Chart_pane,
                    Color_scale, Domain_window, Viewport, Downsample, Snap)
 nopal_http      ← Pure HTTP types + backend abstraction — no platform deps
-nopal_ui        ← High-level UI components (Button, Checkbox, Data_table, Modal, Navigation_bar, Radio_group, Select_input, Slug, Text_input, Toast) — no platform deps
+nopal_navigation ← Nav_stack: pure stack-based navigation state (non-empty, total pop) — no platform deps
+nopal_ui        ← High-level UI components (Bottom_tabs, Button, Checkbox, Data_table, Modal, Navigation_bar, Radio_group, Select_input, Slug, Text_input, Toast) — no platform deps
 nopal_runtime   ← Lwd reactive integration + MVU loop; Telemetry (E2E event log)
 nopal_test      ← Pure OCaml test renderer + Telemetry_test harness — no js_of_ocaml
 nopal_web       ← js_of_ocaml + Brr DOM renderer (only browser-dependent package)
@@ -549,6 +550,58 @@ let view model =
   ]
 ```
 
+#### Bottom_tabs
+
+Mobile bottom-tab scaffold: a content panel (`role="tabpanel"`) over a tab bar
+(reusing `Navigation_bar` internally), with a component-rendered back affordance
+and a safe-area gutter. Each tab owns an independent `Nopal_navigation.Nav_stack.t`;
+the component is stateless — the application holds every stack in its model, so
+switching tabs preserves each tab's depth. Pop is surfaced as `on_back`; push is
+surfaced by the application's own buttons inside `render_screen`.
+
+```ocaml
+type ('screen, 'msg) tab
+type ('screen, 'msg) config
+
+val tab :
+  ?icon:'msg Element.t ->
+  id:string -> label:string ->
+  stack:'screen Nopal_navigation.Nav_stack.t ->
+  unit -> ('screen, 'msg) tab
+(* [id] is matched against [~active] and echoed in [on_select];
+   [stack] is this tab's current navigation state, owned by the model. *)
+
+val make :
+  tabs:('screen, 'msg) tab list ->
+  active:string ->
+  render_screen:('screen -> 'msg Element.t) ->
+  on_select:(string -> 'msg) ->
+  on_back:'msg ->
+  safe_area_bottom:int ->
+  ('screen, 'msg) config
+(* All fields required (no behavioural defaults).
+   render_screen: draws one screen (the active tab's Nav_stack.current) into content.
+   on_select:    message for selecting a tab by id.
+   on_back:      message for the back affordance (shown only when the active
+                 stack can_pop; the app then calls Nav_stack.pop).
+   safe_area_bottom: bottom inset in px (pass
+                 Viewport.safe_area_bottom (Viewport.safe_area vp)); 0 leaves
+                 layout unaffected. *)
+
+(* Cosmetic-only overrides — none carry behavioural meaning *)
+val with_tab_style        : Style.t -> ('s, 'm) config -> ('s, 'm) config
+val with_active_tab_style : Style.t -> ('s, 'm) config -> ('s, 'm) config
+val with_panel_style      : Style.t -> ('s, 'm) config -> ('s, 'm) config
+val with_back_label       : string  -> ('s, 'm) config -> ('s, 'm) config
+val with_attrs            : (string * string) list -> ('s, 'm) config -> ('s, 'm) config
+
+val view : ('screen, 'msg) config -> 'msg Element.t
+(* Renders Column [ Box[role="tabpanel"; data-field=<active id>]
+                      ( conditional Button[data-action="nav-back"] + render_screen );
+                    Box[data-testid="bottom-tabs-gutter"; padding_bottom=safe_area_bottom]
+                      ( Navigation_bar.view → Row[role="tablist"] of tab Buttons ) ]. *)
+```
+
 #### Modal
 
 Accessible modal dialog with ARIA attributes, optional backdrop, Escape-key subscription, and pure focus-cycling helper.
@@ -918,6 +971,25 @@ val view : 'msg config -> 'msg Element.t
    3. When config.error is Some msg, an error text with role="alert" and
       id=error_id; the input gains aria-describedby=error_id
    When disabled, input carries disabled="" and event handlers are suppressed. *)
+```
+
+### Navigation Stack (`nopal_navigation`)
+
+Pure stack-based navigation state for per-screen drill-down (e.g. one stack per
+bottom tab). The type is non-empty by construction — a current screen always
+exists — and `pop` is total: popping a stack holding only its root is a no-op,
+never an error and never an absent value. No platform deps; compiles native.
+
+```ocaml
+type 'screen Nav_stack.t   (* abstract; non-empty *)
+
+Nav_stack.create  : 'screen -> 'screen t       (* root only; can_pop = false *)
+Nav_stack.push    : 'screen -> 'screen t -> 'screen t   (* new screen becomes current *)
+Nav_stack.pop     : 'screen t -> 'screen t     (* total — no-op at root *)
+Nav_stack.current : 'screen t -> 'screen       (* total — always defined *)
+Nav_stack.depth   : 'screen t -> int           (* always >= 1 *)
+Nav_stack.can_pop : 'screen t -> bool          (* depth > 1; check before offering "back" *)
+Nav_stack.screens : 'screen t -> 'screen list  (* root first, current last; non-empty *)
 ```
 
 ### Routing (`nopal_platform`)

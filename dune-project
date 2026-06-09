@@ -131,6 +131,16 @@
   ocaml))
 
 (package
+ (name nopal_navigation)
+ (synopsis "Pure stack-based navigation state for Nopal")
+ (depends
+  (alcotest
+   (and
+    (>= 1.9.1)
+    :with-test))
+  ocaml))
+
+(package
  (name nopal_test)
  (synopsis "Pure structural test renderer for Nopal")
  (depends
@@ -269,7 +279,8 @@
   ocaml
   nopal_element
   nopal_style
-  nopal_mvu))
+  nopal_mvu
+  nopal_navigation))
 
 (package
  (name nopal_svg)

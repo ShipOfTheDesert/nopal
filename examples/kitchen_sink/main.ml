@@ -10,6 +10,7 @@ module Kitchen_sink_text_input = Kitchen_sink_app.Kitchen_sink_text_input
 module Sub_toast = Kitchen_sink_app.Sub_toast
 module Sub_data_table = Kitchen_sink_app.Sub_data_table
 module Sub_navigation_bar = Kitchen_sink_app.Sub_navigation_bar
+module Sub_bottom_tabs = Kitchen_sink_app.Sub_bottom_tabs
 module Sub_modal = Kitchen_sink_app.Sub_modal
 
 let has_tauri () =
@@ -410,6 +411,7 @@ let update model msg =
   | App.Data_table_msg _
   | App.Virtual_list_msg _
   | App.Navigation_bar_msg _
+  | App.Bottom_tabs_msg _
   | App.Modal_msg _
   | App.SubWizardMsg _ ->
       (model', cmd)
@@ -456,6 +458,13 @@ let serialize_msg : App.msg -> string = function
   | App.Data_table_msg (Sub_data_table.Sort key) -> "Sort:" ^ key
   | App.Navigation_bar_msg (Sub_navigation_bar.SelectTab id) ->
       "SelectTab:" ^ id
+  (* Bottom_tabs per-tab navigation contract (RFC 0114 Task 4): the E2E
+     [assertSequence] proves a push then a back, and the preservation spec reads
+     each tab's depth from [serialize_model] below. Exhaustive inner match so a
+     new [Sub_bottom_tabs.msg] constructor breaks compilation here. *)
+  | App.Bottom_tabs_msg (Sub_bottom_tabs.Select id) -> "BottomTabs:Select:" ^ id
+  | App.Bottom_tabs_msg (Sub_bottom_tabs.Push _) -> "BottomTabs:Push"
+  | App.Bottom_tabs_msg Sub_bottom_tabs.Back -> "BottomTabs:Back"
   | App.Modal_msg Sub_modal.Open -> "Modal:Open"
   | App.Modal_msg Sub_modal.Close -> "Modal:Close"
   | App.Modal_msg (Sub_modal.FocusChanged id) -> "Modal:FocusChanged:" ^ id
@@ -622,11 +631,16 @@ let serialize_model (model : App.model) =
     | TauriStoreNotFound -> "not-found"
     | TauriStoreError e -> "error:" ^ e
   in
+  (* Each tab's stack depth is part of the asserted model surface so the RFC 0114
+     preservation spec can prove [profile_depth=2;] survives a tab switch via
+     [assertModelContains]. [Sub_bottom_tabs.serialize_model] already terminates
+     each [field=value] with ';' (undelimited-telemetry-fragment-aliasing). *)
   Printf.sprintf
     "{pings=%d; clicks=%d; input=%S; storage=%s; win_visible=%b; win_title=%S; \
-     tauri_store=%s}"
+     tauri_store=%s; bottom_tabs={%s}}"
     model.telemetry_pings model.button_clicks model.input_text storage
     model.tauri_is_visible model.tauri_window_title tauri_store
+    (Sub_bottom_tabs.serialize_model model.bottom_tabs)
 
 (* The application owns telemetry policy: telemetry is on by default for the
    kitchen sink (it is the live E2E target), and disabled with [?telemetry=off]
