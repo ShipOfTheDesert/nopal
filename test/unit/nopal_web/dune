@@ -61,3 +61,19 @@
  (modes js)
  (js_of_ocaml
   (javascript_files dom_shim.js mount_shim.js)))
+
+(test
+ (name test_mount_safe_area)
+ (package nopal_web)
+ (libraries
+  nopal_web
+  nopal_element
+  nopal_style
+  nopal_runtime
+  nopal_mvu
+  alcotest
+  brr
+  js_of_ocaml)
+ (modes js)
+ (js_of_ocaml
+  (javascript_files dom_shim.js mount_shim.js)))

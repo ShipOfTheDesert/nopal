@@ -5,12 +5,23 @@
     [nopal_mvu] and [nopal_element]. *)
 
 val mount :
+  ?safe_area_source:((Nopal_element.Viewport.safe_area -> unit) -> unit -> unit) ->
   (module Nopal_mvu.App.S with type model = 'model and type msg = 'msg) ->
   Brr.El.t ->
   unit
 (** [mount (module MyApp) target] creates a runtime for [MyApp], renders the
     initial view into [target], and subscribes to reactive updates. The runtime
     uses [window.setTimeout] for [Cmd.after].
+
+    [~safe_area_source] supplies safe-area insets from a native source (e.g.
+    [Nopal_tauri.Platform_tauri.safe_area_source]) instead of CSS
+    [env(safe-area-inset-...)]. When given, mount registers it; each delivered
+    inset is merged with the current window dimensions and pushed via the
+    runtime's [set_viewport], and the [ResizeObserver] rebuild reuses the most
+    recent native insets (not a fresh [env()] read), so an orientation update
+    survives a subsequent resize. When omitted, behaviour is unchanged (one-shot
+    [env()] read + resize). [nopal_web] stays Tauri-agnostic: the argument is an
+    opaque function supplied by the entry point.
 
     On mount, injects CSS custom properties that bridge
     [env(safe-area-inset-{top,right,bottom,left})] values into JS-readable form,
@@ -34,13 +45,15 @@ val mount :
 *)
 
 val mount_with_telemetry :
+  ?safe_area_source:((Nopal_element.Viewport.safe_area -> unit) -> unit -> unit) ->
   (module Nopal_mvu.App.S with type model = 'model and type msg = 'msg) ->
   ?serialize_msg:('msg -> string) ->
   ?serialize_model:('model -> string) ->
   Brr.El.t ->
   Nopal_runtime.Telemetry.handle
 (** [mount_with_telemetry (module MyApp) ?serialize_msg ?serialize_model target]
-    is the telemetry sibling of {!mount}: it builds the runtime via
+    is the telemetry sibling of {!mount} (and accepts the same
+    [~safe_area_source] native viewport hook): it builds the runtime via
     {!Nopal_runtime.Runtime.Make.create_with_telemetry}, drives it exactly as
     {!mount} does, installs the [window.__nopal_telemetry__] browser bridge over
     its handle (RFC 0110, Layer 2), and returns that handle.

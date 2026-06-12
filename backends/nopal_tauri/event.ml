@@ -29,7 +29,15 @@ let listen name on_event on_unlisten =
       (Ipc.invoke "plugin:event|listen"
          [|
            ("event", Jv.of_string name);
-           ("handler", Jv.obj [| ("id", Jv.of_int handler_id) |]);
+           (* Tauri v2's [plugin:event|listen] requires an [EventTarget]; omitting
+              it makes the command reject ("missing required key target") and the
+              listener is never registered. [{ kind = "Any" }] mirrors the
+              [@tauri-apps/api] default — listen regardless of the emitter. *)
+           ("target", Jv.obj [| ("kind", Jv.of_string "Any") |]);
+           (* Tauri v2 expects [handler] as the raw callback id (a [u32]), not a
+              [{ id }] wrapper — a wrapper rejects with "invalid type: map,
+              expected u32". *)
+           ("handler", Jv.of_int handler_id);
          |])
   in
   Fut.await fut (function
@@ -42,4 +50,5 @@ let listen name on_event on_unlisten =
                |])
         in
         on_unlisten unlisten
-    | Error _err -> ())
+    | Error err ->
+        Brr.Console.(error [ str "nopal_tauri: Event.listen failed"; err ]))

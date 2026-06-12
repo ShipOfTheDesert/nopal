@@ -17,13 +17,20 @@
 // Scoped to this test target via its `(javascript_files ...)` list; the shared
 // dom_shim.js is unchanged so the other nopal_web tests keep their rAF behaviour.
 
+// The rAF and ResizeObserver callbacks are captured on globalThis
+// (`__nopal_raf_cb` / `__nopal_resize_cb`) but never auto-invoked, so the rAF
+// loop stays a no-op for tests that only assert on synchronous startup while
+// tests that need to drive a frame or a resize (the safe-area passthrough) can
+// fire them explicitly.
 (function () {
-  globalThis.requestAnimationFrame = function (_cb) {
+  globalThis.requestAnimationFrame = function (cb) {
+    globalThis.__nopal_raf_cb = cb;
     return 0;
   };
   globalThis.cancelAnimationFrame = function () {};
   if (typeof globalThis.ResizeObserver === "undefined") {
-    globalThis.ResizeObserver = function (_cb) {
+    globalThis.ResizeObserver = function (cb) {
+      globalThis.__nopal_resize_cb = cb;
       return {
         observe: function () {},
         unobserve: function () {},

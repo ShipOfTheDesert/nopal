@@ -274,6 +274,36 @@ The solution should provide:
 Until this lands, `docs/guides/telemetry-tauri.md`'s manual checklist remains the
 acceptance gate for Layer 3.
 
+### Native Mobile Bridge as a Tracked Tauri Plugin
+
+**Packages:** `tauri/src-tauri/`, `nopal_tauri`
+**Depends on:** RFC 0116 (mobile additions)
+
+The Android safe-area / soft-keyboard bridge is currently a single hand-written
+file, `MainActivity.kt`, living inside the `tauri android init`-generated,
+gitignored `gen/android` tree. It is kept trackable by a stepwise `.gitignore`
+negation chain and protected at build time by the `_require-native-bridge`
+guard (which fails loudly if `tauri android init` clobbers it). Both are
+mitigations, not fixes: the file still lives in a generated tree and a
+regeneration overwrites it.
+
+The durable solution is to move the native code out of `gen/` into a
+first-class, tracked **Tauri plugin** (`tauri-plugin-nopal-mobile` or similar)
+that carries its own `android/` Kotlin sources (the `WindowInsets` / IME reads)
+and is merged into the generated project at build time. This:
+
+- eliminates the `.gitignore` negation hack and the regeneration-clobber risk
+  entirely — the bridge lives in a normal tracked package;
+- gives the iOS side a natural home: the equivalent `WKWebView` safe-area /
+  keyboard reader (unaddressed in Phase 2 — the Kotlin reads are Android-only)
+  becomes the plugin's `ios/` Swift sources;
+- lets the `report_safe_area` / `report_keyboard_height` bridge commands move
+  from the app's `lib.rs` into the plugin, narrowing the always-registered
+  command surface (see RFC 0116 C5 discussion) to the plugin's own handler.
+
+This is the natural Phase 3 companion to the Impeller/native work, picked up
+when the iOS reader is implemented (both readers want the same plugin).
+
 ### Multi-Browser E2E Testing
 
 **Package:** `test/e2e/`

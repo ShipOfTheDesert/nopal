@@ -111,6 +111,55 @@ dev-tauri: tauri-prepare-dev
 build-tauri:
     cd tauri && npm exec tauri build
 
+# Android (Tauri mobile). Both recipes fail fast with an exact remediation
+# command if ANDROID_HOME (the Android SDK location) is unset (REQ-F1). The
+# guard runs before the JS build so a missing toolchain costs nothing. See
+# CONTRIBUTING.md "Compiler targets by platform" for the full Android setup.
+
+_require-android-home:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -z "${ANDROID_HOME:-}" ]; then
+        echo 'error: ANDROID_HOME is not set - the Android SDK location is required to' >&2
+        echo 'build the Tauri Android app. Install the SDK + NDK via Android Studio,' >&2
+        echo 'then run:' >&2
+        echo '' >&2
+        echo '    export ANDROID_HOME="$HOME/Android/Sdk"' >&2
+        echo '' >&2
+        echo '(on macOS the default SDK path is "$HOME/Library/Android/sdk"). Persist it' >&2
+        echo 'in your shell profile, then re-run this command. See CONTRIBUTING.md' >&2
+        echo '"Compiler targets by platform" for the full Android toolchain setup.' >&2
+        exit 1
+    fi
+
+# Fail loudly if `tauri android init` has clobbered the hand-written native
+# bridge (RFC 0116). MainActivity.kt is the one tracked file in the otherwise
+# generated/gitignored gen/android tree; a regeneration silently overwrites it
+# with Tauri's default stub, which builds fine but drops safe-area/keyboard.
+_require-native-bridge:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    activity='tauri/src-tauri/gen/android/app/src/main/java/run/nopal/kitchen_sink/MainActivity.kt'
+    if [ ! -f "$activity" ] || ! grep -q 'report_safe_area' "$activity"; then
+        echo "error: the hand-written Android native bridge is missing from" >&2
+        echo "  $activity" >&2
+        echo '' >&2
+        echo '`tauri android init` regenerates this file with a default stub, dropping the' >&2
+        echo 'RFC 0116 safe-area / soft-keyboard reads. Restore the tracked version with:' >&2
+        echo '' >&2
+        echo "    git checkout -- $activity" >&2
+        echo '' >&2
+        exit 1
+    fi
+
+# guard ANDROID_HOME + native bridge -> build JS (dev) -> `tauri android dev`
+dev-android: _require-android-home _require-native-bridge tauri-prepare-dev
+    cd tauri && npm exec tauri android dev
+
+# guard ANDROID_HOME + native bridge -> build JS (release) -> `tauri android build` (.apk + .aab)
+build-android: _require-android-home _require-native-bridge tauri-prepare-build
+    cd tauri && npm exec tauri android build --apk --aab
+
 # Site — assemble examples mini-site into dist/
 
 build-release:

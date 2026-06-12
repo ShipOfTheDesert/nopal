@@ -178,6 +178,9 @@ let msg_pp fmt msg =
   | Navigation_bar_msg _ -> Format.fprintf fmt "Navigation_bar_msg _"
   | Bottom_tabs_msg _ -> Format.fprintf fmt "Bottom_tabs_msg _"
   | Modal_msg _ -> Format.fprintf fmt "Modal_msg _"
+  | KeyboardHeightChanged _ -> Format.fprintf fmt "KeyboardHeightChanged _"
+  | Back_demo_push -> Format.fprintf fmt "Back_demo_push"
+  | Route_changed _ -> Format.fprintf fmt "Route_changed _"
 
 let msg_testable = Alcotest.testable msg_pp ( = )
 
