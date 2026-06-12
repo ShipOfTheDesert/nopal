@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Fail loudly if `tauri android init` has clobbered the hand-written native
+# bridge (RFC 0116). MainActivity.kt is the one tracked file in the otherwise
+# generated/gitignored gen/android tree; a regeneration silently overwrites it
+# with Tauri's default stub, which builds fine but drops safe-area/keyboard.
+
+REPO_ROOT="$(git -C "$(dirname "$0")/.." rev-parse --show-toplevel)"
+rel='tauri/src-tauri/gen/android/app/src/main/java/run/nopal/kitchen_sink/MainActivity.kt'
+activity="$REPO_ROOT/$rel"
+
+if [ -f "$activity" ] && grep -q 'report_safe_area' "$activity"; then
+  exit 0
+fi
+
+{
+  echo "error: the hand-written Android native bridge is missing from"
+  echo "  $rel"
+  echo
+  echo "'tauri android init' regenerates this file with a default stub, dropping"
+  echo "the RFC 0116 safe-area / soft-keyboard reads. Restore the tracked version:"
+  echo
+  echo "    git checkout -- $rel"
+  echo
+} >&2
+exit 1

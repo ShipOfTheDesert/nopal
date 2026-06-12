@@ -20,7 +20,13 @@ let listen name on_event on_unlisten =
   let internals = Jv.get Jv.global "__TAURI_INTERNALS__" in
   let cb =
     Jv.callback ~arity:1 (fun jv ->
-        let payload = Jv.to_string (Jv.get jv "payload") in
+        (* A Rust [app.emit (name, ())] delivers a [null] payload;
+           [Jv.to_string null] throws inside the handler and the event is
+           silently dropped (REQ-F3 hardware-back regression). *)
+        let payload_jv = Jv.get jv "payload" in
+        let payload =
+          if Jv.is_none payload_jv then "" else Jv.to_string payload_jv
+        in
         on_event { payload })
   in
   let handler_id = Jv.to_int (Jv.call internals "transformCallback" [| cb |]) in

@@ -8,25 +8,43 @@
 // behaviour under test (the synchronous degenerate-value dispatch / the
 // idempotency guard) can be observed.
 //
-// The stub never delivers a native event — only the synchronous setup path is
-// exercised. It counts `plugin:event|listen` invocations on
+// It counts `plugin:event|listen` invocations on
 // `globalThis.__nopal_listen_count` so the idempotency test can assert that a
-// repeated `enable_hardware_back` registers no additional listener.
+// repeated `enable_hardware_back` registers no additional listener, and exposes
+// `globalThis.__nopal_deliver(name, payload)` to synchronously invoke the
+// handlers registered for `name` — mirroring how the real Tauri internals
+// dispatch a host `app.emit` to in-webview listeners (payload arrives verbatim,
+// including `null` for Rust unit payloads).
 (function () {
   var nextId = 1;
+  var callbacks = {}; // handler id -> raw Event.listen callback
+  var listeners = {}; // event name -> [handler id]
   globalThis.__nopal_listen_count = 0;
+  globalThis.__nopal_deliver = function (name, payload) {
+    var ids = listeners[name] || [];
+    for (var i = 0; i < ids.length; i++) {
+      callbacks[ids[i]]({ event: name, id: ids[i], payload: payload });
+    }
+  };
   globalThis.__TAURI_INTERNALS__ = {
     // Real Tauri returns a numeric handler id and retains the callback; the id
-    // is all `Event.listen` reads (`Jv.to_int`).
-    transformCallback: function (_cb) {
-      return nextId++;
+    // is all `Event.listen` reads (`Jv.to_int`). The callback is retained so
+    // `__nopal_deliver` can dispatch to it.
+    transformCallback: function (cb) {
+      var id = nextId++;
+      callbacks[id] = cb;
+      return id;
     },
     // `Ipc.invoke` calls this synchronously and awaits the returned Promise.
-    // `plugin:event|listen` resolves to a numeric event id (Fut expects u32);
-    // every other command resolves to 0.
-    invoke: function (cmd, _args) {
+    // `plugin:event|listen` records the handler against the event name and
+    // resolves to a numeric event id (Fut expects u32); every other command
+    // resolves to 0.
+    invoke: function (cmd, args) {
       if (cmd === "plugin:event|listen") {
         globalThis.__nopal_listen_count += 1;
+        (listeners[args.event] = listeners[args.event] || []).push(
+          args.handler
+        );
         return Promise.resolve(nextId++);
       }
       return Promise.resolve(0);

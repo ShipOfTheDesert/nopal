@@ -46,6 +46,34 @@ let test_on_keyboard_height_change_dispatches_zero_at_setup () =
   let dispatched, _cleanup = drive_custom sub in
   Alcotest.(check (list int)) "setup dispatches exactly [0]" [ 0 ] dispatched
 
+(* REQ-F3 regression (e2e back.e2e.ts): a Rust [app.emit (name, ())] delivers a
+   [null] payload to the in-webview handler. Decoding must not throw — the
+   original [Jv.to_string] on [null] raised a TypeError inside the handler, so
+   [on_event] never ran and the hardware-back chain silently died. *)
+let test_listen_decodes_null_payload_as_empty_string () =
+  let received = ref None in
+  Nopal_tauri.Event.listen "nopal:test-null-payload"
+    (fun (ev : Nopal_tauri.Event.event) -> received := Some ev.payload)
+    (fun _unlisten -> ());
+  ignore
+    (Jv.call Jv.global "__nopal_deliver"
+       [| Jv.of_string "nopal:test-null-payload"; Jv.null |]);
+  match !received with
+  | Some payload ->
+      Alcotest.(check string) "null payload decodes to \"\"" "" payload
+  | None -> Alcotest.fail "listener was never invoked for a null payload"
+
+let test_listen_delivers_string_payload_verbatim () =
+  let received = ref None in
+  Nopal_tauri.Event.listen "nopal:test-string-payload"
+    (fun (ev : Nopal_tauri.Event.event) -> received := Some ev.payload)
+    (fun _unlisten -> ());
+  ignore
+    (Jv.call Jv.global "__nopal_deliver"
+       [| Jv.of_string "nopal:test-string-payload"; Jv.of_string "Left" |]);
+  Alcotest.(check (option string))
+    "string payload is delivered verbatim" (Some "Left") !received
+
 let test_enable_hardware_back_is_idempotent () =
   let before = listen_count () in
   Platform.enable_hardware_back ();
@@ -68,6 +96,13 @@ let () =
           Alcotest.test_case
             "on_keyboard_height_change dispatches zero at setup" `Quick
             test_on_keyboard_height_change_dispatches_zero_at_setup;
+        ] );
+      ( "event_listen",
+        [
+          Alcotest.test_case "listen decodes null payload as \"\"" `Quick
+            test_listen_decodes_null_payload_as_empty_string;
+          Alcotest.test_case "listen delivers string payload verbatim" `Quick
+            test_listen_delivers_string_payload_verbatim;
         ] );
       ( "hardware_back",
         [
