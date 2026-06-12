@@ -2,12 +2,22 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Nopal Kitchen Sink</title>
 </head>
 <body>
-  <a href="../" style="position:fixed;top:12px;left:16px;font:500 14px/1 system-ui,sans-serif;color:#999;text-decoration:none;z-index:1000">&larr; All Examples</a>
+  <a id="all-examples" href="../" style="position:fixed;top:12px;left:16px;font:500 14px/1 system-ui,sans-serif;color:#999;text-decoration:none;z-index:1000">&larr; All Examples</a>
   <div id="app"></div>
+  <script>
+    // The "All Examples" link is web mini-site chrome; inside the Tauri app
+    // shell (desktop/mobile) there is no example index to return to, and under
+    // edge-to-edge it would sit beneath the status bar. Hide it when running in
+    // Tauri (detected via the injected IPC internals).
+    if (window.__TAURI_INTERNALS__) {
+      var allExamples = document.getElementById('all-examples');
+      if (allExamples) allExamples.style.display = 'none';
+    }
+  </script>
   <script src="main.bc.js"></script>
 </body>
 </html>

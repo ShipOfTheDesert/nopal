@@ -76,15 +76,36 @@ let drive (type msg) ~(start : unit -> unit)
     ~(set_viewport : Nopal_element.Viewport.t -> unit)
     ~(view_lwd : msg Nopal_element.Element.t Lwd.t) ~(dispatch : msg -> unit)
     ~(subscriptions : unit -> msg Nopal_mvu.Sub.t)
+    ~(safe_area_source :
+       ((Nopal_element.Viewport.safe_area -> unit) -> unit -> unit) option)
     ~(bridge : Nopal_runtime.Telemetry.handle option) (target : Brr.El.t) =
   (* Inject CSS custom properties bridging env() safe area values into JS-readable
      form. Must run before read_safe_area. Runs once on startup (REQ-N3). *)
   inject_safe_area_style ();
-  let safe_area = read_safe_area () in
+  let env_safe_area = read_safe_area () in
   start ();
+  (* last_insets caches the most recent safe-area insets so the ResizeObserver
+     rebuild reuses the live native value (from [safe_area_source]) rather than a
+     stale [env()] read, preventing an orientation update from being clobbered by
+     a later resize (RFC 0116 Risk row). It seeds from the [env()] read so that
+     with no source the resize behaviour is identical to before.
+     mutable: updated on every safe-area delivery, read by the resize callback. *)
+  let last_insets = ref env_safe_area in
   (* Set initial viewport after start so dispatch is valid if subscriptions exist *)
-  let initial_vp = read_viewport safe_area in
-  set_viewport initial_vp;
+  set_viewport (read_viewport !last_insets);
+  (* When a native source is supplied, register it: each delivered inset updates
+     the cache and re-pushes the viewport. The source dispatches its degenerate
+     value synchronously at setup, so this runs before the initial render below.
+     The returned unlisten cleanup is unused: [mount] runs for the page lifetime
+     (the existing ResizeObserver is likewise never disconnected). *)
+  let _unlisten_safe_area =
+    match safe_area_source with
+    | Some source ->
+        source (fun insets ->
+            last_insets := insets;
+            set_viewport (read_viewport insets))
+    | None -> fun () -> ()
+  in
   let root = Lwd.observe view_lwd in
   let initial_element = Lwd.quick_sample root in
   let handle = Renderer.create ~dispatch ~parent:target initial_element in
@@ -103,7 +124,7 @@ let drive (type msg) ~(start : unit -> unit)
      fills the viewport — the expected usage for Nopal applications. *)
   let resize_cb =
     Jv.callback ~arity:1 (fun _entries ->
-        let new_vp = read_viewport safe_area in
+        let new_vp = read_viewport !last_insets in
         set_viewport new_vp)
   in
   let observer = Jv.new' (Jv.get Jv.global "ResizeObserver") [| resize_cb |] in
@@ -184,7 +205,7 @@ let drive (type msg) ~(start : unit -> unit)
   ignore (Jv.call w "requestAnimationFrame" [| Jv.repr !raf_loop |]);
   update_keydown_prevent ()
 
-let mount (type model msg)
+let mount (type model msg) ?safe_area_source
     (module A : Nopal_mvu.App.S with type model = model and type msg = msg)
     (target : Brr.El.t) =
   let module R = Nopal_runtime.Runtime.Make (A) in
@@ -195,9 +216,9 @@ let mount (type model msg)
     ~view_lwd:(R.view rt)
     ~dispatch:(fun msg -> R.dispatch rt msg)
     ~subscriptions:(fun () -> A.subscriptions (R.model rt))
-    ~bridge:None target
+    ~safe_area_source ~bridge:None target
 
-let mount_with_telemetry (type model msg)
+let mount_with_telemetry (type model msg) ?safe_area_source
     (module A : Nopal_mvu.App.S with type model = model and type msg = msg)
     ?serialize_msg ?serialize_model (target : Brr.El.t) =
   let module R = Nopal_runtime.Runtime.Make (A) in
@@ -211,5 +232,5 @@ let mount_with_telemetry (type model msg)
     ~view_lwd:(R.view rt)
     ~dispatch:(fun msg -> R.dispatch rt msg)
     ~subscriptions:(fun () -> A.subscriptions (R.model rt))
-    ~bridge:(Some handle) target;
+    ~safe_area_source ~bridge:(Some handle) target;
   handle

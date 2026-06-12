@@ -82,6 +82,79 @@ opens the Tauri window. File changes trigger a rebuild automatically.
 `build-tauri` produces an optimized release binary bundled with the
 kitchen sink frontend.
 
+### Mobile Development (Tauri)
+
+Nopal targets Android and iOS through Tauri's mobile webview. Android has
+local `just` targets for the inner dev loop; iOS is built and smoke-tested
+in CI (no contributor Mac hardware required — see below).
+
+```bash
+just dev-android      # build JS (dev) + launch the kitchen sink on an emulator/device
+just build-android    # build JS (release) + produce an installable .apk and a Play .aab
+```
+
+Both recipes verify `ANDROID_HOME` is set before doing any work and halt
+with an exact, copy-pasteable remediation command if it is absent, so a
+misconfigured toolchain fails fast instead of deep inside the Tauri build.
+
+The Android and iOS toolchain prerequisites are documented in
+[Compiler targets by platform](#compiler-targets-by-platform) below.
+
+## Compiler targets by platform
+
+A single OCaml codebase compiles to every supported target. The compiler
+choice is deliberately **uniform** — there is no per-platform compiler
+branch — with one hard constraint on iOS.
+
+| Target | Renderer | Compiler | Status |
+|---|---|---|---|
+| Web (SPA) | `nopal_web` (DOM) | `js_of_ocaml` | Default, shipped |
+| Tauri desktop | `nopal_web` (webview) | `js_of_ocaml` | Default, shipped |
+| Tauri Android | `nopal_web` (webview) | `js_of_ocaml` | Default, shipped |
+| Tauri iOS | `nopal_web` (webview) | `js_of_ocaml` | Default, Simulator-validated in CI |
+
+**`js_of_ocaml` is the default compiler for all four targets** — web, Tauri
+desktop, Tauri Android, and Tauri iOS. Keeping the compiler uniform means
+the same JS bundle semantics (and the same `nopal_web` renderer) run
+everywhere, so a behaviour proven on web or desktop carries to mobile.
+
+**`wasm_of_ocaml` is viable on Android but not the tested default.**
+Chromium's Android WebView supports WasmGC, so a `wasm_of_ocaml` build can
+in principle run there. Nopal does not test or ship it; it remains an
+opt-in experiment, not a supported target.
+
+**`wasm_of_ocaml` is blocked on iOS.** WKWebView prohibits JIT compilation,
+which `wasm_of_ocaml`'s WasmGC output requires, so it cannot run inside the
+iOS webview at all. This is the one hard platform constraint, and the
+reason the compiler choice stays uniformly `js_of_ocaml` rather than
+diverging to Wasm on capable platforms.
+
+### Android toolchain prerequisites
+
+`just dev-android` / `just build-android` require:
+
+- **Android Studio** with the **SDK** and **NDK** installed (the NDK is
+  needed to cross-compile Tauri's Rust core for the device ABIs).
+- **`ANDROID_HOME`** exported to the SDK location. Persist it in your shell
+  profile:
+
+  ```bash
+  export ANDROID_HOME="$HOME/Android/Sdk"
+  # macOS default: export ANDROID_HOME="$HOME/Library/Android/sdk"
+  ```
+
+- The **Rust toolchain** (via [rustup](https://rustup.rs/)) and the Tauri
+  system dependencies already required for desktop builds.
+
+### iOS toolchain (CI only)
+
+iOS is built and smoke-tested on a GitHub-hosted **`macos-latest`** runner
+(`.github/workflows/ios.yml`), which ships Xcode and the iOS Simulator.
+Simulator builds run **unsigned**, so iOS stays continuously validated
+without any contributor Mac hardware or signing credentials. IPA generation
+(signing/packaging) and interactive Simulator visual QA are tracked as
+Phase 3 work, not Phase 2.
+
 ## Coding Principles
 
 These principles govern every contribution. Listed in priority order.

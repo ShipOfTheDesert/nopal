@@ -64,10 +64,22 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         { l with gap = Some 4.0; cross_align = Some Center }
         |> Style.padding 8.0 0.0 8.0 0.0)
 
-  let page_style =
+  (* Page padding grows by the live safe-area insets (REQ-F4/N2) so content
+     clears the status bar, navigation bar, and home indicator on mobile. On
+     desktop and web the insets are zero, so this is identical to a flat 32px
+     padding on every side. *)
+  let page_style_with_safe_area vp =
+    let module Viewport = Nopal_element.Viewport in
+    let safe = Viewport.safe_area vp in
+    let pad side = 32.0 +. float_of_int side in
     Style.default
     |> Style.with_layout (fun l ->
-        { l with gap = Some 20.0 } |> Style.padding 32.0 32.0 32.0 32.0)
+        { l with gap = Some 20.0 }
+        |> Style.padding
+             (pad (Viewport.safe_area_top safe))
+             (pad (Viewport.safe_area_right safe))
+             (pad (Viewport.safe_area_bottom safe))
+             (pad (Viewport.safe_area_left safe)))
     |> Style.with_paint (fun p -> { p with background = Some bg_page })
 
   (* HTTP state *)
@@ -99,6 +111,35 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | TauriStoreValue of string
     | TauriStoreNotFound
     | TauriStoreError of string
+
+  (* Back-navigation demo (RFC 0116): a minimal two-step router-backed section
+     whose only job is to give the Tauri hardware-back IPC a router consumer to
+     drive. [Back_detail] is one push deep from [Back_home]; the real
+     [window.history.back()] (or the [simulate_back_pressed] debug command) pops
+     it through the router's [on_navigate] subscription, with no app-specific
+     back code. *)
+  type back_route = Back_home | Back_detail
+
+  let back_route_to_string = function
+    | Back_home -> "Back_home"
+    | Back_detail -> "Back_detail"
+
+  (* Relative paths so navigation resolves against the document URL even under a
+     mount prefix (mirrors [examples/router_demo]); [parse] matches the final
+     path segment. The catch-all is on a [string], not the closed route type. *)
+  let back_route_to_path = function
+    | Back_home -> "./"
+    | Back_detail -> "back-detail"
+
+  let back_route_of_path path =
+    match Filename.basename path with
+    | "back-detail" -> Some Back_detail
+    | _ -> None
+
+  let back_router =
+    Nopal_platform.Router.create
+      ~platform:(module Platform : Nopal_platform.Platform.NAV)
+      ~parse:back_route_of_path ~to_path:back_route_to_path ~not_found:Back_home
 
   (* Model *)
   type model = {
@@ -160,6 +201,8 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     navigation_bar : Sub_navigation_bar.model;
     bottom_tabs : Sub_bottom_tabs.model;
     modal : Sub_modal.model;
+    keyboard_height : int;  (** soft-keyboard height in logical px (REQ-N2) *)
+    back_route : back_route;  (** current route of the back-navigation demo *)
   }
 
   (* Messages *)
@@ -186,6 +229,9 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | Navigation_bar_msg of Sub_navigation_bar.msg
     | Bottom_tabs_msg of Sub_bottom_tabs.msg
     | Modal_msg of Sub_modal.msg
+    | KeyboardHeightChanged of int  (** native soft-keyboard height (REQ-F5) *)
+    | Back_demo_push  (** push the back-demo one step deep (to [Back_detail]) *)
+    | Route_changed of back_route  (** popstate-driven route update (REQ-F3) *)
     | DrawPointerMove of float * float
     | DrawPointerLeave
     | ChartHovered of Hover.t
@@ -372,6 +418,8 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         navigation_bar;
         bottom_tabs;
         modal;
+        keyboard_height = 0;
+        back_route = Back_home;
       },
       Nopal_mvu.Cmd.batch
         [
@@ -400,6 +448,13 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
   let clamp_line_dw dw = Domain_window.clamp ~data_min:0.0 ~data_max:999.0 dw
 
   let update model = function
+    | KeyboardHeightChanged height ->
+        ({ model with keyboard_height = height }, Nopal_mvu.Cmd.none)
+    | Back_demo_push ->
+        ( { model with back_route = Back_detail },
+          Nopal_platform.Router.push back_router Back_detail )
+    | Route_changed route ->
+        ({ model with back_route = route }, Nopal_mvu.Cmd.none)
     | ButtonClicked ->
         ( { model with button_clicks = model.button_clicks + 1 },
           Nopal_mvu.Cmd.none )
@@ -3172,9 +3227,43 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
       ]
 
   (* Main view — all sections in a scrollable column (REQ-F10, REQ-F12) *)
+  (* Mobile-signals section (RFC 0116): a keyboard-height debug readout fed by the
+     [on_keyboard_height_change] subscription, plus the back-navigation demo the
+     hardware-back IPC drives. Both are platform-agnostic — the native signals are
+     wired in [main.ml] under [has_tauri ()]; on desktop the keyboard height stays
+     0 and the back button just pushes browser history. *)
+  let view_mobile model =
+    Element.column ~style:section_style
+      ~attrs:[ ("data-section", "mobile") ]
+      [
+        Element.text "Mobile Signals";
+        Element.column ~style:section_body_style
+          [
+            Element.box
+              ~attrs:[ ("data-testid", "keyboard-height") ]
+              [
+                Element.text
+                  ("Keyboard height: "
+                  ^ string_of_int model.keyboard_height
+                  ^ "px");
+              ];
+            Element.box
+              ~attrs:[ ("data-testid", "back-demo-current") ]
+              [
+                Element.text
+                  ("Current route: " ^ back_route_to_string model.back_route);
+              ];
+            Element.button
+              ~attrs:[ ("data-action", "back-demo-push") ]
+              ~on_click:Back_demo_push
+              (Element.text "Open detail");
+          ];
+      ]
+
   let view vp model =
     Element.scroll
-      (Element.column ~style:page_style
+      (Element.column
+         ~style:(page_style_with_safe_area vp)
          [
            Element.column ~style:page_header_style
              [
@@ -3287,6 +3376,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
            view_tauri_tray model;
            view_tauri_store model;
            view_storage model;
+           view_mobile model;
          ])
 
   let subscriptions model =
@@ -3298,6 +3388,12 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         Nopal_mvu.Sub.map
           (fun m -> Modal_msg m)
           (Sub_modal.subscriptions model.modal);
+        (* Back-demo router consumer (REQ-F3): a [popstate] (from
+           [window.history.back()], itself fired by the hardware-back IPC) parses
+           the URL and dispatches [Route_changed], returning the demo to its prior
+           route with no app-specific back handling. *)
+        Nopal_platform.Router.on_navigate back_router (fun route ->
+            Route_changed route);
       ]
 end
 

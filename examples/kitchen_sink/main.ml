@@ -413,6 +413,9 @@ let update model msg =
   | App.Navigation_bar_msg _
   | App.Bottom_tabs_msg _
   | App.Modal_msg _
+  | App.KeyboardHeightChanged _
+  | App.Back_demo_push
+  | App.Route_changed _
   | App.SubWizardMsg _ ->
       (model', cmd)
 
@@ -469,6 +472,13 @@ let serialize_msg : App.msg -> string = function
   | App.Modal_msg Sub_modal.Close -> "Modal:Close"
   | App.Modal_msg (Sub_modal.FocusChanged id) -> "Modal:FocusChanged:" ^ id
   | App.Modal_msg (Sub_modal.TabCycled id) -> "Modal:TabCycled:" ^ id
+  (* Mobile signals (RFC 0116): the keyboard-height readout (REQ-N2) and the
+     back-demo route change the Tauri back-IPC e2e asserts on via the host
+     [get_telemetry] mirror — [Route_changed] proves the hardware-back chain
+     reached the router. *)
+  | App.KeyboardHeightChanged h -> Printf.sprintf "KeyboardHeightChanged:%d" h
+  | App.Back_demo_push -> "Back_demo_push"
+  | App.Route_changed route -> "Route_changed:" ^ App.back_route_to_string route
   (* Storage persistence contract (RFC 0112, Step 6 / REQ-F3): [StorageSet] is
      the write, [StorageRestored] the post-reload re-read. Only the restored
      [Some] case emits a "Restored" fragment so the E2E wait does not trip on a
@@ -635,11 +645,16 @@ let serialize_model (model : App.model) =
      preservation spec can prove [profile_depth=2;] survives a tab switch via
      [assertModelContains]. [Sub_bottom_tabs.serialize_model] already terminates
      each [field=value] with ';' (undelimited-telemetry-fragment-aliasing). *)
+  (* The back-demo route is part of the asserted model surface so the RFC 0116
+     back-IPC e2e can prove the model returned to [Back_home] after
+     [simulate_back_pressed] via [assertModelContains]. The trailing ';' keeps
+     [back_route=Back_home;] from prefix-aliasing a longer route name. *)
   Printf.sprintf
     "{pings=%d; clicks=%d; input=%S; storage=%s; win_visible=%b; win_title=%S; \
-     tauri_store=%s; bottom_tabs={%s}}"
+     tauri_store=%s; back_route=%s; bottom_tabs={%s}}"
     model.telemetry_pings model.button_clicks model.input_text storage
     model.tauri_is_visible model.tauri_window_title tauri_store
+    (back_route_to_string model.back_route)
     (Sub_bottom_tabs.serialize_model model.bottom_tabs)
 
 (* The application owns telemetry policy: telemetry is on by default for the
@@ -678,12 +693,31 @@ let () =
     let subscriptions model =
       let base = App.subscriptions model in
       if has_tauri () then
-        Nopal_mvu.Sub.batch [ base; Nopal_tauri.Tray.on_click App.TrayClicked ]
+        Nopal_mvu.Sub.batch
+          [
+            base;
+            Nopal_tauri.Tray.on_click App.TrayClicked;
+            (* Soft-keyboard height feeds the REQ-N2 debug display; on desktop it
+               fires exactly once with 0 (RFC 0116, Step 7). *)
+            Nopal_tauri.Platform_tauri.on_keyboard_height_change (fun h ->
+                App.KeyboardHeightChanged h);
+          ]
       else base
   end in
+  (* Mobile signal wiring (RFC 0116, Step 7): both ride the Tauri event bus, so
+     they are inert/absent in a plain browser — gate on [has_tauri]. The
+     hardware-back listener turns [nopal:back-pressed] into [history.back()]
+     (REQ-F3, idempotent); [safe_area_source] is threaded into mount so the
+     runtime auto-populates [Viewport.safe_area] (REQ-F4) instead of reading
+     CSS [env()]. *)
+  if has_tauri () then Nopal_tauri.Platform_tauri.enable_hardware_back ();
+  let safe_area_source =
+    if has_tauri () then Some Nopal_tauri.Platform_tauri.safe_area_source
+    else None
+  in
   if telemetry_enabled () then begin
     let handle : Nopal_runtime.Telemetry.handle =
-      Nopal_web.mount_with_telemetry
+      Nopal_web.mount_with_telemetry ?safe_area_source
         (module Mounted)
         ~serialize_msg ~serialize_model target
     in
@@ -694,4 +728,4 @@ let () =
        until this call (RFC Risk: [get_telemetry] returns [[]] otherwise). *)
     if has_tauri () then Nopal_tauri.Telemetry.expose handle
   end
-  else Nopal_web.mount (module Mounted) target
+  else Nopal_web.mount ?safe_area_source (module Mounted) target

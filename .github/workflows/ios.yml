@@ -1,0 +1,124 @@
+name: iOS
+
+# REQ-F2 (RFC 0116): iOS Simulator liveness smoke. macos-latest is the only
+# runner with Xcode + the iOS Simulator, and unsigned Simulator builds need no
+# Mac hardware or signing. Main-only + manual (workflow_dispatch): hosted macOS
+# runners are heavy and slow, so — like the e2e-tauri job — this is kept off the
+# per-PR critical path. Per RFC 0116 Implementation Decision 2 this is a
+# process-liveness smoke (boot -> install -> launch -> app stays alive), not a
+# get_telemetry interaction suite (the iOS WebView automation driver is the
+# planned Phase 3 work item).
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios-simulator-smoke:
+    runs-on: macos-latest
+
+    env:
+      BUNDLE_ID: run.nopal.kitchen-sink
+      SIM_TARGET: aarch64-sim
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: extractions/setup-just@v3
+        with:
+          just-version: '1.46.0'
+
+      # Hosted-runner OCaml setup with a pinned compiler + cached OPAMROOT
+      # (RFC 0116 resolved clarification): the self-hosted composite action's
+      # Linux-tuned options are not reused here; setup-ocaml@v3 caches the opam
+      # root and dune cache for the macOS job directly.
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: 5.3.0
+          dune-cache: true
+          dune-cache-prefix: ios-v1
+          opam-disable-sandboxing: true
+
+      - name: Install OCaml dependencies
+        run: opam install -y --deps-only -t .
+
+      - name: Install Rust toolchain (iOS Simulator target)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios-sim
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tauri/src-tauri
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Tauri CLI
+        run: cd tauri && npm ci
+
+      # Build the release JS bundle and stage tauri/dist/ exactly as a desktop
+      # release build does (mirrors `just build-android`'s prepare step).
+      - name: Build + stage kitchen-sink web assets
+        run: just tauri-prepare-build
+
+      - name: Initialize Tauri iOS project
+        run: cd tauri && npm exec tauri ios init
+
+      - name: Build kitchen sink for the iOS Simulator (unsigned)
+        run: cd tauri && npm exec tauri ios build -- --target "$SIM_TARGET"
+
+      # Process-liveness smoke (RFC 0116 Implementation Decision 2): boot a
+      # simulator, install + launch the unsigned .app, and assert it reaches a
+      # live, non-crashed running state. A crash-on-launch leaves the bundle id
+      # absent from the running-app list, failing the job.
+      - name: Boot iOS Simulator
+        run: |
+          set -euo pipefail
+          DEVICE=$(xcrun simctl list devices available | grep -Eo 'iPhone [0-9]+' | head -n1)
+          echo "Booting simulator: ${DEVICE}"
+          xcrun simctl boot "${DEVICE}"
+          xcrun simctl bootstatus "${DEVICE}" -b
+
+      - name: Install + launch + assert liveness
+        run: |
+          set -euo pipefail
+          APP=$(find tauri/src-tauri/gen/apple -name '*.app' -type d -path '*Debug-iphonesimulator*' | head -n1)
+          if [ -z "${APP:-}" ]; then
+            APP=$(find tauri/src-tauri/gen/apple -name '*.app' -type d | head -n1)
+          fi
+          if [ -z "${APP:-}" ]; then
+            echo "error: no built .app found under tauri/src-tauri/gen/apple" >&2
+            exit 1
+          fi
+          echo "Installing ${APP}"
+          xcrun simctl install booted "${APP}"
+
+          echo "Launching ${BUNDLE_ID}"
+          LAUNCH_OUT=$(xcrun simctl launch booted "${BUNDLE_ID}")
+          echo "${LAUNCH_OUT}"
+          PID=$(printf '%s\n' "${LAUNCH_OUT}" | grep -Eo '[0-9]+$' || true)
+          if [ -z "${PID:-}" ]; then
+            echo "error: launch did not return a PID — app failed to start" >&2
+            exit 1
+          fi
+
+          # Give the app a moment to either come up or crash, then confirm it is
+          # still a live process inside the simulator.
+          sleep 5
+          if ! xcrun simctl spawn booted launchctl list | grep -q "${BUNDLE_ID}"; then
+            echo "error: ${BUNDLE_ID} is not running after launch — crashed on startup" >&2
+            xcrun simctl spawn booted log show --last 1m --predicate "process == \"${BUNDLE_ID}\"" || true
+            exit 1
+          fi
+          echo "Liveness smoke passed: ${BUNDLE_ID} launched (pid ${PID}) and is running."
