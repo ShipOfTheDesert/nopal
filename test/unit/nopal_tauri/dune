@@ -12,6 +12,13 @@
  (modes js)
  (js_of_ocaml))
 
+(test
+ (name test_nopal_tauri_store)
+ (modules test_nopal_tauri_store)
+ (libraries nopal_tauri alcotest)
+ (modes js)
+ (js_of_ocaml))
+
 ; tauri_shim.js stubs __TAURI_INTERNALS__ so the Event.listen-backed
 ; subscription/back-button setups run under Node without a Tauri host.
 

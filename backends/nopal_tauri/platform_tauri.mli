@@ -29,7 +29,7 @@ val on_keyboard_height_change : (int -> 'msg) -> 'msg Nopal_mvu.Sub.t
 
 val safe_area_source :
   (Nopal_element.Viewport.safe_area -> unit) -> unit -> unit
-(** Native viewport-population hook for {!Nopal_web.mount} [~safe_area_source].
+(** Native viewport-population hook for [Nopal_web.mount] [~safe_area_source].
     [safe_area_source set] registers the native safe-area listener (dispatching
     [zero_insets] to [set] once at setup), and returns an unlisten cleanup. This
     is the mechanism behind REQ-F4's "runtime populates [Viewport.safe_area]
