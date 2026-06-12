@@ -3,8 +3,8 @@ name: iOS
 # REQ-F2 (RFC 0116): iOS Simulator liveness smoke. macos-latest is the only
 # runner with Xcode + the iOS Simulator, and unsigned Simulator builds need no
 # Mac hardware or signing. Main-only + manual (workflow_dispatch): hosted macOS
-# runners are heavy and slow, so — like the e2e-tauri job — this is kept off the
-# per-PR critical path. Per RFC 0116 Implementation Decision 2 this is a
+# runners are heavy and slow, so this is kept off the per-PR critical path
+# (the ubuntu e2e-tauri job, by contrast, does run on PRs). Per RFC 0116 Implementation Decision 2 this is a
 # process-liveness smoke (boot -> install -> launch -> app stays alive), not a
 # get_telemetry interaction suite (the iOS WebView automation driver is the
 # planned Phase 3 work item).

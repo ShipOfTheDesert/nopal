@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Fail with a copy-paste remediation if ANDROID_HOME is unset — required for any
+# Tauri Android build. Used as a guard by the dev-/build-/run-android recipes.
+
+if [ -n "${ANDROID_HOME:-}" ]; then
+  exit 0
+fi
+
+cat >&2 <<'EOF'
+error: ANDROID_HOME is not set - the Android SDK location is required to
+build the Tauri Android app. Install the SDK + NDK via Android Studio,
+then run:
+
+    export ANDROID_HOME="$HOME/Android/Sdk"
+
+(on macOS the default SDK path is "$HOME/Library/Android/sdk"). Persist it
+in your shell profile, then re-run this command. See CONTRIBUTING.md
+"Compiler targets by platform" for the full Android toolchain setup.
+EOF
+exit 1

@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Run the Nopal kitchen-sink on the Android emulator in one go: boot the AVD if
+# none is running, build a debug x86_64 APK (the emulator ABI), install, launch,
+# screenshot. Windowed by default (shows in the desktop session you watch over
+# RustDesk); headless on request. Assumes ANDROID_HOME is set (android-require-home).
+#
+# Usage: android-run [avd] [headless]
+#   avd       AVD name (default: pixel7_api34)
+#   headless  "true" => no window (CI); anything else => windowed (default)
+
+REPO_ROOT="$(git -C "$(dirname "$0")/.." rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+avd="${1:-pixel7_api34}"
+headless="${2:-false}"
+adb="$ANDROID_HOME/platform-tools/adb"
+pkg='run.nopal.kitchen_sink'
+
+# A windowed emulator needs a display, so target the desktop session's DISPLAY
+# (default :0). The headless launcher uses a distinct qemu-system-...-headless
+# binary with -no-window, which is how we tell a running emulator's mode apart.
+boot_emulator() {
+  local flags=(-avd "$avd" -no-audio -no-boot-anim -no-snapshot
+    -gpu swiftshader_indirect -accel on -port 5554)
+  if [ "$headless" = "true" ]; then
+    flags+=(-no-window)
+    echo "android-run: booting $avd headless..."
+  else
+    export DISPLAY="${DISPLAY:-:0}"
+    echo "android-run: booting $avd windowed on DISPLAY=$DISPLAY (visible in your desktop session)..."
+  fi
+  setsid "$ANDROID_HOME/emulator/emulator" "${flags[@]}" >~/emu.log 2>&1 &
+  disown 2>/dev/null || true
+}
+
+running_emu_is_headless() {
+  ps -eo args 2>/dev/null | grep 'qemu-system' | grep -v 'grep' | grep -q -- '-no-window'
+}
+
+# Reuse a booted emulator — but if a window was requested and the running one is
+# headless, restart it windowed (otherwise you'd silently get no window).
+if "$adb" devices | grep -qE '^emulator-[0-9]+[[:space:]]+device$'; then
+  if [ "$headless" != "true" ] && running_emu_is_headless; then
+    echo "android-run: a headless emulator is running but a window was requested — restarting it windowed..."
+    "$adb" -s emulator-5554 emu kill 2>/dev/null || true
+    for _ in $(seq 1 30); do "$adb" devices | grep -qE '^emulator-5554[[:space:]]+device$' || break; sleep 1; done
+    sleep 2 # let port 5554 free before relaunching on it
+    boot_emulator
+  else
+    echo "android-run: reusing the running emulator"
+  fi
+else
+  boot_emulator
+fi
+
+"$adb" wait-for-device
+until [ "$("$adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; do sleep 1; done
+echo "android-run: emulator ready"
+
+# `tauri android build` runs the configured beforeBuildCommand
+# (just tauri-prepare-build), staging the js_of_ocaml frontend into tauri/dist.
+(cd tauri && npm exec tauri -- android build --debug --apk --target x86_64)
+
+apk="$(find tauri/src-tauri/gen/android/app/build/outputs/apk -name 'app-*-debug.apk' | head -1)"
+[ -n "$apk" ] || {
+  echo "android-run: no debug APK found after build" >&2
+  exit 1
+}
+echo "android-run: installing $apk"
+"$adb" install -r "$apk"
+
+"$adb" shell monkey -p "$pkg" -c android.intent.category.LAUNCHER 1 >/dev/null
+sleep 4
+shot=~/nopal_android.png
+"$adb" exec-out screencap -p >"$shot"
+echo "android-run: launched $pkg — screenshot at $shot"
