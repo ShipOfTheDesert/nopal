@@ -65,10 +65,6 @@ val default_backend : backend
 (** The default backend, which always dispatches [Network_error]. Useful for
     testing or restoring state after {!register_backend}. *)
 
-val default_cancellable_backend : cancellable_backend
-(** The default cancellable backend. Wraps {!default_backend}'s [send] with
-    {!Nopal_mvu.Task.cancellable}. *)
-
 val register_backend : backend -> unit
 (** [register_backend b] sets the HTTP backend used by {!val-send}, {!val-get},
     {!val-post}, {!val-put}, {!val-delete_}, and {!val-patch}. Call this at

@@ -64,6 +64,86 @@ let focus_element id =
   let el = Jv.call document "getElementById" [| Jv.of_string id |] in
   if not (Jv.is_none el) then ignore (Jv.call el "focus" [||])
 
+(* The DOM keydown/keyup [event.key] string the subscription handler receives.
+   A held [Shift] is folded into a ["Shift+<key>"] prefix (except for the bare
+   [Shift] keypress itself) so handlers can match chords like ["Shift+Tab"]
+   without reading the modifier flags themselves — preserving the contract the
+   pre-interpreter rAF keydown listener established (REQ-F3). *)
+let event_key event =
+  let raw_key = Jv.to_string (Jv.get event "key") in
+  let shift = Jv.to_bool (Jv.get event "shiftKey") in
+  if shift && not (String.equal raw_key "Shift") then "Shift+" ^ raw_key
+  else raw_key
+
+(* Web backend's per-atom subscription interpreter handed to the runtime
+   ([Sub_manager.diff] via [Runtime.create ~interpret_atom]). Exhaustive over
+   [Sub.atom] — a new constructor is a compile error here, never a silent
+   no-op (REQ-F3).
+
+   [Custom] runs its setup with the runtime-supplied [dispatch]. [Viewport] is a
+   no-op because the viewport is delivered through the [ResizeObserver] /
+   [set_viewport] seam below, not a listener. The five remaining built-ins set
+   up a browser source — [Every] a [setInterval]; [Keydown]/[Keyup]/[Resize]
+   [window] listeners; [Visibility] a [document] [visibilitychange] listener —
+   and return a cleanup that tears it down, so [Sub_manager] removing the key
+   stops the source. [Keydown] serves both the plain and preventDefault forms
+   the [atom] unified ([handler] returns [Some (msg, prevent)] or [None]);
+   [Keyup] dispatches only on [Some], dropping [None] (the filtered-keyup
+   contract). *)
+let web_interpret_atom (type msg) ~(dispatch : msg -> unit)
+    (atom : msg Nopal_mvu.Sub.atom) : (unit -> unit, string) result =
+  let w = Jv.get Jv.global "window" in
+  let listen target event_type listener =
+    ignore
+      (Jv.call target "addEventListener"
+         [| Jv.of_string event_type; listener |]);
+    fun () ->
+      ignore
+        (Jv.call target "removeEventListener"
+           [| Jv.of_string event_type; listener |])
+  in
+  match atom with
+  | Nopal_mvu.Sub.Custom { setup; _ } -> Ok (setup dispatch)
+  | Viewport _ -> Ok (fun () -> ())
+  | Every { interval_ms; tick; _ } ->
+      let cb = Jv.callback ~arity:1 (fun _ -> dispatch (tick ())) in
+      let id = Jv.call w "setInterval" [| cb; Jv.of_int interval_ms |] in
+      Ok (fun () -> ignore (Jv.call w "clearInterval" [| id |]))
+  | Keydown { handler; _ } ->
+      let listener =
+        Jv.callback ~arity:1 (fun event ->
+            match handler (event_key event) with
+            | Some (msg, prevent) ->
+                if prevent then ignore (Jv.call event "preventDefault" [||]);
+                dispatch msg
+            | Option.None -> ())
+      in
+      Ok (listen w "keydown" listener)
+  | Keyup { handler; _ } ->
+      let listener =
+        Jv.callback ~arity:1 (fun event ->
+            match handler (event_key event) with
+            | Some msg -> dispatch msg
+            | Option.None -> ())
+      in
+      Ok (listen w "keyup" listener)
+  | Resize { handler; _ } ->
+      let listener =
+        Jv.callback ~arity:1 (fun _event ->
+            let width = Jv.to_int (Jv.get w "innerWidth") in
+            let height = Jv.to_int (Jv.get w "innerHeight") in
+            dispatch (handler width height))
+      in
+      Ok (listen w "resize" listener)
+  | Visibility { handler; _ } ->
+      let document = Jv.get Jv.global "document" in
+      let listener =
+        Jv.callback ~arity:1 (fun _event ->
+            let state = Jv.to_string (Jv.get document "visibilityState") in
+            dispatch (handler (String.equal state "visible")))
+      in
+      Ok (listen document "visibilitychange" listener)
+
 (* Shared DOM wiring for both {!mount} and {!mount_with_telemetry}. It is given
    the runtime operations as closures (already bound to a concrete runtime
    value), plus an optional telemetry handle: when present, the
@@ -75,7 +155,6 @@ let focus_element id =
 let drive (type msg) ~(start : unit -> unit)
     ~(set_viewport : Nopal_element.Viewport.t -> unit)
     ~(view_lwd : msg Nopal_element.Element.t Lwd.t) ~(dispatch : msg -> unit)
-    ~(subscriptions : unit -> msg Nopal_mvu.Sub.t)
     ~(safe_area_source :
        ((Nopal_element.Viewport.safe_area -> unit) -> unit -> unit) option)
     ~(bridge : Nopal_runtime.Telemetry.handle option) (target : Brr.El.t) =
@@ -129,70 +208,18 @@ let drive (type msg) ~(start : unit -> unit)
   in
   let observer = Jv.new' (Jv.get Jv.global "ResizeObserver") [| resize_cb |] in
   ignore (Jv.call observer "observe" [| Brr.El.to_jv target |]);
-  (* keydown_prevent subscription management: a single global keydown listener
-     dispatches to the current On_keydown_prevent callbacks. The callbacks ref
-     is updated each rAF frame from the model's subscriptions.
-     NOTE: This subscription type is managed here rather than through
-     Sub_manager because it requires platform-specific preventDefault
-     behavior that the platform-agnostic runtime cannot express. See
-     Task 4 reflections in tasks/current.md for the full rationale. *)
-  let keydown_prevent_cbs : (string * (string -> (msg * bool) option)) list ref
-      =
-    (* mutable: updated each rAF frame with the current model's
-       On_keydown_prevent callbacks so the global keydown listener
-       always dispatches against the latest subscription set *)
-    ref []
-  in
-  let keydown_listener =
-    (* mutable: holds the listener reference so it can be removed when no
-       On_keydown_prevent subscriptions are active *)
-    ref Jv.null
-  in
-  let update_keydown_prevent () =
-    let subs = subscriptions () in
-    let cbs = Nopal_mvu.Sub.extract_on_keydown_prevents subs in
-    keydown_prevent_cbs := cbs;
-    let w = Jv.get Jv.global "window" in
-    match cbs with
-    | [] ->
-        if not (Jv.is_none !keydown_listener) then (
-          ignore
-            (Jv.call w "removeEventListener"
-               [| Jv.of_string "keydown"; !keydown_listener |]);
-          keydown_listener := Jv.null)
-    | _ ->
-        if Jv.is_none !keydown_listener then (
-          let listener =
-            Jv.callback ~arity:1 (fun event ->
-                let raw_key = Jv.to_string (Jv.get event "key") in
-                let shift = Jv.to_bool (Jv.get event "shiftKey") in
-                let key =
-                  if shift && not (String.equal raw_key "Shift") then
-                    "Shift+" ^ raw_key
-                  else raw_key
-                in
-                List.iter
-                  (fun (_sub_key, f) ->
-                    match f key with
-                    | Some (msg, prevent) ->
-                        if prevent then
-                          ignore (Jv.call event "preventDefault" [||]);
-                        dispatch msg
-                    | Option.None -> ())
-                  !keydown_prevent_cbs)
-          in
-          keydown_listener := listener;
-          ignore
-            (Jv.call w "addEventListener"
-               [| Jv.of_string "keydown"; listener |]))
-  in
+  (* keydown subscriptions are now interpreted by {!web_interpret_atom} and
+     diffed through [Sub_manager] like every other built-in (REQ-F3): the
+     runtime sets up a [window] keydown listener when a keydown sub appears and
+     tears it down when it leaves. The previous per-rAF-frame
+     [update_keydown_prevent] re-extraction is gone — subscriptions only change
+     on a dispatch, which already triggers a diff. *)
   (raf_loop :=
      fun _ts ->
        if Lwd.is_damaged root then begin
          let new_element = Lwd.quick_sample root in
          Renderer.update ~dispatch handle new_element
        end;
-       update_keydown_prevent ();
        let w = Jv.get Jv.global "window" in
        ignore (Jv.call w "requestAnimationFrame" [| Jv.repr !raf_loop |]));
   (* Install the browser telemetry bridge over the driven runtime's handle
@@ -202,35 +229,35 @@ let drive (type msg) ~(start : unit -> unit)
   | Some handle -> Telemetry_bridge.install handle
   | None -> ());
   let w = Jv.get Jv.global "window" in
-  ignore (Jv.call w "requestAnimationFrame" [| Jv.repr !raf_loop |]);
-  update_keydown_prevent ()
+  ignore (Jv.call w "requestAnimationFrame" [| Jv.repr !raf_loop |])
 
-let mount (type model msg) ?safe_area_source
+let mount (type model msg) ?safe_area_source ?on_error
     (module A : Nopal_mvu.App.S with type model = model and type msg = msg)
     (target : Brr.El.t) =
   let module R = Nopal_runtime.Runtime.Make (A) in
-  let rt = R.create ~focus:focus_element ~schedule_after () in
-  drive
-    ~start:(fun () -> R.start rt)
-    ~set_viewport:(fun vp -> R.set_viewport rt vp)
-    ~view_lwd:(R.view rt)
-    ~dispatch:(fun msg -> R.dispatch rt msg)
-    ~subscriptions:(fun () -> A.subscriptions (R.model rt))
-    ~safe_area_source ~bridge:None target
-
-let mount_with_telemetry (type model msg) ?safe_area_source
-    (module A : Nopal_mvu.App.S with type model = model and type msg = msg)
-    ?serialize_msg ?serialize_model (target : Brr.El.t) =
-  let module R = Nopal_runtime.Runtime.Make (A) in
-  let rt, handle =
-    R.create_with_telemetry ~focus:focus_element ~schedule_after ?serialize_msg
-      ?serialize_model ()
+  let rt =
+    R.create ~focus:focus_element ~schedule_after ?on_error
+      ~interpret_atom:web_interpret_atom ()
   in
   drive
     ~start:(fun () -> R.start rt)
     ~set_viewport:(fun vp -> R.set_viewport rt vp)
     ~view_lwd:(R.view rt)
     ~dispatch:(fun msg -> R.dispatch rt msg)
-    ~subscriptions:(fun () -> A.subscriptions (R.model rt))
+    ~safe_area_source ~bridge:None target
+
+let mount_with_telemetry (type model msg) ?safe_area_source ?on_error
+    (module A : Nopal_mvu.App.S with type model = model and type msg = msg)
+    ?serialize_msg ?serialize_model (target : Brr.El.t) =
+  let module R = Nopal_runtime.Runtime.Make (A) in
+  let rt, handle =
+    R.create_with_telemetry ~focus:focus_element ~schedule_after ?on_error
+      ~interpret_atom:web_interpret_atom ?serialize_msg ?serialize_model ()
+  in
+  drive
+    ~start:(fun () -> R.start rt)
+    ~set_viewport:(fun vp -> R.set_viewport rt vp)
+    ~view_lwd:(R.view rt)
+    ~dispatch:(fun msg -> R.dispatch rt msg)
     ~safe_area_source ~bridge:(Some handle) target;
   handle

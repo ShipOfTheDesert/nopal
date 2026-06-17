@@ -12,27 +12,52 @@ module Sub_data_table = Kitchen_sink_app.Sub_data_table
 module Sub_navigation_bar = Kitchen_sink_app.Sub_navigation_bar
 module Sub_bottom_tabs = Kitchen_sink_app.Sub_bottom_tabs
 module Sub_modal = Kitchen_sink_app.Sub_modal
+module Sub_subscriptions = Kitchen_sink_app.Sub_subscriptions
+
+(* Result-task chaining for the Tauri ops (RFC 0118, REQ-F5). See
+   {!Kitchen_sink_app.Tauri_op} for the contract; instantiated here with the
+   concrete [App.TauriOpError] constructor (surfaced in the Tauri App section). *)
+module Op = Kitchen_sink_app.Tauri_op.Make (struct
+  type msg = App.msg
+
+  let tauri_op_error e = App.TauriOpError e
+end)
 
 let has_tauri () =
   not (Jv.is_undefined (Jv.get Jv.global "__TAURI_INTERNALS__"))
+
+let store_path = "nopal_store.json"
+
+(* Every Store op first [load]s the handle (RFC 0118, REQ-F6: a store you didn't
+   load is unrepresentable), then runs [op] with it. A load failure is routed
+   through [on_error] to the op's own [*Result] message so the command resolves
+   rather than stalling. tauri-plugin-store keys the backing file by path, so
+   the per-op reload returns the same already-loaded instance. *)
+let with_store ~on_error op =
+  Nopal_mvu.Cmd.task
+    (let open Nopal_mvu.Task.Syntax in
+     let* load_r = Nopal_tauri.Store.load store_path in
+     match load_r with
+     | Ok store -> op store
+     | Error e -> Nopal_mvu.Task.return (on_error e))
 
 let tauri_fetch_cmd =
   Nopal_mvu.Cmd.batch
     [
       Nopal_mvu.Cmd.task
-        (let open Nopal_mvu.Task.Syntax in
+        (let open Op in
          let+ s = Nopal_tauri.App.get_name in
          App.GotAppName s);
       Nopal_mvu.Cmd.task
-        (let open Nopal_mvu.Task.Syntax in
+        (let open Op in
          let+ s = Nopal_tauri.App.get_version in
          App.GotAppVersion s);
       Nopal_mvu.Cmd.task
-        (let open Nopal_mvu.Task.Syntax in
+        (let open Op in
          let+ s = Nopal_tauri.App.get_tauri_version in
          App.GotTauriVersion s);
       Nopal_mvu.Cmd.task
-        (let open Nopal_mvu.Task.Syntax in
+        (let open Op in
          let+ p = Nopal_tauri.Os.platform in
          App.GotPlatform (Nopal_tauri.Os.to_string p));
     ]
@@ -57,7 +82,7 @@ let update model msg =
   | App.EmitTauriEvent when has_tauri () ->
       let emit_cmd =
         Nopal_mvu.Cmd.task
-          (let open Nopal_mvu.Task.Syntax in
+          (let open Op in
            let+ () =
              Nopal_tauri.Event.emit "nopal:kitchen-sink" "hello from nopal"
            in
@@ -76,7 +101,7 @@ let update model msg =
   | App.SetTauriWindowTitle when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
-          (let open Nopal_mvu.Task.Syntax in
+          (let open Op in
            let+ () = Nopal_tauri.Window.set_title model.tauri_window_title in
            App.TauriWindowTitleSet)
       in
@@ -84,7 +109,7 @@ let update model msg =
   | App.SetTauriFullscreen flag when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
-          (let open Nopal_mvu.Task.Syntax in
+          (let open Op in
            let* () = Nopal_tauri.Window.set_fullscreen flag in
            let+ v = Nopal_tauri.Window.is_fullscreen in
            App.GotTauriFullscreen v)
@@ -93,7 +118,7 @@ let update model msg =
   | App.QueryTauriFullscreen when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
-          (let open Nopal_mvu.Task.Syntax in
+          (let open Op in
            let+ v = Nopal_tauri.Window.is_fullscreen in
            App.GotTauriFullscreen v)
       in
@@ -101,7 +126,7 @@ let update model msg =
   | App.MinimizeTauriWindow when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
-          (let open Nopal_mvu.Task.Syntax in
+          (let open Op in
            let+ () = Nopal_tauri.Window.minimize in
            App.TauriWindowMinimized)
       in
@@ -109,7 +134,7 @@ let update model msg =
   | App.MaximizeTauriWindow when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
-          (let open Nopal_mvu.Task.Syntax in
+          (let open Op in
            let* () = Nopal_tauri.Window.maximize in
            let+ v = Nopal_tauri.Window.is_maximized in
            App.GotTauriMaximized v)
@@ -118,7 +143,7 @@ let update model msg =
   | App.UnmaximizeTauriWindow when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
-          (let open Nopal_mvu.Task.Syntax in
+          (let open Op in
            let* () = Nopal_tauri.Window.unmaximize in
            let+ v = Nopal_tauri.Window.is_maximized in
            App.GotTauriMaximized v)
@@ -127,7 +152,7 @@ let update model msg =
   | App.QueryTauriMaximized when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
-          (let open Nopal_mvu.Task.Syntax in
+          (let open Op in
            let+ v = Nopal_tauri.Window.is_maximized in
            App.GotTauriMaximized v)
       in
@@ -135,7 +160,7 @@ let update model msg =
   | App.ShowTauriWindow when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
-          (let open Nopal_mvu.Task.Syntax in
+          (let open Op in
            let* () = Nopal_tauri.Window.show in
            let+ v = Nopal_tauri.Window.is_visible in
            App.GotTauriVisible v)
@@ -144,7 +169,7 @@ let update model msg =
   | App.HideTauriWindow when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
-          (let open Nopal_mvu.Task.Syntax in
+          (let open Op in
            let* () = Nopal_tauri.Window.hide in
            let+ v = Nopal_tauri.Window.is_visible in
            App.GotTauriVisible v)
@@ -153,7 +178,7 @@ let update model msg =
   | App.QueryTauriVisible when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
-          (let open Nopal_mvu.Task.Syntax in
+          (let open Op in
            let+ v = Nopal_tauri.Window.is_visible in
            App.GotTauriVisible v)
       in
@@ -161,7 +186,7 @@ let update model msg =
   | App.SetTauriWindowFocus when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
-          (let open Nopal_mvu.Task.Syntax in
+          (let open Op in
            let+ () = Nopal_tauri.Window.set_focus in
            App.TauriWindowFocused)
       in
@@ -169,7 +194,7 @@ let update model msg =
   | App.CenterTauriWindow when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
-          (let open Nopal_mvu.Task.Syntax in
+          (let open Op in
            let+ () = Nopal_tauri.Window.center in
            App.TauriWindowCentered)
       in
@@ -177,7 +202,7 @@ let update model msg =
   | App.CloseTauriWindow when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
-          (let open Nopal_mvu.Task.Syntax in
+          (let open Op in
            let+ () = Nopal_tauri.Window.close in
            App.TauriWindowClosed)
       in
@@ -185,7 +210,7 @@ let update model msg =
   | App.SetTauriWindowSize (w, h) when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
-          (let open Nopal_mvu.Task.Syntax in
+          (let open Op in
            let+ () = Nopal_tauri.Window.set_size { width = w; height = h } in
            App.TauriWindowSizeSet)
       in
@@ -193,7 +218,7 @@ let update model msg =
   | App.QueryTauriInnerSize when has_tauri () ->
       let window_cmd =
         Nopal_mvu.Cmd.task
-          (let open Nopal_mvu.Task.Syntax in
+          (let open Op in
            let+ size = Nopal_tauri.Window.inner_size in
            App.GotWindowInnerSize (size.width, size.height))
       in
@@ -201,7 +226,7 @@ let update model msg =
   | App.HideToTray when has_tauri () ->
       let hide_cmd =
         Nopal_mvu.Cmd.task
-          (let open Nopal_mvu.Task.Syntax in
+          (let open Op in
            let+ () = Nopal_tauri.Window.hide in
            App.TrayHidden)
       in
@@ -209,68 +234,63 @@ let update model msg =
   | App.TrayClicked when has_tauri () ->
       let restore_cmd =
         Nopal_mvu.Cmd.task
-          (let open Nopal_mvu.Task.Syntax in
+          (let open Op in
            let* () = Nopal_tauri.Window.show in
            let+ () = Nopal_tauri.Window.set_focus in
            App.TrayRestored)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; restore_cmd ])
-  | App.SetTrayTooltip when has_tauri () ->
-      let tooltip_cmd =
-        Nopal_mvu.Cmd.task
-          (let open Nopal_mvu.Task.Syntax in
-           let+ () = Nopal_tauri.Tray.set_tooltip model.tray_tooltip_input in
-           App.TrayTooltipSet)
-      in
-      (model', Nopal_mvu.Cmd.batch [ cmd; tooltip_cmd ])
-  | App.SetTrayIconVisible flag when has_tauri () ->
-      let visible_cmd =
-        Nopal_mvu.Cmd.task
-          (let open Nopal_mvu.Task.Syntax in
-           let+ () = Nopal_tauri.Tray.set_visible flag in
-           App.TrayIconVisibleSet)
-      in
-      (model', Nopal_mvu.Cmd.batch [ cmd; visible_cmd ])
   | App.TauriStoreSet when has_tauri () ->
       let store_cmd =
-        Nopal_mvu.Cmd.task
-          (let open Nopal_mvu.Task.Syntax in
-           let+ r =
-             Nopal_tauri.Store.set model.tauri_store_key model.tauri_store_value
-           in
-           App.TauriStoreSetResult r)
+        with_store
+          ~on_error:(fun e -> App.TauriStoreSetResult (Error e))
+          (fun store ->
+            let open Nopal_mvu.Task.Syntax in
+            let+ r =
+              Nopal_tauri.Store.set store model.tauri_store_key
+                model.tauri_store_value
+            in
+            App.TauriStoreSetResult r)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; store_cmd ])
   | App.TauriStoreGet when has_tauri () ->
       let store_cmd =
-        Nopal_mvu.Cmd.task
-          (let open Nopal_mvu.Task.Syntax in
-           let+ r = Nopal_tauri.Store.get model.tauri_store_key in
-           App.TauriStoreGetResult r)
+        with_store
+          ~on_error:(fun e -> App.TauriStoreGetResult (Error e))
+          (fun store ->
+            let open Nopal_mvu.Task.Syntax in
+            let+ r = Nopal_tauri.Store.get store model.tauri_store_key in
+            App.TauriStoreGetResult r)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; store_cmd ])
   | App.TauriStoreDelete when has_tauri () ->
       let store_cmd =
-        Nopal_mvu.Cmd.task
-          (let open Nopal_mvu.Task.Syntax in
-           let+ r = Nopal_tauri.Store.delete model.tauri_store_key in
-           App.TauriStoreDeleteResult r)
+        with_store
+          ~on_error:(fun e -> App.TauriStoreDeleteResult (Error e))
+          (fun store ->
+            let open Nopal_mvu.Task.Syntax in
+            let+ r = Nopal_tauri.Store.delete store model.tauri_store_key in
+            App.TauriStoreDeleteResult r)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; store_cmd ])
   | App.TauriStoreClear when has_tauri () ->
       let store_cmd =
-        Nopal_mvu.Cmd.task
-          (let open Nopal_mvu.Task.Syntax in
-           let+ r = Nopal_tauri.Store.clear () in
-           App.TauriStoreClearResult r)
+        with_store
+          ~on_error:(fun e -> App.TauriStoreClearResult (Error e))
+          (fun store ->
+            let open Nopal_mvu.Task.Syntax in
+            let+ r = Nopal_tauri.Store.clear store in
+            App.TauriStoreClearResult r)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; store_cmd ])
   | App.TauriStoreSave when has_tauri () ->
       let store_cmd =
-        Nopal_mvu.Cmd.task
-          (let open Nopal_mvu.Task.Syntax in
-           let+ r = Nopal_tauri.Store.save () in
-           App.TauriStoreSaveResult r)
+        with_store
+          ~on_error:(fun e -> App.TauriStoreSaveResult (Error e))
+          (fun store ->
+            let open Nopal_mvu.Task.Syntax in
+            let+ r = Nopal_tauri.Store.save store in
+            App.TauriStoreSaveResult r)
       in
       (model', Nopal_mvu.Cmd.batch [ cmd; store_cmd ])
   | App.StorageReload ->
@@ -361,15 +381,11 @@ let update model msg =
   | App.CenterTauriWindow
   | App.TauriWindowCentered
   | App.GotPlatform _
+  | App.TauriOpError _
   | App.HideToTray
   | App.TrayHidden
   | App.TrayClicked
   | App.TrayRestored
-  | App.UpdateTrayTooltipInput _
-  | App.SetTrayTooltip
-  | App.TrayTooltipSet
-  | App.SetTrayIconVisible _
-  | App.TrayIconVisibleSet
   | App.StorageKeyChanged _
   | App.StorageValueChanged _
   | App.StorageSet
@@ -413,6 +429,7 @@ let update model msg =
   | App.Navigation_bar_msg _
   | App.Bottom_tabs_msg _
   | App.Modal_msg _
+  | App.Subs_msg _
   | App.KeyboardHeightChanged _
   | App.Back_demo_push
   | App.Route_changed _
@@ -471,7 +488,18 @@ let serialize_msg : App.msg -> string = function
   | App.Modal_msg Sub_modal.Open -> "Modal:Open"
   | App.Modal_msg Sub_modal.Close -> "Modal:Close"
   | App.Modal_msg (Sub_modal.FocusChanged id) -> "Modal:FocusChanged:" ^ id
-  | App.Modal_msg (Sub_modal.TabCycled id) -> "Modal:TabCycled:" ^ id
+  | App.Modal_msg (Sub_modal.TabPressed key) -> "Modal:TabPressed:" ^ key
+  (* Subscriptions section (RFC 0118, REQ-F3): the [subs.e2e.ts] telemetry spec
+     proves the live [every] timer ticks appear and stop on removal via the
+     [Subs:Tick] fragment. Exhaustive inner match so a new [Sub_subscriptions.msg]
+     constructor breaks compilation here rather than silently relabelling. *)
+  | App.Subs_msg Sub_subscriptions.ToggleTimer -> "Subs:ToggleTimer"
+  | App.Subs_msg Sub_subscriptions.Tick -> "Subs:Tick"
+  | App.Subs_msg (Sub_subscriptions.Resized (w, h)) ->
+      Printf.sprintf "Subs:Resized:%dx%d" w h
+  | App.Subs_msg (Sub_subscriptions.VisibilityChanged v) ->
+      "Subs:VisibilityChanged:" ^ string_of_bool v
+  | App.Subs_msg (Sub_subscriptions.KeyCaptured k) -> "Subs:KeyCaptured:" ^ k
   (* Mobile signals (RFC 0116): the keyboard-height readout (REQ-N2) and the
      back-demo route change the Tauri back-IPC e2e asserts on via the host
      [get_telemetry] mirror — [Route_changed] proves the hardware-back chain
@@ -579,14 +607,10 @@ let serialize_msg : App.msg -> string = function
   | App.CenterTauriWindow
   | App.TauriWindowCentered
   | App.GotPlatform _
+  | App.TauriOpError _
   | App.HideToTray
   | App.TrayHidden
   | App.TrayRestored
-  | App.UpdateTrayTooltipInput _
-  | App.SetTrayTooltip
-  | App.TrayTooltipSet
-  | App.SetTrayIconVisible _
-  | App.TrayIconVisibleSet
   | App.StorageKeyChanged _
   | App.StorageValueChanged _
   | App.StorageGet
@@ -668,6 +692,35 @@ let telemetry_enabled () =
   let value = Jv.call params "get" [| Jv.of_string "telemetry" |] in
   Jv.is_null value || not (String.equal (Jv.to_string value) "off")
 
+(* Reference pattern (RFC 0118 Risk: "[on_error] default too quiet in packaged
+   apps"): surface a runtime [on_error] description as a visible, self-dismissing
+   toast rather than letting it vanish into the console. The runtime guarantees
+   the loop continues (REQ-F1); this just makes the fault observable to the user.
+   This is the entry-point (Brr) layer, so a DOM toast is wired directly rather
+   than through the MVU model. *)
+let show_error_toast description =
+  let open Brr in
+  Console.(error [ Jstr.v ("nopal runtime error: " ^ description) ]);
+  let toast =
+    El.div
+      ~at:[ At.v (Jstr.v "data-testid") (Jstr.v "runtime-error-toast") ]
+      [ El.txt' description ]
+  in
+  let set prop value = El.set_inline_style (Jstr.v prop) (Jstr.v value) toast in
+  set "position" "fixed";
+  set "bottom" "16px";
+  set "right" "16px";
+  set "max-width" "320px";
+  set "padding" "12px 16px";
+  set "background" "#e74c3c";
+  set "color" "#ffffff";
+  set "border-radius" "8px";
+  set "box-shadow" "0 2px 12px rgba(0, 0, 0, 0.25)";
+  set "z-index" "9999";
+  set "font-family" "system-ui, sans-serif";
+  El.append_children (Document.body G.document) [ toast ];
+  ignore (G.set_timeout ~ms:5000 (fun () -> El.remove toast))
+
 let () =
   Nopal_http.register_backend { Nopal_http.send = Nopal_http_web.send };
   Nopal_http.register_cancellable_backend
@@ -718,6 +771,7 @@ let () =
   if telemetry_enabled () then begin
     let handle : Nopal_runtime.Telemetry.handle =
       Nopal_web.mount_with_telemetry ?safe_area_source
+        ~on_error:show_error_toast
         (module Mounted)
         ~serialize_msg ~serialize_model target
     in
@@ -728,4 +782,7 @@ let () =
        until this call (RFC Risk: [get_telemetry] returns [[]] otherwise). *)
     if has_tauri () then Nopal_tauri.Telemetry.expose handle
   end
-  else Nopal_web.mount ?safe_area_source (module Mounted) target
+  else
+    Nopal_web.mount ?safe_area_source ~on_error:show_error_toast
+      (module Mounted)
+      target

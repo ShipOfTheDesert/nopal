@@ -6,7 +6,7 @@ let focusable_ids = [ "modal-input-1"; "modal-input-2"; "modal-close-button" ]
 let first_focusable = "modal-input-1"
 
 type model = { open_ : bool; focused : string }
-type msg = Open | Close | FocusChanged of string | TabCycled of string
+type msg = Open | Close | FocusChanged of string | TabPressed of string
 
 let init () = ({ open_ = false; focused = first_focusable }, Nopal_mvu.Cmd.none)
 
@@ -17,7 +17,18 @@ let update model msg =
         Nopal_mvu.Cmd.focus first_focusable )
   | Close -> ({ model with open_ = false }, Nopal_mvu.Cmd.none)
   | FocusChanged id -> ({ model with focused = id }, Nopal_mvu.Cmd.none)
-  | TabCycled id -> ({ model with focused = id }, Nopal_mvu.Cmd.focus id)
+  | TabPressed key ->
+      (* The next focus is resolved here, from the live [model.focused], rather
+         than in the subscription handler: subscriptions are diffed by key and
+         set up once, so a handler that closed over [model.focused] would keep
+         firing with the focus value captured when the modal opened. Computing
+         it in [update] reads the current model on every Tab. *)
+      let next_id =
+        match Modal.next_focus ~focusable_ids ~current:model.focused ~key with
+        | Some next_id -> next_id
+        | None -> first_focusable
+      in
+      ({ model with focused = next_id }, Nopal_mvu.Cmd.focus next_id)
 
 (* Styles *)
 
@@ -209,15 +220,11 @@ let subscriptions model =
            ~body:Element.empty)
     in
     let tab_sub =
-      Nopal_mvu.Sub.on_keydown_prevent "modal-tab-trap" (fun key ->
+      Nopal_mvu.Sub.on_keydown "modal-tab-trap" (fun key ->
           match key with
           | "Tab"
-          | "Shift+Tab" -> (
-              match
-                Modal.next_focus ~focusable_ids ~current:model.focused ~key
-              with
-              | Some next_id -> Some (TabCycled next_id, true)
-              | None -> Some (TabCycled first_focusable, true))
+          | "Shift+Tab" ->
+              Some (TabPressed key, true)
           | _ -> None)
     in
     Nopal_mvu.Sub.batch [ escape_sub; tab_sub ]

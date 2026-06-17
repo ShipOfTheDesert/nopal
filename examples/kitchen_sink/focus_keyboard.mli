@@ -1,7 +1,7 @@
 (** Focus & Keyboard kitchen sink subapp.
 
-    Demonstrates [Cmd.focus] for programmatic focus and [Sub.on_keydown_prevent]
-    for selective preventDefault on keydown events. *)
+    Demonstrates [Cmd.focus] for programmatic focus and [Sub.on_key] for
+    selective preventDefault on keydown events. *)
 
 type model = { last_key : string; trap_keys : bool }
 (** The subapp model. [last_key] is the most recently trapped key string.

@@ -20,21 +20,14 @@ let platform =
       let internals = Jv.get Jv.global "__TAURI_OS_PLUGIN_INTERNALS__" in
       match Jv.is_undefined internals with
       | true ->
-          Brr.Console.(
-            error
-              [
-                str
-                  "nopal_tauri: Os.platform — __TAURI_OS_PLUGIN_INTERNALS__ \
-                   not found";
-              ])
+          resolve
+            (Error
+               "nopal_tauri: Os.platform — __TAURI_OS_PLUGIN_INTERNALS__ not \
+                found")
       | false -> (
           let s = Jv.to_string (Jv.get internals "platform") in
           match platform_of_string s with
-          | Some p -> resolve p
+          | Some p -> resolve (Ok p)
           | None ->
-              Brr.Console.(
-                error
-                  [
-                    str "nopal_tauri: Os.platform unknown platform";
-                    Jv.of_string s;
-                  ])))
+              resolve
+                (Error ("nopal_tauri: Os.platform unknown platform: " ^ s))))

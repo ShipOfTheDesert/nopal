@@ -15,9 +15,10 @@
 (test
  (name test_nopal_tauri_store)
  (modules test_nopal_tauri_store)
- (libraries nopal_tauri alcotest)
+ (libraries nopal_tauri nopal_mvu alcotest)
  (modes js)
- (js_of_ocaml))
+ (js_of_ocaml
+  (javascript_files tauri_shim.js)))
 
 ; tauri_shim.js stubs __TAURI_INTERNALS__ so the Event.listen-backed
 ; subscription/back-button setups run under Node without a Tauri host.
@@ -26,6 +27,22 @@
  (name test_nopal_tauri_signals)
  (modules test_nopal_tauri_signals)
  (libraries nopal_tauri nopal_element nopal_mvu alcotest)
+ (modes js)
+ (js_of_ocaml
+  (javascript_files tauri_shim.js)))
+
+(test
+ (name test_tauri_subscription)
+ (modules test_tauri_subscription)
+ (libraries nopal_tauri nopal_mvu alcotest)
+ (modes js)
+ (js_of_ocaml
+  (javascript_files tauri_shim.js)))
+
+(test
+ (name test_results)
+ (modules test_results)
+ (libraries nopal_tauri nopal_mvu alcotest)
  (modes js)
  (js_of_ocaml
   (javascript_files tauri_shim.js)))

@@ -6,6 +6,7 @@
 
 val mount :
   ?safe_area_source:((Nopal_element.Viewport.safe_area -> unit) -> unit -> unit) ->
+  ?on_error:(string -> unit) ->
   (module Nopal_mvu.App.S with type model = 'model and type msg = 'msg) ->
   Brr.El.t ->
   unit
@@ -39,6 +40,13 @@ val mount :
     is embedded in a larger page and does not resize with the window, viewport
     updates may not fire.
 
+    [~on_error] is forwarded to {!Nopal_runtime.Runtime.Make.create}: it
+    receives a description of any exception raised by the app's [update],
+    [subscriptions], an effect thunk, or telemetry serialization, and of every
+    post-shutdown dispatch that is dropped. When omitted, the runtime's default
+    (console report) applies. The kitchen sink wires it to a visible toast as
+    the reference pattern for surfacing runtime faults in a packaged app.
+
     This wires everything together: runtime creation, Lwd root subscription, DOM
     rendering, and event dispatch. It records no telemetry and installs no
     inspection surface — see {!mount_with_telemetry} for the telemetry sibling.
@@ -46,6 +54,7 @@ val mount :
 
 val mount_with_telemetry :
   ?safe_area_source:((Nopal_element.Viewport.safe_area -> unit) -> unit -> unit) ->
+  ?on_error:(string -> unit) ->
   (module Nopal_mvu.App.S with type model = 'model and type msg = 'msg) ->
   ?serialize_msg:('msg -> string) ->
   ?serialize_model:('model -> string) ->
@@ -53,7 +62,7 @@ val mount_with_telemetry :
   Nopal_runtime.Telemetry.handle
 (** [mount_with_telemetry (module MyApp) ?serialize_msg ?serialize_model target]
     is the telemetry sibling of {!mount} (and accepts the same
-    [~safe_area_source] native viewport hook): it builds the runtime via
+    [~safe_area_source] and [~on_error] hooks): it builds the runtime via
     {!Nopal_runtime.Runtime.Make.create_with_telemetry}, drives it exactly as
     {!mount} does, installs the [window.__nopal_telemetry__] browser bridge over
     its handle (RFC 0110, Layer 2), and returns that handle.
@@ -80,6 +89,22 @@ val parse_css_px : string -> int
 (** [parse_css_px raw] parses a CSS pixel value string (e.g. ["42"], ["42px"],
     ["44.5px"]) and returns the integer pixel count. Fractional values are
     truncated. Returns [0] for empty or unparseable strings. *)
+
+val web_interpret_atom :
+  dispatch:('msg -> unit) ->
+  'msg Nopal_mvu.Sub.atom ->
+  (unit -> unit, string) result
+(** The web backend's per-atom subscription interpreter, handed to the runtime
+    via {!Nopal_runtime.Runtime.Make.create} [~interpret_atom] and from there to
+    [Sub_manager.diff]. Sets up one atom against the browser — [Every] via
+    [setInterval], [Keydown]/[Keyup]/[Resize] via [window] listeners, and
+    [Visibility] via a [document] [visibilitychange] listener — and returns its
+    cleanup, or [Error] for an atom the web backend cannot serve. [Custom] runs
+    its setup; [Viewport] is a no-op because the viewport is delivered through
+    [set_viewport], not a listener. Exhaustive over [Sub.atom]: a new
+    constructor is a compile error here, never a silent no-op (REQ-F3). Exposed
+    as the interpreter over the public [atom] type so its behaviour is
+    unit-testable directly. *)
 
 module Style_css = Style_css
 (** Re-exported for direct access. *)

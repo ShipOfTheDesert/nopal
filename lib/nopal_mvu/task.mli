@@ -42,21 +42,31 @@ val run : 'a t -> ('a -> unit) -> unit
     value. This is used by the runtime to execute tasks and by tests to observe
     results. *)
 
+(** The result of a cancellable task: either the wrapped task [Completed] with
+    its value, or [Cancelled]. Cancellation is a constructor, not a sentinel
+    value layered into ['a], so callers never string-match to detect it. For a
+    fallible task ['a] is itself [('ok, string) result], so callers match
+    [Completed (Ok v) | Completed (Error e) | Cancelled]. *)
+type 'a outcome = Completed of 'a | Cancelled
+
 type cancellation_token
 (** An opaque token used to cancel a running task. *)
 
 val cancellable :
-  (cancellation_token -> 'a t) -> cancellation_token * ('a, string) result t
+  (cancellation_token -> 'a t) -> cancellation_token * 'a outcome t
 (** [cancellable (fun token -> task)] wraps [task] so its result is delivered as
-    [Ok value] on success or [Error "cancelled"] if cancelled before completion.
+    [Completed value] on success or [Cancelled] if cancelled before completion.
     Returns a token that can be passed to {!cancel}.
+
+    The wrapped task delivers EXACTLY ONE outcome under every interleaving:
+    - cancel before the inner task completes → [Cancelled], delivered at cancel
+      time and not dependent on the aborted work ever resolving;
+    - the inner task completes first → [Completed value]; a later [cancel]
+      delivers nothing.
 
     The builder function receives the token, allowing platform backends to
     register {!set_on_cancel} hooks before the task is wrapped. If the task does
-    not need the token, use [cancellable (fun _token -> task)].
-
-    If the task has already resolved when [cancel] is called, the original [Ok]
-    result is preserved. *)
+    not need the token, use [cancellable (fun _token -> task)]. *)
 
 val cancel : cancellation_token -> unit
 (** [cancel token] signals cancellation. Idempotent — calling [cancel] multiple

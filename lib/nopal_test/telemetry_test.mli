@@ -21,11 +21,16 @@ val run_with_telemetry :
     together with the recorded event list (oldest first).
 
     Each serialiser defaults to [fun _ -> "<opaque>"] (same as the underlying
-    constructor). If application code raises during dispatch, the recorded
-    history is dumped to [stderr] via {!Nopal_runtime.Telemetry.pp_events} and
-    the original exception is re-raised UNCHANGED with its backtrace intact
-    (REQ-F5/F7). The recorder's log is cleared on exit either way, so a
-    subsequent run starts clean. *)
+    constructor). The runtime itself now reports and swallows callback
+    exceptions, so the harness reconstructs the dump-then-fail contract: if
+    [A.update] or [A.subscriptions] raises during dispatch, the recorded history
+    is dumped to [stderr] via {!Nopal_runtime.Telemetry.pp_events} and that
+    exception is re-raised UNCHANGED with its backtrace intact (REQ-F5/F7).
+    Failures the runtime only surfaces as a string — exceptions from
+    {!Nopal_mvu.Cmd} effect thunks or from a serialiser — are instead reported
+    as a [Failure] carrying their descriptions, after the same history dump.
+    Either way the recorder's log is cleared on exit, so a subsequent run starts
+    clean. *)
 
 (** {2 Assertion helpers}
 

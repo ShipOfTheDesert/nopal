@@ -100,29 +100,36 @@ let test_subscriptions_none_when_closed () =
   let subs = Modal.subscriptions config in
   Alcotest.(check (list string)) "no keys" [] (Sub.keys subs)
 
+(* The keydown handler of the modal's single Escape subscription. The modal
+   wires [Sub.on_key], which normalizes to one [Keydown] atom. *)
+let escape_handler subs =
+  match Sub.atoms subs with
+  | [ Keydown { handler; _ } ] -> Some handler
+  | _ -> Option.none
+
 let test_subscriptions_intercepts_escape_when_open () =
   let config =
     Modal.make ~open_:true ~title_id:"t" ~on_close:Close ~body:E.empty
   in
   let subs = Modal.subscriptions config in
-  match Sub.extract_on_keydown_prevent subs with
+  match escape_handler subs with
   | Some callback -> (
       match callback "Escape" with
       | Some (msg, prevent) ->
           Alcotest.(check msg_testable) "on_close msg" Close msg;
           Alcotest.(check bool) "preventDefault" true prevent
       | None -> Alcotest.fail "expected Some for Escape key")
-  | None -> Alcotest.fail "expected on_keydown_prevent subscription"
+  | None -> Alcotest.fail "expected a keydown subscription"
 
 let test_subscriptions_ignores_non_escape_keys () =
   let config =
     Modal.make ~open_:true ~title_id:"t" ~on_close:Close ~body:E.empty
   in
   let subs = Modal.subscriptions config in
-  match Sub.extract_on_keydown_prevent subs with
+  match escape_handler subs with
   | Some callback ->
       Alcotest.(check bool) "None for 'a'" true (Option.is_none (callback "a"))
-  | None -> Alcotest.fail "expected on_keydown_prevent subscription"
+  | None -> Alcotest.fail "expected a keydown subscription"
 
 (* --- builder overrides --- *)
 

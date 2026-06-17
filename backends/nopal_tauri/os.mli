@@ -1,15 +1,16 @@
 (** Typed OCaml bindings to the Tauri Os API.
 
-    Provides access to host platform detection via the Tauri os plugin. Uses the
-    [Fut.await] callback pattern — if the Tauri runtime is not available, the
-    callback is simply never invoked. *)
+    Provides access to host platform detection via the Tauri os plugin. The
+    platform is read from [__TAURI_OS_PLUGIN_INTERNALS__]; both an absent plugin
+    and an unrecognized platform string resolve [Error] rather than hanging
+    (REQ-F5). *)
 
 type platform = Windows | MacOS | Linux | IOS | Android
 
-val platform : platform Nopal_mvu.Task.t
-(** [platform] is a task that calls the Tauri os plugin [platform()] command.
-    When the promise resolves, the task produces the detected platform variant.
-    If the platform string is not recognized, the task does not resolve. *)
+val platform : (platform, string) result Nopal_mvu.Task.t
+(** [platform] reads the host platform from the Tauri os plugin. Resolves with
+    [Ok variant] for a recognized platform, or [Error msg] if the plugin is
+    absent or the platform string is unrecognized. *)
 
 val to_string : platform -> string
 (** [to_string p] returns a human-readable name: ["Windows"], ["macOS"],

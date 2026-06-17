@@ -1,6 +1,6 @@
-(tests
- (names test_cmd_focus test_sub_keydown_prevent)
- (modules test_cmd_focus test_sub_keydown_prevent)
+(test
+ (name test_cmd_focus)
+ (modules test_cmd_focus)
  (libraries nopal_mvu alcotest))
 
 (test

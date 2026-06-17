@@ -4,23 +4,32 @@ type 'msg t =
   | None
   | Batch of 'msg t list
   | Every of { key : string; ms : int; f : unit -> 'msg }
-  | On_keydown of { key : string; f : string -> 'msg }
-  | On_keyup of { key : string; f : string -> 'msg }
+  | On_keydown of { key : string; f : string -> ('msg * bool) option }
+  | On_keyup of { key : string; f : string -> 'msg option }
   | On_resize of { key : string; f : int -> int -> 'msg }
   | On_visibility_change of { key : string; f : bool -> 'msg }
   | On_viewport_change of { key : string; f : Nopal_element.Viewport.t -> 'msg }
-  | On_keydown_prevent of { key : string; f : string -> ('msg * bool) option }
   | Custom of { key : string; setup : 'msg dispatch -> unit -> unit }
 
 let none = None
 let batch subs = Batch subs
 let every key ms f = Every { key; ms; f }
 let on_keydown key f = On_keydown { key; f }
+
+let on_key key ~key:target ~prevent msg =
+  On_keydown
+    {
+      key;
+      f =
+        (fun pressed ->
+          if String.equal pressed target then Some (msg, prevent)
+          else Option.none);
+    }
+
 let on_keyup key f = On_keyup { key; f }
 let on_resize key f = On_resize { key; f }
 let on_visibility_change key f = On_visibility_change { key; f }
 let on_viewport_change key f = On_viewport_change { key; f }
-let on_keydown_prevent key f = On_keydown_prevent { key; f }
 let custom key setup = Custom { key; setup }
 
 let rec keys sub =
@@ -42,7 +51,6 @@ let rec keys sub =
   | On_resize { key; _ } -> [ key ]
   | On_visibility_change { key; _ } -> [ key ]
   | On_viewport_change { key; _ } -> [ key ]
-  | On_keydown_prevent { key; _ } -> [ key ]
   | Custom { key; _ } -> [ key ]
 
 let describe = function
@@ -54,7 +62,6 @@ let describe = function
   | On_resize _ -> "on_resize"
   | On_visibility_change _ -> "on_visibility_change"
   | On_viewport_change _ -> "on_viewport_change"
-  | On_keydown_prevent _ -> "on_keydown_prevent"
   | Custom _ -> "custom"
 
 let rec map f sub =
@@ -62,169 +69,61 @@ let rec map f sub =
   | None -> None
   | Batch subs -> Batch (List.map (map f) subs)
   | Every { key; ms; f = g } -> Every { key; ms; f = (fun () -> f (g ())) }
-  | On_keydown { key; f = g } -> On_keydown { key; f = (fun k -> f (g k)) }
-  | On_keyup { key; f = g } -> On_keyup { key; f = (fun k -> f (g k)) }
+  | On_keydown { key; f = g } ->
+      On_keydown
+        {
+          key;
+          f =
+            (fun k -> Option.map (fun (msg, prevent) -> (f msg, prevent)) (g k));
+        }
+  | On_keyup { key; f = g } ->
+      On_keyup { key; f = (fun k -> Option.map f (g k)) }
   | On_resize { key; f = g } -> On_resize { key; f = (fun w h -> f (g w h)) }
   | On_visibility_change { key; f = g } ->
       On_visibility_change { key; f = (fun v -> f (g v)) }
   | On_viewport_change { key; f = g } ->
       On_viewport_change { key; f = (fun vp -> f (g vp)) }
-  | On_keydown_prevent { key; f = g } ->
-      On_keydown_prevent
-        {
-          key;
-          f =
-            (fun k ->
-              match g k with
-              | Some (msg, prevent) -> Some (f msg, prevent)
-              | Option.None -> Option.none);
-        }
   | Custom { key; setup } ->
       Custom
         { key; setup = (fun dispatch -> setup (fun msg -> dispatch (f msg))) }
 
-let extract_every = function
-  | Every { ms; f; _ } -> Some (ms, f)
-  | None
-  | Batch _
-  | On_keydown _
-  | On_keyup _
-  | On_resize _
-  | On_visibility_change _
-  | On_viewport_change _
-  | On_keydown_prevent _
-  | Custom _ ->
-      Option.none
+(* Defined after every [t] combinator so [Every]/[Custom] in those functions
+   resolve to [t], not to this variant. *)
+type 'msg atom =
+  | Every of { key : string; interval_ms : int; tick : unit -> 'msg }
+  | Keydown of { key : string; handler : string -> ('msg * bool) option }
+  | Keyup of { key : string; handler : string -> 'msg option }
+  | Resize of { key : string; handler : int -> int -> 'msg }
+  | Visibility of { key : string; handler : bool -> 'msg }
+  | Viewport of { key : string; handler : Nopal_element.Viewport.t -> 'msg }
+  | Custom of { key : string; setup : 'msg dispatch -> unit -> unit }
 
-let extract_on_keydown = function
-  | On_keydown { f; _ } -> Some f
-  | None
-  | Batch _
-  | Every _
-  | On_keyup _
-  | On_resize _
-  | On_visibility_change _
-  | On_viewport_change _
-  | On_keydown_prevent _
-  | Custom _ ->
-      Option.none
+let atom_key : 'msg atom -> string = function
+  | Every { key; _ } -> key
+  | Keydown { key; _ } -> key
+  | Keyup { key; _ } -> key
+  | Resize { key; _ } -> key
+  | Visibility { key; _ } -> key
+  | Viewport { key; _ } -> key
+  | Custom { key; _ } -> key
 
-let extract_on_keyup = function
-  | On_keyup { f; _ } -> Some f
-  | None
-  | Batch _
-  | Every _
-  | On_keydown _
-  | On_resize _
-  | On_visibility_change _
-  | On_viewport_change _
-  | On_keydown_prevent _
-  | Custom _ ->
-      Option.none
+let describe_atom : 'msg atom -> string = function
+  | Every _ -> "every"
+  | Keydown _ -> "keydown"
+  | Keyup _ -> "keyup"
+  | Resize _ -> "resize"
+  | Visibility _ -> "visibility"
+  | Viewport _ -> "viewport"
+  | Custom _ -> "custom"
 
-let extract_on_resize = function
-  | On_resize { f; _ } -> Some f
-  | None
-  | Batch _
-  | Every _
-  | On_keydown _
-  | On_keyup _
-  | On_visibility_change _
-  | On_viewport_change _
-  | On_keydown_prevent _
-  | Custom _ ->
-      Option.none
-
-let extract_on_visibility_change = function
-  | On_visibility_change { f; _ } -> Some f
-  | None
-  | Batch _
-  | Every _
-  | On_keydown _
-  | On_keyup _
-  | On_resize _
-  | On_viewport_change _
-  | On_keydown_prevent _
-  | Custom _ ->
-      Option.none
-
-let extract_on_viewport_change = function
-  | On_viewport_change { f; _ } -> Some f
-  | None
-  | Batch _
-  | Every _
-  | On_keydown _
-  | On_keyup _
-  | On_resize _
-  | On_visibility_change _
-  | On_keydown_prevent _
-  | Custom _ ->
-      Option.none
-
-let extract_on_keydown_prevent = function
-  | On_keydown_prevent { f; _ } -> Some f
-  | None
-  | Batch _
-  | Every _
-  | On_keydown _
-  | On_keyup _
-  | On_resize _
-  | On_visibility_change _
-  | On_viewport_change _
-  | Custom _ ->
-      Option.none
-
-let extract_custom = function
-  | Custom { setup; _ } -> Some setup
-  | None
-  | Batch _
-  | Every _
-  | On_keydown _
-  | On_keyup _
-  | On_resize _
-  | On_visibility_change _
-  | On_viewport_change _
-  | On_keydown_prevent _ ->
-      Option.none
-
-let rec extract_customs sub =
+let rec atoms (sub : 'msg t) : 'msg atom list =
   match sub with
   | None -> []
-  | Batch subs -> List.concat_map extract_customs subs
-  | Custom { key; setup } -> [ (key, setup) ]
-  | Every _
-  | On_keydown _
-  | On_keyup _
-  | On_resize _
-  | On_visibility_change _
-  | On_viewport_change _
-  | On_keydown_prevent _ ->
-      []
-
-let rec extract_on_keydown_prevents sub =
-  match sub with
-  | None -> []
-  | Batch subs -> List.concat_map extract_on_keydown_prevents subs
-  | On_keydown_prevent { key; f } -> [ (key, f) ]
-  | Every _
-  | On_keydown _
-  | On_keyup _
-  | On_resize _
-  | On_visibility_change _
-  | On_viewport_change _
-  | Custom _ ->
-      []
-
-let rec extract_on_viewport_changes sub =
-  match sub with
-  | None -> []
-  | Batch subs -> List.concat_map extract_on_viewport_changes subs
-  | On_viewport_change { key; f } -> [ (key, f) ]
-  | Every _
-  | On_keydown _
-  | On_keyup _
-  | On_resize _
-  | On_visibility_change _
-  | On_keydown_prevent _
-  | Custom _ ->
-      []
+  | Batch subs -> List.concat_map atoms subs
+  | Every { key; ms; f } -> [ Every { key; interval_ms = ms; tick = f } ]
+  | On_keydown { key; f } -> [ Keydown { key; handler = f } ]
+  | On_keyup { key; f } -> [ Keyup { key; handler = f } ]
+  | On_resize { key; f } -> [ Resize { key; handler = f } ]
+  | On_visibility_change { key; f } -> [ Visibility { key; handler = f } ]
+  | On_viewport_change { key; f } -> [ Viewport { key; handler = f } ]
+  | Custom { key; setup } -> [ Custom { key; setup } ]

@@ -68,8 +68,8 @@ val view : 'msg config -> 'msg Nopal_element.Element.t
 
 val subscriptions : 'msg config -> 'msg Nopal_mvu.Sub.t
 (** When [open_ = false], returns [Sub.none]. When [open_ = true], returns
-    [Sub.on_keydown_prevent] keyed ["modal-escape"] that intercepts Escape ->
-    [Some (on_close, true)]. All other keys are ignored ([None]). *)
+    [Sub.on_key] keyed ["modal-escape"] that intercepts Escape, dispatching
+    [on_close] and preventing default. All other keys are ignored. *)
 
 (** {1 Focus cycling} *)
 

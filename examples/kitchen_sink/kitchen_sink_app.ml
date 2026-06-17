@@ -181,7 +181,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     tauri_window_width : string;
     tauri_window_height : string;
     tauri_platform : string;
-    tray_tooltip_input : string;
+    tauri_op_error : string option;
     storage_key : string;
     storage_value : string;
     storage_state : storage_state;
@@ -201,6 +201,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     navigation_bar : Sub_navigation_bar.model;
     bottom_tabs : Sub_bottom_tabs.model;
     modal : Sub_modal.model;
+    subs : Sub_subscriptions.model;
     keyboard_height : int;  (** soft-keyboard height in logical px (REQ-N2) *)
     back_route : back_route;  (** current route of the back-navigation demo *)
   }
@@ -229,6 +230,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | Navigation_bar_msg of Sub_navigation_bar.msg
     | Bottom_tabs_msg of Sub_bottom_tabs.msg
     | Modal_msg of Sub_modal.msg
+    | Subs_msg of Sub_subscriptions.msg
     | KeyboardHeightChanged of int  (** native soft-keyboard height (REQ-F5) *)
     | Back_demo_push  (** push the back-demo one step deep (to [Back_detail]) *)
     | Route_changed of back_route  (** popstate-driven route update (REQ-F3) *)
@@ -302,15 +304,11 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | CenterTauriWindow
     | TauriWindowCentered
     | GotPlatform of string
+    | TauriOpError of string
     | HideToTray
     | TrayHidden
     | TrayClicked
     | TrayRestored
-    | UpdateTrayTooltipInput of string
-    | SetTrayTooltip
-    | TrayTooltipSet
-    | SetTrayIconVisible of bool
-    | TrayIconVisibleSet
     | StorageRestored of (string option, Nopal_storage.error) result
     | StorageKeyChanged of string
     | StorageValueChanged of string
@@ -359,6 +357,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     let navigation_bar, navigation_bar_cmd = Sub_navigation_bar.init () in
     let bottom_tabs, bottom_tabs_cmd = Sub_bottom_tabs.init () in
     let modal, modal_cmd = Sub_modal.init () in
+    let subs, subs_cmd = Sub_subscriptions.init () in
     ( {
         button_clicks = 0;
         input_text = "";
@@ -398,7 +397,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         tauri_window_width = "800";
         tauri_window_height = "600";
         tauri_platform = "Not in Tauri";
-        tray_tooltip_input = "";
+        tauri_op_error = None;
         storage_key = "";
         storage_value = "";
         storage_state = StorageIdle;
@@ -418,6 +417,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         navigation_bar;
         bottom_tabs;
         modal;
+        subs;
         keyboard_height = 0;
         back_route = Back_home;
       },
@@ -436,6 +436,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           Nopal_mvu.Cmd.map (fun m -> Navigation_bar_msg m) navigation_bar_cmd;
           Nopal_mvu.Cmd.map (fun m -> Bottom_tabs_msg m) bottom_tabs_cmd;
           Nopal_mvu.Cmd.map (fun m -> Modal_msg m) modal_cmd;
+          Nopal_mvu.Cmd.map (fun m -> Subs_msg m) subs_cmd;
           (* Re-read the persisted demo value so a reload dispatches a
              [StorageRestored] message — the E2E persistence proof (REQ-F3). *)
           Nopal_mvu.Cmd.task
@@ -563,6 +564,9 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         let modal, modal_cmd = Sub_modal.update model.modal modal_msg in
         ( { model with modal },
           Nopal_mvu.Cmd.map (fun m -> Modal_msg m) modal_cmd )
+    | Subs_msg subs_msg ->
+        let subs, subs_cmd = Sub_subscriptions.update model.subs subs_msg in
+        ({ model with subs }, Nopal_mvu.Cmd.map (fun m -> Subs_msg m) subs_cmd)
     | DrawPointerMove (x, y) ->
         ({ model with draw_pointer = Some (x, y) }, Nopal_mvu.Cmd.none)
     | DrawPointerLeave ->
@@ -759,16 +763,12 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | CenterTauriWindow -> (model, Nopal_mvu.Cmd.none)
     | TauriWindowCentered -> (model, Nopal_mvu.Cmd.none)
     | GotPlatform s -> ({ model with tauri_platform = s }, Nopal_mvu.Cmd.none)
+    | TauriOpError e ->
+        ({ model with tauri_op_error = Some e }, Nopal_mvu.Cmd.none)
     | HideToTray -> (model, Nopal_mvu.Cmd.none)
     | TrayHidden -> (model, Nopal_mvu.Cmd.none)
     | TrayClicked -> (model, Nopal_mvu.Cmd.none)
     | TrayRestored -> (model, Nopal_mvu.Cmd.none)
-    | UpdateTrayTooltipInput s ->
-        ({ model with tray_tooltip_input = s }, Nopal_mvu.Cmd.none)
-    | SetTrayTooltip -> (model, Nopal_mvu.Cmd.none)
-    | TrayTooltipSet -> (model, Nopal_mvu.Cmd.none)
-    | SetTrayIconVisible _ -> (model, Nopal_mvu.Cmd.none)
-    | TrayIconVisibleSet -> (model, Nopal_mvu.Cmd.none)
     | StorageRestored (Ok (Some v)) ->
         ( { model with storage_state = StorageRestoredValue v },
           Nopal_mvu.Cmd.none )
@@ -2831,14 +2831,29 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
 
   (* Section: Tauri App *)
   let view_tauri_app model =
+    (* Surface the last failed Tauri op (REQ-F5): every Window/App/Os/Event op
+       now resolves [Error msg] instead of hanging, and [main.ml] routes that to
+       [TauriOpError]. Shown here as a single readout so a rejected op is visible
+       rather than silently dropped. *)
+    let error_readout =
+      match model.tauri_op_error with
+      | Some e ->
+          [
+            Element.box
+              ~attrs:[ ("data-testid", "tauri-op-error") ]
+              [ Element.text ("Last op error: " ^ e) ];
+          ]
+      | None -> []
+    in
     view_section
       ~attrs:[ ("data-section", "tauri-app") ]
       "Tauri App"
-      [
-        Element.text ("App name: " ^ model.tauri_app_name);
-        Element.text ("App version: " ^ model.tauri_app_version);
-        Element.text ("Tauri version: " ^ model.tauri_version);
-      ]
+      ([
+         Element.text ("App name: " ^ model.tauri_app_name);
+         Element.text ("App version: " ^ model.tauri_app_version);
+         Element.text ("Tauri version: " ^ model.tauri_version);
+       ]
+      @ error_readout)
 
   (* Section: Tauri Events *)
   let view_tauri_events model =
@@ -2987,12 +3002,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           ];
       ]
 
-  let view_tauri_tray model =
-    let row_style =
-      Style.default
-      |> Style.with_layout (fun l ->
-          { l with gap = Some 8.0; cross_align = Some Center })
-    in
+  let view_tauri_tray (_ : model) =
     view_section
       ~attrs:[ ("data-section", "tauri-tray") ]
       "Tray"
@@ -3001,25 +3011,6 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           ~attrs:[ ("data-action", "tauri-tray-hide-window") ]
           (Element.text "Hide to Tray");
         Element.text "Click the tray icon to restore the window";
-        Element.row ~style:row_style
-          [
-            Element.input
-              ~on_change:(fun s -> UpdateTrayTooltipInput s)
-              ~attrs:[ ("data-field", "tauri-tray-tooltip") ]
-              model.tray_tooltip_input;
-            Element.button ~on_click:SetTrayTooltip
-              ~attrs:[ ("data-action", "tauri-tray-set-tooltip") ]
-              (Element.text "Set Tooltip");
-          ];
-        Element.row ~style:row_style
-          [
-            Element.button ~on_click:(SetTrayIconVisible true)
-              ~attrs:[ ("data-action", "tauri-tray-show-icon") ]
-              (Element.text "Show Tray Icon");
-            Element.button ~on_click:(SetTrayIconVisible false)
-              ~attrs:[ ("data-action", "tauri-tray-hide-icon") ]
-              (Element.text "Hide Tray Icon");
-          ];
       ]
 
   let view_tauri_store model =
@@ -3352,6 +3343,14 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                  (fun m -> Modal_msg m)
                  (Sub_modal.view vp model.modal);
              ];
+           view_section
+             ~attrs:[ ("data-testid", "subscriptions-section") ]
+             "Subscriptions"
+             [
+               Element.map
+                 (fun m -> Subs_msg m)
+                 (Sub_subscriptions.view vp model.subs);
+             ];
            view_images model;
            view_scroll model;
            view_keyed model;
@@ -3388,6 +3387,9 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         Nopal_mvu.Sub.map
           (fun m -> Modal_msg m)
           (Sub_modal.subscriptions model.modal);
+        Nopal_mvu.Sub.map
+          (fun m -> Subs_msg m)
+          (Sub_subscriptions.subscriptions model.subs);
         (* Back-demo router consumer (REQ-F3): a [popstate] (from
            [window.history.back()], itself fired by the hardware-back IPC) parses
            the URL and dispatches [Route_changed], returning the demo to its prior
@@ -3409,3 +3411,5 @@ module Sub_data_table = Sub_data_table
 module Sub_navigation_bar = Sub_navigation_bar
 module Sub_bottom_tabs = Sub_bottom_tabs
 module Sub_modal = Sub_modal
+module Sub_subscriptions = Sub_subscriptions
+module Tauri_op = Tauri_op

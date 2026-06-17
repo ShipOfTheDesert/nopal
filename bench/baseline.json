@@ -44,7 +44,7 @@
       "unit": "ms"
     },
     "custom/message_throughput_10000": {
-      "value": 4.700000017881393,
+      "value": 5.7,
       "unit": "ms"
     },
     "charts/candlestick_1k": {

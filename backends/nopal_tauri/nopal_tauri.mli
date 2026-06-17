@@ -8,6 +8,7 @@ module Event = Event
 module Os = Os
 module Platform_tauri = Platform_tauri
 module Store = Store
+module Tauri_subscription = Tauri_subscription
 module Telemetry = Telemetry
 module Tray = Tray
 module Window = Window

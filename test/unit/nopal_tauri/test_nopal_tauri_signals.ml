@@ -20,8 +20,13 @@ let listen_count () = Jv.to_int (Jv.get Jv.global "__nopal_listen_count")
 
 (* Run a [custom] subscription's setup with a recording dispatch and return the
    list of dispatched values (most-recent-first) plus the cleanup. *)
+let custom_setup sub =
+  match Nopal_mvu.Sub.atoms sub with
+  | [ Custom { setup; _ } ] -> Some setup
+  | _ -> Option.none
+
 let drive_custom sub =
-  match Nopal_mvu.Sub.extract_custom sub with
+  match custom_setup sub with
   | None -> Alcotest.fail "expected a custom subscription"
   | Some setup ->
       let dispatched = ref [] in

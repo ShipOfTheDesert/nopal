@@ -18,7 +18,9 @@
   sub_virtual_list
   sub_navigation_bar
   sub_bottom_tabs
-  sub_modal)
+  sub_modal
+  sub_subscriptions
+  tauri_op)
  (libraries
   nopal_element
   nopal_mvu

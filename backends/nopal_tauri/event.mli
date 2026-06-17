@@ -10,9 +10,16 @@ type event = { payload : string }
 type unlisten = unit -> unit
 (** A function that removes a previously registered listener. *)
 
-val emit : string -> string -> unit Nopal_mvu.Task.t
+val payload_of_jv : Jv.t -> string
+(** [payload_of_jv jv] reads the [payload] field of a delivered Tauri event
+    object as a string, decoding a [null] payload (a Rust unit [app.emit]) as
+    [""] rather than raising. Exposed so {!Tauri_subscription} [decode] callers
+    share the same null-safe extraction. *)
+
+val emit : string -> string -> (unit, string) result Nopal_mvu.Task.t
 (** [emit name payload] emits a named event with [payload] via the Tauri event
-    system. Resolves with [()] when the emission completes. *)
+    system. Resolves with [Ok ()] when the emission completes, or [Error msg] if
+    the IPC rejects (REQ-F5). *)
 
 val listen : string -> (event -> unit) -> (unlisten -> unit) -> unit
 (** [listen name on_event on_unlisten] registers a listener for events named

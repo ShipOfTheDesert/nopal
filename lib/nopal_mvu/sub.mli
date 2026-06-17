@@ -17,12 +17,26 @@ val every : string -> int -> (unit -> 'msg) -> 'msg t
 (** [every key ms f] fires [f ()] every [ms] milliseconds. The [key] is used for
     diffing between renders. *)
 
-val on_keydown : string -> (string -> 'msg) -> 'msg t
+val on_keydown : string -> (string -> ('msg * bool) option) -> 'msg t
 (** [on_keydown key f] subscribes to global keydown events. [f] receives the key
-    string. *)
+    string and returns:
+    - [Some (msg, true)] to dispatch [msg] and call [preventDefault]
+    - [Some (msg, false)] to dispatch [msg] without preventing default
+    - [None] to ignore the key entirely
 
-val on_keyup : string -> (string -> 'msg) -> 'msg t
-(** [on_keyup key f] subscribes to global keyup events. *)
+    This unifies the former plain-keydown and preventDefault-capable forms into
+    a single constructor. *)
+
+val on_key : string -> key:string -> prevent:bool -> 'msg -> 'msg t
+(** [on_key sub_key ~key ~prevent msg] is a convenience over {!on_keydown} for
+    the match-one-key case: it dispatches [msg] (preventing default when
+    [prevent]) on the keydown of [key] and ignores every other key. [prevent] is
+    required — there is no behavioural default. *)
+
+val on_keyup : string -> (string -> 'msg option) -> 'msg t
+(** [on_keyup key f] subscribes to global keyup events. [f] returns [None] to
+    ignore the key. There is no prevent flag — keyup has no default action to
+    prevent. *)
 
 val on_resize : string -> (int -> int -> 'msg) -> 'msg t
 (** [on_resize key f] subscribes to window resize events. [f] receives width and
@@ -35,13 +49,6 @@ val on_visibility_change : string -> (bool -> 'msg) -> 'msg t
 val on_viewport_change : string -> (Nopal_element.Viewport.t -> 'msg) -> 'msg t
 (** [on_viewport_change key f] subscribes to viewport changes. [f] receives the
     new viewport. *)
-
-val on_keydown_prevent : string -> (string -> ('msg * bool) option) -> 'msg t
-(** [on_keydown_prevent key f] subscribes to global keydown events with
-    preventDefault support. [f] receives the key string and returns:
-    - [Some (msg, true)] to dispatch [msg] and call [preventDefault]
-    - [Some (msg, false)] to dispatch [msg] without preventing default
-    - [None] to ignore the key entirely *)
 
 val custom : string -> ('msg dispatch -> unit -> unit) -> 'msg t
 (** [custom key setup] creates an arbitrary subscription. [setup] receives a
@@ -57,57 +64,40 @@ val map : ('a -> 'b) -> 'a t -> 'b t
 val describe : 'msg t -> string
 (** A stable label naming the subscription's top-level constructor ([none] |
     [batch] | [every] | [on_keydown] | [on_keyup] | [on_resize] |
-    [on_visibility_change] | [on_viewport_change] | [on_keydown_prevent] |
-    [custom]), for telemetry [Subscription] events. Total over the variant. *)
+    [on_visibility_change] | [on_viewport_change] | [custom]), for telemetry
+    [Subscription] events. Total over the variant. *)
 
-val extract_every : 'msg t -> (int * (unit -> 'msg)) option
-(** [extract_every sub] extracts the interval and callback from an [every]
-    subscription. Returns [None] if [sub] is not an [every]. *)
+(** A normalized subscription leaf. [atoms] flattens a subscription tree into
+    these, so backends interpret one exhaustive variant instead of walking the
+    [t] tree per constructor. Adding a constructor here breaks every backend's
+    match until it is handled. Keydown unifies the plain and preventDefault
+    forms: [handler] returns [Some (msg, prevent)] to dispatch (preventing
+    default when [prevent]) or [None] to ignore the key. *)
+type 'msg atom =
+  | Every of { key : string; interval_ms : int; tick : unit -> 'msg }
+  | Keydown of { key : string; handler : string -> ('msg * bool) option }
+  | Keyup of { key : string; handler : string -> 'msg option }
+  | Resize of { key : string; handler : int -> int -> 'msg }
+  | Visibility of { key : string; handler : bool -> 'msg }
+  | Viewport of { key : string; handler : Nopal_element.Viewport.t -> 'msg }
+  | Custom of { key : string; setup : 'msg dispatch -> unit -> unit }
 
-val extract_on_keydown : 'msg t -> (string -> 'msg) option
-(** [extract_on_keydown sub] extracts the callback from an [on_keydown]
-    subscription. Returns [None] if [sub] is not an [on_keydown]. *)
+val atom_key : 'msg atom -> string
+(** The identity key of an atom, used by the runtime's subscription diff to add,
+    keep, and remove subscriptions as the model changes (the diff runs once per
+    dispatch-loop iteration, not per frame — see
+    {!Nopal_mvu.App.S.subscriptions}). Total over the variant. *)
 
-val extract_on_keyup : 'msg t -> (string -> 'msg) option
-(** [extract_on_keyup sub] extracts the callback from an [on_keyup]
-    subscription. Returns [None] if [sub] is not an [on_keyup]. *)
+val describe_atom : 'msg atom -> string
+(** A stable label naming an atom's constructor ([every] | [keydown] | [keyup] |
+    [resize] | [visibility] | [viewport] | [custom]), for telemetry
+    [Subscription] events recorded at the firing seam. Total over the variant.
+    The atom-side counterpart to {!describe}. *)
 
-val extract_on_resize : 'msg t -> (int -> int -> 'msg) option
-(** [extract_on_resize sub] extracts the callback from an [on_resize]
-    subscription. Returns [None] if [sub] is not an [on_resize]. *)
-
-val extract_on_visibility_change : 'msg t -> (bool -> 'msg) option
-(** [extract_on_visibility_change sub] extracts the callback from an
-    [on_visibility_change] subscription. Returns [None] if [sub] is not an
-    [on_visibility_change]. *)
-
-val extract_on_viewport_change :
-  'msg t -> (Nopal_element.Viewport.t -> 'msg) option
-(** [extract_on_viewport_change sub] extracts the callback from an
-    [on_viewport_change] subscription. Returns [None] if [sub] is not an
-    [on_viewport_change]. *)
-
-val extract_on_keydown_prevent :
-  'msg t -> (string -> ('msg * bool) option) option
-(** [extract_on_keydown_prevent sub] extracts the callback from an
-    [on_keydown_prevent] subscription. Returns [None] if not a match. *)
-
-val extract_custom : 'msg t -> ('msg dispatch -> unit -> unit) option
-(** [extract_custom sub] extracts the setup function from a [custom]
-    subscription. Returns [None] if [sub] is not a [custom]. *)
-
-val extract_customs : 'msg t -> (string * ('msg dispatch -> unit -> unit)) list
-(** [extract_customs sub] flattens [sub] and returns all [custom] entries as
-    [(key, setup)] pairs. Traverses [batch] nodes recursively. *)
-
-val extract_on_keydown_prevents :
-  'msg t -> (string * (string -> ('msg * bool) option)) list
-(** [extract_on_keydown_prevents sub] flattens [sub] and returns all
-    [on_keydown_prevent] entries as [(key, f)] pairs. Traverses [batch] nodes
-    recursively. *)
-
-val extract_on_viewport_changes :
-  'msg t -> (string * (Nopal_element.Viewport.t -> 'msg)) list
-(** [extract_on_viewport_changes sub] flattens [sub] and returns all
-    [on_viewport_change] entries as [(key, f)] pairs. Traverses [batch] nodes
-    recursively. *)
+val atoms : 'msg t -> 'msg atom list
+(** [atoms sub] normalizes a subscription tree into a flat list of atoms,
+    flattening [batch] nodes (depth-first, order-preserving) and carrying any
+    [map] transformations into the atom handlers. Keys are not deduplicated —
+    that policy lives in the runtime diff, not here. This is the sole
+    interpreter over the opaque {!t}: backends and tests consume subscriptions
+    through it. *)

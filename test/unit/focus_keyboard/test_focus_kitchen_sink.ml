@@ -24,25 +24,33 @@ let test_focus_on_button_click () =
     "clicking Focus Input produces Cmd.focus \"demo-input\"" [ "demo-input" ]
     focus_ids
 
+(* The keydown handler of the single keydown subscription in [subs], or [None]
+   if there is none. The trap is a unified [Sub.on_key]/[Sub.on_keydown], which
+   normalizes to a single [Keydown] atom. *)
+let keydown_handler subs =
+  match Nopal_mvu.Sub.atoms subs with
+  | [ Keydown { handler; _ } ] -> Some handler
+  | _ -> Option.none
+
 let test_keydown_prevent_subscription_active () =
   let model = Focus_keyboard.{ last_key = ""; trap_keys = true } in
   let subs = Focus_keyboard.subscriptions model in
-  match Nopal_mvu.Sub.extract_on_keydown_prevent subs with
+  match keydown_handler subs with
   | None ->
-      Alcotest.fail
-        "expected on_keydown_prevent subscription when trap_keys = true"
+      Alcotest.fail "expected a keydown subscription when trap_keys = true"
   | Some f -> (
       match f "Tab" with
       | Some (_msg, prevent) ->
           Alcotest.(check bool) "Tab should be prevented" true prevent
-      | None -> Alcotest.fail "expected callback to return Some for \"Tab\"")
+      | None -> Alcotest.fail "expected handler to return Some for \"Tab\"")
 
 let test_keydown_prevent_subscription_inactive () =
   let model = Focus_keyboard.{ last_key = ""; trap_keys = false } in
   let subs = Focus_keyboard.subscriptions model in
-  let result = Nopal_mvu.Sub.extract_on_keydown_prevent subs in
+  let result = keydown_handler subs in
   Alcotest.(check bool)
-    "no on_keydown_prevent when trap_keys = false" true (Option.is_none result)
+    "no keydown subscription when trap_keys = false" true
+    (Option.is_none result)
 
 let test_key_trapped_updates_last_key () =
   let model, _rendered, cmds =
