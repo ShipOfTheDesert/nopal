@@ -25,10 +25,20 @@ Task 8 wires the `just e2e-tauri` target and the `main`-only CI job.
 `tauri-driver` is a **Cargo** binary, not an npm package. One-time setup:
 
 ```bash
+# Debian/Ubuntu
 sudo apt-get install -y webkit2gtk-driver xvfb
+
+# Arch (the Bazzite `dev` distrobox) — WebKitWebDriver ships in webkitgtk-6.0
+sudo pacman -S --needed webkitgtk-6.0 xorg-server-xvfb
+
 cargo install tauri-driver
 cd test/e2e/tauri && npm install
 ```
+
+> On Arch, `WebKitWebDriver` comes from `webkitgtk-6.0` while Tauri's webview is
+> `webkit2gtk-4.1`; if `tauri-driver` can't find a matching driver, check that the
+> `WebKitWebDriver` on `PATH` lines up with the webview version. (This suite is
+> `main`-only and hasn't been validated on Arch — patches welcome.)
 
 Build the kitchen-sink Tauri binary (release; the config defaults to
 `tauri/src-tauri/target/release/nopal-kitchen-sink`):

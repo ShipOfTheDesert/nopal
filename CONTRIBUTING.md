@@ -2,11 +2,78 @@
 
 ## Development Setup
 
+Nopal builds against a **local OCaml 5.3.0 opam switch**. From the repo root:
+
 ```bash
-opam install . --deps-only --with-test
-dune build
-dune test
+opam switch create . 5.3.0 --no-install -y          # one-time: create the local switch
+eval $(opam env)                                    # fish: eval (opam env)
+opam install . --deps-only --with-test --with-dev-setup -y
+just                                                # build + test + fmt + lint + e2e
 ```
+
+- `--with-test` pulls the test deps (alcotest).
+- `--with-dev-setup` pulls the pinned dev tooling (ocamlformat, odoc,
+  opam-dune-lint, ocaml-lsp-server) — without it `just fmt`/`just lint` fail.
+
+On an immutable/atomic Linux host (Bazzite, Fedora Silverblue/Kinoite, …) run
+all of the above **inside a container** — see
+[Bazzite / immutable hosts (distrobox)](#bazzite--immutable-hosts-distrobox).
+
+### Bazzite / immutable hosts (distrobox)
+
+On atomic distros the host filesystem is read-only, so don't layer the
+OCaml/Rust/Node toolchains onto it — do development inside a
+[distrobox](https://distrobox.it/) (or toolbox) container. The reference
+container is Arch-based:
+
+```bash
+distrobox create --name dev --image archlinux:latest
+distrobox enter dev
+```
+
+Inside the container install the system dependencies (pacman):
+
+```bash
+# Core toolchain
+sudo pacman -S --needed base-devel git just opam nodejs npm
+# Tauri desktop builds (optional)
+sudo pacman -S --needed gtk3 webkit2gtk-4.1
+# Playwright e2e — Chromium runtime libs (see "E2E tests" below)
+sudo pacman -S --needed at-spi2-core libcups cairo pango nss mesa \
+    libxkbcommon alsa-lib libdrm libxcomposite libxdamage libxrandr \
+    libxfixes libxext libxrender dbus expat
+```
+
+then run the opam bootstrap from "Development Setup" above.
+
+**Run the toolchain only inside the container.** Your home directory — and
+therefore each repo's local `_opam` switch and `~/.opam` — is bind-mounted into
+both the host and the container. Running `opam`/`dune`/`just` from the **host**
+relinks OCaml's native runtime with the host toolchain and corrupts the switch
+for the container too (symptom: `relocation R_X86_64_32 ... can not be used when
+making a PIE object`, and `ocamlc -where` pointing at `/var/home/...`). Recovery
+from a corrupted switch is a clean rebuild: `rm -rf _opam && opam switch create .
+5.3.0 --no-install -y` then the deps install above.
+
+To avoid the trap entirely, add a **host-side shell guard** that blocks the
+toolchain outside the container — it's the only thing that reliably stops the
+muscle memory. For fish, in a host-only config (one that early-returns when
+`/run/.containerenv` exists), wrap the commands so they fail fast on the host:
+
+```fish
+for c in opam dune just ocaml ocamlfind cargo npm node
+    function $c --wraps=$c --inherit-variable c
+        echo "⛔ '$c' blocked on the host — run it in the dev container." >&2
+        echo "   distrobox enter dev   (bypass: command $c …)" >&2
+        return 1
+    end
+end
+```
+
+> **Path note:** the host sees the repo under `/var/home/...`, the container
+> under `/home/...`. opam keys switches by canonical path, so a switch created in
+> one environment won't auto-detect in the other — always create and use it from
+> the container.
 
 ## Running Tests
 
@@ -56,6 +123,15 @@ that builds and serves the TodoMVC example. Tests run against headless
 Chromium by default.
 
 E2E tests live in `test/e2e/tests/` and cover every interactive example.
+
+On Arch (the distrobox container) Chromium needs system libraries that
+`npx playwright install-deps` can't provide there; install them via pacman (see
+the list in [Bazzite / immutable hosts](#bazzite--immutable-hosts-distrobox)).
+If `npx playwright install chromium` stalls part-way on a slow/flaky connection,
+fetch the browser zips directly with a resumable download instead — get the URLs
+from `npx playwright install chromium --dry-run`, then
+`curl -fL -C - --retry 8 -O <url>`, unzip into `~/.cache/ms-playwright/<browser>-<rev>/`,
+and `touch ~/.cache/ms-playwright/<browser>-<rev>/INSTALLATION_COMPLETE`.
 
 ### Desktop Development (Tauri)
 

@@ -24,6 +24,16 @@
    (and
     (>= 1.9.1)
     :with-test))
+  (ocamlformat
+   (and
+    (= 0.28.1)
+    :with-dev-setup))
+  (odoc
+   (and
+    (>= 3.1.0)
+    :with-dev-setup))
+  (opam-dune-lint :with-dev-setup)
+  (ocaml-lsp-server :with-dev-setup)
   ocaml)
  (tags
   ("add topics" "to describe" your project)))
