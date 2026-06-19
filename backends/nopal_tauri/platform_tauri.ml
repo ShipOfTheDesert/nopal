@@ -50,43 +50,16 @@ let parse_safe_area payload =
 
 let parse_keyboard_height payload = int_of_string_opt payload
 
-(* Lifecycle of an async [Event.listen] registration. [Event.listen] resolves
-   its unlisten function on a later microtask, so a subscription torn down within
-   that window (cleanup before the listen IPC resolves) would otherwise read a
-   [None] unlisten, no-op, and leak the native listener. Tracking the state lets
-   a [Cancelled] cleanup be honoured the instant the registration resolves. *)
-type listen_state =
-  | Pending  (** listen IPC in flight; no unlisten function yet *)
-  | Listening of (unit -> unit)  (** registered; holds its unlisten *)
-  | Cancelled  (** cleanup ran before the IPC resolved *)
-
-(* Register [name]'s native listener, parsing each payload with [parse] and
-   passing successes to [deliver]; returns a cleanup robust to [Event.listen]'s
-   async resolution (see [listen_state]). Shared by the safe-area subscription /
-   mount hook and the keyboard-height subscription. *)
-let listen_signal name parse deliver =
-  (* mutable: tracks the async [Event.listen] lifecycle so a cleanup firing
-     before the IPC resolves still tears the listener down — it flips the state
-     to [Cancelled], and the resolve callback then unlistens immediately. *)
-  let state = ref Pending in
-  Event.listen name
-    (fun ev ->
-      match parse ev.payload with
+(* Register [event]'s native listener, parsing each delivered payload with
+   [parse] and passing successes to [deliver]; returns a cleanup robust to the
+   async listen resolution via [Tauri_subscription]'s registration state machine
+   (REQ-F8). Shared by the safe-area subscription / mount hook and the
+   keyboard-height subscription. *)
+let listen_signal event parse deliver =
+  Tauri_subscription.listen_managed ~event (fun jv ->
+      match parse (Event.payload_of_jv jv) with
       | Some v -> deliver v
       | None -> ())
-    (fun unlisten ->
-      match !state with
-      | Cancelled -> unlisten ()
-      | Pending
-      | Listening _ ->
-          state := Listening unlisten);
-  fun () ->
-    match !state with
-    | Listening unlisten ->
-        state := Cancelled;
-        unlisten ()
-    | Pending -> state := Cancelled
-    | Cancelled -> ()
 
 let listen_safe_area deliver =
   listen_signal "nopal:safe-area" parse_safe_area deliver

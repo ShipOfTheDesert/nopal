@@ -123,16 +123,11 @@ let msg_pp fmt msg =
   | CenterTauriWindow -> Format.fprintf fmt "CenterTauriWindow"
   | TauriWindowCentered -> Format.fprintf fmt "TauriWindowCentered"
   | GotPlatform s -> Format.fprintf fmt "GotPlatform(%s)" s
+  | TauriOpError e -> Format.fprintf fmt "TauriOpError(%s)" e
   | HideToTray -> Format.fprintf fmt "HideToTray"
   | TrayHidden -> Format.fprintf fmt "TrayHidden"
   | TrayClicked -> Format.fprintf fmt "TrayClicked"
   | TrayRestored -> Format.fprintf fmt "TrayRestored"
-  | UpdateTrayTooltipInput s ->
-      Format.fprintf fmt "UpdateTrayTooltipInput(%s)" s
-  | SetTrayTooltip -> Format.fprintf fmt "SetTrayTooltip"
-  | TrayTooltipSet -> Format.fprintf fmt "TrayTooltipSet"
-  | SetTrayIconVisible b -> Format.fprintf fmt "SetTrayIconVisible(%b)" b
-  | TrayIconVisibleSet -> Format.fprintf fmt "TrayIconVisibleSet"
   | StorageRestored _ -> Format.fprintf fmt "StorageRestored _"
   | StorageKeyChanged s -> Format.fprintf fmt "StorageKeyChanged(%s)" s
   | StorageValueChanged s -> Format.fprintf fmt "StorageValueChanged(%s)" s
@@ -178,6 +173,7 @@ let msg_pp fmt msg =
   | Navigation_bar_msg _ -> Format.fprintf fmt "Navigation_bar_msg _"
   | Bottom_tabs_msg _ -> Format.fprintf fmt "Bottom_tabs_msg _"
   | Modal_msg _ -> Format.fprintf fmt "Modal_msg _"
+  | Subs_msg _ -> Format.fprintf fmt "Subs_msg _"
   | KeyboardHeightChanged _ -> Format.fprintf fmt "KeyboardHeightChanged _"
   | Back_demo_push -> Format.fprintf fmt "Back_demo_push"
   | Route_changed _ -> Format.fprintf fmt "Route_changed _"

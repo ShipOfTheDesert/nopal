@@ -14,6 +14,14 @@
  (libraries kitchen_sink_app nopal_test nopal_element test_util alcotest))
 
 (test
+ (name test_subscriptions_section)
+ (libraries kitchen_sink_app nopal_test nopal_element nopal_mvu alcotest))
+
+(test
+ (name test_tauri_op)
+ (libraries kitchen_sink_app nopal_mvu nopal_platform nopal_storage alcotest))
+
+(test
  (name test_wizard_section)
  (libraries kitchen_sink_app nopal_test nopal_element alcotest))
 
@@ -24,6 +32,15 @@
 (test
  (name test_data_table_section)
  (libraries kitchen_sink_app nopal_ui alcotest))
+
+(test
+ (name test_tray_section)
+ (libraries
+  kitchen_sink_app
+  nopal_test
+  nopal_platform
+  nopal_storage
+  alcotest))
 
 (test
  (name test_storage_section)

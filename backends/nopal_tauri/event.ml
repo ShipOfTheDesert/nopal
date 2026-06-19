@@ -2,32 +2,24 @@ type event = { payload : string }
 type unlisten = unit -> unit
 
 let emit name payload =
-  Nopal_mvu.Task.from_callback (fun resolve ->
-      let fut =
-        Fut.of_promise
-          ~ok:(fun _ -> ())
-          (Ipc.invoke "plugin:event|emit"
-             [|
-               ("event", Jv.of_string name); ("payload", Jv.of_string payload);
-             |])
-      in
-      Fut.await fut (function
-        | Ok () -> resolve ()
-        | Error err ->
-            Brr.Console.(error [ str "nopal_tauri: Event.emit failed"; err ])))
+  Nopal_mvu.Task.from_callback
+    (Ipc.invoke_result
+       ~ok:(fun _ -> ())
+       "plugin:event|emit"
+       [| ("event", Jv.of_string name); ("payload", Jv.of_string payload) |])
+
+(* A Rust [app.emit (name, ())] delivers a [null] payload; [Jv.to_string null]
+   throws inside the handler and the event is silently dropped (REQ-F3
+   hardware-back regression). Shared with [Tauri_subscription]'s [decode]
+   callers so the null guard has a single home. *)
+let payload_of_jv jv =
+  let payload_jv = Jv.get jv "payload" in
+  if Jv.is_none payload_jv then "" else Jv.to_string payload_jv
 
 let listen name on_event on_unlisten =
   let internals = Jv.get Jv.global "__TAURI_INTERNALS__" in
   let cb =
-    Jv.callback ~arity:1 (fun jv ->
-        (* A Rust [app.emit (name, ())] delivers a [null] payload;
-           [Jv.to_string null] throws inside the handler and the event is
-           silently dropped (REQ-F3 hardware-back regression). *)
-        let payload_jv = Jv.get jv "payload" in
-        let payload =
-          if Jv.is_none payload_jv then "" else Jv.to_string payload_jv
-        in
-        on_event { payload })
+    Jv.callback ~arity:1 (fun jv -> on_event { payload = payload_of_jv jv })
   in
   let handler_id = Jv.to_int (Jv.call internals "transformCallback" [| cb |]) in
   let fut =

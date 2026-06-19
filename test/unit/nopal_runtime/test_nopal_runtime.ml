@@ -4,6 +4,20 @@ let sample_view rt view_fn =
   Lwd.quick_release root;
   v
 
+(* Custom-only atom interpreter for the Sub_manager tests below: they build only
+   [custom] subscriptions, so a non-Custom atom is a test bug surfaced as Error
+   (keeps the match exhaustive, no catch-all). The interpreter owns dispatch —
+   it threads the test's [dispatch] into each custom setup. *)
+let custom_interpret dispatch = function
+  | Nopal_mvu.Sub.Custom { setup; _ } -> Ok (setup dispatch)
+  | Nopal_mvu.Sub.Every { key; _ }
+  | Keydown { key; _ }
+  | Keyup { key; _ }
+  | Resize { key; _ }
+  | Visibility { key; _ }
+  | Viewport { key; _ } ->
+      Error ("unexpected non-custom atom: " ^ key)
+
 let test_subscription_start_stop () =
   let setup_called = ref false in
   let cleanup_called = ref false in
@@ -16,12 +30,16 @@ let test_subscription_start_stop () =
     else Nopal_mvu.Sub.none
   in
   let dispatch _msg = () in
-  Nopal_runtime.Sub_manager.diff ~dispatch (make_sub true) mgr;
+  Nopal_runtime.Sub_manager.diff
+    ~interpret:(custom_interpret dispatch)
+    (make_sub true) mgr;
   Alcotest.(check bool) "setup was called" true !setup_called;
   Alcotest.(check (list string))
     "tick is active" [ "tick" ]
     (Nopal_runtime.Sub_manager.active_keys mgr);
-  Nopal_runtime.Sub_manager.diff ~dispatch (make_sub false) mgr;
+  Nopal_runtime.Sub_manager.diff
+    ~interpret:(custom_interpret dispatch)
+    (make_sub false) mgr;
   Alcotest.(check bool) "cleanup was called" true !cleanup_called;
   Alcotest.(check (list string))
     "no active subs" []
@@ -36,9 +54,10 @@ let test_subscription_stability () =
         fun () -> ())
   in
   let dispatch _msg = () in
-  Nopal_runtime.Sub_manager.diff ~dispatch sub mgr;
-  Nopal_runtime.Sub_manager.diff ~dispatch sub mgr;
-  Nopal_runtime.Sub_manager.diff ~dispatch sub mgr;
+  let interpret = custom_interpret dispatch in
+  Nopal_runtime.Sub_manager.diff ~interpret sub mgr;
+  Nopal_runtime.Sub_manager.diff ~interpret sub mgr;
+  Nopal_runtime.Sub_manager.diff ~interpret sub mgr;
   Alcotest.(check int) "setup called exactly once" 1 !setup_count
 
 (* --- Test App for Runtime tests --- *)
@@ -296,6 +315,8 @@ let test_shutdown () =
     "subscription active before shutdown" false !cleanup_called;
   R6.shutdown rt;
   Alcotest.(check bool) "cleanup called after shutdown" true !cleanup_called;
+  (* REQ-F2: dispatch after shutdown is total — it drops the message rather than
+     raising. The exhaustive coverage lives in test_runtime.ml. *)
   let raised =
     try
       R6.dispatch rt 1;
@@ -303,8 +324,7 @@ let test_shutdown () =
     with
     | Invalid_argument _ -> true
   in
-  Alcotest.(check bool)
-    "dispatch after shutdown raises Invalid_argument" true raised
+  Alcotest.(check bool) "dispatch after shutdown does not raise" false raised
 
 let test_view_equals_all_element_variants () =
   let module Variant_app :
@@ -362,11 +382,12 @@ let test_subscription_key_replacement () =
         fun () -> ())
   in
   let dispatch _msg = () in
-  Nopal_runtime.Sub_manager.diff ~dispatch sub_a mgr;
+  let interpret = custom_interpret dispatch in
+  Nopal_runtime.Sub_manager.diff ~interpret sub_a mgr;
   Alcotest.(check int) "setup_a called once" 1 !setup_a_count;
   Alcotest.(check bool) "cleanup_a not yet called" false !cleanup_a_called;
   (* Same key — sub_manager should treat it as stable (not replaced) *)
-  Nopal_runtime.Sub_manager.diff ~dispatch sub_b mgr;
+  Nopal_runtime.Sub_manager.diff ~interpret sub_b mgr;
   Alcotest.(check int) "setup_b never called (key stable)" 0 !setup_b_count;
   Alcotest.(check bool)
     "cleanup_a not called (key stable)" false !cleanup_a_called;

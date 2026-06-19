@@ -39,8 +39,6 @@ let view _vp model =
 
 let subscriptions model =
   if model.trap_keys then
-    Nopal_mvu.Sub.on_keydown_prevent "focus-keyboard-trap" (fun key ->
-        match key with
-        | "Tab" -> Some (Key_trapped "Tab", true)
-        | _ -> None)
+    Nopal_mvu.Sub.on_key "focus-keyboard-trap" ~key:"Tab" ~prevent:true
+      (Key_trapped "Tab")
   else Nopal_mvu.Sub.none

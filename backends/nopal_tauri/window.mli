@@ -1,68 +1,57 @@
 (** Typed OCaml bindings to the Tauri Window API.
 
     Provides window management functions via the Tauri JavaScript API. Each
-    function returns a {!Nopal_mvu.Task.t} that resolves when the Tauri promise
-    completes. If the Tauri runtime is not available, the task never resolves.
-*)
+    function returns a {!Nopal_mvu.Task.t} that resolves with [Ok _] when the
+    Tauri promise completes, or [Error msg] if the IPC rejects (REQ-F5). A
+    failed op resolves [Error] rather than hanging, so a [let*] chain over these
+    ops never silently stalls. *)
 
 type size = { width : int; height : int }
 (** Logical pixel dimensions of a window. *)
 
-val set_title : string -> unit Nopal_mvu.Task.t
-(** [set_title title] sets the window title bar text to [title]. Resolves with
-    [()] when the operation completes. *)
+val set_title : string -> (unit, string) result Nopal_mvu.Task.t
+(** [set_title title] sets the window title bar text to [title]. *)
 
-val set_fullscreen : bool -> unit Nopal_mvu.Task.t
+val set_fullscreen : bool -> (unit, string) result Nopal_mvu.Task.t
 (** [set_fullscreen flag] enters fullscreen when [flag] is [true], exits when
-    [false]. Resolves with [()] when the operation completes. *)
+    [false]. *)
 
-val is_fullscreen : bool Nopal_mvu.Task.t
-(** [is_fullscreen] queries fullscreen state. Resolves with the current
-    fullscreen status. *)
+val is_fullscreen : (bool, string) result Nopal_mvu.Task.t
+(** [is_fullscreen] queries fullscreen state. *)
 
-val minimize : unit Nopal_mvu.Task.t
-(** [minimize] minimizes the window. Resolves with [()] when the operation
-    completes. *)
+val minimize : (unit, string) result Nopal_mvu.Task.t
+(** [minimize] minimizes the window. *)
 
-val maximize : unit Nopal_mvu.Task.t
-(** [maximize] maximizes the window. Resolves with [()] when the operation
-    completes. *)
+val maximize : (unit, string) result Nopal_mvu.Task.t
+(** [maximize] maximizes the window. *)
 
-val unmaximize : unit Nopal_mvu.Task.t
-(** [unmaximize] restores the window from maximized state. Resolves with [()]
-    when the operation completes. *)
+val unmaximize : (unit, string) result Nopal_mvu.Task.t
+(** [unmaximize] restores the window from maximized state. *)
 
-val is_maximized : bool Nopal_mvu.Task.t
-(** [is_maximized] queries maximized state. Resolves with the current maximized
-    status. *)
+val is_maximized : (bool, string) result Nopal_mvu.Task.t
+(** [is_maximized] queries maximized state. *)
 
-val close : unit Nopal_mvu.Task.t
-(** [close] closes the window. Resolves with [()] when the operation completes.
-*)
+val close : (unit, string) result Nopal_mvu.Task.t
+(** [close] closes the window. *)
 
-val set_size : size -> unit Nopal_mvu.Task.t
+val set_size : size -> (unit, string) result Nopal_mvu.Task.t
 (** [set_size size] sets the window's logical size to [size.width] x
-    [size.height] pixels. Resolves with [()] when the operation completes. *)
+    [size.height] pixels. *)
 
-val inner_size : size Nopal_mvu.Task.t
-(** [inner_size] queries the window's inner dimensions. Resolves with the
-    logical pixel size. *)
+val inner_size : (size, string) result Nopal_mvu.Task.t
+(** [inner_size] queries the window's inner dimensions in logical pixels. *)
 
-val is_visible : bool Nopal_mvu.Task.t
-(** [is_visible] queries whether the window is currently visible. Resolves with
-    the current visibility status. *)
+val is_visible : (bool, string) result Nopal_mvu.Task.t
+(** [is_visible] queries whether the window is currently visible. *)
 
-val show : unit Nopal_mvu.Task.t
-(** [show] makes the window visible. Resolves with [()] when the operation
-    completes. *)
+val show : (unit, string) result Nopal_mvu.Task.t
+(** [show] makes the window visible. *)
 
-val hide : unit Nopal_mvu.Task.t
-(** [hide] hides the window. Resolves with [()] when the operation completes. *)
+val hide : (unit, string) result Nopal_mvu.Task.t
+(** [hide] hides the window. *)
 
-val set_focus : unit Nopal_mvu.Task.t
-(** [set_focus] brings the window to the foreground and gives it input focus.
-    Resolves with [()] when the operation completes. *)
+val set_focus : (unit, string) result Nopal_mvu.Task.t
+(** [set_focus] brings the window to the foreground and gives it input focus. *)
 
-val center : unit Nopal_mvu.Task.t
-(** [center] centers the window on the screen. Resolves with [()] when the
-    operation completes. *)
+val center : (unit, string) result Nopal_mvu.Task.t
+(** [center] centers the window on the screen. *)

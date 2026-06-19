@@ -179,12 +179,19 @@ let test_current_after_push () =
   Alcotest.check route_testable "current is Item 7 after push" (Item 7)
     (Nopal_platform.Router.current router)
 
+(* The setup of the single [custom] atom an [on_navigate] subscription
+   normalizes to. *)
+let custom_setup sub =
+  match Nopal_mvu.Sub.atoms sub with
+  | [ Custom { setup; _ } ] -> setup
+  | _ -> Alcotest.fail "expected a single custom subscription"
+
 let test_on_navigate_dispatches_on_popstate () =
   let platform, controls = make_mock_platform "/" in
   let router = make_router platform in
   let received = ref None in
   let sub = Nopal_platform.Router.on_navigate router (fun route -> route) in
-  let setup = Option.get (Nopal_mvu.Sub.extract_custom sub) in
+  let setup = custom_setup sub in
   let cleanup = setup (fun msg -> received := Some msg) in
   controls.simulate_popstate "/about";
   Alcotest.check
@@ -197,7 +204,7 @@ let test_on_navigate_unknown_returns_not_found () =
   let router = make_router platform in
   let received = ref None in
   let sub = Nopal_platform.Router.on_navigate router (fun route -> route) in
-  let setup = Option.get (Nopal_mvu.Sub.extract_custom sub) in
+  let setup = custom_setup sub in
   let cleanup = setup (fun msg -> received := Some msg) in
   controls.simulate_popstate "/unknown/path";
   Alcotest.check
@@ -210,7 +217,7 @@ let test_on_navigate_dynamic_segment () =
   let router = make_router platform in
   let received = ref None in
   let sub = Nopal_platform.Router.on_navigate router (fun route -> route) in
-  let setup = Option.get (Nopal_mvu.Sub.extract_custom sub) in
+  let setup = custom_setup sub in
   let cleanup = setup (fun msg -> received := Some msg) in
   controls.simulate_popstate "/items/99";
   Alcotest.check
@@ -223,7 +230,7 @@ let test_on_navigate_cleanup_stops_listener () =
   let router = make_router platform in
   let received = ref None in
   let sub = Nopal_platform.Router.on_navigate router (fun route -> route) in
-  let setup = Option.get (Nopal_mvu.Sub.extract_custom sub) in
+  let setup = custom_setup sub in
   let cleanup = setup (fun msg -> received := Some msg) in
   cleanup ();
   controls.simulate_popstate "/about";

@@ -143,11 +143,7 @@ let view config =
 
 let subscriptions config =
   if not config.open_ then Sub.none
-  else
-    Sub.on_keydown_prevent "modal-escape" (fun key ->
-        match key with
-        | "Escape" -> Some (config.on_close, true)
-        | _ -> None)
+  else Sub.on_key "modal-escape" ~key:"Escape" ~prevent:true config.on_close
 
 let rec safe_nth n = function
   | [] -> None

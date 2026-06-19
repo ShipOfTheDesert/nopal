@@ -14,10 +14,17 @@ pure Rust, giving you proper **double-click to activate** behavior on GNOME
 
 ## Prerequisites
 
-- Ubuntu/GNOME with the AppIndicator extension (installed by default on Ubuntu):
-  ```bash
-  sudo apt install gnome-shell-extension-appindicator libayatana-appindicator3-dev
-  ```
+- A desktop that implements the StatusNotifierItem (KSNI) tray protocol:
+  - **Ubuntu/GNOME** needs the AppIndicator extension (installed by default on
+    Ubuntu):
+    ```bash
+    sudo apt install gnome-shell-extension-appindicator libayatana-appindicator3-dev
+    ```
+  - **KDE Plasma (e.g. Bazzite/Kinoite)** implements StatusNotifierItem natively
+    — no extension needed. On Arch (the `dev` distrobox) the dev library is:
+    ```bash
+    sudo pacman -S --needed libayatana-appindicator
+    ```
 - A Tauri v2 project (`npm create tauri-app@latest`)
 - A PNG icon at `src-tauri/icons/icon.png` (at least 64x64, RGBA)
 

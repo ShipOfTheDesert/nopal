@@ -1,30 +1,20 @@
 open Nopal_mvu.Task
 
-let result_testable = Alcotest.result Alcotest.int Alcotest.string
+(* The cancel/complete outcome semantics (cancel-before-completion delivers
+   Cancelled once; a late inner completion after cancel is dropped; completion
+   then cancel delivers only Completed) are covered in test_task.ml. This file
+   covers the remaining cancellation surface: idempotent cancel, the
+   cancel-before-run path, composition through [map], and the [on_cancel]
+   hook. *)
 
-let test_cancel_before_resolve () =
-  let resolver = ref (fun _ -> ()) in
-  let task = from_callback (fun resolve -> resolver := resolve) in
-  let token, cancellable_task = cancellable (fun _token -> task) in
-  let result = ref None in
-  run cancellable_task (fun x -> result := Some x);
-  cancel token;
-  !resolver 42;
-  match !result with
-  | Some v -> Alcotest.(check result_testable) "cancelled" (Error "cancelled") v
-  | None -> Alcotest.fail "task did not resolve"
-
-let test_cancel_after_resolve () =
-  let resolver = ref (fun _ -> ()) in
-  let task = from_callback (fun resolve -> resolver := resolve) in
-  let token, cancellable_task = cancellable (fun _token -> task) in
-  let result = ref None in
-  run cancellable_task (fun x -> result := Some x);
-  !resolver 42;
-  cancel token;
-  match !result with
-  | Some v -> Alcotest.(check result_testable) "ok preserved" (Ok 42) v
-  | None -> Alcotest.fail "task did not resolve"
+let check_int_outcome msg expected actual =
+  match (expected, actual) with
+  | Completed a, Completed b -> Alcotest.(check int) msg a b
+  | Cancelled, Cancelled -> ()
+  | Completed _, Cancelled ->
+      Alcotest.failf "%s: expected Completed, got Cancelled" msg
+  | Cancelled, Completed _ ->
+      Alcotest.failf "%s: expected Cancelled, got Completed" msg
 
 let test_double_cancel () =
   let resolver = ref (fun _ -> ()) in
@@ -45,7 +35,7 @@ let test_no_cancel_succeeds () =
   run cancellable_task (fun x -> result := Some x);
   !resolver 42;
   match !result with
-  | Some v -> Alcotest.(check result_testable) "ok" (Ok 42) v
+  | Some v -> check_int_outcome "completed" (Completed 42) v
   | None -> Alcotest.fail "task did not resolve"
 
 let test_cancel_composed_task () =
@@ -58,7 +48,19 @@ let test_cancel_composed_task () =
   cancel token;
   !resolver 42;
   match !result with
-  | Some v -> Alcotest.(check result_testable) "cancelled" (Error "cancelled") v
+  | Some v -> check_int_outcome "cancelled" Cancelled v
+  | None -> Alcotest.fail "task did not resolve"
+
+let test_cancel_before_run () =
+  let resolver = ref (fun _ -> ()) in
+  let task = from_callback (fun resolve -> resolver := resolve) in
+  let token, cancellable_task = cancellable (fun _token -> task) in
+  cancel token;
+  let result = ref None in
+  run cancellable_task (fun x -> result := Some x);
+  !resolver 42;
+  match !result with
+  | Some v -> check_int_outcome "cancelled" Cancelled v
   | None -> Alcotest.fail "task did not resolve"
 
 let test_on_cancel_called () =
@@ -84,7 +86,7 @@ let test_on_cancel_not_called_without_cancel () =
   !resolver 42;
   Alcotest.(check bool) "hook not called" false !hook_called;
   match !result with
-  | Some v -> Alcotest.(check result_testable) "ok" (Ok 42) v
+  | Some v -> check_int_outcome "completed" (Completed 42) v
   | None -> Alcotest.fail "task did not resolve"
 
 let test_on_cancel_fires_immediately_if_already_cancelled () =
@@ -107,27 +109,11 @@ let test_double_cancel_calls_hook_once () =
   cancel token;
   Alcotest.(check int) "hook called once" 1 !call_count
 
-let test_cancel_before_run () =
-  let resolver = ref (fun _ -> ()) in
-  let task = from_callback (fun resolve -> resolver := resolve) in
-  let token, cancellable_task = cancellable (fun _token -> task) in
-  cancel token;
-  let result = ref None in
-  run cancellable_task (fun x -> result := Some x);
-  !resolver 42;
-  match !result with
-  | Some v -> Alcotest.(check result_testable) "cancelled" (Error "cancelled") v
-  | None -> Alcotest.fail "task did not resolve"
-
 let () =
   Alcotest.run "Task cancellation"
     [
       ( "cancellation",
         [
-          Alcotest.test_case "cancel before resolve" `Quick
-            test_cancel_before_resolve;
-          Alcotest.test_case "cancel after resolve" `Quick
-            test_cancel_after_resolve;
           Alcotest.test_case "double cancel" `Quick test_double_cancel;
           Alcotest.test_case "no cancel succeeds" `Quick test_no_cancel_succeeds;
           Alcotest.test_case "cancel composed task" `Quick

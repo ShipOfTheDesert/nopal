@@ -1,29 +1,7 @@
-let invoke cmd = Ipc.invoke cmd [||]
+let app_string cmd =
+  Nopal_mvu.Task.from_callback
+    (Ipc.invoke_result ~ok:(fun v -> Jstr.to_string (Jv.to_jstr v)) cmd [||])
 
-let get_name =
-  Nopal_mvu.Task.from_callback (fun resolve ->
-      let fut = Fut.of_promise ~ok:Jv.to_jstr (invoke "plugin:app|name") in
-      Fut.await fut (function
-        | Ok name -> resolve (Jstr.to_string name)
-        | Error err ->
-            Brr.Console.(error [ str "nopal_tauri: App.get_name failed"; err ])))
-
-let get_version =
-  Nopal_mvu.Task.from_callback (fun resolve ->
-      let fut = Fut.of_promise ~ok:Jv.to_jstr (invoke "plugin:app|version") in
-      Fut.await fut (function
-        | Ok version -> resolve (Jstr.to_string version)
-        | Error err ->
-            Brr.Console.(
-              error [ str "nopal_tauri: App.get_version failed"; err ])))
-
-let get_tauri_version =
-  Nopal_mvu.Task.from_callback (fun resolve ->
-      let fut =
-        Fut.of_promise ~ok:Jv.to_jstr (invoke "plugin:app|tauri_version")
-      in
-      Fut.await fut (function
-        | Ok version -> resolve (Jstr.to_string version)
-        | Error err ->
-            Brr.Console.(
-              error [ str "nopal_tauri: App.get_tauri_version failed"; err ])))
+let get_name = app_string "plugin:app|name"
+let get_version = app_string "plugin:app|version"
+let get_tauri_version = app_string "plugin:app|tauri_version"

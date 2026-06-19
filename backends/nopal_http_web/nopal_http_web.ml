@@ -190,16 +190,16 @@ let send_cancellable (request : Nopal_http.request) =
                   Option.iter Brr.G.stop_timer timer_id;
                   read_response response resolve)))
   in
-  (* Flatten the nested result:
-     ('a, string) result where 'a = (response, error) result
-     On cancellation (Error "cancelled") -> Error (Network_error "cancelled")
-     On success (Ok outcome) -> outcome *)
+  (* Flatten the outcome of the cancellable wrapper:
+     'a outcome where 'a = (response, error) result
+     Cancelled -> Error (Network_error "cancelled")
+     Completed outcome -> outcome *)
   let task =
     Nopal_mvu.Task.map
       (function
-        | Error "cancelled" -> Error (Nopal_http.Network_error "cancelled")
-        | Error other -> Error (Nopal_http.Network_error other)
-        | Ok outcome -> outcome)
+        | Nopal_mvu.Task.Cancelled ->
+            Error (Nopal_http.Network_error "cancelled")
+        | Nopal_mvu.Task.Completed outcome -> outcome)
       wrapped_task
   in
   (token, task)

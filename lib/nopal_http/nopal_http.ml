@@ -51,15 +51,11 @@ let make_default_cancellable_send backend request =
   let task =
     Nopal_mvu.Task.map
       (function
-        | Error "cancelled" -> Error (Network_error "cancelled")
-        | Error other -> Error (Network_error other)
-        | Ok outcome -> outcome)
+        | Nopal_mvu.Task.Cancelled -> Error (Network_error "cancelled")
+        | Nopal_mvu.Task.Completed outcome -> outcome)
       wrapped
   in
   (token, task)
-
-let default_cancellable_backend =
-  { send_cancellable = make_default_cancellable_send default_backend }
 
 (* Mutable: cancellable backend registration allows platform-specific
    cancellable HTTP implementations (e.g. nopal_http_web.send_cancellable

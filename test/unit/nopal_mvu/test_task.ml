@@ -94,6 +94,45 @@ let test_guard_passes_through_error () =
     "an explicitly-resolved Error is untouched" (Error "original")
     (run_capture t)
 
+let test_cancel_before_completion_delivers_cancelled_once () =
+  (* Inner task never resolves; cancel must still deliver exactly one Cancelled,
+     not depend on the aborted work ever completing. *)
+  let token, wrapped =
+    cancellable (fun _token -> (from_callback (fun _resolve -> ()) : int t))
+  in
+  let outcomes = ref [] in
+  run wrapped (fun o -> outcomes := o :: !outcomes);
+  cancel token;
+  match !outcomes with
+  | [ Cancelled ] -> ()
+  | [] -> Alcotest.fail "cancel delivered no outcome"
+  | _ -> Alcotest.fail "expected exactly one Cancelled outcome"
+
+let test_cancel_then_late_inner_completion_is_dropped () =
+  let saved = ref None in
+  let token, wrapped =
+    cancellable (fun _token ->
+        from_callback (fun resolve -> saved := Some resolve))
+  in
+  let outcomes = ref [] in
+  run wrapped (fun o -> outcomes := o :: !outcomes);
+  cancel token;
+  (match !saved with
+  | Some resolve -> resolve 42
+  | None -> Alcotest.fail "inner resolver was not captured");
+  match !outcomes with
+  | [ Cancelled ] -> ()
+  | _ -> Alcotest.fail "late inner completion after cancel must be dropped"
+
+let test_completion_then_cancel_delivers_only_completed () =
+  let token, wrapped = cancellable (fun _token -> return 7) in
+  let outcomes = ref [] in
+  run wrapped (fun o -> outcomes := o :: !outcomes);
+  cancel token;
+  match !outcomes with
+  | [ Completed 7 ] -> ()
+  | _ -> Alcotest.fail "expected exactly one Completed 7"
+
 let test_syntax_let_plus () =
   let open Syntax in
   let t =
@@ -138,5 +177,14 @@ let () =
         [
           Alcotest.test_case "let*" `Quick test_syntax_let_star;
           Alcotest.test_case "let+" `Quick test_syntax_let_plus;
+        ] );
+      ( "cancellation outcome",
+        [
+          Alcotest.test_case "cancel before completion delivers Cancelled once"
+            `Quick test_cancel_before_completion_delivers_cancelled_once;
+          Alcotest.test_case "cancel then late inner completion is dropped"
+            `Quick test_cancel_then_late_inner_completion_is_dropped;
+          Alcotest.test_case "completion then cancel delivers only Completed"
+            `Quick test_completion_then_cancel_delivers_only_completed;
         ] );
     ]
