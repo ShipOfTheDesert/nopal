@@ -149,6 +149,10 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     submitted_value : string;
     keyed_items : (int * string) list;
     next_keyed_id : int;
+    keyed_into_keyed : bool;  (** keyed-section into-keyed toggle (FR-1) *)
+    keyed_variant_text : bool;
+        (** keyed-section variant-change toggle (FR-2) *)
+    keyed_empty_shown : bool;  (** keyed-section keyed-[Empty] toggle (FR-4) *)
     interaction_toggled : bool;
     telemetry_pings : int;
     sub_counter : Sub_counter.model;
@@ -215,6 +219,10 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | AddKeyedItem
     | RemoveKeyedItem of int
     | MoveKeyedItemUp of int
+    | EditKeyedItem of int * string  (** edit a keyed row's label in place *)
+    | ToggleKeyedIntoKeyed
+    | ToggleKeyedVariant
+    | ToggleKeyedEmpty
     | ToggleInteraction
     | TelemetryPing of string
     | SubCounterMsg of Sub_counter.msg
@@ -365,6 +373,9 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         submitted_value = "";
         keyed_items = [ (1, "Item 1"); (2, "Item 2"); (3, "Item 3") ];
         next_keyed_id = 4;
+        keyed_into_keyed = false;
+        keyed_variant_text = false;
+        keyed_empty_shown = false;
         interaction_toggled = false;
         telemetry_pings = 0;
         sub_counter;
@@ -491,6 +502,24 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           | [] -> []
         in
         ( { model with keyed_items = move_up model.keyed_items },
+          Nopal_mvu.Cmd.none )
+    | EditKeyedItem (id, label) ->
+        ( {
+            model with
+            keyed_items =
+              List.map
+                (fun (i, l) -> if i = id then (i, label) else (i, l))
+                model.keyed_items;
+          },
+          Nopal_mvu.Cmd.none )
+    | ToggleKeyedIntoKeyed ->
+        ( { model with keyed_into_keyed = not model.keyed_into_keyed },
+          Nopal_mvu.Cmd.none )
+    | ToggleKeyedVariant ->
+        ( { model with keyed_variant_text = not model.keyed_variant_text },
+          Nopal_mvu.Cmd.none )
+    | ToggleKeyedEmpty ->
+        ( { model with keyed_empty_shown = not model.keyed_empty_shown },
           Nopal_mvu.Cmd.none )
     | ToggleInteraction ->
         ( { model with interaction_toggled = not model.interaction_toggled },
@@ -1395,25 +1424,125 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
       Style.default
       |> Style.with_layout (fun l -> l |> Style.padding 2.0 8.0 2.0 8.0)
     in
+    let input_style =
+      Style.default
+      |> Style.with_layout (fun l -> l |> Style.padding 4.0 8.0 4.0 8.0)
+      |> Style.with_paint (fun p ->
+          {
+            p with
+            border =
+              Some
+                {
+                  width = 1.0;
+                  style = Solid;
+                  color = border_light;
+                  radius = 4.0;
+                };
+          })
+    in
+    (* FR-3: each row's label lives in an editable input keyed by the item id.
+       [on_change] edits the label in place (never reordering), and [on_submit]
+       (Enter) moves the row up — so the browser e2e can edit and then reorder
+       while keeping the very same input focused. *)
     let items =
       List.map
         (fun (id, label) ->
           Element.keyed (string_of_int id)
             (Element.row ~style:item_style
                [
-                 Element.text label;
-                 Element.button ~style:btn_style ~on_click:(MoveKeyedItemUp id)
-                   (Element.text "Up");
+                 Element.input ~style:input_style
+                   ~attrs:
+                     [
+                       ("data-testid", "keyed-input-" ^ string_of_int id);
+                       ("aria-label", "Edit item " ^ string_of_int id);
+                     ]
+                   ~on_change:(fun s -> EditKeyedItem (id, s))
+                   ~on_submit:(MoveKeyedItemUp id) label;
+                 Element.button ~style:btn_style
+                   ~attrs:[ ("data-testid", "keyed-up-" ^ string_of_int id) ]
+                   ~on_click:(MoveKeyedItemUp id) (Element.text "Up");
                  Element.button ~style:btn_style ~on_click:(RemoveKeyedItem id)
                    (Element.text "Remove");
                ]))
         model.keyed_items
     in
-    view_section "Keyed Lists"
+    (* FR-1: this container flips its entire child list between non-keyed and
+       all-keyed. The into-keyed reconcile must remove the old non-keyed boxes
+       rather than leak them. *)
+    let into_keyed_children =
+      if model.keyed_into_keyed then
+        [
+          Element.keyed "ik-a"
+            (Element.box ~style:item_style
+               ~attrs:[ ("data-testid", "ik-keyed-a") ]
+               [ Element.text "keyed A" ]);
+          Element.keyed "ik-b"
+            (Element.box ~style:item_style
+               ~attrs:[ ("data-testid", "ik-keyed-b") ]
+               [ Element.text "keyed B" ]);
+        ]
+      else
+        [
+          Element.box ~style:item_style
+            ~attrs:[ ("data-testid", "ik-plain-a") ]
+            [ Element.text "plain A" ];
+          Element.box ~style:item_style
+            ~attrs:[ ("data-testid", "ik-plain-b") ]
+            [ Element.text "plain B" ];
+        ]
+    in
+    (* FR-2: the same key "vc" renders as a Box or a Text; the replacement must
+       keep its key across the variant change. *)
+    let variant_child =
+      if model.keyed_variant_text then
+        Element.keyed "vc" (Element.text "variant as text")
+      else
+        Element.keyed "vc"
+          (Element.box ~style:item_style
+             ~attrs:[ ("data-testid", "vc-box") ]
+             [ Element.text "variant as box" ])
+    in
+    (* FR-4: the same key "ks" renders as [Empty] (a comment node) or a visible
+       Box; the keyed [Empty] must be reused across reconciles, not leaked. *)
+    let empty_child =
+      if model.keyed_empty_shown then
+        Element.keyed "ks"
+          (Element.box ~style:item_style
+             ~attrs:[ ("data-testid", "ks-box") ]
+             [ Element.text "now visible" ])
+      else Element.keyed "ks" Element.empty
+    in
+    view_section
+      ~attrs:[ ("data-testid", "keyed-section") ]
+      "Keyed Lists"
       [
         Element.button ~style:btn_style ~on_click:AddKeyedItem
           (Element.text "Add item");
         Element.column ~style:section_body_style items;
+        Element.text "Into-keyed transition (FR-1):";
+        Element.button ~style:btn_style
+          ~attrs:[ ("data-testid", "ik-toggle") ]
+          ~on_click:ToggleKeyedIntoKeyed
+          (Element.text "Toggle keyed mode");
+        Element.column ~style:section_body_style
+          ~attrs:[ ("data-testid", "ik-container") ]
+          into_keyed_children;
+        Element.text "Variant change (FR-2):";
+        Element.button ~style:btn_style
+          ~attrs:[ ("data-testid", "vc-toggle") ]
+          ~on_click:ToggleKeyedVariant
+          (Element.text "Toggle variant");
+        Element.column ~style:section_body_style
+          ~attrs:[ ("data-testid", "vc-container") ]
+          [ variant_child ];
+        Element.text "Keyed empty (FR-4):";
+        Element.button ~style:btn_style
+          ~attrs:[ ("data-testid", "ke-toggle") ]
+          ~on_click:ToggleKeyedEmpty
+          (Element.text "Toggle empty");
+        Element.column ~style:section_body_style
+          ~attrs:[ ("data-testid", "ke-container") ]
+          [ empty_child ];
       ]
 
   (* Section 8: Nested Layout (REQ-F8) *)

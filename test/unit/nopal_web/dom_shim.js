@@ -249,6 +249,15 @@
       },
     });
 
+    Object.defineProperty(node, "nextSibling", {
+      get() {
+        if (!node.parentNode) return null;
+        const sibs = node.parentNode.childNodes;
+        const idx = sibs.indexOf(node);
+        return idx >= 0 && idx + 1 < sibs.length ? sibs[idx + 1] : null;
+      },
+    });
+
     Object.defineProperty(node, "children", {
       get() {
         return node.childNodes.filter((c) => c.nodeType === 1);

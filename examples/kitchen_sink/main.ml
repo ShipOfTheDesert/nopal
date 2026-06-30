@@ -433,6 +433,10 @@ let update model msg =
   | App.KeyboardHeightChanged _
   | App.Back_demo_push
   | App.Route_changed _
+  | App.EditKeyedItem _
+  | App.ToggleKeyedIntoKeyed
+  | App.ToggleKeyedVariant
+  | App.ToggleKeyedEmpty
   | App.SubWizardMsg _ ->
       (model', cmd)
 
@@ -635,6 +639,10 @@ let serialize_msg : App.msg -> string = function
   | App.TauriStoreDeleteResult _
   | App.TauriStoreClear
   | App.TauriStoreClearResult _
+  | App.EditKeyedItem _
+  | App.ToggleKeyedIntoKeyed
+  | App.ToggleKeyedVariant
+  | App.ToggleKeyedEmpty
   | App.SubWizardMsg _ ->
       "<msg>"
 

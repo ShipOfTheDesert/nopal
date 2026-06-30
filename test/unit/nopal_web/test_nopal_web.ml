@@ -811,6 +811,385 @@ let test_keyed_stable_node_identity () =
   let input_after = Jv.get children_after "1" in
   Alcotest.(check bool) "input node preserved" true (input_node == input_after)
 
+(* Builds a Box whose children are keyed Text nodes, one per key, in order. *)
+let keyed_text_box keys =
+  Box
+    {
+      style = default;
+      interaction = Nopal_style.Interaction.default;
+      attrs = [];
+      children =
+        List.map
+          (fun k ->
+            Keyed
+              {
+                key = k;
+                child =
+                  Text { content = String.uppercase_ascii k; text_style = None };
+              })
+          keys;
+      on_pointer_move = None;
+      on_pointer_leave = None;
+      on_pointer_down = None;
+      on_pointer_up = None;
+      on_wheel = None;
+    }
+
+(* Spy utility: wraps appendChild and insertBefore on a DOM node, sharing one
+   counter, so a test can assert how many DOM moves a reconcile performed. *)
+let spy_dom_moves node =
+  let count = ref 0 in
+  let append_orig = Jv.get node "appendChild" in
+  let append_spy =
+    Jv.callback ~arity:1 (fun child ->
+        incr count;
+        Jv.apply append_orig [| child |])
+  in
+  Jv.set node "appendChild" append_spy;
+  let insert_orig = Jv.get node "insertBefore" in
+  let insert_spy =
+    Jv.callback ~arity:2 (fun child ref_node ->
+        incr count;
+        Jv.apply insert_orig [| child; ref_node |])
+  in
+  Jv.set node "insertBefore" insert_spy;
+  count
+
+let test_keyed_reorder_moves_only_displaced () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (keyed_text_box [ "a"; "b"; "c" ])
+  in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let children0 = Jv.get node "childNodes" in
+  let n_a = Jv.get children0 "0" in
+  let n_b = Jv.get children0 "1" in
+  let n_c = Jv.get children0 "2" in
+  (* Key-stable update with unchanged order must perform no DOM moves, so a
+     focused/scrolled row survives an unrelated model update (FR-3, NFR-3). *)
+  let moves = spy_dom_moves node in
+  Nopal_web.Renderer.update ~dispatch handle (keyed_text_box [ "a"; "b"; "c" ]);
+  Alcotest.(check int) "no DOM moves on key-stable update" 0 !moves;
+  let children1 = Jv.get node "childNodes" in
+  Alcotest.(check bool) "a preserved at 0" true (n_a == Jv.get children1 "0");
+  Alcotest.(check bool) "b preserved at 1" true (n_b == Jv.get children1 "1");
+  Alcotest.(check bool) "c preserved at 2" true (n_c == Jv.get children1 "2");
+  (* Reorder to c,a,b reuses the same nodes in the new order. *)
+  Nopal_web.Renderer.update ~dispatch handle (keyed_text_box [ "c"; "a"; "b" ]);
+  let children2 = Jv.get node "childNodes" in
+  Alcotest.(check bool) "c now at 0" true (n_c == Jv.get children2 "0");
+  Alcotest.(check bool) "a now at 1" true (n_a == Jv.get children2 "1");
+  Alcotest.(check bool) "b now at 2" true (n_b == Jv.get children2 "2")
+
+let test_keyed_reorder_full_permutation () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (keyed_text_box [ "a"; "b"; "c" ])
+  in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let children0 = Jv.get node "childNodes" in
+  let n_a = Jv.get children0 "0" in
+  let n_b = Jv.get children0 "1" in
+  let n_c = Jv.get children0 "2" in
+  let expected_node = function
+    | "a" -> n_a
+    | "b" -> n_b
+    | "c" -> n_c
+    | k -> Alcotest.failf "unknown key %s" k
+  in
+  (* Step the same three nodes through every position permutation, asserting
+     the fully-enumerated key order and node identity at each index each
+     step — no membership checks (multi-axis ordering convention). *)
+  let permutations =
+    [
+      [ "a"; "b"; "c" ];
+      [ "a"; "c"; "b" ];
+      [ "b"; "a"; "c" ];
+      [ "b"; "c"; "a" ];
+      [ "c"; "a"; "b" ];
+      [ "c"; "b"; "a" ];
+    ]
+  in
+  List.iter
+    (fun perm ->
+      Nopal_web.Renderer.update ~dispatch handle (keyed_text_box perm);
+      let children = Jv.get node "childNodes" in
+      Alcotest.(check int) "three children" 3 (Jv.Int.get children "length");
+      List.iteri
+        (fun i key ->
+          let child = Jv.get children (string_of_int i) in
+          let dk =
+            Jv.call child "getAttribute" [| Jv.of_string "data-key" |]
+            |> Jv.to_string
+          in
+          Alcotest.(check string) (Printf.sprintf "key at %d" i) key dk;
+          Alcotest.(check bool)
+            (Printf.sprintf "node identity at %d" i)
+            true
+            (expected_node key == child))
+        perm)
+    permutations
+
+(* FR-3, NFR-3: a real reorder must move only the displaced node, not re-insert
+   the whole list. The permutation test above pins order and node identity, but
+   a naive re-append-everything implementation preserves both too — so it would
+   pass while silently doing N moves and blurring every focused row. This test
+   pins the *move count*: swapping the first two of three keyed rows is one
+   adjacent transposition, which the right-to-left insert-when-out-of-place pass
+   performs in exactly one [insertBefore]; a re-insert-all pass would report
+   three. *)
+let test_keyed_reorder_minimal_move_count () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (keyed_text_box [ "a"; "b"; "c" ])
+  in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let children0 = Jv.get node "childNodes" in
+  let n_a = Jv.get children0 "0" in
+  let n_b = Jv.get children0 "1" in
+  let n_c = Jv.get children0 "2" in
+  let moves = spy_dom_moves node in
+  Nopal_web.Renderer.update ~dispatch handle (keyed_text_box [ "b"; "a"; "c" ]);
+  Alcotest.(check int) "exactly one move for an adjacent swap" 1 !moves;
+  let children1 = Jv.get node "childNodes" in
+  Alcotest.(check bool) "b now at 0" true (n_b == Jv.get children1 "0");
+  Alcotest.(check bool) "a now at 1" true (n_a == Jv.get children1 "1");
+  Alcotest.(check bool) "c still at 2" true (n_c == Jv.get children1 "2")
+
+(* FR-1: switching a parent's children from non-keyed to all-keyed must remove
+   every old child not carried forward by key from the DOM and release its
+   listeners — today the orphaned non-keyed node lingers forever. *)
+let test_keyed_into_keyed_removes_old_nonkeyed () =
+  let parent = fresh_parent () in
+  let dispatch, msgs = fresh_dispatch () in
+  let el1 =
+    Box
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        children =
+          [
+            Button
+              {
+                style = default;
+                interaction = Nopal_style.Interaction.default;
+                attrs = [];
+                on_click = Some Click;
+                on_dblclick = None;
+                child = Text { content = "old"; text_style = None };
+              };
+          ];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let old_button = Jv.get (Jv.get node "childNodes") "0" in
+  (* Transition to an all-keyed child list that does not carry the old child. *)
+  let el2 =
+    Box
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        children =
+          [
+            Keyed
+              {
+                key = "k1";
+                child = Text { content = "new"; text_style = None };
+              };
+          ];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
+      }
+  in
+  Nopal_web.Renderer.update ~dispatch handle el2;
+  let children_after = Jv.get node "childNodes" in
+  Alcotest.(check int)
+    "only the new keyed child remains" 1
+    (Jv.Int.get children_after "length");
+  let new_key =
+    Jv.call
+      (Jv.get children_after "0")
+      "getAttribute"
+      [| Jv.of_string "data-key" |]
+    |> Jv.to_string
+  in
+  Alcotest.(check string) "remaining child is the new keyed node" "k1" new_key;
+  let parent_of_old = Jv.get old_button "parentNode" in
+  Alcotest.(check bool)
+    "old non-keyed child removed from DOM" true (Jv.is_null parent_of_old);
+  (* Listener cleanup: clicking the removed button must produce no message. *)
+  let ev = Jv.new' (Jv.get Jv.global "Event") [| Jv.of_string "click" |] in
+  ignore (Jv.call old_button "dispatchEvent" [| ev |]);
+  Alcotest.(check int) "removed child's listener released" 0 (List.length !msgs)
+
+(* Parent Box holding exactly one keyed child, so a test can flip that child's
+   root variant under a stable key. *)
+let keyed_one key child =
+  Box
+    {
+      style = default;
+      interaction = Nopal_style.Interaction.default;
+      attrs = [];
+      children = [ Keyed { key; child } ];
+      on_pointer_move = None;
+      on_pointer_leave = None;
+      on_pointer_down = None;
+      on_pointer_up = None;
+      on_wheel = None;
+    }
+
+let inner_box =
+  Box
+    {
+      style = default;
+      interaction = Nopal_style.Interaction.default;
+      attrs = [];
+      children = [];
+      on_pointer_move = None;
+      on_pointer_leave = None;
+      on_pointer_down = None;
+      on_pointer_up = None;
+      on_wheel = None;
+    }
+
+let inner_text = Text { content = "t"; text_style = None }
+
+(* FR-2: when a keyed child's root variant changes (Box->Text) its DOM node is
+   replaced; the replacement must remain identifiable by the same key so the
+   next reconcile reuses it instead of destroying-and-recreating (or
+   duplicating) it. *)
+let test_keyed_variant_change_no_duplicate () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent (keyed_one "k" inner_box)
+  in
+  let node = Nopal_web.Renderer.dom_node handle in
+  (* Box -> Text forces the replaceChild path in reconcile_live. *)
+  Nopal_web.Renderer.update ~dispatch handle (keyed_one "k" inner_text);
+  let children1 = Jv.get node "childNodes" in
+  Alcotest.(check int)
+    "one child after variant change" 1
+    (Jv.Int.get children1 "length");
+  let n1 = Jv.get children1 "0" in
+  (* Reconcile the same key/variant again: without the key-carry the replaced
+     node has no recoverable key, so it is destroyed and recreated (a different
+     DOM node) instead of reused. *)
+  Nopal_web.Renderer.update ~dispatch handle (keyed_one "k" inner_text);
+  let children2 = Jv.get node "childNodes" in
+  Alcotest.(check int)
+    "still one child after re-reconcile" 1
+    (Jv.Int.get children2 "length");
+  let n2 = Jv.get children2 "0" in
+  Alcotest.(check bool) "replaced keyed node reused by key" true (n1 == n2);
+  let dk =
+    Jv.call n2 "getAttribute" [| Jv.of_string "data-key" |] |> Jv.to_string
+  in
+  Alcotest.(check string) "data-key intact after replacement" "k" dk
+
+(* FR-4: a keyed child that renders to a comment node (Empty) must be matched
+   and reused across reconciles by its key, like any other keyed child. A
+   comment node can't carry a data-key attribute, so its key round-trips via a
+   JS expando property; repeated reconciles of the identical tree must reuse
+   the same comment node rather than removing it and creating a fresh orphan
+   each frame. *)
+let test_keyed_empty_no_leak () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent (keyed_one "k" Empty)
+  in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let children0 = Jv.get node "childNodes" in
+  Alcotest.(check int)
+    "one comment child after create" 1
+    (Jv.Int.get children0 "length");
+  let c0 = Jv.get children0 "0" in
+  Alcotest.(check int) "child is a comment node" 8 (node_type c0);
+  (* Reconcile the identical tree three times. Without key recovery for the
+     comment node the keyed Empty is not carried forward: it is removed and a
+     fresh comment is created — a different DOM node every frame. With the
+     expando key it is matched and the same comment node is reused. *)
+  let reconcile_and_check label =
+    Nopal_web.Renderer.update ~dispatch handle (keyed_one "k" Empty);
+    let children = Jv.get node "childNodes" in
+    Alcotest.(check int)
+      (label ^ ": still one child")
+      1
+      (Jv.Int.get children "length");
+    let c = Jv.get children "0" in
+    Alcotest.(check bool) (label ^ ": same comment node reused") true (c0 == c)
+  in
+  reconcile_and_check "reconcile 1";
+  reconcile_and_check "reconcile 2";
+  reconcile_and_check "reconcile 3"
+
+(* FR-2/FR-4: a variant change that crosses the comment-node boundary under a
+   stable key must re-key the replacement through *both* representations —
+   data-key on the element side, the [comment_key_prop] expando on the comment
+   side. [test_keyed_variant_change_no_duplicate] only exercises Box->Text
+   (element->element, [set_data_key]'s Live_node/Live_text arms); this pins the
+   Empty<->Box crossing so the Live_comment arm of [set_data_key] (renderer.ml
+   ~835) is covered. Each replacement must carry its key forward so the next
+   reconcile reuses the very same node instead of destroying-and-recreating it. *)
+let test_keyed_variant_change_empty_box_carries_key () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  (* Start as a keyed Empty (comment node). *)
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent (keyed_one "k" Empty)
+  in
+  let node = Nopal_web.Renderer.dom_node handle in
+  (* Empty -> Box: the comment is replaced by an element; the replacement is
+     re-keyed via the data-key attribute (set_data_key Live_node arm). *)
+  Nopal_web.Renderer.update ~dispatch handle (keyed_one "k" inner_box);
+  let children1 = Jv.get node "childNodes" in
+  Alcotest.(check int)
+    "one child after Empty->Box" 1
+    (Jv.Int.get children1 "length");
+  let box1 = Jv.get children1 "0" in
+  let dk =
+    Jv.call box1 "getAttribute" [| Jv.of_string "data-key" |] |> Jv.to_string
+  in
+  Alcotest.(check string) "box carries key after Empty->Box" "k" dk;
+  (* Re-reconcile identical: the replaced box is reused by key, not recreated. *)
+  Nopal_web.Renderer.update ~dispatch handle (keyed_one "k" inner_box);
+  let box2 = Jv.get (Jv.get node "childNodes") "0" in
+  Alcotest.(check bool) "box reused by key after Empty->Box" true (box1 == box2);
+  (* Box -> Empty: the element is replaced by a comment; the replacement is
+     re-keyed via the comment expando (set_data_key Live_comment arm — the path
+     test_keyed_variant_change_no_duplicate never reaches). *)
+  Nopal_web.Renderer.update ~dispatch handle (keyed_one "k" Empty);
+  let children3 = Jv.get node "childNodes" in
+  Alcotest.(check int)
+    "one child after Box->Empty" 1
+    (Jv.Int.get children3 "length");
+  let comment1 = Jv.get children3 "0" in
+  Alcotest.(check int) "child is a comment node" 8 (node_type comment1);
+  (* Re-reconcile identical: the replaced comment is reused via the expando key,
+     not destroyed and recreated each frame. *)
+  Nopal_web.Renderer.update ~dispatch handle (keyed_one "k" Empty);
+  let comment2 = Jv.get (Jv.get node "childNodes") "0" in
+  Alcotest.(check bool)
+    "comment reused by key after Box->Empty" true (comment1 == comment2)
+
 (* Spy utility: wraps setAttribute on a DOM node and counts calls *)
 let spy_set_attr node =
   let count = ref 0 in
@@ -823,6 +1202,25 @@ let spy_set_attr node =
   in
   Jv.set node "setAttribute" spy;
   count
+
+(* FR-2 guard / NFR-3: the key-carry write in reconcile_keyed_children is guarded
+   so it fires only when a node was replaced. A reused, same-variant keyed node
+   keeps its existing key, so the order-unchanged hot path must skip the
+   set_data_key write entirely — no redundant setAttribute. Spying setAttribute
+   on a reused node and asserting zero calls pins the skip branch directly;
+   dropping the guard (unconditional set_data_key) would make this one. *)
+let test_keyed_reused_node_skips_data_key_write () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (keyed_text_box [ "a"; "b"; "c" ])
+  in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let n_b = Jv.get (Jv.get node "childNodes") "1" in
+  let writes = spy_set_attr n_b in
+  Nopal_web.Renderer.update ~dispatch handle (keyed_text_box [ "a"; "b"; "c" ]);
+  Alcotest.(check int) "no data-key rewrite on a reused keyed node" 0 !writes
 
 (* test_reconcile_image_attributes *)
 let test_reconcile_image_attributes () =
@@ -1450,11 +1848,10 @@ let test_keyed_empty_has_no_data_key () =
   let el = Keyed { key = "ghost"; child = Empty } in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
   let node = Nopal_web.Renderer.dom_node handle in
-  (* Comment nodes (nodeType 8) don't support setAttribute, so data-key
-     is silently skipped. This is expected — keyed Empty is a valid but
-     degenerate case. The comment still occupies a DOM position for
-     positional stability but won't participate in keyed reconciliation
-     since it has no data-key attribute. *)
+  (* Comment nodes (nodeType 8) don't support setAttribute, so no data-key
+     attribute is set. The key is carried on a JS expando property instead,
+     so the keyed Empty still participates in keyed reconciliation and is
+     reused across frames (see test_keyed_empty_no_leak). *)
   Alcotest.(check int) "comment nodeType" 8 (node_type node)
 
 let test_parse_css_px_integer () =
@@ -2235,6 +2632,22 @@ let () =
           Alcotest.test_case "keyed remove key" `Quick test_keyed_remove_key;
           Alcotest.test_case "keyed stable node identity" `Quick
             test_keyed_stable_node_identity;
+          Alcotest.test_case "keyed reorder moves only displaced" `Quick
+            test_keyed_reorder_moves_only_displaced;
+          Alcotest.test_case "keyed reorder full permutation" `Quick
+            test_keyed_reorder_full_permutation;
+          Alcotest.test_case "keyed reorder minimal move count" `Quick
+            test_keyed_reorder_minimal_move_count;
+          Alcotest.test_case "into-keyed removes old non-keyed" `Quick
+            test_keyed_into_keyed_removes_old_nonkeyed;
+          Alcotest.test_case "variant change carries key (no duplicate)" `Quick
+            test_keyed_variant_change_no_duplicate;
+          Alcotest.test_case "variant change Empty<->Box carries key" `Quick
+            test_keyed_variant_change_empty_box_carries_key;
+          Alcotest.test_case "keyed empty reused (no leak)" `Quick
+            test_keyed_empty_no_leak;
+          Alcotest.test_case "reused keyed node skips data-key write" `Quick
+            test_keyed_reused_node_skips_data_key_write;
         ] );
       ( "schedule_after",
         [

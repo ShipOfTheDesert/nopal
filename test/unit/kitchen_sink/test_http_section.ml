@@ -177,6 +177,10 @@ let msg_pp fmt msg =
   | KeyboardHeightChanged _ -> Format.fprintf fmt "KeyboardHeightChanged _"
   | Back_demo_push -> Format.fprintf fmt "Back_demo_push"
   | Route_changed _ -> Format.fprintf fmt "Route_changed _"
+  | EditKeyedItem _ -> Format.fprintf fmt "EditKeyedItem _"
+  | ToggleKeyedIntoKeyed -> Format.fprintf fmt "ToggleKeyedIntoKeyed"
+  | ToggleKeyedVariant -> Format.fprintf fmt "ToggleKeyedVariant"
+  | ToggleKeyedEmpty -> Format.fprintf fmt "ToggleKeyedEmpty"
 
 let msg_testable = Alcotest.testable msg_pp ( = )
 

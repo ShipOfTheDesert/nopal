@@ -334,6 +334,12 @@ let wire_box_pointer_events ~dispatch el on_pointer_move on_pointer_leave
   wire_pointer_events ~dispatch el ?on_pointer_move ?on_pointer_leave
     ?on_pointer_down ?on_pointer_up ?on_wheel ()
 
+(* JS expando property carrying a keyed child's key on its comment node. Comment
+   nodes (used for [Empty]) can't hold a data-key attribute, so the key
+   round-trips through this property instead. Single-sourced so the create-time
+   set, [set_data_key], and [get_data_key] always agree (FR-4). *)
+let comment_key_prop = "__nopal_key"
+
 let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
     'msg live =
   match element with
@@ -608,14 +614,15 @@ let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
         }
   | Keyed { key; child } ->
       let live_child = create_live ~sheet ~dispatch child in
-      (* Set data-key on the rendered node. For comment nodes, skip
-         since they don't support setAttribute. *)
+      (* Set the key on the rendered node so it round-trips across reconciles.
+         Elements/text carry it in a data-key attribute; comment nodes can't,
+         so they carry it in [comment_key_prop] instead (FR-4). *)
       (match live_child with
       | Live_node n ->
           Brr.El.set_at (Jstr.v "data-key") (Some (Jstr.v key)) n.dom
       | Live_text t ->
           Brr.El.set_at (Jstr.v "data-key") (Some (Jstr.v key)) t.text_dom
-      | Live_comment _ -> ());
+      | Live_comment c -> Jv.set c.comment comment_key_prop (Jv.of_string key));
       live_child
   | Draw
       {
@@ -825,7 +832,7 @@ let extract_keyed_pairs elements =
 
 let set_data_key live key =
   match live with
-  | Live_comment _ -> ()
+  | Live_comment c -> Jv.set c.comment comment_key_prop (Jv.of_string key)
   | Live_node _
   | Live_text _ ->
       let jv = jv_of_live live in
@@ -929,6 +936,14 @@ let rec reconcile_keyed_children ~sheet ~dispatch parent_el old_children
             let updated =
               reconcile_live ~sheet ~dispatch parent_el old_live child
             in
+            (* On a variant change reconcile_live replaces the DOM node with a
+               freshly-created one that does not carry the key, so re-establish
+               it; otherwise the replacement loses its identity and is removed
+               and recreated (or duplicated) on the next reconcile (FR-2). A
+               reused node keeps the same DOM node and its existing key, so
+               skip the write to leave the order-unchanged hot path untouched. *)
+            if not (jv_of_live updated == jv_of_live old_live) then
+              set_data_key updated key;
             (key, updated)
         | None ->
             let live = create_live ~sheet ~dispatch child in
@@ -943,12 +958,31 @@ let rec reconcile_keyed_children ~sheet ~dispatch parent_el old_children
       ignore (Jv.call parent_jv "removeChild" [| old_jv |]);
       unlisten_tree ~sheet old_live)
     old_map;
-  (* Reorder: appendChild moves existing nodes to the correct position *)
-  List.iter
-    (fun (_key, live) ->
-      let jv = jv_of_live live in
-      ignore (Jv.call parent_jv "appendChild" [| jv |]))
-    new_lives;
+  (* Reorder by moving only out-of-place nodes. Walk right-to-left tracking
+     [next] — the node that must follow the current one — and insert the
+     current node before it only when it is not already there. A node that is
+     already in its correct position (its parent is [parent_el] and its
+     nextSibling is [next]) is left untouched, so a key-stable update with
+     unchanged order performs zero DOM moves and preserves focus, scroll,
+     selection, and IME state on rows that did not move (FR-3, NFR-3). *)
+  let rec reorder next = function
+    | [] -> ()
+    | (_key, live) :: rest_to_left ->
+        let jv = jv_of_live live in
+        let parent_node = Jv.get jv "parentNode" in
+        let next_sibling = Jv.get jv "nextSibling" in
+        let in_place =
+          (not (Jv.is_null parent_node))
+          && parent_node == parent_jv
+          &&
+          if Jv.is_null next then Jv.is_null next_sibling
+          else (not (Jv.is_null next_sibling)) && next_sibling == next
+        in
+        if not in_place then
+          ignore (Jv.call parent_jv "insertBefore" [| jv; next |]);
+        reorder jv rest_to_left
+  in
+  reorder Jv.null (List.rev new_lives);
   List.map snd new_lives
 
 and reconcile_children ~sheet ~dispatch parent_el old_children new_elements =
@@ -957,19 +991,30 @@ and reconcile_children ~sheet ~dispatch parent_el old_children new_elements =
   | Some keyed_pairs ->
       let get_data_key live =
         match live with
-        | Live_comment _ -> None
+        | Live_comment c ->
+            let k = Jv.get c.comment comment_key_prop in
+            if Jv.is_none k then None else Some (Jv.to_string k)
         | Live_node _
         | Live_text _ ->
             let jv = jv_of_live live in
             let dk = Jv.call jv "getAttribute" [| Jv.of_string "data-key" |] in
             if Jv.is_null dk then None else Some (Jv.to_string dk)
       in
+      let parent_jv = Brr.El.to_jv parent_el in
       let old_keyed =
         List.filter_map
           (fun old_live ->
             match get_data_key old_live with
             | Some key -> Some (key, old_live)
-            | None -> None)
+            | None ->
+                (* A child with no recoverable key cannot be carried forward by
+                   the keyed reconcile, so remove it and release its listeners
+                   now — otherwise the orphaned non-keyed node and its handlers
+                   leak forever on a non-keyed-to-keyed transition (FR-1). *)
+                let old_jv = jv_of_live old_live in
+                ignore (Jv.call parent_jv "removeChild" [| old_jv |]);
+                unlisten_tree ~sheet old_live;
+                None)
           old_children
       in
       reconcile_keyed_children ~sheet ~dispatch parent_el old_keyed keyed_pairs
