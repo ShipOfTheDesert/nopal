@@ -1510,6 +1510,64 @@ let test_reconcile_input_updates_changed_placeholder () =
   in
   Alcotest.(check string) "placeholder updated" "new" ph
 
+(* NFR-3: a controlled input reflects the model, but reconciling with an
+   unchanged value must NOT re-write the DOM `value`. A redundant write
+   collapses the caret/selection and resets IME composition; combined with the
+   global keydown subscription (a reconcile per keystroke), an unconditional
+   write heals the DOM back to the model mid-edit and clobbers in-progress
+   typing. Dropping the guard makes this assertion fail. *)
+let test_reconcile_input_skips_unchanged_value () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let mk v =
+    Input
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        value = v;
+        placeholder = "";
+        on_change = None;
+        on_submit = None;
+        on_blur = None;
+        on_keydown = None;
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent (mk "v") in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let before = Jv.get node "_valueWrites" |> Jv.to_int in
+  Nopal_web.Renderer.update ~dispatch handle (mk "v");
+  let after = Jv.get node "_valueWrites" |> Jv.to_int in
+  Alcotest.(check int) "no value write on unchanged reconcile" 0 (after - before)
+
+(* The guard must not over-skip: a changed value still writes through once and
+   the DOM reflects the new model value. *)
+let test_reconcile_input_updates_changed_value () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let mk v =
+    Input
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        value = v;
+        placeholder = "";
+        on_change = None;
+        on_submit = None;
+        on_blur = None;
+        on_keydown = None;
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent (mk "v") in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let before = Jv.get node "_valueWrites" |> Jv.to_int in
+  Nopal_web.Renderer.update ~dispatch handle (mk "v2");
+  let after = Jv.get node "_valueWrites" |> Jv.to_int in
+  Alcotest.(check int) "one value write on changed reconcile" 1 (after - before);
+  let value = Jv.Jstr.get node "value" |> Jstr.to_string in
+  Alcotest.(check string) "value updated" "v2" value
+
 (* Input: unchanged attrs must not trigger setAttribute *)
 let test_reconcile_input_skips_unchanged_attrs () =
   let parent = fresh_parent () in
@@ -2588,6 +2646,10 @@ let () =
             `Quick test_reconcile_input_skips_unchanged_placeholder;
           Alcotest.test_case "reconcile input updates changed placeholder"
             `Quick test_reconcile_input_updates_changed_placeholder;
+          Alcotest.test_case "reconcile input skips unchanged value" `Quick
+            test_reconcile_input_skips_unchanged_value;
+          Alcotest.test_case "reconcile input updates changed value" `Quick
+            test_reconcile_input_updates_changed_value;
           Alcotest.test_case "reconcile input skips unchanged attrs" `Quick
             test_reconcile_input_skips_unchanged_attrs;
         ] );

@@ -23,7 +23,19 @@ describe("Tauri window (REQ-F5)", () => {
     });
 
     // 1. Set the window title → message + model title transition.
-    await $('[data-field="tauri-window-title"]').setValue(NEW_TITLE);
+    //    The field is a controlled input pre-filled with the default title.
+    //    `setValue` (clearValue + addValue) clears the DOM only — under
+    //    WebKitWebDriver the clear fires no `input` event, so the model keeps
+    //    the old title and the typed text concatenates onto it. Delete to empty
+    //    with real key events (each fires `input`), confirm the model reached
+    //    empty, then type, so the model actually ends at NEW_TITLE.
+    const titleField = $('[data-field="tauri-window-title"]');
+    await titleField.click();
+    await browser.keys("End");
+    const existing = await titleField.getValue();
+    await browser.keys(Array(existing.length).fill("Backspace"));
+    await telemetry.assertModelContains('win_title=""');
+    await titleField.addValue(NEW_TITLE);
     await $('[data-action="tauri-window-set-title"]').click();
     await telemetry.assertDispatched("SetTauriWindowTitle");
     await telemetry.assertModelContains(`win_title=${JSON.stringify(NEW_TITLE)}`);

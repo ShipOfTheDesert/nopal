@@ -350,6 +350,18 @@
           }
         },
       });
+    } else if (tag.toLowerCase() === "input" || tag.toLowerCase() === "textarea") {
+      // Back `value` with a write counter so renderer tests can assert that a
+      // controlled input skips the redundant write when the value is unchanged
+      // (a no-op write would collapse the caret/selection/IME — NFR-3).
+      el._value = "";
+      el._valueWrites = 0;
+      Object.defineProperty(el, "value", {
+        get() { return el._value; },
+        set(v) { el._value = String(v); el._valueWrites++; },
+        configurable: true,
+        enumerable: true,
+      });
     }
 
     return el;

@@ -1252,7 +1252,14 @@ and reconcile_node ~sheet ~dispatch (old_n : 'msg live_node)
         reconcile_children ~sheet ~dispatch el old_n.children [ child ]
   | Input { value; placeholder; on_change; on_submit; on_blur; on_keydown; _ }
     ->
-      Jv.set (Brr.El.to_jv el) "value" (Jv.of_string value);
+      (* Controlled input: reflect the model, but only write when the DOM value
+         actually differs. A redundant write collapses the caret/selection and
+         resets IME composition; with the global keydown subscription turning
+         each keystroke into a reconcile, an unconditional write heals the DOM
+         back to the model mid-edit and clobbers in-progress typing (NFR-3). *)
+      let dom_value = Jv.Jstr.get (Brr.El.to_jv el) "value" |> Jstr.to_string in
+      if not (String.equal dom_value value) then
+        Jv.set (Brr.El.to_jv el) "value" (Jv.of_string value);
       (match old_n.element with
       | Input { placeholder = old_ph; _ } ->
           if not (String.equal old_ph placeholder) then
