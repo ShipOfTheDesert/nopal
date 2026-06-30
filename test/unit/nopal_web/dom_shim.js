@@ -249,6 +249,15 @@
       },
     });
 
+    Object.defineProperty(node, "nextSibling", {
+      get() {
+        if (!node.parentNode) return null;
+        const sibs = node.parentNode.childNodes;
+        const idx = sibs.indexOf(node);
+        return idx >= 0 && idx + 1 < sibs.length ? sibs[idx + 1] : null;
+      },
+    });
+
     Object.defineProperty(node, "children", {
       get() {
         return node.childNodes.filter((c) => c.nodeType === 1);
@@ -340,6 +349,18 @@
             child.selected = (child._attributes["value"] === v);
           }
         },
+      });
+    } else if (tag.toLowerCase() === "input" || tag.toLowerCase() === "textarea") {
+      // Back `value` with a write counter so renderer tests can assert that a
+      // controlled input skips the redundant write when the value is unchanged
+      // (a no-op write would collapse the caret/selection/IME — NFR-3).
+      el._value = "";
+      el._valueWrites = 0;
+      Object.defineProperty(el, "value", {
+        get() { return el._value; },
+        set(v) { el._value = String(v); el._valueWrites++; },
+        configurable: true,
+        enumerable: true,
       });
     }
 

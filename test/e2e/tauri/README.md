@@ -28,17 +28,25 @@ Task 8 wires the `just e2e-tauri` target and the `main`-only CI job.
 # Debian/Ubuntu
 sudo apt-get install -y webkit2gtk-driver xvfb
 
-# Arch (the Bazzite `dev` distrobox) — WebKitWebDriver ships in webkitgtk-6.0
-sudo pacman -S --needed webkitgtk-6.0 xorg-server-xvfb
+# Arch (the Bazzite `dev` distrobox) — install BOTH the webview (webkit2gtk-4.1,
+# what wry renders into) and the driver (WebKitWebDriver ships only in
+# webkitgtk-6.0). `-Syu` so the two land at the same WebKitGTK version.
+sudo pacman -Syu --needed webkit2gtk-4.1 webkitgtk-6.0 xorg-server-xvfb
 
 cargo install tauri-driver
 cd test/e2e/tauri && npm install
 ```
 
-> On Arch, `WebKitWebDriver` comes from `webkitgtk-6.0` while Tauri's webview is
-> `webkit2gtk-4.1`; if `tauri-driver` can't find a matching driver, check that the
-> `WebKitWebDriver` on `PATH` lines up with the webview version. (This suite is
-> `main`-only and hasn't been validated on Arch — patches welcome.)
+> **Validated on Arch** (the `dev` distrobox, WebKitGTK 2.52.4): `WebKitWebDriver`
+> from `webkitgtk-6.0` (GTK4 API) drives wry's `webkit2gtk-4.1` (GTK3 API) webview
+> fine — **as long as both packages are the same WebKitGTK version**. The
+> automation protocol is keyed to the engine version, not the GTK API binding, so
+> keep the two in lockstep across upgrades (a skew is what breaks session attach).
+>
+> **Node 22 is required.** `tauri-driver`'s legacy HTTP stack trips Node ≥24's
+> stricter `undici`, which rejects session creation with `UND_ERR_INVALID_ARG`
+> (every spec fails instantly at `POST /session`). CI pins Node 22 via
+> `actions/setup-node`; on Arch install `nodejs-lts-jod`.
 
 Build the kitchen-sink Tauri binary (release; the config defaults to
 `tauri/src-tauri/target/release/nopal-kitchen-sink`):
