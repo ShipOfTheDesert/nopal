@@ -34,6 +34,18 @@
  (js_of_ocaml
   (javascript_files dom_shim.js stylesheet_shim.js)))
 
+; canvas_shim.js layers a fake <canvas> + recording 2D context on top of
+; dom_shim.js so the canvas renderer's clear/hidpi logic (FR-7) can be tested
+; under Node.js without a real browser. See canvas_shim.js for the rationale.
+
+(test
+ (name test_canvas_renderer)
+ (package nopal_web)
+ (libraries nopal_web alcotest brr)
+ (modes js)
+ (js_of_ocaml
+  (javascript_files dom_shim.js canvas_shim.js)))
+
 (test
  (name test_platform_web)
  (package nopal_web)

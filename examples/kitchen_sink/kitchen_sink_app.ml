@@ -154,6 +154,8 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         (** keyed-section variant-change toggle (FR-2) *)
     keyed_empty_shown : bool;  (** keyed-section keyed-[Empty] toggle (FR-4) *)
     interaction_toggled : bool;
+    style_bg_shown : bool;
+        (** FR-1 style-removal demo: box background on/off *)
     telemetry_pings : int;
     sub_counter : Sub_counter.model;
     sub_wizard : Sub_wizard.model;
@@ -224,6 +226,8 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | ToggleKeyedVariant
     | ToggleKeyedEmpty
     | ToggleInteraction
+    | ToggleStyleBackground
+        (** FR-1 style-removal demo: add/remove background *)
     | TelemetryPing of string
     | SubCounterMsg of Sub_counter.msg
     | SubWizardMsg of Sub_wizard.msg
@@ -377,6 +381,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         keyed_variant_text = false;
         keyed_empty_shown = false;
         interaction_toggled = false;
+        style_bg_shown = true;
         telemetry_pings = 0;
         sub_counter;
         sub_wizard;
@@ -523,6 +528,9 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           Nopal_mvu.Cmd.none )
     | ToggleInteraction ->
         ( { model with interaction_toggled = not model.interaction_toggled },
+          Nopal_mvu.Cmd.none )
+    | ToggleStyleBackground ->
+        ( { model with style_bg_shown = not model.style_bg_shown },
           Nopal_mvu.Cmd.none )
     | TelemetryPing _label ->
         ( { model with telemetry_pings = model.telemetry_pings + 1 },
@@ -1788,6 +1796,43 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
               ~attrs:[ ("data-testid", "toggle-card") ]
               [ Element.text "Toggleable card" ];
           ];
+      ]
+
+  (* Style removal (FR-1): a box painted with a background that the toggle
+     removes *entirely* — when off, the background style prop is absent from the
+     element (not merely changed), so the renderer must clear the stale inline
+     background from the DOM. The structural test asserts the box carries a
+     background when on and none when off; the DOM-level removal is proven by
+     [test_reconcile_removes_dropped_inline_style]. *)
+  let view_style_removal model =
+    let toggle_button_style =
+      Style.default
+      |> Style.with_layout (fun l -> l |> Style.padding 6.0 16.0 6.0 16.0)
+    in
+    let box_base_style =
+      Style.default
+      |> Style.with_layout (fun l ->
+          { l with width = Some (Fixed 200.0) } |> Style.padding_all 16.0)
+    in
+    let box_style =
+      if model.style_bg_shown then
+        box_base_style
+        |> Style.with_paint (fun p -> { p with background = Some bg_accent })
+      else box_base_style
+    in
+    view_section "Style Removal"
+      [
+        Element.text
+          "Toggling removes the background style prop entirely (FR-1):";
+        Element.button ~style:toggle_button_style
+          ~attrs:[ ("data-testid", "style-removal-toggle") ]
+          ~on_click:ToggleStyleBackground
+          (Element.text
+             (if model.style_bg_shown then "Remove background"
+              else "Add background"));
+        Element.box ~style:box_style
+          ~attrs:[ ("data-testid", "style-removal-box") ]
+          [ Element.text "Styled box" ];
       ]
 
   (* Section 10: Map / Composition (REQ-F9) *)
@@ -3485,6 +3530,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
            view_keyed model;
            view_nested model;
            view_interaction_states model;
+           view_style_removal model;
            Element.map (fun m -> Ui_msg m) (Kitchen_sink_ui.view vp model.ui);
            view_composition vp model;
            view_wizard vp model;

@@ -130,4 +130,21 @@ let view _vp model =
               Element.select_option ~value:"val-2" "Value 2";
             ];
         ];
+      (* Select whose model value matches no option: the control reflects the
+         model (nothing selected), not the browser's default first option. *)
+      Element.column ~style:group_style
+        [
+          Element.styled_text ~text_style:label_text "Unmatched select:";
+          Element.select
+            ~attrs:
+              [
+                ("data-testid", "form-select-no-match");
+                ("aria-label", "Unmatched select");
+              ]
+            ~selected:"no-such-value"
+            [
+              Element.select_option ~value:"val-1" "Value 1";
+              Element.select_option ~value:"val-2" "Value 2";
+            ];
+        ];
     ]

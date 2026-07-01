@@ -15,7 +15,12 @@ let update model msg =
   | Open ->
       ( { open_ = true; focused = first_focusable },
         Nopal_mvu.Cmd.focus first_focusable )
-  | Close -> ({ model with open_ = false }, Nopal_mvu.Cmd.none)
+  (* Return focus to the trigger on close (a11y). Now that FR-3 makes the
+     open-time [Cmd.focus first_focusable] actually land inside the dialog,
+     focus must be restored explicitly — otherwise closing the dialog drops
+     focus to [<body>]. *)
+  | Close ->
+      ({ model with open_ = false }, Nopal_mvu.Cmd.focus "modal-open-button")
   | FocusChanged id -> ({ model with focused = id }, Nopal_mvu.Cmd.none)
   | TabPressed key ->
       (* The next focus is resolved here, from the live [model.focused], rather
@@ -204,7 +209,8 @@ let view _vp model =
     [
       Element.button ~style:open_button_style
         ~interaction:open_button_interaction ~on_click:Open
-        ~attrs:[ ("data-testid", "modal-open-button") ]
+        ~attrs:
+          [ ("id", "modal-open-button"); ("data-testid", "modal-open-button") ]
         (Element.text "Open Modal");
       Modal.view config;
     ]

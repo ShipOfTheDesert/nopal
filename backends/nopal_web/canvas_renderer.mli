@@ -13,3 +13,12 @@ val setup_hidpi :
     pixels ([width * devicePixelRatio]) and the CSS size to logical pixels
     ([width], [height]). Scales [ctx] by [devicePixelRatio] so drawing
     coordinates remain logical. *)
+
+val resize_if_needed :
+  Brr.El.t -> Brr_canvas.C2d.t -> width:float -> height:float -> unit
+(** [resize_if_needed el ctx ~width ~height] re-runs {!setup_hidpi} when the
+    canvas backing store no longer matches the desired logical size scaled by
+    the current [devicePixelRatio]. This catches both a logical-size change and
+    a dpr change (e.g. moving the window to a different-density display), and is
+    a no-op when neither changed — so the unchanged reconcile path performs no
+    backing-store write. *)

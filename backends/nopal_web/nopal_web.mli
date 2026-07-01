@@ -115,8 +115,19 @@ module Style_sheet = Style_sheet
 module Renderer = Renderer
 (** Re-exported for direct access. *)
 
+module Canvas_renderer = Canvas_renderer
+(** Re-exported for direct access (FR-7 canvas clear/hidpi tests). *)
+
 module Platform_web = Platform_web
 (** Web platform navigation via the browser History API. *)
+
+val drain_focus : string Queue.t -> unit
+(** [drain_focus pending] focuses each queued element id in FIFO order, emptying
+    the queue. The runtime interprets [Cmd.focus] synchronously during dispatch,
+    before the rAF DOM patch, so the web backend buffers focus requests and
+    calls this once per frame after {!Renderer.update} (FR-3). Exposed for unit
+    testing the drain order and last-wins result; not part of the behavioural
+    API. *)
 
 module Storage = Storage
 (** Browser localStorage access. See {!Storage}. *)

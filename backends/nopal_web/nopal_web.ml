@@ -1,6 +1,7 @@
 module Style_css = Style_css
 module Style_sheet = Style_sheet
 module Renderer = Renderer
+module Canvas_renderer = Canvas_renderer
 module Platform_web = Platform_web
 module Storage = Storage
 
@@ -63,6 +64,19 @@ let focus_element id =
   let document = Jv.get Jv.global "document" in
   let el = Jv.call document "getElementById" [| Jv.of_string id |] in
   if not (Jv.is_none el) then ignore (Jv.call el "focus" [||])
+
+(* Drain queued [Cmd.focus] targets, focusing each in request order. The runtime
+   interprets a command synchronously during dispatch, before the rAF loop
+   applies the model's DOM patch, so focusing inline would no-op against an
+   element the same [update] just created (FR-3). The web backend therefore
+   enqueues focus requests and flushes the queue here, once per frame *after*
+   {!Renderer.update}, so the target node is already in the DOM — consistent with
+   RFC 0118 Decision 9's off-rAF timing model. Already-present targets focus on
+   the next frame either way, leaving existing focus behaviour unchanged. *)
+let drain_focus pending =
+  while not (Queue.is_empty pending) do
+    focus_element (Queue.take pending)
+  done
 
 (* The DOM keydown/keyup [event.key] string the subscription handler receives.
    A held [Shift] is folded into a ["Shift+<key>"] prefix (except for the bare
@@ -155,6 +169,7 @@ let web_interpret_atom (type msg) ~(dispatch : msg -> unit)
 let drive (type msg) ~(start : unit -> unit)
     ~(set_viewport : Nopal_element.Viewport.t -> unit)
     ~(view_lwd : msg Nopal_element.Element.t Lwd.t) ~(dispatch : msg -> unit)
+    ~(flush_focus : unit -> unit)
     ~(safe_area_source :
        ((Nopal_element.Viewport.safe_area -> unit) -> unit -> unit) option)
     ~(bridge : Nopal_runtime.Telemetry.handle option) (target : Brr.El.t) =
@@ -220,6 +235,9 @@ let drive (type msg) ~(start : unit -> unit)
          let new_element = Lwd.quick_sample root in
          Renderer.update ~dispatch handle new_element
        end;
+       (* After the DOM patch so a [Cmd.focus] for an element created by this
+          frame's update finds it in the DOM (FR-3). *)
+       flush_focus ();
        let w = Jv.get Jv.global "window" in
        ignore (Jv.call w "requestAnimationFrame" [| Jv.repr !raf_loop |]));
   (* Install the browser telemetry bridge over the driven runtime's handle
@@ -235,29 +253,36 @@ let mount (type model msg) ?safe_area_source ?on_error
     (module A : Nopal_mvu.App.S with type model = model and type msg = msg)
     (target : Brr.El.t) =
   let module R = Nopal_runtime.Runtime.Make (A) in
+  let pending_focus = Queue.create () in
   let rt =
-    R.create ~focus:focus_element ~schedule_after ?on_error
-      ~interpret_atom:web_interpret_atom ()
+    R.create
+      ~focus:(fun id -> Queue.add id pending_focus)
+      ~schedule_after ?on_error ~interpret_atom:web_interpret_atom ()
   in
   drive
     ~start:(fun () -> R.start rt)
     ~set_viewport:(fun vp -> R.set_viewport rt vp)
     ~view_lwd:(R.view rt)
     ~dispatch:(fun msg -> R.dispatch rt msg)
+    ~flush_focus:(fun () -> drain_focus pending_focus)
     ~safe_area_source ~bridge:None target
 
 let mount_with_telemetry (type model msg) ?safe_area_source ?on_error
     (module A : Nopal_mvu.App.S with type model = model and type msg = msg)
     ?serialize_msg ?serialize_model (target : Brr.El.t) =
   let module R = Nopal_runtime.Runtime.Make (A) in
+  let pending_focus = Queue.create () in
   let rt, handle =
-    R.create_with_telemetry ~focus:focus_element ~schedule_after ?on_error
-      ~interpret_atom:web_interpret_atom ?serialize_msg ?serialize_model ()
+    R.create_with_telemetry
+      ~focus:(fun id -> Queue.add id pending_focus)
+      ~schedule_after ?on_error ~interpret_atom:web_interpret_atom
+      ?serialize_msg ?serialize_model ()
   in
   drive
     ~start:(fun () -> R.start rt)
     ~set_viewport:(fun vp -> R.set_viewport rt vp)
     ~view_lwd:(R.view rt)
     ~dispatch:(fun msg -> R.dispatch rt msg)
+    ~flush_focus:(fun () -> drain_focus pending_focus)
     ~safe_area_source ~bridge:(Some handle) target;
   handle
