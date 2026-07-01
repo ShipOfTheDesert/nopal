@@ -6,7 +6,9 @@
 val lttb :
   x:('a -> float) -> y:('a -> float) -> data:'a array -> target:int -> 'a array
 (** Downsample [data] to [target] points using LTTB. First and last points are
-    always preserved. Returns original data if length <= target. *)
+    always preserved. Total for every input: returns [data] unchanged when
+    [target <= 1] or [length <= target] (so empty data returns [[||]]); never
+    raises and never fabricates points. *)
 
 val should_downsample : data_length:int -> pixel_width:float -> bool
 (** Returns true when [data_length] > 3 * [pixel_width] (threshold: 3x pixels).

@@ -309,6 +309,7 @@ let update model msg =
   | App.RemoveKeyedItem _
   | App.MoveKeyedItemUp _
   | App.ToggleInteraction
+  | App.ToggleStyleBackground
   | App.TelemetryPing _
   | App.SubCounterMsg _
   | App.DrawPointerMove _
@@ -454,6 +455,7 @@ let serialize_msg : App.msg -> string = function
   | App.RemoveKeyedItem id -> Printf.sprintf "RemoveKeyedItem:%d" id
   | App.MoveKeyedItemUp id -> Printf.sprintf "MoveKeyedItemUp:%d" id
   | App.ToggleInteraction -> "ToggleInteraction"
+  | App.ToggleStyleBackground -> "ToggleStyleBackground"
   | App.TelemetryPing label -> "TelemetryPing:" ^ label
   (* Component messages the per-component E2E telemetry contract asserts on
      (RFC 0112, Step 5). Each inner match is exhaustive so a newly added sub

@@ -81,6 +81,19 @@ let test_lttb_preserves_valleys () =
   in
   Alcotest.(check bool) "valley retained" true has_valley
 
+let test_lttb_total_small_and_empty () =
+  let data = [| (0.0, 1.0); (1.0, 3.0); (2.0, 2.0); (3.0, 5.0) |] in
+  (* target = 0: no triangle to build — return data unchanged, never raise. *)
+  let r0 = Downsample.lttb ~x:x_of ~y:y_of ~data ~target:0 in
+  Alcotest.(check (array pair_testable)) "target 0 unchanged" data r0;
+  (* target = 1: a single bucket cannot be reduced — return data unchanged. *)
+  let r1 = Downsample.lttb ~x:x_of ~y:y_of ~data ~target:1 in
+  Alcotest.(check (array pair_testable)) "target 1 unchanged" data r1;
+  (* empty data with a normal target -> empty result, no fabricated points. *)
+  let empty = [||] in
+  let re = Downsample.lttb ~x:x_of ~y:y_of ~data:empty ~target:5 in
+  Alcotest.(check (array pair_testable)) "empty data" empty re
+
 let test_should_downsample_below_threshold () =
   (* 100 points at 200px => 100 < 3 * 200 = 600 => false *)
   let result =
@@ -113,6 +126,8 @@ let () =
           Alcotest.test_case "preserves peaks" `Quick test_lttb_preserves_peaks;
           Alcotest.test_case "preserves valleys" `Quick
             test_lttb_preserves_valleys;
+          Alcotest.test_case "total on small and empty" `Quick
+            test_lttb_total_small_and_empty;
         ] );
       ( "helpers",
         [

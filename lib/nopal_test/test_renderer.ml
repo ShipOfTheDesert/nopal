@@ -360,12 +360,15 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
         let children =
           if range.first > range.last then []
           else
-            List.init
-              (range.last - range.first + 1)
-              (fun i ->
-                go
-                  ((range.first + i) :: rev_path)
-                  (render_item (range.first + i)))
+            (* Register item handlers through the same positional [go_children]
+               walk that [resolve_path] mirrors. [render_item] still receives the
+               absolute item index, but the path component is the positional slot
+               within the visible window, so registration and resolution cannot
+               disagree at a nonzero scroll offset (FR-5). *)
+            go_children rev_path
+              (List.init
+                 (range.last - range.first + 1)
+                 (fun i -> render_item (range.first + i)))
         in
         let ic = Nopal_element.Virtual_list.Natural.to_int item_count in
         let rh =

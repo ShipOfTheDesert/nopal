@@ -52,6 +52,7 @@ let msg_pp fmt msg =
   | RemoveKeyedItem _
   | MoveKeyedItemUp _
   | ToggleInteraction
+  | ToggleStyleBackground
   | TelemetryPing _
   | SubCounterMsg _
   | SubWizardMsg _

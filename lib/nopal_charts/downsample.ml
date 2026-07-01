@@ -9,7 +9,7 @@ let triangle_area x1 y1 x2 y2 x3 y3 =
    chosen point. This is inherent to the LTTB algorithm. *)
 let lttb ~x ~y ~data ~target =
   let n = Array.length data in
-  if n <= target then Array.copy data
+  if target <= 1 || n <= target then Array.copy data
   else begin
     let result = Array.make target data.(0) in
     result.(0) <- data.(0);

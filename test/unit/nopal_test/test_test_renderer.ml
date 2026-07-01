@@ -735,6 +735,71 @@ let text_style_tests =
       styled_text_reconciliation_removes_style;
   ]
 
+(* Task 5: Virtual list handler path resolution (FR-5) *)
+
+type vl_msg = Vl_click of int | Vl_change of int * string
+
+let vl_msg_testable =
+  Alcotest.testable
+    (fun fmt m ->
+      match m with
+      | Vl_click i -> Format.fprintf fmt "Vl_click %d" i
+      | Vl_change (i, s) -> Format.fprintf fmt "Vl_change (%d, %S)" i s)
+    ( = )
+
+let vl_option_get msg = function
+  | Some x -> x
+  | None -> failwith msg
+
+let virtual_list_handler_at_nonzero_offset () =
+  let module VL = Nopal_element.Virtual_list in
+  let row_height =
+    vl_option_get "row_height" (VL.Positive_float.of_float 10.0)
+  in
+  let container_height =
+    vl_option_get "container_height" (VL.Positive_float.of_float 50.0)
+  in
+  let item_count = vl_option_get "item_count" (VL.Natural.of_int 100) in
+  let overscan = vl_option_get "overscan" (VL.Natural.of_int 0) in
+  (* offset 100 / row 10 => the visible window starts at item 10, not 0;
+     this is the scroll condition under which absolute and positional item
+     indices diverge (FR-5). *)
+  let scroll_state = VL.scroll_state ~offset:100.0 in
+  let render_item i =
+    E.row
+      [
+        E.button
+          ~attrs:[ ("data-btn", string_of_int i) ]
+          ~on_click:(Vl_click i) (E.text "row");
+        E.input
+          ~attrs:[ ("data-inp", string_of_int i) ]
+          ~on_change:(fun s -> Vl_change (i, s))
+          ~placeholder:"" "";
+      ]
+  in
+  let r =
+    render
+      (E.virtual_list ~item_count ~row_height ~container_height ~scroll_state
+         ~overscan render_item)
+  in
+  (* item 12 is inside the visible window (10..14) but at positional slot 2 *)
+  let click_result = click (By_attr ("data-btn", "12")) r in
+  Alcotest.(check (result unit error_testable))
+    "click reaches the scrolled item's handler" (Ok ()) click_result;
+  let input_result = input (By_attr ("data-inp", "12")) "hi" r in
+  Alcotest.(check (result unit error_testable))
+    "input reaches the scrolled item's handler" (Ok ()) input_result;
+  Alcotest.(check (list vl_msg_testable))
+    "handlers dispatch for the correct scrolled item"
+    [ Vl_click 12; Vl_change (12, "hi") ]
+    (messages r)
+
+let virtual_list_tests =
+  [
+    Alcotest.test_case "virtual_list_handler_at_nonzero_offset" `Quick
+      virtual_list_handler_at_nonzero_offset;
+  ]
+
 let () =
   Alcotest.run "Test_renderer"
     [
@@ -744,4 +809,5 @@ let () =
       ("map", map_tests);
       ("run_app", run_app_tests);
       ("text_style", text_style_tests);
+      ("virtual_list", virtual_list_tests);
     ]

@@ -1568,6 +1568,52 @@ let test_reconcile_input_updates_changed_value () =
   let value = Jv.Jstr.get node "value" |> Jstr.to_string in
   Alcotest.(check string) "value updated" "v2" value
 
+(* FR-1: a style prop present last render but absent now must be cleared from
+   the element so the painted result matches the model. Image is non-interactive,
+   so it exercises the inline-style reconcile path directly. *)
+let test_reconcile_removes_dropped_inline_style () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let mk style = Image { style; src = "a.png"; alt = "a" } in
+  let styled =
+    with_paint
+      (fun p -> { p with background = Some (rgba 255 0 0 1.0) })
+      default
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent (mk styled) in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let style_obj = Jv.get node "style" in
+  let bg_before = Jv.Jstr.get style_obj "background-color" |> Jstr.to_string in
+  Alcotest.(check bool)
+    "background applied before" true
+    (String.length bg_before > 0);
+  Nopal_web.Renderer.update ~dispatch handle (mk default);
+  let bg_after = Jv.Jstr.get style_obj "background-color" |> Jstr.to_string in
+  Alcotest.(check string) "dropped background removed" "" bg_after
+
+(* NFR-1: an identical re-render performs zero inline-style writes. The style is
+   reconstructed each frame (physically distinct, structurally equal), as a real
+   view function would, so this fails unless the guard uses structural equality. *)
+let test_reconcile_unchanged_style_no_write () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let mk () =
+    let styled =
+      with_paint
+        (fun p -> { p with background = Some (rgba 255 0 0 1.0) })
+        default
+    in
+    Image { style = styled; src = "a.png"; alt = "a" }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent (mk ()) in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let style_obj = Jv.get node "style" in
+  let before = Jv.get style_obj "_writes" |> Jv.to_int in
+  Nopal_web.Renderer.update ~dispatch handle (mk ());
+  let after = Jv.get style_obj "_writes" |> Jv.to_int in
+  Alcotest.(check int)
+    "no inline-style write on unchanged reconcile" 0 (after - before)
+
 (* Input: unchanged attrs must not trigger setAttribute *)
 let test_reconcile_input_skips_unchanged_attrs () =
   let parent = fresh_parent () in
@@ -1898,6 +1944,122 @@ let test_reconcile_interaction_skips_unchanged () =
   (* Same class retained, no new class injected *)
   Alcotest.(check int) "still one class" 1 (class_count node);
   Alcotest.(check bool) "same class kept" true (has_class node "_nopal_ix_0")
+
+(* The single <style data-nopal> element the renderer's Style_sheet appends to
+   document.head on create; the most recently created one belongs to the handle
+   under test. Used to read the CSSOM mutation counters the stylesheet_shim
+   records (FR-2/NFR-1). *)
+let current_nopal_sheet () =
+  let head = Jv.get (Jv.get Jv.global "document") "head" in
+  let children = Jv.get head "childNodes" in
+  let len = Jv.to_int (Jv.get children "length") in
+  let result = ref Jv.null in
+  for i = 0 to len - 1 do
+    let child = Jv.get children (string_of_int i) in
+    if
+      String.equal (Jv.to_string (Jv.get child "nodeName")) "STYLE"
+      && Jv.to_bool
+           (Jv.call child "hasAttribute" [| Jv.of_string "data-nopal" |])
+    then result := Jv.get child "sheet"
+  done;
+  !result
+
+let sheet_inserts sheet = Jv.to_int (Jv.get sheet "_inserts")
+let sheet_deletes sheet = Jv.to_int (Jv.get sheet "_deletes")
+
+let classlist_writes node =
+  Jv.to_int (Jv.get (Jv.get node "classList") "_writes")
+
+(* A real view rebuilds its style/interaction every frame, so these thunks
+   return physically-distinct but structurally-equal values — the case
+   structural equality must catch but physical (==) does not. *)
+let mk_base_style () =
+  Nopal_style.Style.default
+  |> Nopal_style.Style.with_paint (fun p ->
+      { p with background = Some (Nopal_style.Style.rgba 255 0 0 1.0) })
+
+let mk_hover_interaction color =
+  {
+    Nopal_style.Interaction.default with
+    hover =
+      Some
+        (Nopal_style.Style.default
+        |> Nopal_style.Style.with_paint (fun p ->
+            { p with background = Some color }));
+  }
+
+let interactive_box ~style ~interaction =
+  Box
+    {
+      style;
+      interaction;
+      attrs = [];
+      children = [];
+      on_pointer_move = None;
+      on_pointer_leave = None;
+      on_pointer_down = None;
+      on_pointer_up = None;
+      on_wheel = None;
+    }
+
+(* FR-2/NFR-1: re-rendering an interactive element whose base style and
+   interaction are unchanged (rebuilt fresh, as a view does) must not mutate the
+   stylesheet or the classList. The base-class diff used physical equality, so a
+   fresh-but-equal style churned the base rule every frame; this pins zero CSSOM
+   and zero classList work on the unchanged path. *)
+let test_reconcile_interaction_unchanged_no_cssom () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let blue = Nopal_style.Style.rgba 91 160 233 1.0 in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (interactive_box ~style:(mk_base_style ())
+         ~interaction:(mk_hover_interaction blue))
+  in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let sheet = current_nopal_sheet () in
+  let inserts_before = sheet_inserts sheet in
+  let deletes_before = sheet_deletes sheet in
+  let classes_before = classlist_writes node in
+  Nopal_web.Renderer.update ~dispatch handle
+    (interactive_box ~style:(mk_base_style ())
+       ~interaction:(mk_hover_interaction blue));
+  Alcotest.(check int)
+    "no rule inserted on unchanged interactive reconcile" 0
+    (sheet_inserts sheet - inserts_before);
+  Alcotest.(check int)
+    "no rule deleted on unchanged interactive reconcile" 0
+    (sheet_deletes sheet - deletes_before);
+  Alcotest.(check int)
+    "no class assignment on unchanged interactive reconcile" 0
+    (classlist_writes node - classes_before)
+
+(* FR-2: a changed interaction must release the rules it replaces. Changing only
+   the interaction (base style structurally equal) must delete exactly one rule
+   (the superseded interaction) and insert exactly one (its replacement) — not
+   two, which would mean the unchanged base rule was needlessly churned (NFR-1). *)
+let test_reconcile_interaction_change_releases_prior () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let blue = Nopal_style.Style.rgba 91 160 233 1.0 in
+  let green = Nopal_style.Style.rgba 42 184 106 1.0 in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (interactive_box ~style:(mk_base_style ())
+         ~interaction:(mk_hover_interaction blue))
+  in
+  let sheet = current_nopal_sheet () in
+  let inserts_before = sheet_inserts sheet in
+  let deletes_before = sheet_deletes sheet in
+  Nopal_web.Renderer.update ~dispatch handle
+    (interactive_box ~style:(mk_base_style ())
+       ~interaction:(mk_hover_interaction green));
+  Alcotest.(check int)
+    "exactly one rule deleted (prior interaction released, base untouched)" 1
+    (sheet_deletes sheet - deletes_before);
+  Alcotest.(check int)
+    "exactly one rule inserted (replacement interaction)" 1
+    (sheet_inserts sheet - inserts_before)
 
 (* C3: Keyed wrapping an Empty produces a comment node with no data-key *)
 let test_keyed_empty_has_no_data_key () =
@@ -2573,9 +2735,111 @@ let test_reconcile_select_disabled_to_enabled () =
   ignore (Jv.call node "dispatchEvent" [| ev |]);
   Alcotest.(check int) "message dispatched when enabled" 1 (List.length !msgs)
 
+(* Select: a model value matching no option reflects the model (nothing
+   selected), not the browser's default first option (FR-4). *)
+let test_select_no_match_reflects_model () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  (* Initial render whose model value matches no option. *)
+  let el1 =
+    Select
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        options = opts_ab;
+        selected = "z";
+        disabled = false;
+        on_change = Some (fun v -> Change v);
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
+  let node = Nopal_web.Renderer.dom_node handle in
+  Alcotest.(check int)
+    "no option selected on create (selectedIndex = -1)" (-1)
+    (Jv.Int.get node "selectedIndex");
+  Alcotest.(check string)
+    "value empty when nothing selected" ""
+    (Jv.Jstr.get node "value" |> Jstr.to_string);
+  (* Reconcile to a valid selection, then back to a no-match value: the prior
+     selection must be released, not retained as a stale first option. *)
+  let mk selected =
+    Select
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        options = opts_ab;
+        selected;
+        disabled = false;
+        on_change = Some (fun v -> Change v);
+      }
+  in
+  Nopal_web.Renderer.update ~dispatch handle (mk "a");
+  Alcotest.(check int)
+    "valid selection reflected after reconcile" 0
+    (Jv.Int.get node "selectedIndex");
+  Nopal_web.Renderer.update ~dispatch handle (mk "z");
+  Alcotest.(check int)
+    "no-match after reconcile clears selection (selectedIndex = -1)" (-1)
+    (Jv.Int.get node "selectedIndex")
+
+(* FR-3 focus-queue drain. [Nopal_web.drain_focus] focuses each queued id in
+   FIFO order, so batched [Cmd.focus] requests (via [Cmd.batch]) all fire and the
+   last one wins. The dom_shim records every focus() call into [document._focusLog]
+   for registered targets. *)
+let js_document () = Jv.get Jv.global "document"
+
+let register_focus_target id =
+  ignore (Jv.call (js_document ()) "_registerFocusTarget" [| Jv.of_string id |])
+
+let reset_focus_log () =
+  Jv.set (js_document ()) "_focusLog" (Jv.of_list Jv.of_string [])
+
+let focus_log () =
+  Jv.get (js_document ()) "_focusLog" |> Jv.to_list Jv.to_string
+
+let active_element_id () =
+  let ae = Jv.get (js_document ()) "activeElement" in
+  if Jv.is_none ae then None else Some (Jv.to_string (Jv.get ae "id"))
+
+let test_drain_focus_fifo_last_wins () =
+  register_focus_target "focus-a";
+  register_focus_target "focus-b";
+  register_focus_target "focus-c";
+  reset_focus_log ();
+  let q = Queue.create () in
+  List.iter (fun id -> Queue.add id q) [ "focus-a"; "focus-b"; "focus-c" ];
+  Nopal_web.drain_focus q;
+  Alcotest.(check (list string))
+    "focuses each queued id in FIFO order"
+    [ "focus-a"; "focus-b"; "focus-c" ]
+    (focus_log ());
+  Alcotest.(check bool) "queue is drained" true (Queue.is_empty q);
+  Alcotest.(check (option string))
+    "the last enqueued focus wins (activeElement)" (Some "focus-c")
+    (active_element_id ())
+
+let test_drain_focus_unknown_id_is_noop () =
+  reset_focus_log ();
+  let q = Queue.create () in
+  Queue.add "no-such-element" q;
+  (* Must not raise: getElementById returns null for an unknown id. *)
+  Nopal_web.drain_focus q;
+  Alcotest.(check (list string))
+    "no focus recorded for an unknown id" [] (focus_log ());
+  Alcotest.(check bool) "queue still drained" true (Queue.is_empty q)
+
 let () =
   Alcotest.run "nopal_web"
     [
+      ( "focus queue drain",
+        [
+          Alcotest.test_case "drains in FIFO order, last wins" `Quick
+            test_drain_focus_fifo_last_wins;
+          Alcotest.test_case "unknown id is a no-op" `Quick
+            test_drain_focus_unknown_id_is_noop;
+        ] );
       ( "element creation",
         [
           Alcotest.test_case "empty creates comment" `Quick
@@ -2652,6 +2916,10 @@ let () =
             test_reconcile_input_updates_changed_value;
           Alcotest.test_case "reconcile input skips unchanged attrs" `Quick
             test_reconcile_input_skips_unchanged_attrs;
+          Alcotest.test_case "reconcile removes dropped inline style" `Quick
+            test_reconcile_removes_dropped_inline_style;
+          Alcotest.test_case "reconcile unchanged style no write" `Quick
+            test_reconcile_unchanged_style_no_write;
         ] );
       ( "checkbox reconciliation",
         [
@@ -2685,6 +2953,8 @@ let () =
             test_reconcile_select_enabled_to_disabled;
           Alcotest.test_case "disabled->enabled restores handler" `Quick
             test_reconcile_select_disabled_to_enabled;
+          Alcotest.test_case "no-match value reflects model" `Quick
+            test_select_no_match_reflects_model;
         ] );
       ( "keyed reconciliation",
         [
@@ -2736,6 +3006,10 @@ let () =
             test_reconcile_interaction_replace_on_change;
           Alcotest.test_case "skip injection when unchanged" `Quick
             test_reconcile_interaction_skips_unchanged;
+          Alcotest.test_case "unchanged interaction does no CSSOM work" `Quick
+            test_reconcile_interaction_unchanged_no_cssom;
+          Alcotest.test_case "changed interaction releases prior rules" `Quick
+            test_reconcile_interaction_change_releases_prior;
         ] );
       ( "parse_css_px",
         [

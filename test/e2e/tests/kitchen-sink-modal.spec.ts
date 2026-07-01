@@ -128,6 +128,26 @@ test("focus returns to trigger after close", async ({ page }) => {
   await expect(page.locator(OPEN_BUTTON)).toBeFocused();
 });
 
+// The Close *button* takes the same [Close] path as Escape, so it must also
+// restore focus to the trigger. This is the direct proof of the FR-3
+// consequence recorded in sub_modal.ml: before FR-3 the open-time focus
+// no-opped and focus never left the trigger; now [Close] must return it
+// explicitly or focus drops to <body>.
+test("focus returns to trigger after close-button click", async ({ page }) => {
+  await page.locator(OPEN_BUTTON).click();
+  await expect(page.locator(DIALOG)).toBeVisible();
+
+  // Move focus into the dialog first, so a passing assertion can only mean the
+  // Close handler actively restored focus (not that it never moved).
+  await page.locator(INPUT_1).focus();
+  await expect(page.locator(INPUT_1)).toBeFocused();
+
+  await page.locator(CLOSE_BUTTON).click();
+  await expect(page.locator(DIALOG)).not.toBeVisible();
+
+  await expect(page.locator(OPEN_BUTTON)).toBeFocused();
+});
+
 test("axe accessibility audit", async ({ page }) => {
   await page.locator(OPEN_BUTTON).click();
   await expect(page.locator(DIALOG)).toBeVisible();

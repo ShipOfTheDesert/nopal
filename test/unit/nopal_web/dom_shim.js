@@ -54,22 +54,34 @@
 
   function makeClassList(el) {
     const classes = new Set();
-    return {
-      add(c) { classes.add(c); },
-      remove(c) { classes.delete(c); },
+    // _writes counts class assignments (add/remove), mirroring the inline-style
+    // _writes counter below. Lets renderer tests assert that an unchanged
+    // interactive re-render performs zero classList mutations (FR-2/NFR-1).
+    const cl = {
+      _writes: 0,
+      add(c) { classes.add(c); cl._writes++; },
+      remove(c) { classes.delete(c); cl._writes++; },
       contains(c) { return classes.has(c); },
       toString() { return [...classes].join(" "); },
     };
+    return cl;
   }
 
   function makeStyle() {
     const props = {};
+    // Inline-style write counter, mirroring the input `_valueWrites` pattern.
+    // Lets renderer tests assert that an unchanged-style reconcile performs zero
+    // inline-style writes (NFR-1). Brr's set_inline_style always routes through
+    // setProperty (even for clears), so counting here covers every renderer
+    // write. Kept off `props` so it never leaks into cssText/length.
+    let writes = 0;
     return new Proxy(props, {
       get(target, prop) {
+        if (prop === "_writes") return writes;
         if (prop === "setProperty")
-          return (p, v, _prio) => { target[p] = v; };
+          return (p, v, _prio) => { writes++; target[p] = v; };
         if (prop === "removeProperty")
-          return (p) => { delete target[p]; };
+          return (p) => { writes++; delete target[p]; };
         if (prop === "getPropertyValue")
           return (p) => target[p] || "";
         if (prop === "cssText") {
@@ -332,23 +344,43 @@
       },
     });
 
-    // For <select> elements, value reflects the selected option's value
+    // For <select> elements, selection is carried by the option children's
+    // `selected` flag. Until selection is set explicitly (via value or
+    // selectedIndex), the browser auto-selects the first option
+    // (selectedIndex 0) — exactly the default the renderer must override when
+    // the model value matches no option (FR-4).
     if (tag.toLowerCase() === "select") {
+      el._selectionExplicit = false;
+      Object.defineProperty(el, "selectedIndex", {
+        get() {
+          for (let i = 0; i < el.childNodes.length; i++) {
+            if (el.childNodes[i].selected) return i;
+          }
+          if (el._selectionExplicit) return -1;
+          return el.childNodes.length > 0 ? 0 : -1;
+        },
+        set(i) {
+          el._selectionExplicit = true;
+          for (let j = 0; j < el.childNodes.length; j++) {
+            el.childNodes[j].selected = (j === i);
+          }
+        },
+        configurable: true,
+      });
       Object.defineProperty(el, "value", {
         get() {
-          for (const child of el.childNodes) {
-            if (child.selected) return child._attributes["value"] || "";
-          }
-          // Fallback: first option's value
-          if (el.childNodes.length > 0)
-            return el.childNodes[0]._attributes["value"] || "";
+          const idx = el.selectedIndex;
+          if (idx >= 0 && idx < el.childNodes.length)
+            return el.childNodes[idx]._attributes["value"] || "";
           return "";
         },
         set(v) {
+          el._selectionExplicit = true;
           for (const child of el.childNodes) {
             child.selected = (child._attributes["value"] === v);
           }
         },
+        configurable: true,
       });
     } else if (tag.toLowerCase() === "input" || tag.toLowerCase() === "textarea") {
       // Back `value` with a write counter so renderer tests can assert that a
@@ -418,7 +450,30 @@
     createElement: createElement,
     createTextNode: createTextNode,
     createComment: createComment,
-    getElementById: function (_id) { return null; },
+    // Focus test support: getElementById returns null (real-browser default for
+    // an unknown id) unless a target has been explicitly registered. Registered
+    // targets record every focus() call in order into _focusLog and update
+    // activeElement, so a test can assert the drain order and the last-wins
+    // result of Nopal_web.drain_focus.
+    _focusLog: [],
+    _focusTargets: {},
+    _registerFocusTarget: function (id) {
+      const self = this;
+      const el = {
+        id: id,
+        focus: function () {
+          self._focusLog.push(id);
+          self.activeElement = el;
+        },
+      };
+      self._focusTargets[id] = el;
+      return el;
+    },
+    getElementById: function (id) {
+      return Object.prototype.hasOwnProperty.call(this._focusTargets, id)
+        ? this._focusTargets[id]
+        : null;
+    },
     getElementsByName: function (_name) { return []; },
   };
 

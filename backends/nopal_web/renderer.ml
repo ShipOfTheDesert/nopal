@@ -561,6 +561,10 @@ let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
           ignore
             (Jv.call (Brr.El.to_jv el) "appendChild" [| Brr.El.to_jv opt_el |]))
         options;
+      (* Force the control to the model value. When no option matches, the
+         select reflects no selection (selectedIndex = -1) rather than the
+         browser's default first option (FR-4). *)
+      Jv.set (Brr.El.to_jv el) "value" (Jv.of_string selected);
       if disabled then Brr.El.set_at (Jstr.v "disabled") (Some (Jstr.v "")) el;
       let base_id, interaction_id =
         apply_styles_for_element ~sheet el style interaction
@@ -911,8 +915,27 @@ let maybe_apply_style dom old_el new_el =
   let old_style = style_of old_el in
   let new_style = style_of new_el in
   match (old_style, new_style) with
-  | Some os, Some ns when os == ns -> ()
-  | _, Some ns -> apply_style dom ns
+  | Some os, Some ns ->
+      (* Unchanged style writes nothing — structural, not physical, equality,
+         since the view rebuilds the style each frame (NFR-1). *)
+      if not (Nopal_style.Style.equal os ns) then begin
+        let old_props = Style_css.of_style os in
+        let new_props = Style_css.of_style ns in
+        (* Remove inline props present last render but absent now so the painted
+           result matches the model (FR-1). *)
+        List.iter
+          (fun { Style_css.property; _ } ->
+            if
+              not
+                (List.exists
+                   (fun (np : Style_css.css_prop) ->
+                     String.equal np.property property)
+                   new_props)
+            then Brr.El.set_inline_style (Jstr.v property) (Jstr.v "") dom)
+          old_props;
+        apply_style dom ns
+      end
+  | None, Some ns -> apply_style dom ns
   | None, None -> ()
   | Some _, None ->
       (* Unreachable: reconcile_live only calls reconcile_node (and thus
@@ -1109,7 +1132,11 @@ and maybe_reconcile_styles ~sheet (old_n : 'msg live_node)
       let new_style = style_of new_el in
       let style_changed =
         match (old_style, new_style) with
-        | Some os, Some ns -> not (os == ns)
+        (* Structural, not physical, equality: the view rebuilds the style each
+           frame, so [os == ns] almost never holds and the base class would be
+           released and re-injected every frame, churning the CSSOM (FR-2/NFR-1).
+           Mirrors the interaction diff below, which already uses [equal]. *)
+        | Some os, Some ns -> not (Nopal_style.Style.equal os ns)
         | None, None -> false
         | Some _, None
         | None, Some _ ->
@@ -1327,27 +1354,10 @@ and reconcile_node ~sheet ~dispatch (old_n : 'msg live_node)
       } ->
       let canvas = Brr_canvas.Canvas.of_el el in
       let ctx = Brr_canvas.C2d.get_context canvas in
-      let old_w, old_h =
-        match old_n.element with
-        | Draw { width = ow; height = oh; _ } -> (ow, oh)
-        | Empty
-        | Text _
-        | Box _
-        | Row _
-        | Column _
-        | Button _
-        | Input _
-        | Image _
-        | Checkbox _
-        | Radio _
-        | Select _
-        | Scroll _
-        | Keyed _
-        | Virtual_list _ ->
-            (0.0, 0.0)
-      in
-      if (not (Float.equal old_w width)) || not (Float.equal old_h height) then
-        Canvas_renderer.setup_hidpi el ctx ~width ~height;
+      (* Re-run hidpi setup when the backing store no longer matches the logical
+         size scaled by the current devicePixelRatio — this covers a logical
+         resize and a dpr change (FR-7), and is a no-op otherwise. *)
+      Canvas_renderer.resize_if_needed el ctx ~width ~height;
       Style_css.apply_cursor el cursor;
       (match aria_label with
       | Some label ->
@@ -1415,6 +1425,10 @@ and reconcile_node ~sheet ~dispatch (old_n : 'msg live_node)
             Jv.set (Brr.El.to_jv opt_el) "selected" (Jv.of_bool true);
           ignore (Jv.call parent_jv "appendChild" [| Brr.El.to_jv opt_el |]))
         options;
+      (* Force the control to the model value. When no option matches, the
+         select reflects no selection (selectedIndex = -1) rather than the
+         browser's default first option (FR-4). *)
+      Jv.set parent_jv "value" (Jv.of_string selected);
       (match (disabled, old_n.element) with
       | true, Select { disabled = false; _ } ->
           Brr.El.set_at (Jstr.v "disabled") (Some (Jstr.v "")) el

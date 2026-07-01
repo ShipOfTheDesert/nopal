@@ -19,6 +19,14 @@ let setup_hidpi el ctx ~width ~height =
   C2d.reset_transform ctx;
   C2d.scale ctx ~sx:dpr ~sy:dpr
 
+let resize_if_needed el ctx ~width ~height =
+  let dpr = device_pixel_ratio () in
+  let want_w = int_of_float (width *. dpr) in
+  let want_h = int_of_float (height *. dpr) in
+  let canvas = Canvas.of_el el in
+  if Canvas.w canvas <> want_w || Canvas.h canvas <> want_h then
+    setup_hidpi el ctx ~width ~height
+
 let color_to_css (c : Nopal_draw.Color.t) =
   let r = Float.to_int (Float.round (c.r *. 255.0)) in
   let g = Float.to_int (Float.round (c.g *. 255.0)) in
@@ -295,9 +303,17 @@ let render ctx scene =
   let canvas_opt = C2d.canvas ctx in
   (match canvas_opt with
   | Some c ->
+      (* Clear the full backing store in device pixels. [setup_hidpi] leaves a
+         [devicePixelRatio] scale on [ctx], under which a clear sized to the
+         backing-store dimensions would cover only [backing * dpr] device pixels
+         — at dpr < 1 that leaves a strip painted (FR-7). Reset the transform
+         for the clear, then restore so drawing stays in logical coordinates. *)
       let w = Float.of_int (Canvas.w c) in
       let h = Float.of_int (Canvas.h c) in
-      C2d.clear_rect ctx ~x:0.0 ~y:0.0 ~w ~h
+      C2d.save ctx;
+      C2d.reset_transform ctx;
+      C2d.clear_rect ctx ~x:0.0 ~y:0.0 ~w ~h;
+      C2d.restore ctx
   | None -> ());
   C2d.save ctx;
   List.iter (render_node ctx) scene;

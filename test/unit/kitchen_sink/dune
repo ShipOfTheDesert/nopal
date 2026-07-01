@@ -14,6 +14,16 @@
  (libraries kitchen_sink_app nopal_test nopal_element test_util alcotest))
 
 (test
+ (name test_style_removal_section)
+ (libraries
+  kitchen_sink_app
+  nopal_test
+  nopal_style
+  nopal_platform
+  nopal_storage
+  alcotest))
+
+(test
  (name test_keyed_section)
  (libraries
   kitchen_sink_app
