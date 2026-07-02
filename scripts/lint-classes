@@ -1,0 +1,186 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# lint-classes — static detector for the five recurring bug classes the
+# 2026-06-11 audit (docs/ANALYSIS.md) identified. PRs 1-3 fixed the instances
+# and, where OCaml allows, made each class unrepresentable in types; this check
+# makes a *new* instance fail before review rather than in production (FR-1). It
+# is ripgrep-only: no opam build, no js_of_ocaml, fast enough for every `just`
+# run (NFR-1). Style mirrors scripts/android-require-* — print each offending
+# file:line and the exact remediation.
+#
+# The five classes (catalogue: docs/bug-classes/) and their greppable signature:
+#
+#   class 1  silent no-op effect       a Console error diagnostic in a Tauri
+#                                      *op* module (an effect that must resolve
+#                                      an ('a,error) result). The resolves-
+#                                      exactly-once primitive is
+#                                      Ipc.invoke_result; an op must resolve
+#                                      (Error _), never log-and-drop. Allow-list:
+#                                      the fire-and-forget listen/mirror
+#                                      diagnostics in event.ml,
+#                                      tauri_subscription.ml, telemetry.ml
+#                                      (Sub registration / best-effort mirror —
+#                                      there is no result to resolve).
+#   class 2  stringly-typed protocol   a bare, whitespace-free Error "<token>"
+#                                      used as a protocol/status token instead of
+#                                      a variant. Sentence-style error *messages*
+#                                      (which contain spaces) are fine.
+#   class 3  faked resource handle     a hardcoded/fabricated resource id — an
+#                                      rid passed as an int/string literal, or a
+#                                      `rid = <n>` — instead of the abstract
+#                                      handle returned by the resolving `load`
+#                                      (store.ml keeps `t` abstract so a caller
+#                                      cannot fabricate one).
+#   class 4  bare lifecycle flag       NO RELIABLE GREP. A bool where a lifecycle
+#                                      state machine belongs has no greppable
+#                                      signature; its defense is the type guard
+#                                      (runtime.ml lifecycle variant, shipped)
+#                                      plus the docs/bug-classes/0004 catalogue
+#                                      entry (Task 4). Documented gap, by design.
+#   class 5  partial public function   List.hd / List.tl / List.nth /
+#                                      Result.get_ok / Option.get on a public
+#                                      path (lib/ or backends/). Use the _opt /
+#                                      total counterpart or a refined type.
+#
+# NFR-3: this script detects bug-class signatures ONLY. It deliberately contains
+# no release-bundle telemetry-absence grep — that gate was superseded by ADR
+# 0108's RFC-0110 amendment (telemetry is guarded by an unforgeable handle, not
+# by build-gating). Do not add one here.
+
+REPO_ROOT="$(git -C "$(dirname "$0")/.." rev-parse --show-toplevel)"
+
+if ! command -v rg >/dev/null 2>&1; then
+  cat >&2 <<'EOF'
+error: ripgrep (rg) is required by lint-classes but is not installed. Install it:
+
+    sudo dnf install ripgrep       # Fedora
+    sudo apt-get install ripgrep   # Debian/Ubuntu
+    brew install ripgrep           # macOS
+
+then re-run `just lint-classes`.
+EOF
+  exit 1
+fi
+
+# ---- shared regexes: single source of truth for the real run and --selftest,
+#      so a fixture cannot drift from the pattern the tree is scanned with. ----
+C1_RE='Console\.\(\s*error|Console\.error'
+C2_RE='Error "[^" ]+"'
+C3_RE='\("rid", *Jv\.(of_int|of_string)|\brid *= *[0-9]'
+C5_RE='\b(List\.hd|List\.tl|List\.nth|Result\.get_ok|Option\.get)\b'
+
+report_class() { # title  remediation  matches
+  {
+    echo "error: bug-class violation — $1"
+    printf '%s\n' "$3" | sed 's/^/  /'
+    echo "  remediation: $2"
+    echo "  see docs/bug-classes/ and CONTRIBUTING.md (enforced coding principles)"
+    echo
+  } >&2
+}
+
+# Scan the tree for every class with a reliable signature. Returns non-zero if
+# any class fired. Class 4 has no grep (see header) — it is intentionally absent.
+run_checks() {
+  local found=0 out
+
+  # class 1 — multiline (-U) so the split-line `Brr.Console.(\n  error` idiom is
+  # caught too; the three sanctioned fire-and-forget files are excluded by glob.
+  out="$(cd "$REPO_ROOT" && rg -Un --no-heading \
+      -g 'backends/nopal_tauri/*.ml' \
+      -g '!backends/nopal_tauri/event.ml' \
+      -g '!backends/nopal_tauri/tauri_subscription.ml' \
+      -g '!backends/nopal_tauri/telemetry.ml' \
+      -e "$C1_RE" || true)"
+  if [ -n "$out" ]; then
+    report_class "class 1 (silent no-op effect)" \
+      "resolve the ('a,error) result via Ipc.invoke_result; never Console.error-and-drop in an op path" \
+      "$out"
+    found=1
+  fi
+
+  # class 2 — bare whitespace-free Error token in library/backend source.
+  out="$(cd "$REPO_ROOT" && rg -n --no-heading \
+      -g 'lib/**/*.ml' -g 'backends/**/*.ml' \
+      -e "$C2_RE" || true)"
+  if [ -n "$out" ]; then
+    report_class "class 2 (stringly-typed protocol token)" \
+      "replace the bare Error \"<token>\" with a typed variant; keep string Errors as human-readable messages only" \
+      "$out"
+    found=1
+  fi
+
+  # class 3 — a fabricated resource id instead of the abstract load handle.
+  out="$(cd "$REPO_ROOT" && rg -n --no-heading \
+      -g 'lib/**/*.ml' -g 'backends/**/*.ml' \
+      -e "$C3_RE" || true)"
+  if [ -n "$out" ]; then
+    report_class "class 3 (faked resource handle)" \
+      "carry the abstract handle returned by the resolving load (e.g. store.ml's abstract t); never a literal rid" \
+      "$out"
+    found=1
+  fi
+
+  # class 5 — partial function on a public path.
+  out="$(cd "$REPO_ROOT" && rg -n --no-heading \
+      -g 'lib/**/*.ml' -g 'lib/**/*.mli' \
+      -g 'backends/**/*.ml' -g 'backends/**/*.mli' \
+      -e "$C5_RE" || true)"
+  if [ -n "$out" ]; then
+    report_class "class 5 (partial public function)" \
+      "use the total _opt / result counterpart, a refined non-empty type, or an exhaustive match" \
+      "$out"
+    found=1
+  fi
+
+  return $found
+}
+
+# --selftest — prove each pattern fires on a known-bad snippet (fixtures are fed
+# on stdin so they are independent of tree scoping), then prove the whole check
+# is clean on the current tree (NFR-4). Bootstrap-TDD carve-out: this is the
+# first check under a brand-new linter, so its invariant is structurally true of
+# the current tree and the state change being validated is the wiring itself.
+selftest() {
+  local rc=0
+
+  assert_fires() { # name  regex  bad-snippet
+    if printf '%s\n' "$3" | rg -q -e "$2"; then
+      echo "  ok   $1 fires on its bad fixture"
+    else
+      echo "  FAIL $1 did NOT fire on its bad fixture: $3" >&2
+      rc=1
+    fi
+  }
+
+  echo "lint-classes --selftest: each pattern fires on a known-bad snippet"
+  assert_fires "class 1 (silent no-op)"        "$C1_RE" 'Brr.Console.(error [ str "store set dropped"; err ])'
+  assert_fires "class 2 (stringly-typed)"      "$C2_RE" '| _ -> Error "not_found"'
+  assert_fires "class 3 (faked rid, literal)"  "$C3_RE" '[| ("rid", Jv.of_int 0) |]'
+  assert_fires "class 3 (faked rid, binding)"  "$C3_RE" 'let rid = 0 in'
+  assert_fires "class 5 (partial function)"    "$C5_RE" 'let first = List.hd items in'
+  echo "  note class 4 (bare lifecycle flag) has no reliable grep — see header + docs/bug-classes/0004"
+
+  echo "lint-classes --selftest: the current tree is clean"
+  if run_checks; then
+    echo "  ok   no bug-class signatures on the current tree"
+  else
+    echo "  FAIL bug-class signatures present on the current tree (see above)" >&2
+    rc=1
+  fi
+
+  if [ "$rc" -eq 0 ]; then
+    echo "lint-classes --selftest: PASS"
+  fi
+  return "$rc"
+}
+
+case "${1:-}" in
+  --selftest) selftest ;;
+  "") run_checks ;;
+  *)
+    echo "usage: lint-classes [--selftest]" >&2
+    exit 2
+    ;;
+esac

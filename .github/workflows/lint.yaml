@@ -87,3 +87,25 @@ jobs:
             opam install -y opam-dune-lint
 
       - uses: ocaml/setup-ocaml/lint-opam@v3
+
+  lint-classes:
+    runs-on: ubuntu-latest
+    if: "!github.event.pull_request.draft"
+
+    steps:
+      - name: Checkout tree
+        uses: actions/checkout@v6
+      - uses: extractions/setup-just@v3
+        with:
+          just-version: '1.46.0'
+
+      - name: Install ripgrep
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ripgrep
+
+      - name: Detect recurring bug classes
+        run: just lint-classes
+
+      - name: Check E2E specs are wired to a CI project
+        run: just check-e2e-wired

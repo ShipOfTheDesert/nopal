@@ -15,23 +15,34 @@ export type TelemetryEvent =
 
 export class NopalTelemetry {
   private readonly page: Page;
-  // The bridge's getEvents() drains its log, so we fetch once per checkpoint and
-  // cache: multiple assertions plus attachHistory then read the same snapshot
-  // rather than racing to drain it from under each other.
+  // The in-webview bridge's getEvents() is non-draining and bounded (feature
+  // 0120, Decision N: host, browser, and Rust mirrors all read without draining
+  // so they cannot diverge). This helper restores "read = drain" at the client
+  // side via a consumed cursor, so each events() call yields only what was
+  // recorded since the previous call — the contract every spec here is written
+  // against. A snapshot caches that slice so multiple assertions plus
+  // attachHistory read the same checkpoint rather than each advancing the cursor.
   private snapshot: TelemetryEvent[] | null = null;
+  private consumed = 0;
 
   constructor(page: Page) {
     this.page = page;
   }
 
-  // Fetch (and drain) the bridge log, caching the result. Call again to refresh
+  // Fetch the events recorded since the previous call (client-side drain over the
+  // non-draining bridge), caching the result. Call again to read the next slice
   // after driving more interactions.
   async events(): Promise<TelemetryEvent[]> {
-    this.snapshot = (await this.page.evaluate(() => {
+    const all = (await this.page.evaluate(() => {
       const bridge = (window as { __nopal_telemetry__?: { getEvents(): unknown } })
         .__nopal_telemetry__;
       return bridge ? bridge.getEvents() : [];
     })) as TelemetryEvent[];
+    // A fresh navigation re-creates the bridge with an empty log; if it shrank
+    // below the cursor the log was reset, so treat the whole log as new.
+    if (all.length < this.consumed) this.consumed = 0;
+    this.snapshot = all.slice(this.consumed);
+    this.consumed = all.length;
     return this.snapshot;
   }
 

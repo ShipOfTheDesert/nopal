@@ -1,0 +1,187 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# check-e2e-wired — fail the build if any E2E spec is not wired to a project a CI
+# job actually executes (FR-6). The audit found an E2E that "should have caught
+# the Store breakage" but had never run against HEAD; the rule the audit draws is
+# "an E2E file CI doesn't execute is a failing test". This static check enforces
+# it: enumerate every spec and confirm each is matched by a testMatch/specs glob
+# in the config a CI gate runs. It is git-ls-files + glob only — no opam build, no
+# js_of_ocaml, fast enough for every `just` run (NFR-1). Style mirrors
+# scripts/android-require-* and scripts/lint-classes — print each unwired
+# file:role and the exact remediation.
+#
+# The two configs that back a CI gate (and only these):
+#
+#   test/e2e/playwright.config.ts   run by `just e2e` (CI: pr.yaml e2e-web).
+#                                   `npx playwright test` runs every project with
+#                                   no --project filter, so a spec is CI-wired iff
+#                                   some project's testMatch glob matches it.
+#   test/e2e/tauri/wdio.conf.ts     run by `just e2e-tauri` (CI: main.yaml, and —
+#                                   post feature 0120 Task 7 — pr.yaml). Its
+#                                   `specs` globs decide which *.e2e.ts run.
+#
+# playwright-kitchen-sink.config.ts and playwright-verify.config.ts are
+# deliberately NOT consulted: they are local-only helpers (`just serve-kitchen`,
+# `just verify`), not CI gates, so wiring a spec only there would not satisfy FR-6.
+#
+# A spec living outside the two known suite directories is treated as unwired by
+# construction: a new suite dir needs its config taught to a CI gate (and to this
+# check) before its specs count as covered.
+
+REPO_ROOT="$(git -C "$(dirname "$0")/.." rev-parse --show-toplevel)"
+
+PW_CONFIG="test/e2e/playwright.config.ts"
+TAURI_CONFIG="test/e2e/tauri/wdio.conf.ts"
+
+# ---- extraction: pull the filename globs out of a config. testMatch (Playwright)
+#      and specs (WebdriverIO) are the only string literals ending in .spec.ts /
+#      .e2e.ts, so grepping those quoted literals yields exactly the pattern set
+#      the runner uses — no TS parser needed. All three JS/TS string delimiters
+#      are accepted (", ', `), so a config formatted with single quotes or
+#      template literals (both valid, and Prettier's single-quote default) is not
+#      silently missed — a missed pattern would false-flag a wired spec as unwired.
+#      A leading ./ (wdio) is stripped so the glob matches a bare basename. ----
+extract_from_stream() { # reads a config on stdin
+  grep -oE "[\"'\`][^\"'\`]*\.(spec|e2e)\.ts[\"'\`]" \
+    | tr -d "\"'\`" \
+    | sed 's#^\./##' \
+    | sort -u \
+    || true
+}
+
+extract_patterns() { # $1 = config path relative to repo root
+  extract_from_stream < "$REPO_ROOT/$1"
+}
+
+# ---- matching: does a basename match any glob in a newline-separated list?
+#      testMatch/specs entries are filename globs (only `*`), which is exactly
+#      what bash `case` globbing evaluates — so route the basename through the
+#      raw, intentionally-unquoted pattern rather than reimplementing glob→regex. ----
+matches_any() { # $1 = basename  $2 = newline-separated globs
+  local base="$1" p
+  while IFS= read -r p; do
+    [ -z "$p" ] && continue
+    # shellcheck disable=SC2254 -- $p is a filename glob from the config; unquoted on purpose.
+    case "$base" in
+      $p) return 0 ;;
+    esac
+  done <<EOF
+$2
+EOF
+  return 1
+}
+
+# ---- routing: which config's globs govern a given spec, by suite directory. ----
+is_wired() { # $1 = repo-relative spec path
+  local spec="$1" config
+  case "$spec" in
+    test/e2e/tauri/*) config="$TAURI_CONFIG" ;;
+    test/e2e/tests/*) config="$PW_CONFIG" ;;
+    *) return 1 ;; # a spec in no known suite dir is unwired by construction
+  esac
+  matches_any "$(basename "$spec")" "$(extract_patterns "$config")"
+}
+
+# The specs subject to the check: Playwright specs (tests/*.spec.ts and the
+# .e2e.ts helpers Playwright also runs) and the Tauri suite (tauri/*.e2e.ts).
+# --cached --others --exclude-standard lists tracked AND untracked-not-ignored
+# files, so a brand-new spec added but not yet staged is still caught locally,
+# while gitignored node_modules (which ships its own *.spec.ts) is excluded by
+# construction (git-tracking-verification-with-ls-files).
+list_specs() {
+  ( cd "$REPO_ROOT" && git ls-files --cached --others --exclude-standard \
+      'test/e2e/tests/*.spec.ts' \
+      'test/e2e/tests/*.e2e.ts' \
+      'test/e2e/tauri/*.e2e.ts' )
+}
+
+# Scan every spec; report any that no CI-run config matches. Returns non-zero if
+# any spec is unwired.
+run_check() {
+  local found=0 spec
+  local -a unwired=()
+  while IFS= read -r spec; do
+    [ -z "$spec" ] && continue
+    is_wired "$spec" || unwired+=("$spec")
+  done < <(list_specs)
+
+  if [ "${#unwired[@]}" -gt 0 ]; then
+    {
+      echo "error: E2E spec(s) wired to no CI-run project — CI never executes them:"
+      printf '  %s\n' "${unwired[@]}"
+      echo "  remediation: add the spec to a testMatch in $PW_CONFIG (Playwright"
+      echo "    suite) or a specs glob in $TAURI_CONFIG (Tauri suite), matching the"
+      echo "    CI gate that must run it. An E2E file CI does not execute is a"
+      echo "    failing test (docs/ANALYSIS.md; feature 0120 FR-6)."
+    } >&2
+    found=1
+  fi
+  return $found
+}
+
+# --selftest — prove the negative path (an unwired spec IS flagged) and the
+# positive path (a genuinely-wired spec is recognised, so the matcher is not
+# vacuously flagging everything), then prove the current tree is fully wired
+# (NFR-4). Bootstrap-TDD carve-out: this is the first check under a brand-new
+# coverage linter, so its invariant is structurally true of the current tree and
+# the state change being validated is the wiring itself. Fixtures are synthetic
+# paths, independent of the tree, so the tree-clean assertion is separate.
+selftest() {
+  local rc=0
+
+  echo "check-e2e-wired --selftest: an unwired spec is flagged"
+  if is_wired "test/e2e/tests/__nopal_unwired_fixture__.spec.ts"; then
+    echo "  FAIL a spec matched by no testMatch was reported wired" >&2
+    rc=1
+  else
+    echo "  ok   an unwired tests/ spec is correctly flagged unwired"
+  fi
+
+  echo "check-e2e-wired --selftest: spec literals in any JS/TS quote style are extracted"
+  for q in '"' "'" '`'; do
+    got=$(printf '  specs: [%sfoo.e2e.ts%s],\n' "$q" "$q" | extract_from_stream)
+    if [ "$got" = "foo.e2e.ts" ]; then
+      echo "  ok   a ${q}-delimited spec literal is extracted"
+    else
+      echo "  FAIL a ${q}-delimited spec literal was missed (got '$got')" >&2
+      rc=1
+    fi
+  done
+
+  echo "check-e2e-wired --selftest: a genuinely-wired spec is recognised"
+  if is_wired "test/e2e/tests/todomvc.spec.ts"; then
+    echo "  ok   a wired Playwright spec (todomvc) is recognised"
+  else
+    echo "  FAIL a known-wired spec was reported unwired — the matcher is broken" >&2
+    rc=1
+  fi
+  if is_wired "test/e2e/tauri/store.e2e.ts"; then
+    echo "  ok   a wired Tauri spec (store) is recognised"
+  else
+    echo "  FAIL a known-wired Tauri spec was reported unwired — routing is broken" >&2
+    rc=1
+  fi
+
+  echo "check-e2e-wired --selftest: the current tree is fully wired"
+  if run_check; then
+    echo "  ok   every e2e spec is wired to a CI-run project"
+  else
+    echo "  FAIL unwired spec(s) on the current tree (see above)" >&2
+    rc=1
+  fi
+
+  if [ "$rc" -eq 0 ]; then
+    echo "check-e2e-wired --selftest: PASS"
+  fi
+  return "$rc"
+}
+
+case "${1:-}" in
+  --selftest) selftest ;;
+  "") run_check ;;
+  *)
+    echo "usage: check-e2e-wired [--selftest]" >&2
+    exit 2
+    ;;
+esac

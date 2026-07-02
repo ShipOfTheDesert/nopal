@@ -529,6 +529,16 @@ let serialize_msg : App.msg -> string = function
      prove it via a message fragment. The remaining Tauri messages keep the
      generic "<msg>" label below. *)
   | App.TrayClicked -> "TrayClicked"
+  (* Tauri event emit→listen round-trip (feature 0120, FR-5): the [event.e2e.ts]
+     contract spec gates the emit on a ready listener via [TauriListenReady]
+     (registration's [on_unlisten] callback fired) and then proves the echo
+     arrived through the real event bus via [TauriEventReceived:<payload>]. *)
+  | App.ListenTauriEvents -> "ListenTauriEvents"
+  | App.GotTauriUnlisten _ -> "TauriListenReady"
+  | App.EmitTauriEvent -> "EmitTauriEvent"
+  | App.TauriEventEmitted -> "TauriEventEmitted"
+  | App.TauriEventReceived payload -> "TauriEventReceived:" ^ payload
+  | App.UnlistenTauriEvents -> "UnlistenTauriEvents"
   | App.SetTauriWindowTitle -> "SetTauriWindowTitle"
   | App.TauriWindowTitleSet -> "TauriWindowTitleSet"
   | App.ShowTauriWindow -> "ShowTauriWindow"
@@ -584,12 +594,6 @@ let serialize_msg : App.msg -> string = function
   | App.GotAppName _
   | App.GotAppVersion _
   | App.GotTauriVersion _
-  | App.EmitTauriEvent
-  | App.TauriEventReceived _
-  | App.TauriEventEmitted
-  | App.ListenTauriEvents
-  | App.UnlistenTauriEvents
-  | App.GotTauriUnlisten _
   | App.UpdateTauriWindowTitleInput _
   | App.SetTauriFullscreen _
   | App.QueryTauriFullscreen

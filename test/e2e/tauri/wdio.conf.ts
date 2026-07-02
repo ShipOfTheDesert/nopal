@@ -12,7 +12,8 @@ import path from "node:path";
 //
 // This config does NOT build the app; it expects the Tauri binary to exist
 // already (`cd tauri && npm exec tauri build`). See README.md for the full
-// local run sequence (it gates on `main`, not per-PR).
+// local run sequence (it runs as a required per-PR gate — feature 0120,
+// Decision 2).
 
 const repoRoot = path.resolve(__dirname, "..", "..", "..");
 

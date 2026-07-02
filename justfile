@@ -40,7 +40,15 @@ lint-fmt:
 lint-opam:
     opam exec -- opam-dune-lint
 
-lint: lint-doc lint-fmt lint-opam
+# Static bug-class detector (ripgrep-only, no opam build) — see scripts/lint-classes.
+lint-classes:
+    scripts/lint-classes
+
+# E2E-coverage check: every spec must be wired to a CI-run project — see scripts/check-e2e-wired.
+check-e2e-wired:
+    scripts/check-e2e-wired
+
+lint: lint-doc lint-fmt lint-opam lint-classes check-e2e-wired
 
 # Examples
 
@@ -166,8 +174,8 @@ e2e: build
     cd test/e2e && npx playwright test
 
 # Build the kitchen-sink Tauri binary, then drive it with the WebdriverIO +
-# tauri-driver harness under a virtual display (REQ-F5). Main-only: the
-# WebKitWebDriver + xvfb toolchain is off the per-PR critical path. Assumes
+# tauri-driver harness under a virtual display (REQ-F5). Runs as a required
+# per-PR gate (feature 0120, Decision 2) in both pr.yaml and main.yaml. Assumes
 # `cargo install tauri-driver`, `webkit2gtk-driver`, and `cd test/e2e/tauri &&
 # npm ci` are already provisioned — see test/e2e/tauri/README.md.
 e2e-tauri: build-tauri

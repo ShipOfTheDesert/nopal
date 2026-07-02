@@ -25,6 +25,12 @@ type handle
 (** A query view onto an [On] recorder's log. The public re-export keeps this
     abstract with no constructor. *)
 
+val log_capacity : int
+(** The retained-event ceiling. Beyond this the oldest events are dropped
+    (drop-oldest) so an [On] log — in particular one mirrored to a Tauri/web
+    host via {!on_record} — cannot grow unbounded. Kept in parity with the Rust
+    [TelemetryMirror] bound (feature 0120 FR-7). *)
+
 val off : recorder
 (** The non-recording target. A shared constant — no allocation. *)
 
@@ -47,7 +53,9 @@ val record_subscription : recorder -> string -> unit
 (** When [On], append [Subscription label]. [Off]: no-op. *)
 
 val events : handle -> event list
-(** The recorded events, oldest first. *)
+(** The recorded events, oldest first. A non-draining read — it does not empty
+    the log (use {!clear} for that). At most {!log_capacity} events are
+    retained; older events beyond the cap have been dropped. *)
 
 val clear : handle -> unit
 (** Empty the log. Registered sinks are retained. *)

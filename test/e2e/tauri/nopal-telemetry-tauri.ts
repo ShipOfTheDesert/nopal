@@ -7,6 +7,13 @@ import { browser } from "@wdio/globals";
 // shapes the web bridge emits, but from the *host process* via the
 // `get_telemetry` IPC command rather than the in-webview bridge.
 //
+// Unified telemetry model (feature 0120, Decision N + the Task 12 gate sweep):
+// all mirrors — host `get_telemetry`, in-webview `getEvents`, and the Rust
+// `TelemetryMirror` — are non-draining and bounded, so they cannot diverge. The
+// spec-facing *assertion* surface (`assertDispatched`/`assertSequence`/
+// `assertModelContains`) is therefore identical on both helpers: "does fragment
+// X appear in the log within the timeout," drain-agnostic.
+//
 // Two structural differences from the web helper:
 //   1. `get_telemetry` returns a *clone* of the host mirror (it does not drain),
 //      so there is no snapshot/drain race — every read sees the full log.
@@ -14,6 +21,14 @@ import { browser } from "@wdio/globals";
 //      so every assertion *polls* within a timeout via `browser.waitUntil`
 //      instead of reading once. This is the REQ-N2 replacement for a fixed
 //      delay: the wait keys off recorded telemetry, never a `setTimeout`.
+//
+// Because of (2), the raw `events()` below is a *non-draining poll primitive*:
+// it is re-read every 200ms inside the assertions and MUST see the whole
+// accumulated log each time (a client-side drain here would consume events
+// between polls and break `assertSequence`). It is therefore unlike the web
+// helper's cursor-draining `events()` — do NOT use it for count/absence
+// assertions ("exactly N ticks", "0 after removal"); express those through the
+// accumulate-since-start assertion methods instead.
 
 export type TelemetryEvent =
   | { kind: "message"; value: string }

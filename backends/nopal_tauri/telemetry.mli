@@ -26,6 +26,13 @@ val get_telemetry :
     resolves with [Ok events] (oldest first) or [Error msg] if the Tauri runtime
     is unavailable, the IPC rejects, or the mirror payload is malformed.
 
+    A {e non-draining} read: it does not empty the host mirror, so successive
+    calls see the same events — in parity with the browser
+    [__nopal_telemetry__.getEvents] bridge, which is also non-draining. The
+    mirror does not grow unbounded because the host caps it (drop-oldest), in
+    parity with the browser-side [Nopal_runtime.Telemetry] bound (feature 0120
+    FR-7).
+
     Async (a {!Nopal_mvu.Task.t}, not a synchronous [result]) because the IPC
     reply only arrives via a promise — see RFC 0110 Implementation Decision 3.
     The error path resolves with [Error] rather than hanging (per the

@@ -371,6 +371,43 @@ The native build check is also mandatory for any PR touching
 just build-native   # must succeed without js_of_ocaml
 ```
 
+### VIII. Bug-Class Prevention
+
+The 2026-06-11 audit (`docs/ANALYSIS.md`) found that almost every bug is an
+instance of one of five recurring *classes*. Each class has a type-level guard
+(a shipped reference implementation that makes the class unrepresentable) and,
+where a greppable signature exists, a `just lint-classes` check that fails a PR
+before review. The five rules — enforced beside the `raise`, `style:string`, and
+catch-all-`_` rules above — with their catalogue entry:
+
+1. **Never log-and-not-resolve an effect.** An op that can fail resolves its
+   `('a, error) result` exactly once — route it through
+   `Nopal_tauri.Ipc.invoke_result`, never a `Console.error`-and-drop.
+   (`docs/bug-classes/0001`; lint-classes class 1.)
+2. **Never use a bare string as a protocol token.** Decode a wire/status token
+   into a typed variant once at the FFI edge (e.g. `Tray.click_type`,
+   `Task.outcome`);
+   keep string `Error`s as human-readable messages only.
+   (`docs/bug-classes/0002`; lint-classes class 2.)
+3. **Never represent a remote resource handle as a constant.** A handle a remote
+   API hands out is an abstract type whose only constructor is the call that
+   creates it (e.g. `Store.t` from `Store.load`) — never a literal `rid`.
+   (`docs/bug-classes/0003`; lint-classes class 3.)
+4. **Never mutate a lifecycle flag outside its transition function.** Replace
+   independent lifecycle booleans with one variant whose transitions are the only
+   mutation, each matching exhaustively on the current state (e.g. the runtime
+   `phase`, `Tauri_subscription`'s `Pending | Active | Cancelled`).
+   (`docs/bug-classes/0004`; no grep — type guard + review only.)
+5. **Never ship a partial public function.** A public function over a constrained
+   domain is total (returns `result`, takes a refined type, or matches
+   exhaustively) — no `List.hd`/`Option.get`/`Result.get_ok` on a `lib/`/`backends/`
+   path, no raise on an "callers are currently safe" sub-domain.
+   (`docs/bug-classes/0005`; lint-classes class 5.)
+
+A sixth, cross-cutting rule from the same audit: **an E2E spec that CI does not
+execute is a failing test** — every spec must be wired to a CI-run Playwright
+project, enforced by `just check-e2e-wired`.
+
 ## Commit Style
 
 Conventional Commits: `type(scope): description`

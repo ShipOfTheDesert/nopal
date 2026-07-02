@@ -40,6 +40,12 @@
   var pendingListens = []; // [{onF, onR}] awaiting explicit resolution
   var stores = {}; // store rid -> { key: value } (plugin:store mock, REQ-F6)
   var nextStoreRid = 9000;
+  // Host-side telemetry mirror model (RFC 0110 Layer 3 / feature 0120 FR-7). A
+  // small cap keeps the drop-oldest bound cheap to exercise; it models the real
+  // Rust `TelemetryMirror` drop-oldest semantics, not its production N.
+  var telemetryMirror = [];
+  var TELEMETRY_CAP = 4;
+  globalThis.__nopal_telemetry_cap = TELEMETRY_CAP;
   globalThis.__nopal_listen_count = 0;
   globalThis.__nopal_unlisten_count = 0;
   globalThis.__nopal_console_errors = [];
@@ -79,6 +85,7 @@
   globalThis.__nopal_reset_subs = function () {
     pendingListens = [];
     stores = {};
+    telemetryMirror = [];
     globalThis.__nopal_unlisten_count = 0;
     globalThis.__nopal_console_errors = [];
     globalThis.__nopal_fail_invoke = false;
@@ -88,6 +95,12 @@
   };
   globalThis.__nopal_set_os_platform = function (platform) {
     globalThis.__TAURI_OS_PLUGIN_INTERNALS__ = { platform: platform };
+  };
+  // Push an event into the host mirror, dropping the oldest past TELEMETRY_CAP
+  // (drop-oldest), mirroring the bounded Rust `TelemetryMirror` (feature 0120).
+  globalThis.__nopal_seed_telemetry = function (kind, value) {
+    telemetryMirror.push({ kind: kind, value: value });
+    if (telemetryMirror.length > TELEMETRY_CAP) telemetryMirror.shift();
   };
 
   globalThis.__TAURI_INTERNALS__ = {
@@ -157,6 +170,21 @@
                 onF(null);
               }
             }
+            return { then: function () {} };
+          },
+        };
+      }
+      // Host-side telemetry mirror read (RFC 0110 Layer 3 / feature 0120 FR-7).
+      // Returns a NON-draining clone of the bounded mirror — modelling the Rust
+      // `get_telemetry`, which returns `log.clone()` and never drains — so the
+      // OCaml `Nopal_tauri.Telemetry.get_telemetry` consumer is exercised against
+      // the agreed host contract. Resolved through the same synchronous thenable.
+      if (cmd === "get_telemetry") {
+        var snapshot = telemetryMirror.slice();
+        return {
+          then: function (onF, onR) {
+            if (globalThis.__nopal_fail_invoke) onR("simulated tauri failure: " + cmd);
+            else onF(snapshot);
             return { then: function () {} };
           },
         };

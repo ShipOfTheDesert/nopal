@@ -54,3 +54,10 @@ val clear :
   db -> store:string -> (unit, Nopal_storage.error) result Nopal_mvu.Task.t
 (** [clear db ~store] empties [store] only; sibling object stores and
     [localStorage] are untouched. *)
+
+val close : db -> unit
+(** [close db] closes the connection [db]. Callers that open a handle per
+    operation must close it once the operation resolves: a connection left open
+    holds a [versionchange] block that stalls the next schema-version upgrade
+    ([onupgradeneeded]). [close] cannot fail and never raises — a closed
+    connection simply rejects further transactions. *)

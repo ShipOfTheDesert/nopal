@@ -6,9 +6,12 @@ native WebKit webview Tauri renders, so these specs use `tauri-driver` (the
 official Tauri WebDriver bridge over `WebKitWebDriver`) and read telemetry from
 the **host process** via the `get_telemetry` IPC command.
 
-These specs gate on **`main` only**, not per-PR (`WebKitWebDriver` + `xvfb` are
-heavy and `tauri-driver` flakes are off the PR critical path — RFC Risk list).
-Task 8 wires the `just e2e-tauri` target and the `main`-only CI job.
+These specs run as a **required per-PR gate** (feature 0120, Decision 2): the
+`e2e-tauri` job in both `pr.yaml` and `main.yaml` builds the Tauri binary and
+drives the suite under `xvfb`. Promoting it off "`main`-only" is the audit's fix
+for the "e2e CI never runs against HEAD" miss (the tray E2E that never exercised
+the `Store` breakage); `check-e2e-wired` (FR-6) guarantees every spec is matched
+by a project this job runs.
 
 ## What's here
 
@@ -19,6 +22,7 @@ Task 8 wires the `just e2e-tauri` target and the `main`-only CI job.
 | `tray.e2e.ts` | `simulate_tray_click` → `TrayClicked` via the host mirror |
 | `window.e2e.ts` | title + visibility transitions via IPC telemetry |
 | `store.e2e.ts` | store value survives a real relaunch (`reloadSession()`) |
+| `event.e2e.ts` | `Event.emit` → real event bus → `Event.listen` → `TauriEventReceived` |
 
 ## Local run (Linux)
 

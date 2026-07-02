@@ -12,6 +12,10 @@ let flush_then_run k =
   let flush = Jv.get Jv.global "_flush" in
   ignore (Jv.apply flush [| Jv.callback ~arity:1 (fun _ -> k ()) |])
 
+(* Reads one of the shim's connection-lifecycle counters (see
+   indexeddb_shim.js: [__idbOpenCount] / [__idbCloseCount]). *)
+let idb_counter name = Jv.to_int (Jv.apply (Jv.get Jv.global name) [||])
+
 let () =
   let roundtrip = ref None in
   let corrupt = ref None in
@@ -86,5 +90,18 @@ let () =
                     "localStorage entry survives clear ()" true
                     ((not (Jv.is_null survivor))
                     && Jv.to_string survivor = "still here"));
+              (* By the time [_flush] fires, every operation above (set/get for
+                 the roundtrip, get for corrupt, set/clear/keys for clear) has
+                 resolved. Each opens a fresh connection, so the handle each
+                 left open must have been closed — otherwise a future
+                 schema-version upgrade blocks on the un-closed connections. *)
+              Alcotest.test_case "each op closes its IndexedDB handle" `Quick
+                (fun () ->
+                  let opens = idb_counter "__idbOpenCount" in
+                  let closes = idb_counter "__idbCloseCount" in
+                  Alcotest.(check bool)
+                    "at least one connection was opened" true (opens > 0);
+                  Alcotest.(check int)
+                    "every opened connection was closed" opens closes);
             ] );
         ])
