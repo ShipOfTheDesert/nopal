@@ -3045,10 +3045,14 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
       ~attrs:[ ("data-section", "tauri-events") ]
       "Tauri Events"
       ([
-         Element.button ~on_click:EmitTauriEvent (Element.text "Emit Event");
+         Element.button ~on_click:EmitTauriEvent
+           ~attrs:[ ("data-action", "tauri-event-emit") ]
+           (Element.text "Emit Event");
          Element.button ~on_click:ListenTauriEvents
+           ~attrs:[ ("data-action", "tauri-event-listen") ]
            (Element.text "Start Listening");
          Element.button ~on_click:UnlistenTauriEvents
+           ~attrs:[ ("data-action", "tauri-event-unlisten") ]
            (Element.text "Stop Listening");
          Element.text ("Status: " ^ listener_status);
        ]

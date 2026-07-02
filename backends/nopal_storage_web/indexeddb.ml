@@ -121,3 +121,5 @@ let clear db ~store =
       let os = object_store db ~store ~mode:"readwrite" in
       Jv.call os "clear" [||])
     ~decode:(fun _result -> Ok ())
+
+let close db = ignore (Jv.call db "close" [||])

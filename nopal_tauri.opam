@@ -9,6 +9,7 @@ doc: "https://url/to/documentation"
 bug-reports: "https://github.com/ShipOfTheDesert/nopal/issues"
 depends: [
   "dune" {>= "3.20"}
+  "qcheck-alcotest" {>= "0.91" & with-test}
   "alcotest" {>= "1.9.1" & with-test}
   "ocaml"
   "brr"

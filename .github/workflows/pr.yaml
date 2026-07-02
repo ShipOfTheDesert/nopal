@@ -89,3 +89,48 @@ jobs:
 
       - name: Run web E2E suite
         run: just e2e
+
+  # REQ-F5 Tauri E2E promoted to a REQUIRED per-PR gate (feature 0120, Decision 2).
+  # The "e2e that CI never runs against HEAD" miss (the tray E2E that never
+  # exercised the Store breakage) is worth the Tauri-build + matched-webkit + xvfb
+  # cost on every PR. Mirrors the main.yaml e2e-tauri job step-for-step; FR-6's
+  # check-e2e-wired guarantees every spec is matched by a project this job runs.
+  e2e-tauri:
+    runs-on: ubuntu-latest
+    if: "!github.event.pull_request.draft"
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: extractions/setup-just@v3
+        with:
+          just-version: '1.46.0'
+      - uses: ./.github/actions/ocaml-deps
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tauri/src-tauri
+
+      - name: Install Tauri + WebDriver system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf webkit2gtk-driver xvfb
+
+      - name: Install tauri-driver
+        run: cargo install tauri-driver
+
+      - name: Install Tauri CLI
+        run: cd tauri && npm ci
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install WebdriverIO harness dependencies
+        run: cd test/e2e/tauri && npm ci
+
+      - name: Run Tauri E2E suite
+        run: just e2e-tauri

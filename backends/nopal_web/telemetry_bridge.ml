@@ -79,11 +79,12 @@ let wait_for_message handle fragment timeout_ms =
 let install handle =
   let get_events =
     Jv.callback ~arity:1 (fun _ ->
-        let events = events_jv handle in
-        (* "full list, then clears" — each query drains, so successive E2E
-           checkpoints do not see stale events. *)
-        Telemetry.clear handle;
-        events)
+        (* Non-draining read (feature 0120 FR-7): return the current log without
+           clearing it, so [getEvents] agrees with the Tauri host [get_telemetry]
+           mirror (which also reads without draining). The log cannot grow
+           unbounded because [Nopal_runtime.Telemetry] drops oldest past its cap,
+           so repeated reads are safe without a reader-side clear. *)
+        events_jv handle)
   in
   let wait_for =
     Jv.callback ~arity:2 (fun fragment timeout ->

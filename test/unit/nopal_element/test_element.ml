@@ -2,6 +2,10 @@ open Nopal_element
 
 type msg = Click | Submit | Changed of string
 
+(* A msg whose payload is a closure. Structural ( = ) raises Invalid_argument
+   when it recurses into such a value; [equal] must stay total on it. *)
+type closure_msg = Handler of (unit -> unit)
+
 let test_empty_builder () =
   Alcotest.(check bool)
     "empty is Empty" true
@@ -728,6 +732,31 @@ let test_equal_keyed_different_fields () =
   Alcotest.(check bool)
     "different keyed child not equal" false (Element.equal c d)
 
+let test_element_equal_no_raise_on_closures () =
+  let a =
+    Element.button ~on_click:(Handler (fun () -> ())) (Element.text "x")
+  in
+  let b =
+    Element.button ~on_click:(Handler (fun () -> ())) (Element.text "x")
+  in
+  (* Old polymorphic ( = ) on the closure-valued on_click payload raised
+     Invalid_argument; equal must now return without raising. Reflexivity holds
+     (same physical handler); two distinct closures are physically unequal. *)
+  Alcotest.(check bool)
+    "equal is reflexive on a closure msg (no raise)" true (Element.equal a a);
+  Alcotest.(check bool)
+    "distinct closure msgs compare unequal (no raise)" false (Element.equal a b)
+
+let test_element_equal_distinguishes_draw_handlers () =
+  let a = Element.draw ~width:10. ~height:10. ~on_click:(fun _ -> Click) [] in
+  let b = Element.draw ~width:10. ~height:10. ~on_click:(fun _ -> Submit) [] in
+  Alcotest.(check bool)
+    "draw differing only in on_click handler is not equal" false
+    (Element.equal a b);
+  let c = Element.draw ~width:10. ~height:10. [] in
+  Alcotest.(check bool)
+    "draw with a handler vs one without is not equal" false (Element.equal a c)
+
 let test_box_default_interaction () =
   Alcotest.(check bool)
     "box defaults to Interaction.default" true
@@ -976,6 +1005,10 @@ let () =
             test_equal_keyed_distinct;
           Alcotest.test_case "equal_keyed_different_fields" `Quick
             test_equal_keyed_different_fields;
+          Alcotest.test_case "equal_no_raise_on_closures" `Quick
+            test_element_equal_no_raise_on_closures;
+          Alcotest.test_case "equal_distinguishes_draw_handlers" `Quick
+            test_element_equal_distinguishes_draw_handlers;
         ] );
       ( "interaction",
         [

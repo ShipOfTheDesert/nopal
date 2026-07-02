@@ -113,10 +113,12 @@ let test_mount_with_telemetry_records_dispatch () =
   Alcotest.(check bool) "Increment message recorded" true has_message;
   Alcotest.(check bool) "0 -> 1 transition recorded" true has_transition
 
-(* [getEvents] returns the recorded events and drains the log, so a second call
-   sees an empty array (the "full list, then clears" contract the E2E side
-   relies on). *)
-let test_bridge_get_events_returns_then_drains () =
+(* [getEvents] is a NON-draining read (feature 0120 FR-7): a second call returns
+   the same log, so it agrees with the Tauri host [get_telemetry] mirror (also
+   non-draining). The log does not grow unbounded because
+   [Nopal_runtime.Telemetry] drops oldest past its cap, not because the reader
+   clears it. *)
+let test_bridge_get_events_non_draining () =
   clear_bridge ();
   let target = fresh_parent () in
   let _handle =
@@ -130,7 +132,10 @@ let test_bridge_get_events_returns_then_drains () =
     "first getEvents non-empty" true
     (Jv.Int.get first "length" > 0);
   let second = Jv.call b "getEvents" [||] in
-  Alcotest.(check int) "second getEvents drained" 0 (Jv.Int.get second "length")
+  Alcotest.(check int)
+    "second getEvents identical — non-draining"
+    (Jv.Int.get first "length")
+    (Jv.Int.get second "length")
 
 let () =
   Alcotest.run "nopal_web mount telemetry"
@@ -143,7 +148,7 @@ let () =
             test_mount_with_telemetry_installs_bridge;
           Alcotest.test_case "mount_with_telemetry handle records dispatch"
             `Quick test_mount_with_telemetry_records_dispatch;
-          Alcotest.test_case "bridge getEvents returns then drains" `Quick
-            test_bridge_get_events_returns_then_drains;
+          Alcotest.test_case "bridge getEvents is non-draining" `Quick
+            test_bridge_get_events_non_draining;
         ] );
     ]

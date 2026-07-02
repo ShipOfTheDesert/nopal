@@ -302,6 +302,7 @@ val responsive_style :
 
 val equal : 'msg t -> 'msg t -> bool
 (** [equal a b] tests structural equality of two element trees. Data fields
-    (strings, styles, messages) are compared by structural equality. Function
-    fields (event handlers like [on_change]) are compared by physical equality.
-*)
+    (strings, styles, dimensions) are compared structurally. Message payloads
+    (e.g. [on_click]) and function handlers (e.g. [on_change] and the [Draw]
+    pointer handlers) are compared by physical equality, so [equal] is total and
+    never raises on closure-valued ['msg] payloads. *)

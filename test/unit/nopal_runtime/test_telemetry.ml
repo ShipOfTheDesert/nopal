@@ -53,6 +53,29 @@ let test_on_record_unsubscribe () =
   T.record_command recorder "b";
   Alcotest.(check int) "sink silent after unsubscribe" 1 !count
 
+(* The log is bounded (feature 0120 FR-7): an [expose]d Tauri/web mirror forwards
+   every recorded event for the whole session, so without a cap the log would
+   grow unbounded. Recording past [log_capacity] must retain exactly the newest
+   [log_capacity] events and drop the oldest. *)
+let test_log_bounded_drops_oldest () =
+  let recorder, handle = T.create () in
+  let last = T.log_capacity + 1 in
+  for i = 1 to last do
+    T.record_command recorder (string_of_int i)
+  done;
+  let events = T.events handle in
+  Alcotest.(check int)
+    "log capped at capacity" T.log_capacity (List.length events);
+  Alcotest.(check bool)
+    "oldest event (command 1) dropped" false
+    (List.mem (T.Command "1") events);
+  Alcotest.(check bool)
+    "new oldest (command 2) retained" true
+    (List.mem (T.Command "2") events);
+  Alcotest.(check bool)
+    "newest event retained" true
+    (List.mem (T.Command (string_of_int last)) events)
+
 let () =
   Alcotest.run "Telemetry"
     [
@@ -65,5 +88,7 @@ let () =
             test_on_record_forwards_each_event;
           Alcotest.test_case "on_record disposer unsubscribes" `Quick
             test_on_record_unsubscribe;
+          Alcotest.test_case "log bounded — drops oldest past capacity" `Quick
+            test_log_bounded_drops_oldest;
         ] );
     ]

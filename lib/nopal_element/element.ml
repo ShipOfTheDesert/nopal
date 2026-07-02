@@ -387,14 +387,14 @@ let equal_attrs a1 a2 =
     (fun (k1, v1) (k2, v2) -> String.equal k1 k2 && String.equal v1 v2)
     a1 a2
 
-(* Equality strategy for handler fields:
-   - Function-typed handlers (on_click, on_toggle, on_change, etc.) use physical
-     equality ( == ) because structural equality is undefined for closures.
-   - Plain 'msg values (on_submit, on_blur, on_select) use structural equality
-     ( = ) because they are data, not closures. This is correct for typical msg
-     types (variants with string/int payloads). If a msg type contains floats,
-     polymorphic ( = ) has known issues (nan <> nan); this is an accepted
-     trade-off given that float-carrying messages are rare in MVU apps. *)
+(* Equality strategy for handler and message fields:
+   Both function-typed handlers (on_click, on_toggle, on_change, ...) and plain
+   'msg payloads (on_submit, on_blur, on_select, ...) are compared by physical
+   equality ( == ). A 'msg payload may itself carry a closure, and structural
+   ( = ) raises Invalid_argument the moment it recurses into one, so equal must
+   avoid polymorphic compare on 'msg to stay total. Nullary variant
+   constructors — the common msg shape — are immediates and compare correctly
+   under ( == ). *)
 let rec equal a b =
   match (a, b) with
   | Empty, Empty -> true
@@ -430,7 +430,7 @@ let rec equal a b =
       && equal_attrs a1 a2
       && equal_children c1 c2
       && Option.equal ( == ) pm1 pm2
-      && Option.equal ( = ) pl1 pl2
+      && Option.equal ( == ) pl1 pl2
       && Option.equal ( == ) pd1 pd2
       && Option.equal ( == ) pu1 pu2
       && Option.equal ( == ) w1 w2
@@ -463,8 +463,8 @@ let rec equal a b =
       Nopal_style.Style.equal s1 s2
       && Nopal_style.Interaction.equal i1 i2
       && equal_attrs a1 a2
-      && Option.equal ( = ) oc1 oc2
-      && Option.equal ( = ) od1 od2
+      && Option.equal ( == ) oc1 oc2
+      && Option.equal ( == ) od1 od2
       && equal ch1 ch2
   | ( Input
         {
@@ -496,8 +496,8 @@ let rec equal a b =
       && String.equal v1 v2
       && String.equal p1 p2
       && Option.equal ( == ) oc1 oc2
-      && Option.equal ( = ) os1 os2
-      && Option.equal ( = ) ob1 ob2
+      && Option.equal ( == ) os1 os2
+      && Option.equal ( == ) ob1 ob2
       && Option.equal ( == ) ok1 ok2
   | ( Image { style = s1; src = src1; alt = alt1 },
       Image { style = s2; src = src2; alt = alt2 } ) ->
@@ -515,12 +515,12 @@ let rec equal a b =
           scene = s1;
           cursor = c1;
           aria_label = al1;
-          on_pointer_move = _;
-          on_click = _;
-          on_pointer_leave = _;
-          on_pointer_down = _;
-          on_pointer_up = _;
-          on_wheel = _;
+          on_pointer_move = pm1;
+          on_click = oc1;
+          on_pointer_leave = pl1;
+          on_pointer_down = pd1;
+          on_pointer_up = pu1;
+          on_wheel = wh1;
         },
       Draw
         {
@@ -529,18 +529,24 @@ let rec equal a b =
           scene = s2;
           cursor = c2;
           aria_label = al2;
-          on_pointer_move = _;
-          on_click = _;
-          on_pointer_leave = _;
-          on_pointer_down = _;
-          on_pointer_up = _;
-          on_wheel = _;
+          on_pointer_move = pm2;
+          on_click = oc2;
+          on_pointer_leave = pl2;
+          on_pointer_down = pd2;
+          on_pointer_up = pu2;
+          on_wheel = wh2;
         } ) ->
       Float.equal w1 w2
       && Float.equal h1 h2
       && List.equal Nopal_scene.Scene.equal s1 s2
       && Option.equal Nopal_style.Cursor.equal c1 c2
       && Option.equal String.equal al1 al2
+      && Option.equal ( == ) pm1 pm2
+      && Option.equal ( == ) oc1 oc2
+      && Option.equal ( == ) pl1 pl2
+      && Option.equal ( == ) pd1 pd2
+      && Option.equal ( == ) pu1 pu2
+      && Option.equal ( == ) wh1 wh2
   | ( Checkbox
         {
           style = s1;
@@ -591,7 +597,7 @@ let rec equal a b =
       && String.equal n1 n2
       && Bool.equal c1 c2
       && Bool.equal d1 d2
-      && Option.equal ( = ) os1 os2
+      && Option.equal ( == ) os1 os2
   | ( Select
         {
           style = s1;

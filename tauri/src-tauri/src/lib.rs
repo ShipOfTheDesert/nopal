@@ -1,18 +1,29 @@
 use serde_json::Value;
+use std::collections::VecDeque;
 use std::sync::Mutex;
 use tauri::{Emitter, Listener, Manager};
+
+// Bound on the host mirror: beyond this many events the oldest are dropped
+// (drop-oldest). Kept in parity with the OCaml `Nopal_runtime.Telemetry`
+// `log_capacity` so the host and browser mirrors agree and neither grows
+// unbounded (feature 0120 FR-7).
+const TELEMETRY_CAPACITY: usize = 10_000;
 
 // Host-side mirror of the in-webview telemetry log (RFC 0110, Layer 3). Always
 // compiled, but inert until the OCaml side calls `Nopal_tauri.Telemetry.expose`,
 // which registers a forwarder that emits each event as `nopal:telemetry`. The
-// listener registered in `run`'s setup appends those into this Vec, so
-// `get_telemetry` can return the log from outside the webview.
-struct TelemetryMirror(Mutex<Vec<Value>>);
+// listener registered in `run`'s setup appends those into this bounded deque, so
+// `get_telemetry` can return the log from outside the webview. A `VecDeque` gives
+// O(1) drop-oldest (`pop_front`) once the cap is reached.
+struct TelemetryMirror(Mutex<VecDeque<Value>>);
 
 #[tauri::command]
 fn get_telemetry(mirror: tauri::State<'_, TelemetryMirror>) -> Vec<Value> {
+    // Non-draining read: clone the mirror (oldest first) without emptying it, so
+    // repeated reads see the same log — matching the browser `getEvents` bridge
+    // (feature 0120 FR-7).
     match mirror.0.lock() {
-        Ok(log) => log.clone(),
+        Ok(log) => log.iter().cloned().collect(),
         Err(_) => Vec::new(),
     }
 }
@@ -113,10 +124,20 @@ mod tray_linux {
         let app_handle = app.handle().clone();
         std::thread::spawn(move || {
             let tray = NopalTray { app_handle };
-            let _handle = tray.spawn().unwrap();
-            // Keep thread alive — ksni runs its D-Bus event loop internally
-            loop {
-                std::thread::park();
+            match tray.spawn() {
+                Ok(_handle) => {
+                    // Keep thread alive — ksni runs its D-Bus event loop internally
+                    loop {
+                        std::thread::park();
+                    }
+                }
+                // No StatusNotifier watcher on the session bus (headless CI, a
+                // minimal WM, GNOME without the AppIndicator extension): register
+                // fails. Log and let the tray thread exit instead of panicking —
+                // the rest of the app runs fine without a tray icon.
+                Err(err) => {
+                    eprintln!("nopal: tray unavailable, continuing without it: {err}");
+                }
             }
         });
     }
@@ -181,7 +202,7 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
-        .manage(TelemetryMirror(Mutex::new(Vec::new())))
+        .manage(TelemetryMirror(Mutex::new(VecDeque::new())))
         .invoke_handler(tauri::generate_handler![
             get_telemetry,
             simulate_tray_click,
@@ -198,7 +219,12 @@ pub fn run() {
                 if let Ok(value) = serde_json::from_str::<Value>(event.payload()) {
                     if let Some(state) = mirror_handle.try_state::<TelemetryMirror>() {
                         if let Ok(mut log) = state.0.lock() {
-                            log.push(value);
+                            // Drop-oldest once at capacity so the mirror cannot
+                            // grow unbounded (feature 0120 FR-7).
+                            if log.len() >= TELEMETRY_CAPACITY {
+                                log.pop_front();
+                            }
+                            log.push_back(value);
                         }
                     }
                 }

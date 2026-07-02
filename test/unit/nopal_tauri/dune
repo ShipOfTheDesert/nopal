@@ -46,3 +46,27 @@
  (modes js)
  (js_of_ocaml
   (javascript_files tauri_shim.js)))
+
+(test
+ (name test_negative_path)
+ (modules test_negative_path)
+ (libraries nopal_tauri nopal_mvu alcotest)
+ (modes js)
+ (js_of_ocaml
+  (javascript_files tauri_shim.js)))
+
+(test
+ (name test_decoder_roundtrip)
+ (package nopal_tauri)
+ (modules test_decoder_roundtrip)
+ (libraries nopal_tauri qcheck-alcotest alcotest)
+ (modes js)
+ (js_of_ocaml))
+
+(test
+ (name test_telemetry)
+ (modules test_telemetry)
+ (libraries nopal_tauri nopal_mvu nopal_runtime alcotest)
+ (modes js)
+ (js_of_ocaml
+  (javascript_files tauri_shim.js)))

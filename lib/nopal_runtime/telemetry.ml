@@ -6,10 +6,21 @@ type event =
 
 type sink = { id : int; notify : event -> unit }
 
+(* The retained-event ceiling. An [expose]d Tauri/web mirror forwards every
+   recorded event for the whole session, so an unbounded list would leak; beyond
+   this many events the oldest are dropped (drop-oldest). Kept in parity with the
+   Rust [TelemetryMirror] bound so the host and browser mirrors agree and neither
+   grows without limit (feature 0120 FR-7). *)
+let log_capacity = 10_000
+
 type log = {
   mutable events : event list;
       (* mutable: the in-process record, accumulated newest-first as events are
-         recorded and emptied by [clear]. Reversed on read by [events]. *)
+         recorded and emptied by [clear]. Reversed on read by [events]. Bounded
+         to [log_capacity] (drop-oldest) so it cannot grow unbounded. *)
+  mutable event_count : int;
+      (* mutable: number of retained events, so [append] enforces [log_capacity]
+         in O(1) below the cap without an O(n) length scan per event. *)
   mutable sinks : sink list;
       (* mutable: [on_record] sinks, stored in registration order so [append]
          invokes them in that order; each carries an [id] so its disposer can
@@ -28,11 +39,20 @@ type handle = log
 let off = Off
 
 let create () =
-  let log = { events = []; sinks = []; next_sink_id = 0 } in
+  let log = { events = []; event_count = 0; sinks = []; next_sink_id = 0 } in
   (On log, log)
 
 let append log event =
   log.events <- event :: log.events;
+  log.event_count <- log.event_count + 1;
+  (* Drop-oldest once past the cap: [events] is newest-first, so keeping the
+     first [log_capacity] entries discards the oldest. The guard is O(1) below
+     the cap (the common case), so recording stays cheap until the mirror is
+     actually full. *)
+  if log.event_count > log_capacity then begin
+    log.events <- List.filteri (fun i _ -> i < log_capacity) log.events;
+    log.event_count <- log_capacity
+  end;
   List.iter (fun { notify; _ } -> notify event) log.sinks
 
 let record_message recorder msg ~serialize =
@@ -58,7 +78,10 @@ let record_subscription recorder label =
   | On log -> append log (Subscription label)
 
 let events handle = List.rev handle.events
-let clear handle = handle.events <- []
+
+let clear handle =
+  handle.events <- [];
+  handle.event_count <- 0
 
 (* Append at registration (rare) so [append] can iterate sinks directly in
    registration order (frequent), without reversing on every event. Returns a

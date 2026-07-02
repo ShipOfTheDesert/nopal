@@ -132,7 +132,8 @@
 
 (package
  (name nopal_fs_key)
- (synopsis "Native-clean key-filename encoding for filesystem-backed storage")
+ (synopsis
+  "Native-clean key-filename encoding for filesystem-backed storage")
  (depends
   (alcotest
    (and
@@ -191,6 +192,10 @@
  (name nopal_tauri)
  (synopsis "Typed OCaml bindings to the Tauri JavaScript API")
  (depends
+  (qcheck-alcotest
+   (and
+    (>= 0.91)
+    :with-test))
   (alcotest
    (and
     (>= 1.9.1)

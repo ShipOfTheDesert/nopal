@@ -46,6 +46,15 @@ globalThis._flush = function (cb) { setTimeout(cb, 100); };
     nopal_storage: { stores: { kv: { __corrupt__: 42 } } },
   };
 
+  // Connection lifecycle counters so the "each op closes its handle" test can
+  // assert every open() was matched by a db.close(). A real IndexedDB leaks a
+  // held-open connection into a versionchange block on the next schema upgrade;
+  // these counters make that leak observable in the shim.
+  var openCount = 0;
+  var closeCount = 0;
+  globalThis.__idbOpenCount = function () { return openCount; };
+  globalThis.__idbCloseCount = function () { return closeCount; };
+
   function fireSuccess(req, result) {
     setTimeout(function () {
       req.result = result;
@@ -106,6 +115,7 @@ globalThis._flush = function (cb) { setTimeout(cb, 100); };
           },
         };
       },
+      close: function () { closeCount += 1; },
     };
   }
 
@@ -117,6 +127,7 @@ globalThis._flush = function (cb) { setTimeout(cb, 100); };
       var db = makeDb(databases[name]);
       setTimeout(function () {
         req.result = db;
+        openCount += 1;
         if (isNew && typeof req.onupgradeneeded === "function") {
           req.onupgradeneeded({ target: req });
         }
