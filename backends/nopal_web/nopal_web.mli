@@ -4,12 +4,29 @@
     package that depends on browser APIs — application code imports only
     [nopal_mvu] and [nopal_element]. *)
 
+type mounted = { unmount : unit -> unit }
+(** Teardown handle returned by {!mount}. [unmount ()] releases everything the
+    mount registered: it cancels the rAF render loop, disconnects the
+    [ResizeObserver], shuts down the runtime (which tears down every active
+    subscription listener — keydown, resize, visibility, intervals), and calls
+    the [safe_area_source] unlisten when one was supplied. It is idempotent — a
+    second call is inert and never raises — so repeated mount->unmount cycles
+    never accumulate listeners or observers (feature 0121, FR-4). *)
+
+type mounted_with_telemetry = {
+  telemetry : Nopal_runtime.Telemetry.handle;
+  unmount : unit -> unit;
+}
+(** Teardown handle returned by {!mount_with_telemetry}. [telemetry] is the
+    runtime's telemetry handle (formerly {!mount_with_telemetry}'s direct
+    return); [unmount] tears the mount down exactly as {!mounted}'s does. *)
+
 val mount :
   ?safe_area_source:((Nopal_element.Viewport.safe_area -> unit) -> unit -> unit) ->
   ?on_error:(string -> unit) ->
   (module Nopal_mvu.App.S with type model = 'model and type msg = 'msg) ->
   Brr.El.t ->
-  unit
+  mounted
 (** [mount (module MyApp) target] creates a runtime for [MyApp], renders the
     initial view into [target], and subscribes to reactive updates. The runtime
     uses [window.setTimeout] for [Cmd.after].
@@ -50,7 +67,11 @@ val mount :
     This wires everything together: runtime creation, Lwd root subscription, DOM
     rendering, and event dispatch. It records no telemetry and installs no
     inspection surface — see {!mount_with_telemetry} for the telemetry sibling.
-*)
+
+    Returns a {!mounted} whose [unmount] tears the whole thing down again; a
+    long-lived single-page app can ignore it, but a host that mounts and
+    discards apps must call it to avoid leaking the rAF loop, the observer, and
+    the subscription listeners. *)
 
 val mount_with_telemetry :
   ?safe_area_source:((Nopal_element.Viewport.safe_area -> unit) -> unit -> unit) ->
@@ -59,13 +80,15 @@ val mount_with_telemetry :
   ?serialize_msg:('msg -> string) ->
   ?serialize_model:('model -> string) ->
   Brr.El.t ->
-  Nopal_runtime.Telemetry.handle
+  mounted_with_telemetry
 (** [mount_with_telemetry (module MyApp) ?serialize_msg ?serialize_model target]
     is the telemetry sibling of {!mount} (and accepts the same
     [~safe_area_source] and [~on_error] hooks): it builds the runtime via
     {!Nopal_runtime.Runtime.Make.create_with_telemetry}, drives it exactly as
     {!mount} does, installs the [window.__nopal_telemetry__] browser bridge over
-    its handle (RFC 0110, Layer 2), and returns that handle.
+    its handle (RFC 0110, Layer 2), and returns that handle as the [telemetry]
+    field of a {!mounted_with_telemetry} — paired with the same [unmount]
+    teardown {!mount} yields.
 
     The on/off distinction is the function name and the [handle] return type —
     not an optional argument — mirroring the [create] / [create_with_telemetry]

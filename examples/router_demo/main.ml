@@ -16,7 +16,7 @@ let () =
     Nopal_platform.Router.create ~platform ~parse:Router_demo_app.parse
       ~to_path:Router_demo_app.to_path ~not_found:Router_demo_app.Step_one
   in
-  let (_ : Nopal_runtime.Telemetry.handle) =
+  let (_ : Nopal_web.mounted_with_telemetry) =
     Nopal_web.mount_with_telemetry
       (module struct
         type model = Router_demo_app.model

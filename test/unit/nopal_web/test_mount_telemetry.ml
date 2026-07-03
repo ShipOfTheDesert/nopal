@@ -62,7 +62,7 @@ let serialize_increment = function
 let test_mount_installs_no_bridge () =
   clear_bridge ();
   let target = fresh_parent () in
-  Nopal_web.mount counter_module target;
+  ignore (Nopal_web.mount counter_module target : Nopal_web.mounted);
   Alcotest.(check bool)
     "window.__nopal_telemetry__ absent after plain mount" true
     (Jv.is_undefined (bridge ()))
@@ -90,12 +90,12 @@ let test_mount_with_telemetry_installs_bridge () =
 let test_mount_with_telemetry_records_dispatch () =
   clear_bridge ();
   let target = fresh_parent () in
-  let handle =
+  let mounted =
     Nopal_web.mount_with_telemetry counter_module
       ~serialize_msg:serialize_increment ~serialize_model:string_of_int target
   in
   click_first_child target;
-  let events = Telemetry.events handle in
+  let events = Telemetry.events mounted.telemetry in
   let has_message =
     List.exists
       (function

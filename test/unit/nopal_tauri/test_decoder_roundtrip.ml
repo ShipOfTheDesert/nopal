@@ -42,6 +42,12 @@ let platform_to_wire = function
    its wire encoder is that Tauri event object carrying the string payload. *)
 let payload_to_jv s = Jv.obj [| ("payload", Jv.of_string s) |]
 
+(* [Os.read_platform_string] reads the [platform] field off the os-plugin
+   internals object; its wire encoder is that internals object carrying the
+   string field. Guards on [typeof = "string"], so the round-trip holds for any
+   string the plugin could place there. *)
+let platform_field_to_jv s = Jv.obj [| ("platform", Jv.of_string s) |]
+
 let arb_click =
   QCheck.oneof_list ~print:click_to_wire
     [ Tray.Left; Tray.Double; Tray.Right; Tray.Middle ]
@@ -64,6 +70,14 @@ let prop_payload_roundtrip =
     QCheck.string_printable (fun s ->
       String.equal (Event.payload_of_jv (payload_to_jv s)) s)
 
+let prop_read_platform_string_roundtrip =
+  QCheck.Test.make ~count:1000
+    ~name:"os read_platform_string: read (encode s) = Some s"
+    QCheck.string_printable (fun s ->
+      Option.equal String.equal
+        (Os.read_platform_string (platform_field_to_jv s))
+        (Some s))
+
 let () =
   (* Fixed seed: a counterexample must reproduce across runs (qcheck-alcotest
      otherwise seeds from the clock / QCHECK_SEED). *)
@@ -77,5 +91,6 @@ let () =
             prop_click_roundtrip;
             prop_platform_roundtrip;
             prop_payload_roundtrip;
+            prop_read_platform_string_roundtrip;
           ] );
     ]

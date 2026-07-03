@@ -19,7 +19,7 @@ let () =
         El.append_children body [ div ];
         div
   in
-  let (_ : Nopal_runtime.Telemetry.handle) =
+  let (_ : Nopal_web.mounted_with_telemetry) =
     Nopal_web.mount_with_telemetry
       (module Counter : Nopal_mvu.App.S
         with type model = Counter.model

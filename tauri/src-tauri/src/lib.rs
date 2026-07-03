@@ -37,8 +37,25 @@ fn simulate_tray_click(app: tauri::AppHandle) {
 #[tauri::command]
 fn simulate_back_pressed(app: tauri::AppHandle) {
     // Phase 3: replace with Appium-driven OS event.
-    // Desktop has no hardware back button, so nothing listens — a no-op there.
+    // Desktop has no hardware back button, but `enable_hardware_back` still
+    // registers the listener (this command is back.e2e.ts's stand-in for the
+    // real button), so the emit is consumed and runs `history.back()`.
     let _ = app.emit("nopal:back-pressed", ());
+}
+
+// Real Android hardware-back trigger. `MainActivity`'s `OnBackPressedCallback`
+// invokes this command (payload-less, so no JS-string interpolation); it funnels
+// through `mobile_signals::emit_back_pressed`, which emits the same
+// `nopal:back-pressed` event `simulate_back_pressed` does — so the OCaml
+// `enable_hardware_back` listener treats the real button and the debug IPC
+// identically. Registered on every platform (like the `report_*` commands) so
+// the handler list is platform-uniform; inert off Android, where nothing invokes
+// it and `emit_back_pressed` is compiled out.
+#[tauri::command]
+#[cfg_attr(not(target_os = "android"), allow(unused_variables))]
+fn notify_back_pressed(app: tauri::AppHandle) {
+    #[cfg(target_os = "android")]
+    mobile_signals::emit_back_pressed(&app);
 }
 
 // Bridge for native (Android) WindowInsets / IME reads → the OCaml mobile-signal
@@ -178,10 +195,9 @@ mod mobile_signals {
 
     // Reuse the same event `simulate_back_pressed` emits, so the OCaml
     // `enable_hardware_back` listener treats the real Android hardware-back
-    // button and the debug command identically. Wired to the actual Android
-    // back signal when `gen/android` exists (Task 7); kept here so the on-change
-    // emit contract is co-located with the others.
-    #[allow(dead_code)]
+    // button and the debug command identically. Invoked by the top-level
+    // `notify_back_pressed` command, which `MainActivity`'s
+    // `OnBackPressedCallback` calls when the hardware back button is pressed.
     pub fn emit_back_pressed(app: &AppHandle) {
         let _ = app.emit("nopal:back-pressed", ());
     }
@@ -207,6 +223,7 @@ pub fn run() {
             get_telemetry,
             simulate_tray_click,
             simulate_back_pressed,
+            notify_back_pressed,
             report_safe_area,
             report_keyboard_height
         ])

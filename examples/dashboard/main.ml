@@ -9,14 +9,17 @@ let () =
         El.append_children body [ div ];
         div
   in
-  Nopal_web.mount
-    (module struct
-      type model = Dashboard_app.model
-      type msg = Dashboard_app.msg
+  let (_ : Nopal_web.mounted) =
+    Nopal_web.mount
+      (module struct
+        type model = Dashboard_app.model
+        type msg = Dashboard_app.msg
 
-      let init = Dashboard_app.init
-      let update = Dashboard_app.update
-      let view = Dashboard_app.view
-      let subscriptions = Dashboard_app.subscriptions
-    end)
-    target
+        let init = Dashboard_app.init
+        let update = Dashboard_app.update
+        let view = Dashboard_app.view
+        let subscriptions = Dashboard_app.subscriptions
+      end)
+      target
+  in
+  ()

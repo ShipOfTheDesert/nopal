@@ -72,8 +72,10 @@ let test_safe_area_source_merges_into_viewport () =
     Nopal_element.Viewport.make_safe_area ~top:10 ~right:20 ~bottom:30 ~left:40
       ()
   in
-  Nopal_web.mount ~safe_area_source:(const_source insets) safe_area_module
-    target;
+  ignore
+    (Nopal_web.mount ~safe_area_source:(const_source insets) safe_area_module
+       target
+      : Nopal_web.mounted);
   Alcotest.(check string)
     "viewport reflects source insets" "10|20|30|40" (first_child_text target)
 
@@ -86,8 +88,10 @@ let test_safe_area_source_resize_uses_cache () =
     Nopal_element.Viewport.make_safe_area ~top:11 ~right:22 ~bottom:33 ~left:44
       ()
   in
-  Nopal_web.mount ~safe_area_source:(const_source insets) safe_area_module
-    target;
+  ignore
+    (Nopal_web.mount ~safe_area_source:(const_source insets) safe_area_module
+       target
+      : Nopal_web.mounted);
   fire_resize ();
   run_frame ();
   Alcotest.(check string)
@@ -98,7 +102,7 @@ let test_safe_area_source_resize_uses_cache () =
    under the shim) feeds the viewport. *)
 let test_mount_without_source_uses_env () =
   let target = fresh_parent () in
-  Nopal_web.mount safe_area_module target;
+  ignore (Nopal_web.mount safe_area_module target : Nopal_web.mounted);
   Alcotest.(check string)
     "no source falls back to env() insets" "0|0|0|0" (first_child_text target)
 

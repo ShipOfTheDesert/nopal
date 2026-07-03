@@ -48,7 +48,13 @@ lint-classes:
 check-e2e-wired:
     scripts/check-e2e-wired
 
-lint: lint-doc lint-fmt lint-opam lint-classes check-e2e-wired
+# Meta-tests for the shell guards: prove each guard fires on a known-bad fixture
+# and passes on a good one (pure shell, no toolchain) — see the scripts' --selftest.
+selftest-guards:
+    scripts/lint-classes --selftest
+    scripts/android-require-bridge --selftest
+
+lint: lint-doc lint-fmt lint-opam lint-classes check-e2e-wired selftest-guards
 
 # Examples
 

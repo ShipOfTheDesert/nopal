@@ -28,13 +28,22 @@
     return 0;
   };
   globalThis.cancelAnimationFrame = function () {};
+  // Live ResizeObserver count: incremented on observe(), decremented on
+  // disconnect(), so the mount teardown test can prove the observer is released
+  // on unmount and does not accumulate across remounts (feature 0121, FR-4).
+  // Unused by the other mount tests.
+  globalThis.__nopal_observer_live = 0;
   if (typeof globalThis.ResizeObserver === "undefined") {
     globalThis.ResizeObserver = function (cb) {
       globalThis.__nopal_resize_cb = cb;
       return {
-        observe: function () {},
+        observe: function () {
+          globalThis.__nopal_observer_live++;
+        },
         unobserve: function () {},
-        disconnect: function () {},
+        disconnect: function () {
+          globalThis.__nopal_observer_live--;
+        },
       };
     };
   }
