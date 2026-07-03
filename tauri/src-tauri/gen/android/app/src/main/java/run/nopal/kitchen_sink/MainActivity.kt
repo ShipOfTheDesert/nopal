@@ -2,6 +2,7 @@ package run.nopal.kitchen_sink
 
 import android.os.Bundle
 import android.webkit.WebView
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -46,11 +47,54 @@ class MainActivity : TauriActivity() {
       insets
     }
 
-    // Re-dispatch the current insets once the webview JS and the Tauri event
-    // bridge are ready, so the initial safe area reaches the app even when no
-    // further inset change occurs after page load.
-    webView.postDelayed({ ViewCompat.requestApplyInsets(webView) }, 600)
-    webView.postDelayed({ ViewCompat.requestApplyInsets(webView) }, 1800)
+    // Re-dispatch the current insets once the webview's Tauri bridge is actually
+    // ready, so the initial safe area reaches the app even when no further inset
+    // change occurs after page load. A fixed delay window (formerly 600/1800 ms)
+    // can fire before `window.__TAURI_INTERNALS__` exists on a slow first load —
+    // `report()` is a no-op until then, so the first insets are silently dropped.
+    // Instead poll for bridge readiness and request insets the moment it appears,
+    // bounded so a bridge that never comes up cannot spin forever.
+    redispatchInsetsWhenBridgeReady(webView, BRIDGE_READY_MAX_ATTEMPTS)
+
+    // Route the Android hardware back button through the same nopal:back-pressed
+    // event `simulate_back_pressed` uses, so `Platform_tauri.enable_hardware_back`
+    // handles the real button and the debug IPC identically (RFC 0116, REQ-F3).
+    // The callback invokes the payload-less `notify_back_pressed` Rust command —
+    // which re-emits via `app.emit` — because a JS-side event would not echo back
+    // to this webview (same round-trip constraint as `report`). The real-button
+    // path has no automated OS-level test; it is verified manually on the Pixel 7
+    // emulator (recorded in the PR).
+    // Phase 3: replace the manual-emulator check with an Appium-driven OS event.
+    onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+      override fun handleOnBackPressed() {
+        webView.post {
+          webView.evaluateJavascript(
+            "window.__TAURI_INTERNALS__ && " +
+              "window.__TAURI_INTERNALS__.invoke('notify_back_pressed')",
+            null
+          )
+        }
+      }
+    })
+  }
+
+  // Request the OnApplyWindowInsets listener re-run once the Tauri bridge is
+  // ready to receive the report, retrying on a short interval until then. Gating
+  // the re-dispatch on the actual readiness signal (rather than a fixed delay)
+  // keeps the initial safe area from being lost on a slow first load. Bounded by
+  // `attemptsLeft` so a webview whose bridge never initializes stops cleanly.
+  private fun redispatchInsetsWhenBridgeReady(webView: WebView, attemptsLeft: Int) {
+    if (attemptsLeft <= 0) return
+    webView.evaluateJavascript("!!(window.__TAURI_INTERNALS__)") { ready ->
+      if (ready == "true") {
+        ViewCompat.requestApplyInsets(webView)
+      } else {
+        webView.postDelayed(
+          { redispatchInsetsWhenBridgeReady(webView, attemptsLeft - 1) },
+          BRIDGE_READY_POLL_MS
+        )
+      }
+    }
   }
 
   // Deliver a native mobile signal by invoking a Rust bridge command through the
@@ -64,5 +108,12 @@ class MainActivity : TauriActivity() {
       "window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke(" +
         "'$command', { payload: '$payload' })"
     webView.post { webView.evaluateJavascript(js, null) }
+  }
+
+  companion object {
+    // Bridge-readiness poll for the initial inset re-dispatch: up to
+    // MAX_ATTEMPTS probes at POLL_MS spacing (~10 s ceiling) before giving up.
+    private const val BRIDGE_READY_MAX_ATTEMPTS = 100
+    private const val BRIDGE_READY_POLL_MS = 100L
   }
 }

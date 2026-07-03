@@ -33,15 +33,25 @@ val safe_area_source :
     [safe_area_source set] registers the native safe-area listener (dispatching
     [zero_insets] to [set] once at setup), and returns an unlisten cleanup. This
     is the mechanism behind REQ-F4's "runtime populates [Viewport.safe_area]
-    automatically". *)
+    automatically".
+
+    Supplied to [mount] on every Tauri host except iOS: the native bridge
+    delivers real insets on Android and a harmless zero inset on desktop
+    (NFR-1), so callers gate on [has_tauri () && not] {!Os.is_ios}. On iOS no
+    source must be passed — it falls back to the CSS [env()] safe-area insets;
+    supplying this there would feed a broken value while also suppressing that
+    fallback (feature 0121, FR-1). *)
 
 val enable_hardware_back : unit -> unit
-(** Idempotently register a listener for the Rust [nopal:back-pressed] event
-    (fired by the Android hardware back button and by the
-    [simulate_back_pressed] debug IPC command). Each firing calls
+(** Idempotently register a listener for the Rust [nopal:back-pressed] event. On
+    Android the hardware back button fires it for real, wired through
+    [MainActivity]'s [OnBackPressedCallback] into the [notify_back_pressed]
+    command; the [simulate_back_pressed] debug IPC command fires the same event
+    on every platform (the Tauri E2E's trigger). Each firing calls
     [window.history.back()], producing a [popstate] the router's existing
-    [on_navigate] subscription consumes — no app code required (REQ-F3). Inert
-    on desktop (the event never fires). *)
+    [on_navigate] subscription consumes — no app code required (REQ-F3). Desktop
+    has no hardware back button, so the event fires there only via
+    [simulate_back_pressed]. *)
 
 val parse_safe_area : string -> Nopal_element.Viewport.safe_area option
 (** Parse a ["top=<i>;right=<i>;bottom=<i>;left=<i>;"] safe-area payload into

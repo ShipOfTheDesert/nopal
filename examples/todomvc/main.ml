@@ -79,7 +79,7 @@ let () =
       ~to_path:Todomvc.to_path ~not_found:Todomvc.All_route
   in
   let storage = (module Storage_local : Todomvc.Storage) in
-  let (_ : Nopal_runtime.Telemetry.handle) =
+  let (_ : Nopal_web.mounted_with_telemetry) =
     Nopal_web.mount_with_telemetry
       (module struct
         type model = Todomvc.model

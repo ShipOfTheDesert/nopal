@@ -12,14 +12,17 @@ let () =
         El.append_children body [ div ];
         div
   in
-  Nopal_web.mount
-    (module struct
-      type model = Http_demo.model
-      type msg = Http_demo.msg
+  let (_ : Nopal_web.mounted) =
+    Nopal_web.mount
+      (module struct
+        type model = Http_demo.model
+        type msg = Http_demo.msg
 
-      let init = Http_demo.init
-      let update = Http_demo.update
-      let view = Http_demo.view
-      let subscriptions = Http_demo.subscriptions
-    end)
-    target
+        let init = Http_demo.init
+        let update = Http_demo.update
+        let view = Http_demo.view
+        let subscriptions = Http_demo.subscriptions
+      end)
+      target
+  in
+  ()

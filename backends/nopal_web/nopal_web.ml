@@ -5,6 +5,21 @@ module Canvas_renderer = Canvas_renderer
 module Platform_web = Platform_web
 module Storage = Storage
 
+type mounted = { unmount : unit -> unit }
+
+type mounted_with_telemetry = {
+  telemetry : Nopal_runtime.Telemetry.handle;
+  unmount : unit -> unit;
+}
+
+(* Teardown lifecycle for a driven mount. [unmount] is one-shot: it cancels the
+   rAF loop, disconnects the observer, unlistens the safe-area source, and shuts
+   the runtime down (which raises on a second call) — so both the teardown and
+   the rAF loop guard on this monotonic state and are inert once [Torn_down].
+   A single variant (not a bare bool) keeps the transition the only mutation and
+   the guards exhaustive (bug-class 4). *)
+type mount_lifecycle = Mounted | Torn_down
+
 let schedule_after ms callback =
   let w = Jv.get Jv.global "window" in
   let _id = Jv.call w "setTimeout" [| Jv.repr callback; Jv.of_int ms |] in
@@ -172,7 +187,9 @@ let drive (type msg) ~(start : unit -> unit)
     ~(flush_focus : unit -> unit)
     ~(safe_area_source :
        ((Nopal_element.Viewport.safe_area -> unit) -> unit -> unit) option)
-    ~(bridge : Nopal_runtime.Telemetry.handle option) (target : Brr.El.t) =
+    ~(shutdown : unit -> unit) ~(bridge : Nopal_runtime.Telemetry.handle option)
+    (target : Brr.El.t) : unit -> unit =
+  let w = Jv.get Jv.global "window" in
   (* Inject CSS custom properties bridging env() safe area values into JS-readable
      form. Must run before read_safe_area. Runs once on startup (REQ-N3). *)
   inject_safe_area_style ();
@@ -190,9 +207,8 @@ let drive (type msg) ~(start : unit -> unit)
   (* When a native source is supplied, register it: each delivered inset updates
      the cache and re-pushes the viewport. The source dispatches its degenerate
      value synchronously at setup, so this runs before the initial render below.
-     The returned unlisten cleanup is unused: [mount] runs for the page lifetime
-     (the existing ResizeObserver is likewise never disconnected). *)
-  let _unlisten_safe_area =
+     The returned unlisten is called by the teardown returned below (L4). *)
+  let unlisten_safe_area =
     match safe_area_source with
     | Some source ->
         source (fun insets ->
@@ -203,6 +219,13 @@ let drive (type msg) ~(start : unit -> unit)
   let root = Lwd.observe view_lwd in
   let initial_element = Lwd.quick_sample root in
   let handle = Renderer.create ~dispatch ~parent:target initial_element in
+  (* mutable: teardown lifecycle. The rAF loop and the returned teardown both
+     guard on it so unmount is idempotent and the loop stops rescheduling once
+     torn down (see {!mount_lifecycle}). *)
+  let lifecycle = ref Mounted in
+  (* mutable: the latest requestAnimationFrame id, so the teardown can cancel the
+     pending frame. Updated on every schedule. *)
+  let raf_id = ref Jv.undefined in
   (* A ref is used because OCaml's value restriction prevents directly
      defining a recursive closure that is passed to Jv.repr. The ref
      lets us tie the knot: each frame's callback reads !raf_loop to
@@ -231,27 +254,41 @@ let drive (type msg) ~(start : unit -> unit)
      on a dispatch, which already triggers a diff. *)
   (raf_loop :=
      fun _ts ->
-       if Lwd.is_damaged root then begin
-         let new_element = Lwd.quick_sample root in
-         Renderer.update ~dispatch handle new_element
-       end;
-       (* After the DOM patch so a [Cmd.focus] for an element created by this
-          frame's update finds it in the DOM (FR-3). *)
-       flush_focus ();
-       let w = Jv.get Jv.global "window" in
-       ignore (Jv.call w "requestAnimationFrame" [| Jv.repr !raf_loop |]));
+       match !lifecycle with
+       | Torn_down -> ()
+       | Mounted ->
+           if Lwd.is_damaged root then begin
+             let new_element = Lwd.quick_sample root in
+             Renderer.update ~dispatch handle new_element
+           end;
+           (* After the DOM patch so a [Cmd.focus] for an element created by this
+              frame's update finds it in the DOM (FR-3). *)
+           flush_focus ();
+           raf_id := Jv.call w "requestAnimationFrame" [| Jv.repr !raf_loop |]);
   (* Install the browser telemetry bridge over the driven runtime's handle
      (Layer 2). Only [mount_with_telemetry] supplies a handle; [mount] passes
      [None] and installs nothing. *)
   (match bridge with
   | Some handle -> Telemetry_bridge.install handle
   | None -> ());
-  let w = Jv.get Jv.global "window" in
-  ignore (Jv.call w "requestAnimationFrame" [| Jv.repr !raf_loop |])
+  raf_id := Jv.call w "requestAnimationFrame" [| Jv.repr !raf_loop |];
+  (* Teardown (L4): release everything the mount registered, exactly once. The
+     runtime [shutdown] tears down every active subscription listener; cancelling
+     the pending frame stops the rAF loop (which also self-guards on [lifecycle]);
+     the observer and the safe-area source are released explicitly. *)
+  fun () ->
+    match !lifecycle with
+    | Torn_down -> ()
+    | Mounted ->
+        lifecycle := Torn_down;
+        ignore (Jv.call w "cancelAnimationFrame" [| !raf_id |]);
+        ignore (Jv.call observer "disconnect" [||]);
+        unlisten_safe_area ();
+        shutdown ()
 
 let mount (type model msg) ?safe_area_source ?on_error
     (module A : Nopal_mvu.App.S with type model = model and type msg = msg)
-    (target : Brr.El.t) =
+    (target : Brr.El.t) : mounted =
   let module R = Nopal_runtime.Runtime.Make (A) in
   let pending_focus = Queue.create () in
   let rt =
@@ -259,17 +296,23 @@ let mount (type model msg) ?safe_area_source ?on_error
       ~focus:(fun id -> Queue.add id pending_focus)
       ~schedule_after ?on_error ~interpret_atom:web_interpret_atom ()
   in
-  drive
-    ~start:(fun () -> R.start rt)
-    ~set_viewport:(fun vp -> R.set_viewport rt vp)
-    ~view_lwd:(R.view rt)
-    ~dispatch:(fun msg -> R.dispatch rt msg)
-    ~flush_focus:(fun () -> drain_focus pending_focus)
-    ~safe_area_source ~bridge:None target
+  let unmount =
+    drive
+      ~start:(fun () -> R.start rt)
+      ~set_viewport:(fun vp -> R.set_viewport rt vp)
+      ~view_lwd:(R.view rt)
+      ~dispatch:(fun msg -> R.dispatch rt msg)
+      ~flush_focus:(fun () -> drain_focus pending_focus)
+      ~safe_area_source
+      ~shutdown:(fun () -> R.shutdown rt)
+      ~bridge:None target
+  in
+  { unmount }
 
 let mount_with_telemetry (type model msg) ?safe_area_source ?on_error
     (module A : Nopal_mvu.App.S with type model = model and type msg = msg)
-    ?serialize_msg ?serialize_model (target : Brr.El.t) =
+    ?serialize_msg ?serialize_model (target : Brr.El.t) : mounted_with_telemetry
+    =
   let module R = Nopal_runtime.Runtime.Make (A) in
   let pending_focus = Queue.create () in
   let rt, handle =
@@ -278,11 +321,15 @@ let mount_with_telemetry (type model msg) ?safe_area_source ?on_error
       ~schedule_after ?on_error ~interpret_atom:web_interpret_atom
       ?serialize_msg ?serialize_model ()
   in
-  drive
-    ~start:(fun () -> R.start rt)
-    ~set_viewport:(fun vp -> R.set_viewport rt vp)
-    ~view_lwd:(R.view rt)
-    ~dispatch:(fun msg -> R.dispatch rt msg)
-    ~flush_focus:(fun () -> drain_focus pending_focus)
-    ~safe_area_source ~bridge:(Some handle) target;
-  handle
+  let unmount =
+    drive
+      ~start:(fun () -> R.start rt)
+      ~set_viewport:(fun vp -> R.set_viewport rt vp)
+      ~view_lwd:(R.view rt)
+      ~dispatch:(fun msg -> R.dispatch rt msg)
+      ~flush_focus:(fun () -> drain_focus pending_focus)
+      ~safe_area_source
+      ~shutdown:(fun () -> R.shutdown rt)
+      ~bridge:(Some handle) target
+  in
+  { telemetry = handle; unmount }

@@ -109,3 +109,6 @@ jobs:
 
       - name: Check E2E specs are wired to a CI project
         run: just check-e2e-wired
+
+      - name: Self-test the shell guards
+        run: just selftest-guards

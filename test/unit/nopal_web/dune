@@ -102,3 +102,16 @@
  (modes js)
  (js_of_ocaml
   (javascript_files dom_shim.js subs_shim.js)))
+
+; test_mount_unmount drives the full mount/drive path and asserts the teardown
+; released its registrations, so it needs mount_shim (ResizeObserver + captured
+; rAF, live-observer count) and subs_shim (window listener registry + per-type
+; count) layered over dom_shim.
+
+(test
+ (name test_mount_unmount)
+ (package nopal_web)
+ (libraries nopal_web nopal_element nopal_runtime nopal_mvu alcotest brr)
+ (modes js)
+ (js_of_ocaml
+  (javascript_files dom_shim.js mount_shim.js subs_shim.js)))

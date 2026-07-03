@@ -774,16 +774,20 @@ let () =
   (* Mobile signal wiring (RFC 0116, Step 7): both ride the Tauri event bus, so
      they are inert/absent in a plain browser — gate on [has_tauri]. The
      hardware-back listener turns [nopal:back-pressed] into [history.back()]
-     (REQ-F3, idempotent); [safe_area_source] is threaded into mount so the
-     runtime auto-populates [Viewport.safe_area] (REQ-F4) instead of reading
-     CSS [env()]. *)
+     (REQ-F3, idempotent). [safe_area_source] is threaded into mount so the
+     runtime auto-populates [Viewport.safe_area] (REQ-F4). Wiring the native
+     source is safe on every Tauri host except iOS, where it yields a broken
+     value that also suppresses the CSS [env()] fallback — so gate it on
+     [has_tauri () && not (Os.is_ios ())] (feature 0121, FR-1). Android gets real
+     insets, desktop a harmless zero inset (NFR-1), iOS the CSS [env()] fallback. *)
   if has_tauri () then Nopal_tauri.Platform_tauri.enable_hardware_back ();
   let safe_area_source =
-    if has_tauri () then Some Nopal_tauri.Platform_tauri.safe_area_source
+    if has_tauri () && not (Nopal_tauri.Os.is_ios ()) then
+      Some Nopal_tauri.Platform_tauri.safe_area_source
     else None
   in
   if telemetry_enabled () then begin
-    let handle : Nopal_runtime.Telemetry.handle =
+    let mounted : Nopal_web.mounted_with_telemetry =
       Nopal_web.mount_with_telemetry ?safe_area_source
         ~on_error:show_error_toast
         (module Mounted)
@@ -794,9 +798,14 @@ let () =
        the webview (RFC 0112, Step 7). The underlying [plugin:event|emit] IPC is
        absent in a plain browser, so gate on [has_tauri]; the mirror is inert
        until this call (RFC Risk: [get_telemetry] returns [[]] otherwise). *)
-    if has_tauri () then Nopal_tauri.Telemetry.expose handle
+    if has_tauri () then Nopal_tauri.Telemetry.expose mounted.telemetry
   end
   else
-    Nopal_web.mount ?safe_area_source ~on_error:show_error_toast
-      (module Mounted)
-      target
+    (* The kitchen sink is a single-page app that lives for the page lifetime, so
+       its [mounted]/[unmount] teardown handle is intentionally discarded. *)
+    let (_ : Nopal_web.mounted) =
+      Nopal_web.mount ?safe_area_source ~on_error:show_error_toast
+        (module Mounted)
+        target
+    in
+    ()

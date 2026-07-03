@@ -44,7 +44,7 @@ jobs:
         with:
           ocaml-compiler: 5.3.0
           dune-cache: true
-          dune-cache-prefix: ios-v1
+          cache-prefix: ios-v1
           opam-disable-sandboxing: true
 
       - name: Install OCaml dependencies
@@ -85,7 +85,9 @@ jobs:
       - name: Boot iOS Simulator
         run: |
           set -euo pipefail
-          DEVICE=$(xcrun simctl list devices available | grep -Eo 'iPhone [0-9]+' | head -n1)
+          # Match the full device name up to the ` (UUID)` column so "iPhone 16
+          # Pro" is not truncated to "iPhone 16" (which would fail to boot).
+          DEVICE=$(xcrun simctl list devices available | grep -oE 'iPhone [^(]+' | head -n1 | sed -E 's/[[:space:]]+$//')
           echo "Booting simulator: ${DEVICE}"
           xcrun simctl boot "${DEVICE}"
           xcrun simctl bootstatus "${DEVICE}" -b
@@ -116,7 +118,7 @@ jobs:
           # Give the app a moment to either come up or crash, then confirm it is
           # still a live process inside the simulator.
           sleep 5
-          if ! xcrun simctl spawn booted launchctl list | grep -q "${BUNDLE_ID}"; then
+          if ! xcrun simctl spawn booted launchctl list | grep -qF "${BUNDLE_ID}"; then
             echo "error: ${BUNDLE_ID} is not running after launch — crashed on startup" >&2
             xcrun simctl spawn booted log show --last 1m --predicate "process == \"${BUNDLE_ID}\"" || true
             exit 1

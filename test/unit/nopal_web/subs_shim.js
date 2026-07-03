@@ -39,6 +39,12 @@
       if (arr) for (const fn of [...arr]) fn(ev);
       return !ev.defaultPrevented;
     };
+    // Live listener count per event type, so the mount teardown test can prove a
+    // subscription's listener is registered while mounted and removed on unmount
+    // (feature 0121, FR-4). Unused by test_subscriptions.
+    host.__nopal_listener_count = function (type) {
+      return (listeners[type] || []).length;
+    };
   }
 
   makeListenerHost(globalThis);
