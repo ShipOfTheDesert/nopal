@@ -69,10 +69,13 @@ let update model msg =
             GetResult o) )
   | GetResult (Ok { body; _ }) ->
       ({ model with get_state = Success body }, Nopal_mvu.Cmd.none)
-  | GetResult (Error (Network_error msg)) ->
-      ({ model with get_state = Errored msg }, Nopal_mvu.Cmd.none)
-  | GetResult (Error Timeout) ->
-      ( { model with get_state = Errored "request timed out" },
+  (* Every arm is spelled out so a new [Nopal_http.error] variant breaks this
+     match rather than being absorbed by a [| Error e ->] catch-all. They share
+     one rendering because {!Nopal_http.message} exists precisely so callers do
+     not each invent their own wording: phrasing them separately here put a bare
+     platform string and a full sentence side by side in the same readout. *)
+  | GetResult (Error ((Network_error _ | Timeout | Invalid_blob _) as e)) ->
+      ( { model with get_state = Errored (Nopal_http.message e) },
         Nopal_mvu.Cmd.none )
   | PostClicked ->
       ( { model with post_state = Loading },
@@ -82,10 +85,8 @@ let update model msg =
       )
   | PostResult (Ok { body; _ }) ->
       ({ model with post_state = Success body }, Nopal_mvu.Cmd.none)
-  | PostResult (Error (Network_error msg)) ->
-      ({ model with post_state = Errored msg }, Nopal_mvu.Cmd.none)
-  | PostResult (Error Timeout) ->
-      ( { model with post_state = Errored "request timed out" },
+  | PostResult (Error ((Network_error _ | Timeout | Invalid_blob _) as e)) ->
+      ( { model with post_state = Errored (Nopal_http.message e) },
         Nopal_mvu.Cmd.none )
   | PutClicked ->
       ( { model with put_state = Loading },
@@ -98,10 +99,8 @@ let update model msg =
           (fun o -> PutResult o) )
   | PutResult (Ok { body; _ }) ->
       ({ model with put_state = Success body }, Nopal_mvu.Cmd.none)
-  | PutResult (Error (Network_error msg)) ->
-      ({ model with put_state = Errored msg }, Nopal_mvu.Cmd.none)
-  | PutResult (Error Timeout) ->
-      ( { model with put_state = Errored "request timed out" },
+  | PutResult (Error ((Network_error _ | Timeout | Invalid_blob _) as e)) ->
+      ( { model with put_state = Errored (Nopal_http.message e) },
         Nopal_mvu.Cmd.none )
   | DeleteClicked ->
       ( { model with delete_state = Loading },
@@ -109,10 +108,8 @@ let update model msg =
           (fun o -> DeleteResult o) )
   | DeleteResult (Ok { body; _ }) ->
       ({ model with delete_state = Success body }, Nopal_mvu.Cmd.none)
-  | DeleteResult (Error (Network_error msg)) ->
-      ({ model with delete_state = Errored msg }, Nopal_mvu.Cmd.none)
-  | DeleteResult (Error Timeout) ->
-      ( { model with delete_state = Errored "request timed out" },
+  | DeleteResult (Error ((Network_error _ | Timeout | Invalid_blob _) as e)) ->
+      ( { model with delete_state = Errored (Nopal_http.message e) },
         Nopal_mvu.Cmd.none )
   | DecodeClicked ->
       ( { model with decode_state = DcLoading },
@@ -125,10 +122,8 @@ let update model msg =
         | Error msg -> DcErrored msg
       in
       ({ model with decode_state = state }, Nopal_mvu.Cmd.none)
-  | DecodeResult (Error (Network_error msg)) ->
-      ({ model with decode_state = DcErrored msg }, Nopal_mvu.Cmd.none)
-  | DecodeResult (Error Timeout) ->
-      ( { model with decode_state = DcErrored "request timed out" },
+  | DecodeResult (Error ((Network_error _ | Timeout | Invalid_blob _) as e)) ->
+      ( { model with decode_state = DcErrored (Nopal_http.message e) },
         Nopal_mvu.Cmd.none )
   | TimeoutClicked ->
       ( { model with timeout_state = Loading },
@@ -136,10 +131,8 @@ let update model msg =
             TimeoutResult o) )
   | TimeoutResult (Ok { body; _ }) ->
       ({ model with timeout_state = Success body }, Nopal_mvu.Cmd.none)
-  | TimeoutResult (Error (Network_error msg)) ->
-      ({ model with timeout_state = Errored msg }, Nopal_mvu.Cmd.none)
-  | TimeoutResult (Error Timeout) ->
-      ( { model with timeout_state = Errored "request timed out" },
+  | TimeoutResult (Error ((Network_error _ | Timeout | Invalid_blob _) as e)) ->
+      ( { model with timeout_state = Errored (Nopal_http.message e) },
         Nopal_mvu.Cmd.none )
 
 let view_get model =

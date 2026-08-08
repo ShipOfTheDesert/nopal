@@ -508,15 +508,15 @@ let serialize_msg : App.msg -> string = function
   | App.Subs_msg (Sub_subscriptions.VisibilityChanged v) ->
       "Subs:VisibilityChanged:" ^ string_of_bool v
   | App.Subs_msg (Sub_subscriptions.KeyCaptured k) -> "Subs:KeyCaptured:" ^ k
-  (* File-input selection: the count is what an E2E spec waits on before reading
-     the per-file fragments out of [serialize_model] below. Clearing the picker
-     reports a selection of 0 rather than dispatching nothing, so the wait has a
-     positive event to observe in both directions. The trailing ';' bounds the
-     count the way [serialize_model]'s fragments are bounded — telemetry
-     assertions match by substring, so [FilesSelected:1] would otherwise be
-     satisfied by a ten-file selection. *)
-  | App.File_input_msg (Sub_file_input.Selected files) ->
-      Printf.sprintf "FilesSelected:%d;" (List.length files)
+  (* File-input selection and upload: the selection count is what an E2E spec
+     waits on before reading the per-file fragments out of [serialize_model]
+     below. Clearing the picker reports a selection of 0 rather than dispatching
+     nothing, so the wait has a positive event to observe in both directions.
+     Every fragment is ';'-terminated the way [serialize_model]'s are —
+     telemetry assertions match by substring, so [FilesSelected:1] would
+     otherwise be satisfied by a ten-file selection. The section owns the
+     wording so its message and model fragments cannot drift apart. *)
+  | App.File_input_msg fi_msg -> Sub_file_input.serialize_msg fi_msg
   (* Mobile signals (RFC 0116): the keyboard-height readout (REQ-N2) and the
      back-demo route change the Tauri back-IPC e2e asserts on via the host
      [get_telemetry] mirror — [Route_changed] proves the hardware-back chain
@@ -698,10 +698,12 @@ let serialize_model (model : App.model) =
      back-IPC e2e can prove the model returned to [Back_home] after
      [simulate_back_pressed] via [assertModelContains]. The trailing ';' keeps
      [back_route=Back_home;] from prefix-aliasing a longer route name. *)
-  (* The current file selection is part of the asserted model surface so the
-     file-input spec can prove a picked file's name, mime and size reached the
-     model. [Sub_file_input.serialize_model] already terminates each
-     [field=value] with ';' so a size assertion cannot prefix-alias. *)
+  (* The current file selection and the upload outcome are part of the asserted
+     model surface so the file-input spec can prove a picked file's name, mime
+     and size reached the model, and the multipart spec can tell an unresolvable
+     blob handle from a network failure. [Sub_file_input.serialize_model]
+     already terminates each [field=value] with ';' so a size assertion cannot
+     prefix-alias, and each upload failure carries its own tag. *)
   Printf.sprintf
     "{pings=%d; clicks=%d; input=%S; storage=%s; win_visible=%b; win_title=%S; \
      tauri_store=%s; back_route=%s; bottom_tabs={%s}; file_input={%s}}"

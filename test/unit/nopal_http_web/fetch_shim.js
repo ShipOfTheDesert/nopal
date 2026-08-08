@@ -30,11 +30,55 @@ if (typeof Headers === "undefined") {
 // their abort -> reject -> dispatch chain before assertions run.
 globalThis._flush = function (cb) { setTimeout(cb, 150); };
 
+// Counts every fetch call in this process. A test that must prove no request
+// was issued (multipart with an unresolvable blob handle) reads it either side
+// of the call under test; asserting only on the outcome could not tell "failed
+// before fetching" from "fetched and then failed".
+globalThis._fetchCount = 0;
+
+// Duck-typed rather than `instanceof Blob`: a File is a Blob, and the value
+// reaching append may have been produced by any of Blob, File or Blob.slice.
+function isBlobLike(value) {
+  return value !== null && typeof value === "object"
+    && typeof value.size === "number" && typeof value.type === "string"
+    && typeof value.slice === "function";
+}
+
+// String() on a Blob yields "[object Blob]", which is indistinguishable from
+// any other object and hides the bytes the file-part tests exist to observe.
+// A blob is described by the two properties that identify what was appended —
+// its byte length and its MIME type — plus the filename the platform would
+// record. The angle brackets bound the whole descriptor so a substring
+// assertion cannot alias a neighbouring entry's value.
+//
+// [stated] says whether a third argument was passed at all, which is the
+// distinction the backend's two-arg call exists to make and which the value of
+// that argument cannot express: real FormData names an omitted filename "blob",
+// but names an explicitly-passed `undefined` the literal string "undefined".
+// Collapsing those two would let the backend regress to always passing three
+// arguments without a test noticing. Verified under Node 22:
+//
+//   fd.append("a", blob, undefined) -> entry name "undefined"
+//   fd.append("b", blob)            -> entry name "blob"
+//
+// A filename alongside a string value is dropped, matching real FormData, which
+// ignores the third argument unless the value is a Blob.
+function describeAppendedValue(value, filename, stated) {
+  if (!isBlobLike(value)) return String(value);
+  var name = stated ? String(filename) : "blob";
+  return "<blob size=" + value.size + " type=" + value.type
+    + " filename=" + name + ">";
+}
+
 // Override FormData so tests control its shape. The polyfill exposes
 // _entries for the shim to serialise into the echoed response body.
 globalThis.FormData = function () { this._entries = []; };
-globalThis.FormData.prototype.append = function (name, value) {
-  this._entries.push([name, value]);
+globalThis.FormData.prototype.append = function (name, value, filename) {
+  // arguments.length, not `filename !== undefined`: see describeAppendedValue.
+  this._entries.push([
+    name,
+    describeAppendedValue(value, filename, arguments.length >= 3),
+  ]);
 };
 
 // Helper: build standard response headers using the native Headers API.
@@ -59,6 +103,7 @@ function makeAbortError() {
 // Always override: Node.js 18+ has native fetch, but tests need the fake.
 (function () {
   globalThis.fetch = function (url, init) {
+    globalThis._fetchCount += 1;
     url = typeof url === "string" ? url : String(url);
     var method = (init && init.method) ? String(init.method) : "GET";
     var rawHeaders = (init && init.headers) ? init.headers : {};

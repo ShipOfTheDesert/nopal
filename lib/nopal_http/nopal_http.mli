@@ -14,22 +14,52 @@ type response = {
     is the response body as a string. [headers] is a list of response header
     name-value pairs with lowercased names. *)
 
+(** One part of a [Multipart] body. A [File] part names its bytes by handle so
+    binary never enters the OCaml heap. *)
+type part =
+  | Field of string * string
+      (** [Field (name, value)] is a plain string form field. *)
+  | File of {
+      name : string;  (** The form field name the part is sent under. *)
+      blob_id : string;
+          (** Opaque handle issued by the web blob store. Never parse, derive,
+              or fabricate one — a handle is only meaningful to a web backend,
+              which is the only place it can be resolved. On any other backend a
+              [File] part cannot be sent. *)
+      filename : string option;
+          (** Filename the server sees. [None] defers to the blob's own name. *)
+      mime : string option;
+          (** MIME type the part is sent under. [None] defers to the type the
+              blob itself reports. A value here is a caller {e declaration}
+              attached to the outgoing part, never a check that the bytes match
+              it — a server must not trust it. *)
+    }  (** A file part, named by store handle rather than carrying its bytes. *)
+
+(** HTTP request body variants. *)
 type body =
   | String of { content : string; content_type : string option }
-  | Json of string
+      (** Raw content with an optional content type. *)
+  | Json of string  (** A JSON string. *)
   | Form_encoded of (string * string) list
-  | Multipart of (string * string) list
-  | Empty
-      (** HTTP request body variants. [String] carries raw content with an
-          optional content type. [Json] carries a JSON string. [Form_encoded]
-          and [Multipart] carry key-value pairs. [Empty] indicates no body. *)
+      (** Key-value pairs, URL-encoded into the body. *)
+  | Multipart of part list
+      (** No [Content-Type] header is sent for a multipart body — the platform's
+          Fetch implementation generates the boundary, and a hand-written header
+          would not match the encoded body. *)
+  | Empty  (** No body. *)
 
+(** HTTP failure modes. *)
 type error =
   | Network_error of string
-  | Timeout
-      (** HTTP failure modes. [Network_error msg] indicates the request could
-          not be completed (DNS failure, connection refused, etc.). [Timeout]
-          indicates the request exceeded its timeout. *)
+      (** The request could not be completed (DNS failure, connection refused,
+          etc.). Carries the platform's message. *)
+  | Timeout  (** The request exceeded its timeout. *)
+  | Invalid_blob of string
+      (** A [File] part named a handle with no store entry at send time. Carries
+          the unresolvable handle, and nothing was sent. *)
+
+val message : error -> string
+(** Human-readable description of an [error], for display. *)
 
 type outcome = (response, error) result
 (** The result of an HTTP request — either a successful [response] or an

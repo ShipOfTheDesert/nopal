@@ -28,7 +28,7 @@ nopal_ui        ← High-level UI components (Bottom_tabs, Button, Checkbox, Dat
 nopal_runtime   ← Lwd reactive integration + MVU loop; Telemetry (E2E event log)
 nopal_test      ← Pure OCaml test renderer + Telemetry_test harness — no js_of_ocaml
 nopal_web       ← js_of_ocaml + Brr DOM renderer (only browser-dependent package)
-nopal_http_web  ← Browser Fetch API backend for nopal_http — js_of_ocaml + Brr
+nopal_http_web  ← Browser Fetch API backend for nopal_http — depends on nopal_blob_web (multipart file parts); js_of_ocaml + Brr, never nopal_web/nopal_runtime/lwd
 nopal_blob_web  ← Session-local handle ⇄ Brr.Blob.t registry, reachable from any _web backend — js_of_ocaml + Brr
 nopal_storage_web   ← IndexedDB backend implementing Nopal_storage.S — js_of_ocaml + Brr
 nopal_storage_tauri ← Filesystem (tauri-plugin-fs) backend implementing Nopal_storage.S — js_of_ocaml + Brr
@@ -1514,15 +1514,35 @@ Pure HTTP types and backend abstraction. Application code uses these types in `u
 type response = { status : int; body : string; headers : (string * string) list }
 
 (* Error types *)
-type error = Network_error of string | Timeout
+type error =
+  | Network_error of string
+  | Timeout
+  | Invalid_blob of string   (* a File part named a handle with no store entry;
+                                carries the handle — nothing was sent *)
 type outcome = (response, error) result
+
+val message : error -> string   (* human-readable, for display *)
+
+(* Multipart parts. A File part names its bytes by the opaque handle the web
+   blob store issued (Nopal_blob_web.Blob_store.store) — binary never enters
+   the OCaml heap, and only a _web backend can resolve one. *)
+type part =
+  | Field of string * string      (* Field (name, value) — plain string field *)
+  | File of {
+      name : string;              (* form field name *)
+      blob_id : string;           (* opaque store handle; never fabricate one *)
+      filename : string option;   (* None defers to the blob's own name *)
+      mime : string option;       (* None defers to the blob's reported type;
+                                     a value is a declaration, not validation *)
+    }
 
 (* Request body variants *)
 type body =
   | String of { content : string; content_type : string option }
   | Json of string
   | Form_encoded of (string * string) list
-  | Multipart of (string * string) list
+  | Multipart of part list   (* no Content-Type is sent — the platform's Fetch
+                                implementation generates the boundary *)
   | Empty
 
 (* HTTP methods and request record *)
@@ -1589,7 +1609,7 @@ Usage in `update`:
 
 ```ocaml
 type msg = FetchData | GotData of Nopal_http.outcome
-         | Posted of Nopal_http.outcome
+         | Posted of Nopal_http.outcome | Uploaded of Nopal_http.outcome
 
 let update model = function
   | FetchData ->
@@ -1598,16 +1618,37 @@ let update model = function
       ({ model with data = parse body }, Cmd.none)
   | GotData (Ok { status; _ }) ->
       ({ model with error = Some (Printf.sprintf "HTTP %d" status) }, Cmd.none)
-  | GotData (Error (Network_error msg)) ->
-      ({ model with error = Some msg }, Cmd.none)
-  | GotData (Error Timeout) ->
-      ({ model with error = Some "Request timed out" }, Cmd.none)
+  (* Name every constructor and render through `message`. Never collapse to
+     `| GotData (Error e) ->`: that compiles forever and would silently swallow
+     a future error variant. Spelling them out in one arm keeps the compiler as
+     the guard while giving the app a single wording for failures. *)
+  | GotData (Error ((Network_error _ | Timeout | Invalid_blob _) as e)) ->
+      ({ model with error = Some (Nopal_http.message e) }, Cmd.none)
   | Posted _ -> (* handle POST response *) (model, Cmd.none)
 
 (* POST with JSON body *)
 let submit_data model =
   let body = Nopal_http.Json (encode model.form) in
   (model, Nopal_http.post ~body "https://api.example.com/data" (fun r -> Posted r))
+
+(* POST a picked file plus a string field as one multipart/form-data request.
+   [file] is the Element.file_info the file_input's on_change handed over. *)
+let upload model (file : Element.file_info) =
+  let body =
+    Nopal_http.Multipart
+      [ Nopal_http.Field ("caption", model.caption);
+        Nopal_http.File
+          { name = "receipt";
+            blob_id = file.blob_id;
+            filename = Some file.name;   (* None defers to the blob's name *)
+            mime = Some file.mime }      (* None defers to the blob's type *)
+      ]
+  in
+  (model, Nopal_http.post ~body "/api/receipt-upload" (fun r -> Uploaded r))
+
+(* A handle with no store entry (released, or fabricated) fails the whole
+   request with Error (Invalid_blob handle) before any fetch is issued — a
+   partial body is never sent. *)
 ```
 
 ### HTTP Web Backend (`nopal_http_web`)
@@ -1632,7 +1673,13 @@ val send_cancellable : Nopal_http.request
 
 (* All functions use the browser Fetch API. Network failures produce
    Error (Network_error msg), timeouts produce Error Timeout — never
-   a raised exception. send_cancellable aborts via AbortController on cancel. *)
+   a raised exception. send_cancellable aborts via AbortController on cancel.
+
+   A Multipart body resolves each File part's blob_id against
+   Nopal_blob_web.Blob_store and appends the stored Brr.Blob.t itself, so the
+   bytes are never read into OCaml. An unresolvable handle produces
+   Error (Invalid_blob handle) — again never a raised exception — and fails the
+   whole request: no fetch is issued, so no other part is sent either. *)
 ```
 
 ### Blob Store (`nopal_blob_web`)

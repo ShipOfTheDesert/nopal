@@ -253,7 +253,8 @@ nopal_http         ← depends on mvu, no platform deps
 nopal_router       ← no platform deps
 nopal_runtime      ← depends on mvu + element + lwd
 nopal_web          ← depends on runtime + brr + js_of_ocaml
-nopal_http_web     ← depends on nopal_http + brr + js_of_ocaml
+nopal_blob_web     ← depends on brr + js_of_ocaml (session-local blob handle registry)
+nopal_http_web     ← depends on nopal_http + nopal_blob_web + brr + js_of_ocaml
 nopal_test         ← depends on element + style + mvu + runtime (must build on native OCaml)
 ```
 

@@ -4,14 +4,33 @@ type response = {
   headers : (string * string) list;
 }
 
+type part =
+  | Field of string * string
+  | File of {
+      name : string;
+      blob_id : string;
+      filename : string option;
+      mime : string option;
+    }
+
 type body =
   | String of { content : string; content_type : string option }
   | Json of string
   | Form_encoded of (string * string) list
-  | Multipart of (string * string) list
+  | Multipart of part list
   | Empty
 
-type error = Network_error of string | Timeout
+type error = Network_error of string | Timeout | Invalid_blob of string
+
+let message = function
+  | Network_error msg -> Printf.sprintf "HTTP network error: %s" msg
+  | Timeout -> "HTTP request timed out"
+  | Invalid_blob handle ->
+      Printf.sprintf
+        "HTTP multipart file part names blob handle %s, which has no store \
+         entry; nothing was sent"
+        handle
+
 type outcome = (response, error) result
 type meth = GET | POST | PUT | DELETE | PATCH
 

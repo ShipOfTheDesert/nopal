@@ -230,6 +230,7 @@
   ocaml
   nopal_http
   nopal_mvu
+  nopal_blob_web
   brr
   js_of_ocaml))
 

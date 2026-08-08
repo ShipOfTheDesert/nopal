@@ -8,10 +8,82 @@ let encode_uri_component (s : string) : string =
     (Jv.to_jstr
        (Jv.apply encode_uri_component_fn [| Jv.of_jstr (Jstr.of_string s) |]))
 
+(* The filename the server should see for a [File] part: the caller's override
+   when it gave one, otherwise the name the blob itself reports. Only a [File]
+   carries a [name] — a plain [Blob] has none, and neither does the re-typed
+   blob a [mime] override produces — so this is read from the stored object
+   before any override is applied. Without it, overriding [mime] would also
+   reset the filename to the platform's placeholder, and the two overrides are
+   specified to be independent. *)
+let part_filename ~filename blob =
+  match filename with
+  | Some name -> Some (Jstr.of_string name)
+  | None -> Jv.find_map Jv.to_jstr (Brr.Blob.to_jv blob) "name"
+
+(* Appends one multipart [part] to [form_data]. Fails — as a value, never by
+   raising — when a [File] part names a handle the blob store cannot resolve:
+   the enclosing {!Nopal_mvu.Task.guard} maps every exception to
+   [Network_error], so a raise here would be indistinguishable from a genuine
+   network failure, which is exactly what [Invalid_blob] exists to prevent. *)
+let append_part form_data (part : Nopal_http.part) =
+  let append args = ignore (Jv.call form_data "append" args) in
+  match part with
+  | Nopal_http.Field (name, value) ->
+      append
+        [|
+          Jv.of_jstr (Jstr.of_string name); Jv.of_jstr (Jstr.of_string value);
+        |];
+      Ok ()
+  | Nopal_http.File { name; blob_id; filename; mime } -> (
+      match Nopal_blob_web.Blob_store.lookup blob_id with
+      | None -> Error (Nopal_http.Invalid_blob blob_id)
+      | Some blob ->
+          let blob_jv = Brr.Blob.to_jv blob in
+          let value =
+            match mime with
+            | None -> blob_jv
+            | Some mime ->
+                (* Re-slicing the whole blob is how a [Blob] gets a different
+                   MIME type, and [slice] is a view over the same bytes rather
+                   than a copy of them. The extent is read straight off the JS
+                   [size] property instead of through [Brr.Blob.byte_length],
+                   whose OCaml [int] would wrap for a blob of 2 GiB or more and
+                   silently truncate the upload. *)
+                Jv.call blob_jv "slice"
+                  [|
+                    Jv.of_int 0;
+                    Jv.get blob_jv "size";
+                    Jv.of_jstr (Jstr.of_string mime);
+                  |]
+          in
+          let field = Jv.of_jstr (Jstr.of_string name) in
+          (* Two arguments when there is no filename to state: passing an absent
+             one explicitly would send the string "undefined" as the filename. *)
+          (match part_filename ~filename blob with
+          | None -> append [| field; value |]
+          | Some filename -> append [| field; value; Jv.of_jstr filename |]);
+          Ok ())
+
+(* Builds the [FormData] for a multipart body, or fails with the first
+   unresolvable handle. A failure abandons the whole body — a partially built
+   one is never handed to Fetch, so the request either carries every part or is
+   not issued at all. *)
+let form_data_of_parts (parts : Nopal_http.part list) =
+  let form_data = Jv.new' (Jv.get Jv.global "FormData") [||] in
+  let rec append_all = function
+    | [] -> Ok form_data
+    | part :: rest -> (
+        match append_part form_data part with
+        | Ok () -> append_all rest
+        | Error err -> Error err)
+  in
+  append_all parts
+
 (** [prepare_request request] extracts the HTTP method, headers, and body from
-    [request] into Fetch API values. Returns [(method', headers, body)] where
+    [request] into Fetch API values. Returns [Ok (method', headers, body)] where
     [headers] and [body] are [option] types ready for
-    [Brr_io.Fetch.Request.init]. *)
+    [Brr_io.Fetch.Request.init], or [Error (Invalid_blob handle)] when a
+    multipart [File] part names a handle with no blob-store entry. *)
 let prepare_request (request : Nopal_http.request) =
   let method' =
     Jstr.of_string
@@ -48,10 +120,11 @@ let prepare_request (request : Nopal_http.request) =
   in
   let body =
     match request.body with
-    | Nopal_http.Empty -> None
+    | Nopal_http.Empty -> Ok None
     | Nopal_http.String { content; _ } ->
-        Some (Brr_io.Fetch.Body.of_jstr (Jstr.of_string content))
-    | Nopal_http.Json s -> Some (Brr_io.Fetch.Body.of_jstr (Jstr.of_string s))
+        Ok (Some (Brr_io.Fetch.Body.of_jstr (Jstr.of_string content)))
+    | Nopal_http.Json s ->
+        Ok (Some (Brr_io.Fetch.Body.of_jstr (Jstr.of_string s)))
     | Nopal_http.Form_encoded pairs ->
         let encoded =
           String.concat "&"
@@ -60,22 +133,17 @@ let prepare_request (request : Nopal_http.request) =
                  encode_uri_component k ^ "=" ^ encode_uri_component v)
                pairs)
         in
-        Some (Brr_io.Fetch.Body.of_jstr (Jstr.of_string encoded))
-    | Nopal_http.Multipart pairs ->
-        let form_data = Jv.new' (Jv.get Jv.global "FormData") [||] in
-        List.iter
-          (fun (k, v) ->
-            ignore
-              (Jv.call form_data "append"
-                 [|
-                   Jv.of_jstr (Jstr.of_string k); Jv.of_jstr (Jstr.of_string v);
-                 |]))
-          pairs;
-        (* Jv.Id.of_jv: safe cast — form_data was created via Jv.new' "FormData",
-           so it is a FormData instance that of_form_data expects. *)
-        Some (Brr_io.Fetch.Body.of_form_data (Jv.Id.of_jv form_data))
+        Ok (Some (Brr_io.Fetch.Body.of_jstr (Jstr.of_string encoded)))
+    | Nopal_http.Multipart parts -> (
+        match form_data_of_parts parts with
+        | Error err -> Error err
+        | Ok form_data ->
+            (* Jv.Id.of_jv: safe cast — form_data was created via Jv.new'
+               "FormData", so it is a FormData instance that of_form_data
+               expects. *)
+            Ok (Some (Brr_io.Fetch.Body.of_form_data (Jv.Id.of_jv form_data))))
   in
-  (method', headers, body)
+  Result.map (fun body -> (method', headers, body)) body
 
 (** [read_response response resolve] reads the response body and calls [resolve]
     with the parsed [Nopal_http.outcome]. *)
@@ -105,34 +173,63 @@ let error_of_exn = function
   | Jv.Error e -> Nopal_http.Network_error (Jstr.to_string (Jv.Error.message e))
   | e -> Nopal_http.Network_error (Printexc.to_string e)
 
+(* Delivers at most one outcome to [resolve].
+
+   {!Nopal_mvu.Task.guard} is [try f resolve with e -> resolve (Error …)], so
+   any [resolve] called *synchronously* inside the task body sits within that
+   [try]: if the dispatch it triggers raises — an application [update] is
+   arbitrary code — the guard catches the exception and resolves a second time
+   with a [Network_error], misattributing an application bug to the network.
+   Every other [resolve] in this backend runs from a [Fut.await] callback, which
+   is outside the [try]; the blob-handle failure is the one synchronous path, so
+   it is the one that needs the latch. {!Nopal_mvu.Task.cancellable} already
+   holds an equivalent latch, which is why {!send_cancellable} shares this one
+   only for symmetry rather than out of need. *)
+let once resolve =
+  let resolved = ref false in
+  fun outcome ->
+    match !resolved with
+    | true -> ()
+    | false ->
+        resolved := true;
+        resolve outcome
+
 let send (request : Nopal_http.request) =
   Nopal_mvu.Task.guard ~on_exn:error_of_exn (fun resolve ->
-      let method', headers, body = prepare_request request in
-      let signal, timer_id =
-        match request.timeout with
-        | None -> (None, None)
-        | Some seconds ->
-            let controller = Brr.Abort.controller () in
-            let signal = Brr.Abort.signal controller in
-            let ms = int_of_float (seconds *. 1000.0) in
-            let tid =
-              Brr.G.set_timeout ~ms (fun () -> Brr.Abort.abort controller)
-            in
-            (Some signal, Some tid)
-      in
-      let init = Brr_io.Fetch.Request.init ?body ?headers ?signal ~method' () in
-      let fut = Brr_io.Fetch.url ~init (Jstr.of_string request.url) in
-      Fut.await fut (function
-        | Error err ->
-            Option.iter Brr.G.stop_timer timer_id;
-            let is_abort = Jv.Error.enum err = `Abort_error in
-            if is_abort then resolve (Error Nopal_http.Timeout)
-            else
-              let msg = Jstr.to_string (Jv.Error.message err) in
-              resolve (Error (Nopal_http.Network_error msg))
-        | Ok response ->
-            Option.iter Brr.G.stop_timer timer_id;
-            read_response response resolve))
+      let resolve = once resolve in
+      (* An unresolvable blob handle resolves the task here and returns: no
+         fetch is issued, no timer is armed, and the single resolution the task
+         contract allows has already happened. *)
+      match prepare_request request with
+      | Error err -> resolve (Error err)
+      | Ok (method', headers, body) ->
+          let signal, timer_id =
+            match request.timeout with
+            | None -> (None, None)
+            | Some seconds ->
+                let controller = Brr.Abort.controller () in
+                let signal = Brr.Abort.signal controller in
+                let ms = int_of_float (seconds *. 1000.0) in
+                let tid =
+                  Brr.G.set_timeout ~ms (fun () -> Brr.Abort.abort controller)
+                in
+                (Some signal, Some tid)
+          in
+          let init =
+            Brr_io.Fetch.Request.init ?body ?headers ?signal ~method' ()
+          in
+          let fut = Brr_io.Fetch.url ~init (Jstr.of_string request.url) in
+          Fut.await fut (function
+            | Error err ->
+                Option.iter Brr.G.stop_timer timer_id;
+                let is_abort = Jv.Error.enum err = `Abort_error in
+                if is_abort then resolve (Error Nopal_http.Timeout)
+                else
+                  let msg = Jstr.to_string (Jv.Error.message err) in
+                  resolve (Error (Nopal_http.Network_error msg))
+            | Ok response ->
+                Option.iter Brr.G.stop_timer timer_id;
+                read_response response resolve))
 
 let get ?(headers = []) ?timeout url =
   send { Nopal_http.meth = GET; url; headers; body = Empty; timeout }
@@ -159,36 +256,42 @@ let send_cancellable (request : Nopal_http.request) =
             aborted_by_cancel := true;
             Brr.Abort.abort controller);
         Nopal_mvu.Task.guard ~on_exn:error_of_exn (fun resolve ->
-            let method', headers, body = prepare_request request in
-            let timer_id =
-              match request.timeout with
-              | None -> None
-              | Some seconds ->
-                  let ms = int_of_float (seconds *. 1000.0) in
-                  let tid =
-                    Brr.G.set_timeout ~ms (fun () -> Brr.Abort.abort controller)
-                  in
-                  Some tid
-            in
-            let init =
-              Brr_io.Fetch.Request.init ?body ?headers ~signal ~method' ()
-            in
-            let fut = Brr_io.Fetch.url ~init (Jstr.of_string request.url) in
-            Fut.await fut (function
-              | Error err ->
-                  Option.iter Brr.G.stop_timer timer_id;
-                  let is_abort = Jv.Error.enum err = `Abort_error in
-                  if is_abort then begin
-                    if !aborted_by_cancel then
-                      resolve (Error (Nopal_http.Network_error "cancelled"))
-                    else resolve (Error Nopal_http.Timeout)
-                  end
-                  else
-                    let msg = Jstr.to_string (Jv.Error.message err) in
-                    resolve (Error (Nopal_http.Network_error msg))
-              | Ok response ->
-                  Option.iter Brr.G.stop_timer timer_id;
-                  read_response response resolve)))
+            let resolve = once resolve in
+            (* As in {!send}: an unresolvable blob handle resolves the task
+               before anything is fetched or any timer is armed. *)
+            match prepare_request request with
+            | Error err -> resolve (Error err)
+            | Ok (method', headers, body) ->
+                let timer_id =
+                  match request.timeout with
+                  | None -> None
+                  | Some seconds ->
+                      let ms = int_of_float (seconds *. 1000.0) in
+                      let tid =
+                        Brr.G.set_timeout ~ms (fun () ->
+                            Brr.Abort.abort controller)
+                      in
+                      Some tid
+                in
+                let init =
+                  Brr_io.Fetch.Request.init ?body ?headers ~signal ~method' ()
+                in
+                let fut = Brr_io.Fetch.url ~init (Jstr.of_string request.url) in
+                Fut.await fut (function
+                  | Error err ->
+                      Option.iter Brr.G.stop_timer timer_id;
+                      let is_abort = Jv.Error.enum err = `Abort_error in
+                      if is_abort then begin
+                        if !aborted_by_cancel then
+                          resolve (Error (Nopal_http.Network_error "cancelled"))
+                        else resolve (Error Nopal_http.Timeout)
+                      end
+                      else
+                        let msg = Jstr.to_string (Jv.Error.message err) in
+                        resolve (Error (Nopal_http.Network_error msg))
+                  | Ok response ->
+                      Option.iter Brr.G.stop_timer timer_id;
+                      read_response response resolve)))
   in
   (* Flatten the outcome of the cancellable wrapper:
      'a outcome where 'a = (response, error) result

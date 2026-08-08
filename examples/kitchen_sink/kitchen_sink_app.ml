@@ -708,10 +708,14 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
             (fun o -> FetchResult o) )
     | FetchResult (Ok { body; _ }) ->
         ({ model with http_state = Success body }, Nopal_mvu.Cmd.none)
-    | FetchResult (Error (Network_error msg)) ->
-        ({ model with http_state = Errored msg }, Nopal_mvu.Cmd.none)
-    | FetchResult (Error Timeout) ->
-        ( { model with http_state = Errored "request timed out" },
+    (* Every arm is spelled out so a new [Nopal_http.error] variant breaks this
+       match rather than being absorbed by a [| Error e ->] catch-all. They
+       share one rendering because {!Nopal_http.message} exists precisely so
+       callers do not each invent their own wording: phrasing them separately
+       here put a bare platform string and a full sentence side by side in the
+       same readout. *)
+    | FetchResult (Error ((Network_error _ | Timeout | Invalid_blob _) as e)) ->
+        ( { model with http_state = Errored (Nopal_http.message e) },
           Nopal_mvu.Cmd.none )
     | PostClicked ->
         ( { model with post_state = Loading },
@@ -719,10 +723,8 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
             "https://httpbin.org/post" (fun o -> PostResult o) )
     | PostResult (Ok { body; _ }) ->
         ({ model with post_state = Success body }, Nopal_mvu.Cmd.none)
-    | PostResult (Error (Network_error msg)) ->
-        ({ model with post_state = Errored msg }, Nopal_mvu.Cmd.none)
-    | PostResult (Error Timeout) ->
-        ( { model with post_state = Errored "request timed out" },
+    | PostResult (Error ((Network_error _ | Timeout | Invalid_blob _) as e)) ->
+        ( { model with post_state = Errored (Nopal_http.message e) },
           Nopal_mvu.Cmd.none )
     | PutClicked ->
         ( { model with put_state = Loading },
@@ -731,13 +733,10 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | PutResult (Ok { body; headers; _ }) ->
         ( { model with put_state = Success body; resp_headers = headers },
           Nopal_mvu.Cmd.none )
-    | PutResult (Error (Network_error msg)) ->
-        ( { model with put_state = Errored msg; resp_headers = [] },
-          Nopal_mvu.Cmd.none )
-    | PutResult (Error Timeout) ->
+    | PutResult (Error ((Network_error _ | Timeout | Invalid_blob _) as e)) ->
         ( {
             model with
-            put_state = Errored "request timed out";
+            put_state = Errored (Nopal_http.message e);
             resp_headers = [];
           },
           Nopal_mvu.Cmd.none )
@@ -747,10 +746,9 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
               TimeoutResult o) )
     | TimeoutResult (Ok { body; _ }) ->
         ({ model with timeout_state = Success body }, Nopal_mvu.Cmd.none)
-    | TimeoutResult (Error (Network_error msg)) ->
-        ({ model with timeout_state = Errored msg }, Nopal_mvu.Cmd.none)
-    | TimeoutResult (Error Timeout) ->
-        ( { model with timeout_state = Errored "request timed out" },
+    | TimeoutResult (Error ((Network_error _ | Timeout | Invalid_blob _) as e))
+      ->
+        ( { model with timeout_state = Errored (Nopal_http.message e) },
           Nopal_mvu.Cmd.none )
     | FetchTauriInfo -> (model, Nopal_mvu.Cmd.none)
     | GotAppName name ->

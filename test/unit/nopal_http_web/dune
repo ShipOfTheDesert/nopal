@@ -5,6 +5,7 @@
   nopal_http_web
   nopal_http
   nopal_mvu
+  nopal_blob_web
   test_util
   alcotest
   brr
