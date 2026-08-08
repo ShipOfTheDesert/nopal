@@ -152,6 +152,25 @@
   ocaml))
 
 (package
+ (name nopal_image)
+ (synopsis
+  "Pure pixel buffer, luminance conversion and sharpness metric for Nopal")
+ (depends
+  (qcheck-core
+   (and
+    (>= 0.91)
+    :with-test))
+  (qcheck-alcotest
+   (and
+    (>= 0.91)
+    :with-test))
+  (alcotest
+   (and
+    (>= 1.9.1)
+    :with-test))
+  ocaml))
+
+(package
  (name nopal_test)
  (synopsis "Pure structural test renderer for Nopal")
  (depends

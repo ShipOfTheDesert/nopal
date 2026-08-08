@@ -250,6 +250,7 @@ nopal_style        ← no platform deps
 nopal_scene        ← depends on style, no platform deps (Color, Paint, Transform, Path, Scene)
 nopal_draw         ← depends on scene + style (Scale + higher-level Path algorithms)
 nopal_http         ← depends on mvu, no platform deps
+nopal_image        ← no platform deps (Buffer, Luma, Sharpness, Config)
 nopal_router       ← no platform deps
 nopal_runtime      ← depends on mvu + element + lwd
 nopal_web          ← depends on runtime + brr + js_of_ocaml

@@ -24,6 +24,7 @@ nopal_charts    ← Composable interactive charts (Bar, Line, Area, Pie, Scatter
                    Color_scale, Domain_window, Viewport, Downsample, Snap)
 nopal_http      ← Pure HTTP types + backend abstraction — no platform deps
 nopal_navigation ← Nav_stack: pure stack-based navigation state (non-empty, total pop) — no platform deps
+nopal_image     ← Validated RGBA Buffer, perceptual Luma, Sharpness metric, capture Config — no platform deps
 nopal_ui        ← High-level UI components (Bottom_tabs, Button, Checkbox, Data_table, Modal, Navigation_bar, Radio_group, Select_input, Slug, Text_input, Toast) — no platform deps
 nopal_runtime   ← Lwd reactive integration + MVU loop; Telemetry (E2E event log)
 nopal_test      ← Pure OCaml test renderer + Telemetry_test harness — no js_of_ocaml
@@ -36,7 +37,7 @@ nopal_tauri     ← Tauri desktop/mobile bindings — depends on nopal_mvu (for 
 nopal_telemetry_wire ← Shared telemetry event ⇄ JS wire codec for nopal_web + nopal_tauri — js_of_ocaml + Brr
 ```
 
-Critical boundary: `nopal_element`, `nopal_style`, `nopal_test`, `nopal_platform`, `nopal_storage` must compile on native OCaml without js_of_ocaml. Application view code never imports `nopal_web` or `Brr`.
+Critical boundary: `nopal_element`, `nopal_style`, `nopal_test`, `nopal_platform`, `nopal_storage`, `nopal_image` must compile on native OCaml without js_of_ocaml. Application view code never imports `nopal_web` or `Brr`.
 
 ## Quick Start
 
@@ -1123,6 +1124,100 @@ end
 module App = App.Make (Platform_web)
 ```
 
+### Image (`nopal_image`)
+
+Pure pixel data: a validated RGBA buffer, its conversion to perceptual luminance,
+a sharpness (focus) metric over that luminance, and the capture parameters a
+platform backend reads. Zero dependencies — not even `nopal_mvu` — and compiles
+native, so the metric is testable without a browser. Nothing here touches
+compressed bytes, a canvas, or any platform API: encoding, resizing and EXIF are
+the platform backend's concern, and `nopal_image` only describes them.
+
+```ocaml
+type Nopal_image.error =
+  | Invalid_dimensions of string   (* w, h and byte length cannot describe an image *)
+  | Invalid_config     of string   (* a capture parameter outside its permitted range *)
+
+val Nopal_image.message : error -> string   (* human-readable, for display *)
+
+module Nopal_image.Image_error   (* same type, re-exported so the submodule
+                                    signatures naming it read without an
+                                    internal module path *)
+```
+
+`Buffer.t` is abstract and validated at construction — both dimensions positive,
+exactly four bytes per pixel — so every later read is safe index arithmetic.
+`create` copies the incoming `bytes`, so the caller may reuse or mutate its own
+source afterwards without affecting the buffer. There is no accessor returning
+the raw bytes. Every module below is reached through the entry module
+(`Nopal_image.Buffer`, `Nopal_image.Luma`, …); note that `open Nopal_image`
+shadows `Stdlib.Buffer`, so qualify the stdlib module if you need it.
+
+```ocaml
+type Nopal_image.Buffer.t   (* abstract; immutable; validated *)
+
+Buffer.create : width:int -> height:int -> rgba:bytes
+                -> (Buffer.t, Nopal_image.error) result
+                (* Error (Invalid_dimensions _) on a non-positive edge or a
+                   byte length inconsistent with the dimensions *)
+Buffer.width     : Buffer.t -> int          (* always positive *)
+Buffer.height    : Buffer.t -> int          (* always positive *)
+Buffer.byte_size : Buffer.t -> int          (* packed RGBA size in bytes *)
+Buffer.pixel     : Buffer.t -> x:int -> y:int -> (int * int * int * int) option
+                (* r, g, b, a each 0-255; None out of range (total, never raises).
+                   Zero-based, origin at the top left. *)
+```
+
+Luminance uses the standard perceptual weights (0.299 R, 0.587 G, 0.114 B) — the
+same ones JPEG encodes with — not a channel average, which would give blue about
+five times the weight the eye gives it. Channels and result are both on the 0-255
+scale, so a gray pixel maps to its own value. Alpha takes no part.
+
+```ocaml
+Luma.of_channels : r:int -> g:int -> b:int -> float   (* 0-255 in, 0-255 out *)
+Luma.of_buffer   : Buffer.t -> float array
+                 (* one entry per pixel, row-major: left to right, then top to bottom *)
+```
+
+`Sharpness.score` is the mean absolute luminance difference over every
+horizontally AND vertically adjacent pair, on the same 0-255 scale; higher is
+sharper. Summing both axes makes it orientation-independent (a quarter turn
+leaves the score unchanged bar the last bits of floating-point summation);
+dividing by the pair count removes the dependence on how many pixels there are,
+which a raw sum would carry. It is total — a single-pixel buffer has no adjacent
+pair and scores `0.0`, never NaN. Two caveats. It measures contrast, so the same
+subject at the same focus scores lower in dim light. And the normalization does
+NOT make scores comparable across *resampling*: downscaling changes the pixel
+values themselves, not just the pair count, so compare only scores measured at
+the same edge (i.e. at one fixed `Config.metric_edge`). There is no built-in
+pass/fail threshold and none is offered — choosing one is the consuming
+application's own calibration.
+
+```ocaml
+Sharpness.score : Buffer.t -> float   (* total; 0.0 for a 1x1 buffer *)
+```
+
+`Config.t` is abstract with an all-required `make` and one named preset — there is
+no `default` record and no field-wise update path, so a custom set states all four
+values. `format` is a nominal variant, never a MIME string at the API boundary;
+`format_to_mime` is for a platform encoder that takes its target as a string.
+
+```ocaml
+type Nopal_image.Config.format = Jpeg | Png | Webp
+type Nopal_image.Config.t   (* abstract; validated *)
+
+Config.make : max_edge:int -> metric_edge:int -> quality:float -> format:format
+              -> (Config.t, Nopal_image.error) result
+              (* Error (Invalid_config _) on a non-positive edge,
+                 metric_edge > max_edge, or quality outside 0.0-1.0 (NaN rejected) *)
+Config.recommended : Config.t       (* 1600 / 800 / 0.8 / Jpeg *)
+Config.max_edge    : Config.t -> int    (* long edge the stored image scales down to *)
+Config.metric_edge : Config.t -> int    (* long edge the sharpness pass scales down to *)
+Config.quality     : Config.t -> float  (* 0.0-1.0, as the caller supplied it *)
+Config.format      : Config.t -> format
+Config.format_to_mime : format -> string   (* "image/jpeg" | "image/png" | "image/webp" *)
+```
+
 ### Scene Types (`nopal_scene`)
 
 Pure scene description types used by `Element.draw` and `nopal_draw`. No platform dependencies.
@@ -2104,6 +2199,7 @@ lib/
                        Trading.Candlestick, Trading.Drawdown, Chart_pane,
                        Color_scale, Domain_window, Viewport, Downsample, Snap
   nopal_http/        — Pure HTTP types + backend abstraction
+  nopal_image/       — Buffer, Luma, Sharpness, Config (pure pixel data; no platform deps)
   nopal_ui/          — High-level UI components (Button, Checkbox, Data_table, Modal, Navigation_bar, Radio_group, Select_input, Slug, Text_input, Toast)
   nopal_runtime/     — Lwd integration + MVU loop; Telemetry (E2E event log)
   nopal_test/        — Pure OCaml test renderer + Telemetry_test harness
