@@ -1,0 +1,13 @@
+; The blob store touches no DOM — it is a registry of Brr.Blob.t values — so
+; this suite needs no dom_shim.js. It runs under Node via js_of_ocaml using
+; Node's global Blob constructor, which is what Brr.Blob.of_jstr builds on.
+; js_of_ocaml is deliberately absent from (libraries): (modes js) already
+; selects the JS toolchain, and listing it makes opam-dune-lint demand a
+; {with-test} dependency in every .opam file the suite transitively touches.
+
+(test
+ (name test_blob_store)
+ (package nopal_blob_web)
+ (libraries nopal_blob_web alcotest brr)
+ (modes js)
+ (js_of_ocaml))

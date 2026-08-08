@@ -18,6 +18,7 @@ type 'msg handler_entry = {
   on_blur : 'msg option;
   on_keydown : (string -> 'msg option) option;
   on_toggle : (bool -> 'msg) option;
+  on_files : (Nopal_element.Element.file_info list -> 'msg) option;
 }
 
 type 'msg draw_handler_entry = {
@@ -124,6 +125,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             on_blur = None;
             on_keydown = None;
             on_toggle = None;
+            on_files = None;
           }
           :: !handlers;
         Element
@@ -156,6 +158,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             on_blur;
             on_keydown;
             on_toggle = None;
+            on_files = None;
           }
           :: !handlers;
         Element
@@ -178,6 +181,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
               on_blur = None;
               on_keydown = None;
               on_toggle;
+              on_files = None;
             }
             :: !handlers;
         Element
@@ -205,6 +209,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
               on_blur = None;
               on_keydown = None;
               on_toggle = None;
+              on_files = None;
             }
             :: !handlers;
         Element
@@ -234,6 +239,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
               on_blur = None;
               on_keydown = None;
               on_toggle = None;
+              on_files = None;
             }
             :: !handlers;
         let option_children =
@@ -262,6 +268,44 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
               [ ("selected", selected); ("disabled", string_of_bool disabled) ]
               @ attrs;
             children = option_children;
+            interaction;
+          }
+    | File_input
+        { style; interaction; attrs; accept; capture; multiple; on_change } ->
+        handlers :=
+          {
+            path = List.rev rev_path;
+            on_click = None;
+            on_dblclick = None;
+            on_change = None;
+            on_submit = None;
+            on_blur = None;
+            on_keydown = None;
+            on_toggle = None;
+            on_files = on_change;
+          }
+          :: !handlers;
+        (* Picker configuration is surfaced as node attributes, prepended so it
+           wins lookup over a caller-supplied key of the same name — the same
+           shape as [Input], [Checkbox], [Radio] and [Select]. [accept] is the
+           comma-joined form the DOM carries, and an absent [capture] is the
+           empty string so the key is always present and the attribute list
+           stays total. *)
+        Element
+          {
+            tag = "file_input";
+            style;
+            attrs =
+              [
+                ("accept", String.concat "," accept);
+                ( "capture",
+                  match capture with
+                  | None -> ""
+                  | Some c -> Nopal_element.Element.capture_to_string c );
+                ("multiple", string_of_bool multiple);
+              ]
+              @ attrs;
+            children = [];
             interaction;
           }
     | Image { style; src; alt } ->
@@ -355,6 +399,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
               on_blur = None;
               on_keydown = None;
               on_toggle = None;
+              on_files = None;
             }
             :: !handlers;
         let children =
@@ -700,6 +745,21 @@ let input sel value r =
   | None -> Error (No_handler { tag; event = "change" })
   | Some f ->
       r.msgs := f value :: !(r.msgs);
+      Ok ()
+
+let select_files sel files r =
+  let* path, found =
+    resolve_path sel r.tree |> Option.to_result ~none:(Not_found sel)
+  in
+  let tag = tag_of_node found in
+  let* handler =
+    find_handler_by_path path r.handlers
+    |> Option.to_result ~none:(No_handler { tag; event = "change" })
+  in
+  match handler.on_files with
+  | None -> Error (No_handler { tag; event = "change" })
+  | Some f ->
+      r.msgs := f files :: !(r.msgs);
       Ok ()
 
 let submit sel r =

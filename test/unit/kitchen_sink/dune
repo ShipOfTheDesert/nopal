@@ -85,3 +85,13 @@
   nopal_storage
   test_util
   alcotest))
+
+(test
+ (name test_file_input_section)
+ (libraries
+  kitchen_sink_app
+  nopal_test
+  nopal_element
+  nopal_mvu
+  test_util
+  alcotest))

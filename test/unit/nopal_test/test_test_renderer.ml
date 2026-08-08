@@ -800,6 +800,148 @@ let virtual_list_tests =
       virtual_list_handler_at_nonzero_offset;
   ]
 
+(* File input selection simulation *)
+
+type file_msg = Picked of E.file_info list
+
+let pp_file_info fmt (fi : E.file_info) =
+  Format.fprintf fmt "{blob_id=%S; name=%S; size=%d; mime=%S; last_modified=%f}"
+    fi.blob_id fi.name fi.size fi.mime fi.last_modified
+
+let file_info_equal (a : E.file_info) (b : E.file_info) =
+  String.equal a.blob_id b.blob_id
+  && String.equal a.name b.name
+  && Int.equal a.size b.size
+  && String.equal a.mime b.mime
+  && Float.equal a.last_modified b.last_modified
+
+let file_msg_testable =
+  Alcotest.testable
+    (fun fmt m ->
+      match m with
+      | Picked files ->
+          Format.fprintf fmt "Picked [%a]"
+            (Format.pp_print_list
+               ~pp_sep:(fun fmt () -> Format.fprintf fmt "; ")
+               pp_file_info)
+            files)
+    (fun a b ->
+      match (a, b) with
+      | Picked xs, Picked ys -> List.equal file_info_equal xs ys)
+
+let receipt =
+  E.file_info ~blob_id:"nopal-blob-1" ~name:"receipt.png" ~size:1024
+    ~mime:"image/png" ~last_modified:1_700_000_000_000.0
+
+let scan =
+  E.file_info ~blob_id:"nopal-blob-2" ~name:"scan.pdf" ~size:2048
+    ~mime:"application/pdf" ~last_modified:1_700_000_060_000.0
+
+let picker_with_handler () =
+  E.file_input
+    ~attrs:[ ("data-field", "receipt") ]
+    ~accept:[ "image/*" ] ~capture:E.Environment ~multiple:true
+    ~on_change:(fun files -> Picked files)
+    ()
+
+let select_files_dispatches_provided_list () =
+  let r = render (picker_with_handler ()) in
+  let result =
+    select_files (By_attr ("data-field", "receipt")) [ receipt; scan ] r
+  in
+  Alcotest.(check (result unit error_testable))
+    "select_files succeeds" (Ok ()) result;
+  Alcotest.(check (list file_msg_testable))
+    "handler receives exactly the provided selection"
+    [ Picked [ receipt; scan ] ]
+    (messages r)
+
+(* The empty-selection arm and its affirmative sibling share one rendered
+   element, so the [[]] observation cannot pass because the fixture stopped
+   reaching the handler at all. *)
+let select_files_empty_list_dispatches_empty_list () =
+  let r = render (picker_with_handler ()) in
+  let picked = select_files (By_attr ("data-field", "receipt")) [ receipt ] r in
+  Alcotest.(check (result unit error_testable))
+    "selecting a file succeeds" (Ok ()) picked;
+  let cleared = select_files (By_attr ("data-field", "receipt")) [] r in
+  Alcotest.(check (result unit error_testable))
+    "clearing the picker succeeds" (Ok ()) cleared;
+  Alcotest.(check (list file_msg_testable))
+    "clearing dispatches an empty list rather than nothing"
+    [ Picked [ receipt ]; Picked [] ]
+    (messages r)
+
+let select_files_not_found () =
+  let r = render (picker_with_handler ()) in
+  let result = select_files (By_attr ("data-field", "avatar")) [ receipt ] r in
+  Alcotest.(check (result unit error_testable))
+    "select_files returns Not_found"
+    (Error (Not_found (By_attr ("data-field", "avatar"))))
+    result;
+  Alcotest.(check int) "no messages" 0 (List.length (messages r))
+
+let select_files_no_handler () =
+  let r = render (E.file_input ~attrs:[ ("data-field", "receipt") ] ()) in
+  let result = select_files (By_attr ("data-field", "receipt")) [ receipt ] r in
+  Alcotest.(check (result unit error_testable))
+    "select_files returns No_handler"
+    (Error (No_handler { tag = "file_input"; event = "change" }))
+    result;
+  Alcotest.(check int) "no messages" 0 (List.length (messages r))
+
+(* The picker renders under its own pseudo-tag, not [Input]'s: a file input and
+   a text field are both <input> in the DOM, so sharing a tag here would make
+   [By_tag "input"] resolve either one by document order. *)
+let file_input_node_shape () =
+  let r = render (picker_with_handler ()) in
+  let node =
+    match find (By_tag "file_input") (tree r) with
+    | Some node -> node
+    | None -> Alcotest.fail "file input node not found by its own tag"
+  in
+  Alcotest.(check (option string))
+    "accept is the comma-joined form" (Some "image/*") (attr "accept" node);
+  Alcotest.(check (option string))
+    "capture carries the wire token" (Some "environment") (attr "capture" node);
+  Alcotest.(check (option string))
+    "multiple is surfaced" (Some "true") (attr "multiple" node);
+  Alcotest.(check (option string))
+    "caller attrs survive alongside the config" (Some "receipt")
+    (attr "data-field" node);
+  Alcotest.(check bool)
+    "a text field does not answer to the file input's tag" true
+    (Option.is_none (find (By_tag "input") (tree r)))
+
+(* Every config field has an absent form, and each must reach the node as such
+   rather than silently carrying the previous fixture's value. *)
+let file_input_node_shape_unconfigured () =
+  let r = render (E.file_input ~attrs:[ ("data-field", "receipt") ] ()) in
+  let node =
+    match find (By_tag "file_input") (tree r) with
+    | Some node -> node
+    | None -> Alcotest.fail "file input node not found by its own tag"
+  in
+  Alcotest.(check (option string))
+    "an empty accept is the empty string" (Some "") (attr "accept" node);
+  Alcotest.(check (option string))
+    "an absent capture is the empty string" (Some "") (attr "capture" node);
+  Alcotest.(check (option string))
+    "multiple defaults to false" (Some "false") (attr "multiple" node)
+
+let file_input_tests =
+  [
+    Alcotest.test_case "select_files_dispatches_provided_list" `Quick
+      select_files_dispatches_provided_list;
+    Alcotest.test_case "select_files_empty_list_dispatches_empty_list" `Quick
+      select_files_empty_list_dispatches_empty_list;
+    Alcotest.test_case "select_files_not_found" `Quick select_files_not_found;
+    Alcotest.test_case "select_files_no_handler" `Quick select_files_no_handler;
+    Alcotest.test_case "file_input_node_shape" `Quick file_input_node_shape;
+    Alcotest.test_case "file_input_node_shape_unconfigured" `Quick
+      file_input_node_shape_unconfigured;
+  ]
+
 let () =
   Alcotest.run "Test_renderer"
     [
@@ -810,4 +952,5 @@ let () =
       ("run_app", run_app_tests);
       ("text_style", text_style_tests);
       ("virtual_list", virtual_list_tests);
+      ("file_input", file_input_tests);
     ]

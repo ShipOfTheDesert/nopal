@@ -21,6 +21,12 @@ jobs:
       - uses: extractions/setup-just@v3
         with:
           just-version: '1.46.0'
+      # The (modes js) unit suites run under Node and reach for Web globals it
+      # only provides from a given version on — Blob since 18, File since 20 —
+      # so the version is a real requirement, not the runner's default.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       - uses: ./.github/actions/ocaml-deps
 
       - name: Build

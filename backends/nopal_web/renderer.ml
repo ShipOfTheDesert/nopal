@@ -92,7 +92,8 @@ let interaction_of (el : 'msg Nopal_element.Element.t) =
       Some interaction
   | Checkbox { interaction; _ }
   | Radio { interaction; _ }
-  | Select { interaction; _ } ->
+  | Select { interaction; _ }
+  | File_input { interaction; _ } ->
       Some interaction
   | Empty
   | Text _
@@ -224,6 +225,76 @@ let wire_input_events ~dispatch el on_change on_submit on_blur on_keydown =
         ]
   in
   change_l @ submit_l @ blur_l @ keydown_l
+
+(* Set-or-remove, so create and reconciliation share one definition of the
+   rendered picker configuration. Every arm answers for the absent case as well
+   as the present one: a reconcile that empties [accept], drops [capture] or
+   turns [multiple] off must clear the attribute rather than leave the previous
+   render's value in the DOM. [capture_to_string] is the sole producer of the
+   capture wire token. *)
+let equal_capture_opt (c1 : Nopal_element.Element.capture option)
+    (c2 : Nopal_element.Element.capture option) =
+  match (c1, c2) with
+  | None, None
+  | Some User, Some User
+  | Some Environment, Some Environment ->
+      true
+  | (None | Some (User | Environment)), _ -> false
+
+let equal_file_input_config ~old_accept ~old_capture ~old_multiple ~accept
+    ~capture ~multiple =
+  List.equal String.equal old_accept accept
+  && equal_capture_opt old_capture capture
+  && Bool.equal old_multiple multiple
+
+let apply_file_input_config el ~accept ~capture ~multiple =
+  let set name value = Brr.El.set_at (Jstr.v name) value el in
+  set "accept"
+    (match accept with
+    | [] -> None
+    | _ :: _ -> Some (Jstr.v (String.concat "," accept)));
+  set "capture"
+    (match capture with
+    | None -> None
+    | Some c -> Some (Jstr.v (Nopal_element.Element.capture_to_string c)));
+  set "multiple"
+    (match multiple with
+    | true -> Some (Jstr.v "")
+    | false -> None)
+
+(* The bytes stay on the JavaScript side: each selected [File] is registered
+   with the blob store and the element handler receives only the handle plus the
+   metadata the user agent reports. [mime] is that report and is a hint, not
+   validation. *)
+let file_info_of_file file =
+  let blob = Brr.File.as_blob file in
+  Nopal_element.Element.file_info
+    ~blob_id:(Nopal_blob_web.Blob_store.store blob)
+    ~name:(Jstr.to_string (Brr.File.name file))
+    ~size:(Brr.Blob.byte_length blob)
+    ~mime:(Jstr.to_string (Brr.Blob.type' blob))
+      (* Read as a float rather than via [Brr.File.last_modified_ms], which
+         answers an OCaml [int]: an epoch-millisecond value is ~1.7e12, outside
+         the int range, and survives that round trip only because js_of_ocaml
+         compiles the conversion to the identity on a JS number. Under
+         wasm_of_ocaml, or through any int operation a later change inserts, it
+         would wrap. *)
+    ~last_modified:(Jv.Float.get (Brr.File.to_jv file) "lastModified")
+
+let wire_file_change ~dispatch el on_change =
+  match on_change with
+  | None -> []
+  | Some f ->
+      [
+        Brr.Ev.listen Brr.Ev.change
+          (fun _ev ->
+            (* A cleared picker reports an empty file list, and the handler is
+               dispatched with [[]] rather than skipped — an event that can
+               occur always resolves, so the model never keeps a stale
+               selection. *)
+            dispatch (f (List.map file_info_of_file (Brr.El.Input.files el))))
+          (Brr.El.as_target el);
+      ]
 
 let pointer_event_of_mouse ev el =
   let rect = Jv.call (Brr.El.to_jv el) "getBoundingClientRect" [||] in
@@ -588,6 +659,20 @@ let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
       in
       Live_node
         { dom = el; element; children = []; listeners; base_id; interaction_id }
+  | File_input
+      { style; interaction; attrs; accept; capture; multiple; on_change } ->
+      let el = Brr.El.v (Jstr.v "input") [] in
+      Brr.El.set_at (Jstr.v "type") (Some (Jstr.v "file")) el;
+      apply_file_input_config el ~accept ~capture ~multiple;
+      let base_id, interaction_id =
+        apply_styles_for_element ~sheet el style interaction
+      in
+      List.iter
+        (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
+        attrs;
+      let listeners = wire_file_change ~dispatch el on_change in
+      Live_node
+        { dom = el; element; children = []; listeners; base_id; interaction_id }
   | Image { style; src; alt } ->
       let el = Brr.El.v (Jstr.v "img") [] in
       apply_style el style;
@@ -812,11 +897,12 @@ let same_variant (a : 'msg Nopal_element.Element.t)
   | Checkbox _, Checkbox _
   | Radio _, Radio _
   | Select _, Select _
+  | File_input _, File_input _
   | Virtual_list _, Virtual_list _ ->
       true
   | ( ( Empty | Text _ | Box _ | Row _ | Column _ | Button _ | Input _
-      | Checkbox _ | Radio _ | Select _ | Image _ | Scroll _ | Keyed _ | Draw _
-      | Virtual_list _ ),
+      | Checkbox _ | Radio _ | Select _ | File_input _ | Image _ | Scroll _
+      | Keyed _ | Draw _ | Virtual_list _ ),
       _ ) ->
       false
 
@@ -825,8 +911,8 @@ let extract_keyed_pairs elements =
     | [] -> Some (List.rev acc)
     | Keyed { key; child } :: rest -> go ((key, child) :: acc) rest
     | ( Empty | Text _ | Box _ | Row _ | Column _ | Button _ | Input _
-      | Checkbox _ | Radio _ | Select _ | Image _ | Scroll _ | Draw _
-      | Virtual_list _ )
+      | Checkbox _ | Radio _ | Select _ | File_input _ | Image _ | Scroll _
+      | Draw _ | Virtual_list _ )
       :: _ ->
         None
   in
@@ -859,7 +945,8 @@ let attrs_of (el : 'msg Nopal_element.Element.t) =
   | Input { attrs; _ }
   | Checkbox { attrs; _ }
   | Radio { attrs; _ }
-  | Select { attrs; _ } ->
+  | Select { attrs; _ }
+  | File_input { attrs; _ } ->
       attrs
   | Empty
   | Text _
@@ -897,6 +984,7 @@ let style_of (el : 'msg Nopal_element.Element.t) =
   | Checkbox { style; _ }
   | Radio { style; _ }
   | Select { style; _ }
+  | File_input { style; _ }
   | Virtual_list { style; _ } ->
       Some style
   | Empty
@@ -1094,12 +1182,12 @@ and reconcile_live ~sheet ~dispatch parent_el (old_live : 'msg live)
       Live_node old_n
   | ( Live_text _,
       ( Empty | Box _ | Row _ | Column _ | Button _ | Input _ | Checkbox _
-      | Radio _ | Select _ | Image _ | Scroll _ | Keyed _ | Draw _
-      | Virtual_list _ ) )
+      | Radio _ | Select _ | File_input _ | Image _ | Scroll _ | Keyed _
+      | Draw _ | Virtual_list _ ) )
   | ( Live_comment _,
       ( Text _ | Box _ | Row _ | Column _ | Button _ | Input _ | Checkbox _
-      | Radio _ | Select _ | Image _ | Scroll _ | Keyed _ | Draw _
-      | Virtual_list _ ) )
+      | Radio _ | Select _ | File_input _ | Image _ | Scroll _ | Keyed _
+      | Draw _ | Virtual_list _ ) )
   | Live_node _, _ ->
       (* Different variant or same_variant returned false — replace *)
       let new_live = create_live ~sheet ~dispatch new_element in
@@ -1300,6 +1388,7 @@ and reconcile_node ~sheet ~dispatch (old_n : 'msg live_node)
       | Checkbox _
       | Radio _
       | Select _
+      | File_input _
       | Image _
       | Scroll _
       | Keyed _
@@ -1327,6 +1416,7 @@ and reconcile_node ~sheet ~dispatch (old_n : 'msg live_node)
       | Checkbox _
       | Radio _
       | Select _
+      | File_input _
       | Scroll _
       | Keyed _
       | Draw _
@@ -1540,6 +1630,45 @@ and reconcile_node ~sheet ~dispatch (old_n : 'msg live_node)
                   end)
                 (Brr.El.as_target el);
             ])
+  | File_input { accept; capture; multiple; on_change; _ } ->
+      (* No controlled-value guard, unlike [Input]: a file input's value is
+         owned by the user agent and cannot be written programmatically, so
+         there is nothing to heal back to the model. The configuration writes
+         are guarded on the previous render the way the [Image] arm guards
+         [src]/[alt] — this runs on every reconcile, and an application that
+         reconciles per keystroke would otherwise issue three DOM writes a
+         frame for a picker that never changes. *)
+      (match old_n.element with
+      | File_input
+          {
+            accept = old_accept;
+            capture = old_capture;
+            multiple = old_multiple;
+            _;
+          }
+        when equal_file_input_config ~old_accept ~old_capture ~old_multiple
+               ~accept ~capture ~multiple ->
+          ()
+      | Empty
+      | Text _
+      | Box _
+      | Row _
+      | Column _
+      | Button _
+      | Input _
+      | Checkbox _
+      | Radio _
+      | Select _
+      | File_input _
+      | Image _
+      | Scroll _
+      | Keyed _
+      | Draw _
+      | Virtual_list _ ->
+          apply_file_input_config el ~accept ~capture ~multiple);
+      maybe_apply_attrs el old_n.element new_el;
+      unlisten_all old_n.listeners;
+      old_n.listeners <- wire_file_change ~dispatch el on_change
   | Empty
   | Text _
   | Keyed _ ->

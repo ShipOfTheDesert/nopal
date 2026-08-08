@@ -175,6 +175,7 @@ let msg_pp fmt msg =
   | Bottom_tabs_msg _ -> Format.fprintf fmt "Bottom_tabs_msg _"
   | Modal_msg _ -> Format.fprintf fmt "Modal_msg _"
   | Subs_msg _ -> Format.fprintf fmt "Subs_msg _"
+  | File_input_msg _ -> Format.fprintf fmt "File_input_msg _"
   | KeyboardHeightChanged _ -> Format.fprintf fmt "KeyboardHeightChanged _"
   | Back_demo_push -> Format.fprintf fmt "Back_demo_push"
   | Route_changed _ -> Format.fprintf fmt "Route_changed _"

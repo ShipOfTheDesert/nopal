@@ -11,7 +11,13 @@ type mounted = { unmount : unit -> unit }
     subscription listener — keydown, resize, visibility, intervals), and calls
     the [safe_area_source] unlisten when one was supplied. It is idempotent — a
     second call is inert and never raises — so repeated mount->unmount cycles
-    never accumulate listeners or observers (feature 0121, FR-4). *)
+    never accumulate listeners or observers (feature 0121, FR-4).
+
+    {!Blob_store} is deliberately outside its scope: blobs are application-owned
+    data, not mount-registered resources, so unmounting leaves every stored blob
+    resolvable — an upload still in flight at teardown keeps a working handle,
+    and a blob registered with no mount in the picture has no mount to be
+    released by. Releasing one is always an explicit caller act. *)
 
 type mounted_with_telemetry = {
   telemetry : Nopal_runtime.Telemetry.handle;
@@ -154,3 +160,8 @@ val drain_focus : string Queue.t -> unit
 
 module Storage = Storage
 (** Browser localStorage access. See {!Storage}. *)
+
+module Blob_store = Nopal_blob_web.Blob_store
+(** Session-local handle-to-blob registry, re-exported so an application that
+    already depends on the renderer can resolve the handles a file input hands
+    it without taking a second dependency. See {!Nopal_blob_web.Blob_store}. *)
