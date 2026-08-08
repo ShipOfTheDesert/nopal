@@ -150,6 +150,35 @@ let test_mount_with_telemetry_unmount () =
     (keydown_listener_count ());
   Alcotest.(check int) "observer disconnected on unmount" 0 (live_observers ())
 
+(* Blobs are application-owned data, not mount-registered resources: a handle can
+   outlive the mount that issued it (an upload still in flight at teardown), and
+   a blob can be registered with no mount in the picture at all. So the blob
+   store is deliberately outside [unmount]'s scope — tearing a mount down must
+   leave every stored blob resolvable, while still releasing the listeners and
+   observers the mount itself registered. *)
+let test_unmount_leaves_stored_blobs_resolvable () =
+  let blob =
+    Brr.Blob.of_jstr
+      ~init:(Brr.Blob.init ~type':(Jstr.v "text/plain") ())
+      (Jstr.v "receipt bytes")
+  in
+  let handle = Nopal_web.Blob_store.store blob in
+  let m : Nopal_web.mounted = Nopal_web.mount key_module (fresh_parent ()) in
+  Alcotest.(check int)
+    "one keydown listener while mounted" 1
+    (keydown_listener_count ());
+  m.unmount ();
+  Alcotest.(check int)
+    "keydown listener still released on unmount" 0
+    (keydown_listener_count ());
+  Alcotest.(check int) "observer still disconnected" 0 (live_observers ());
+  match Nopal_web.Blob_store.lookup handle with
+  | Some resolved ->
+      Alcotest.(check bool)
+        "unmount leaves the stored blob resolvable" true
+        (Brr.Blob.to_jv resolved == Brr.Blob.to_jv blob)
+  | None -> Alcotest.fail "unmount released a blob that it does not own"
+
 let () =
   Alcotest.run "nopal_web mount unmount"
     [
@@ -163,5 +192,7 @@ let () =
             test_double_unmount_is_inert;
           Alcotest.test_case "mount_with_telemetry unmount" `Quick
             test_mount_with_telemetry_unmount;
+          Alcotest.test_case "unmount leaves stored blobs resolvable" `Quick
+            test_unmount_leaves_stored_blobs_resolvable;
         ] );
     ]

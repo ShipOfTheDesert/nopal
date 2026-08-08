@@ -29,6 +29,7 @@ nopal_runtime   ← Lwd reactive integration + MVU loop; Telemetry (E2E event lo
 nopal_test      ← Pure OCaml test renderer + Telemetry_test harness — no js_of_ocaml
 nopal_web       ← js_of_ocaml + Brr DOM renderer (only browser-dependent package)
 nopal_http_web  ← Browser Fetch API backend for nopal_http — js_of_ocaml + Brr
+nopal_blob_web  ← Session-local handle ⇄ Brr.Blob.t registry, reachable from any _web backend — js_of_ocaml + Brr
 nopal_storage_web   ← IndexedDB backend implementing Nopal_storage.S — js_of_ocaml + Brr
 nopal_storage_tauri ← Filesystem (tauri-plugin-fs) backend implementing Nopal_storage.S — js_of_ocaml + Brr
 nopal_tauri     ← Tauri desktop/mobile bindings — depends on nopal_mvu (for Task.t), nopal_platform (for Platform.S)
@@ -220,6 +221,26 @@ Element.select_option : ?disabled:bool -> value:string -> string -> select_optio
 Element.select : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
   -> ?disabled:bool -> ?on_change:(string -> 'msg) -> selected:string
   -> select_option list -> 'msg Element.t
+
+(* File selection. Bytes never cross into OCaml: [blob_id] is an opaque handle
+   only a _web backend can resolve, via Nopal_blob_web.Blob_store.lookup. *)
+type capture = User | Environment
+Element.capture_to_string : capture -> string   (* "user" | "environment" — sole producer *)
+type file_info = {
+  blob_id : string;       (* opaque store handle; never fabricate one *)
+  name : string;
+  size : int;             (* byte length *)
+  mime : string;          (* user-agent report — a hint, never validation *)
+  last_modified : float;  (* ms since the POSIX epoch *)
+}
+Element.file_info : blob_id:string -> name:string -> size:int -> mime:string
+  -> last_modified:float -> file_info
+Element.file_input : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
+  -> ?accept:string list -> ?capture:capture -> ?multiple:bool
+  -> ?on_change:(file_info list -> 'msg) -> unit -> 'msg Element.t
+  (* [accept] is a picker hint, never a gate. Clearing the picker fires
+     [on_change] with [[]] rather than nothing. Blob lifetime is the
+     application's: handles live for the page session until released. *)
 
 (* Media and scrolling *)
 Element.image  : ?style:Style.t -> src:string -> alt:string -> unit -> 'msg Element.t
@@ -1614,6 +1635,30 @@ val send_cancellable : Nopal_http.request
    a raised exception. send_cancellable aborts via AbortController on cancel. *)
 ```
 
+### Blob Store (`nopal_blob_web`)
+
+Session-local registry mapping opaque handles to browser blobs. Binary data
+stays on the JavaScript side: a handle is the only thing that crosses into a
+natively-compiled package, so a `_web` backend that needs the bytes resolves the
+handle here. A leaf package — it does not depend on the renderer, so an
+HTTP-only bundle can resolve handles without pulling `nopal_web` in.
+Re-exported as `Nopal_web.Blob_store` for applications that already depend on
+the renderer.
+
+```ocaml
+val store  : Brr.Blob.t -> string        (* fresh handle; never deduplicates, never recycles *)
+val lookup : string -> Brr.Blob.t option (* None for an unknown or released handle — never raises *)
+val remove : string -> unit              (* idempotent *)
+val clear  : unit -> unit
+
+(* Handles carry a random per-session component, so a fabricated literal cannot
+   alias a live entry. The shape is not part of the interface — do not parse or
+   construct one. Entries live for the page session and are released only by an
+   explicit remove/clear: unmounting a Nopal application does NOT clear them, so
+   an upload in flight at teardown keeps a working handle (feature 0122,
+   Decision 1). Release is the application's responsibility. *)
+```
+
 ### Test Renderer (`nopal_test`)
 
 Pure OCaml structural testing without a browser:
@@ -1635,6 +1680,10 @@ type selector = By_tag of string | By_text of string | By_attr of string * strin
 (* Simulate events *)
 Test_renderer.click        : selector -> 'msg rendered -> (unit, error) result
 Test_renderer.input        : selector -> string -> 'msg rendered -> (unit, error) result
+Test_renderer.select_files : selector -> Element.file_info list -> 'msg rendered -> (unit, error) result
+  (* File input node renders under tag "file_input" with accept/capture/multiple
+     as node attrs. Passing [[]] simulates clearing the picker: the handler
+     still fires, with an empty list. *)
 Test_renderer.submit       : selector -> 'msg rendered -> (unit, error) result
 Test_renderer.dblclick     : selector -> 'msg rendered -> (unit, error) result
 Test_renderer.pointer_move : selector -> x:float -> y:float -> 'msg rendered -> (unit, error) result
@@ -2014,6 +2063,7 @@ lib/
 backends/
   nopal_web/         — js_of_ocaml + Brr DOM renderer
   nopal_http_web/    — Browser Fetch API backend for nopal_http
+  nopal_blob_web/    — Session-local handle ⇄ Brr.Blob.t registry (leaf; no renderer dep)
   nopal_storage_web/   — IndexedDB backend implementing Nopal_storage.S
   nopal_storage_tauri/ — Filesystem (tauri-plugin-fs) backend implementing Nopal_storage.S
   nopal_tauri/       — Tauri desktop/mobile bindings (depends on nopal_mvu, nopal_platform)

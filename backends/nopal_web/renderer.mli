@@ -26,4 +26,5 @@ val update :
 val dom_node : 'msg t -> Jv.t
 (** [dom_node handle] returns the top-level DOM node for this rendered tree.
     Returns a comment node for [Empty], a span for [Text], or the element node
-    for all other variants. *)
+    for all other variants — including the [<input type="file">] a [File_input]
+    renders as. *)

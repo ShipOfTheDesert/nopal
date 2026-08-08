@@ -7,6 +7,15 @@ type pointer_event = {
 
 type wheel_event = { delta_y : float; x : float; y : float }
 type select_option = { value : string; label : string; disabled : bool }
+type capture = User | Environment
+
+type file_info = {
+  blob_id : string;
+  name : string;
+  size : int;
+  mime : string;
+  last_modified : float;
+}
 
 type 'msg t =
   | Empty
@@ -78,6 +87,15 @@ type 'msg t =
       selected : string;
       disabled : bool;
       on_change : (string -> 'msg) option;
+    }
+  | File_input of {
+      style : Nopal_style.Style.t;
+      interaction : Nopal_style.Interaction.t;
+      attrs : (string * string) list;
+      accept : string list;
+      capture : capture option;
+      multiple : bool;
+      on_change : (file_info list -> 'msg) option;
     }
   | Image of { style : Nopal_style.Style.t; src : string; alt : string }
   | Scroll of { style : Nopal_style.Style.t; child : 'msg t }
@@ -174,6 +192,18 @@ let select ?(style = Nopal_style.Style.empty)
   Select { style; interaction; attrs; options; selected; disabled; on_change }
 
 let select_option ?(disabled = false) ~value label = { value; label; disabled }
+
+let capture_to_string = function
+  | User -> "user"
+  | Environment -> "environment"
+
+let file_info ~blob_id ~name ~size ~mime ~last_modified =
+  { blob_id; name; size; mime; last_modified }
+
+let file_input ?(style = Nopal_style.Style.empty)
+    ?(interaction = Nopal_style.Interaction.default) ?(attrs = [])
+    ?(accept = []) ?capture ?(multiple = false) ?on_change () =
+  File_input { style; interaction; attrs; accept; capture; multiple; on_change }
 
 let image ?(style = Nopal_style.Style.empty) ~src ~alt () =
   Image { style; src; alt }
@@ -310,6 +340,18 @@ let rec map f = function
           disabled;
           on_change = Option.map (fun g s -> f (g s)) on_change;
         }
+  | File_input
+      { style; interaction; attrs; accept; capture; multiple; on_change } ->
+      File_input
+        {
+          style;
+          interaction;
+          attrs;
+          accept;
+          capture;
+          multiple;
+          on_change = Option.map (fun g files -> f (g files)) on_change;
+        }
   | Image { style; src; alt } -> Image { style; src; alt }
   | Scroll { style; child } -> Scroll { style; child = map f child }
   | Keyed { key; child } -> Keyed { key; child = map f child }
@@ -386,6 +428,13 @@ let equal_attrs a1 a2 =
   List.equal
     (fun (k1, v1) (k2, v2) -> String.equal k1 k2 && String.equal v1 v2)
     a1 a2
+
+let equal_capture c1 c2 =
+  match (c1, c2) with
+  | User, User
+  | Environment, Environment ->
+      true
+  | (User | Environment), _ -> false
 
 (* Equality strategy for handler and message fields:
    Both function-typed handlers (on_click, on_toggle, on_change, ...) and plain
@@ -664,9 +713,36 @@ let rec equal a b =
       && Virtual_list.Natural.to_int o1 = Virtual_list.Natural.to_int o2
       && ri1 == ri2
       && Option.equal ( == ) os1 os2
+  | ( File_input
+        {
+          style = s1;
+          interaction = i1;
+          attrs = a1;
+          accept = ac1;
+          capture = cap1;
+          multiple = m1;
+          on_change = oc1;
+        },
+      File_input
+        {
+          style = s2;
+          interaction = i2;
+          attrs = a2;
+          accept = ac2;
+          capture = cap2;
+          multiple = m2;
+          on_change = oc2;
+        } ) ->
+      Nopal_style.Style.equal s1 s2
+      && Nopal_style.Interaction.equal i1 i2
+      && equal_attrs a1 a2
+      && List.equal String.equal ac1 ac2
+      && Option.equal equal_capture cap1 cap2
+      && Bool.equal m1 m2
+      && Option.equal ( == ) oc1 oc2
   | ( ( Empty | Text _ | Box _ | Row _ | Column _ | Button _ | Input _
-      | Checkbox _ | Radio _ | Select _ | Image _ | Scroll _ | Keyed _ | Draw _
-      | Virtual_list _ ),
+      | Checkbox _ | Radio _ | Select _ | File_input _ | Image _ | Scroll _
+      | Keyed _ | Draw _ | Virtual_list _ ),
       _ ) ->
       false
 

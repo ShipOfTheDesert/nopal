@@ -208,6 +208,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     bottom_tabs : Sub_bottom_tabs.model;
     modal : Sub_modal.model;
     subs : Sub_subscriptions.model;
+    file_input : Sub_file_input.model;
     keyboard_height : int;  (** soft-keyboard height in logical px (REQ-N2) *)
     back_route : back_route;  (** current route of the back-navigation demo *)
   }
@@ -243,6 +244,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | Bottom_tabs_msg of Sub_bottom_tabs.msg
     | Modal_msg of Sub_modal.msg
     | Subs_msg of Sub_subscriptions.msg
+    | File_input_msg of Sub_file_input.msg
     | KeyboardHeightChanged of int  (** native soft-keyboard height (REQ-F5) *)
     | Back_demo_push  (** push the back-demo one step deep (to [Back_detail]) *)
     | Route_changed of back_route  (** popstate-driven route update (REQ-F3) *)
@@ -370,6 +372,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     let bottom_tabs, bottom_tabs_cmd = Sub_bottom_tabs.init () in
     let modal, modal_cmd = Sub_modal.init () in
     let subs, subs_cmd = Sub_subscriptions.init () in
+    let file_input, file_input_cmd = Sub_file_input.init () in
     ( {
         button_clicks = 0;
         input_text = "";
@@ -434,6 +437,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         bottom_tabs;
         modal;
         subs;
+        file_input;
         keyboard_height = 0;
         back_route = Back_home;
       },
@@ -453,6 +457,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           Nopal_mvu.Cmd.map (fun m -> Bottom_tabs_msg m) bottom_tabs_cmd;
           Nopal_mvu.Cmd.map (fun m -> Modal_msg m) modal_cmd;
           Nopal_mvu.Cmd.map (fun m -> Subs_msg m) subs_cmd;
+          Nopal_mvu.Cmd.map (fun m -> File_input_msg m) file_input_cmd;
           (* Re-read the persisted demo value so a reload dispatches a
              [StorageRestored] message — the E2E persistence proof (REQ-F3). *)
           Nopal_mvu.Cmd.task
@@ -604,6 +609,12 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | Subs_msg subs_msg ->
         let subs, subs_cmd = Sub_subscriptions.update model.subs subs_msg in
         ({ model with subs }, Nopal_mvu.Cmd.map (fun m -> Subs_msg m) subs_cmd)
+    | File_input_msg fi_msg ->
+        let file_input, fi_cmd =
+          Sub_file_input.update model.file_input fi_msg
+        in
+        ( { model with file_input },
+          Nopal_mvu.Cmd.map (fun m -> File_input_msg m) fi_cmd )
     | DrawPointerMove (x, y) ->
         ({ model with draw_pointer = Some (x, y) }, Nopal_mvu.Cmd.none)
     | DrawPointerLeave ->
@@ -3467,6 +3478,14 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                  (fun m -> Text_input_msg m)
                  (Kitchen_sink_text_input.view vp model.text_input);
              ];
+           view_section
+             ~attrs:[ ("data-testid", "file-input-section") ]
+             "File Input"
+             [
+               Element.map
+                 (fun m -> File_input_msg m)
+                 (Sub_file_input.view vp model.file_input);
+             ];
            view_section "Focus & Keyboard"
              [
                Element.map
@@ -3591,4 +3610,5 @@ module Sub_navigation_bar = Sub_navigation_bar
 module Sub_bottom_tabs = Sub_bottom_tabs
 module Sub_modal = Sub_modal
 module Sub_subscriptions = Sub_subscriptions
+module Sub_file_input = Sub_file_input
 module Tauri_op = Tauri_op

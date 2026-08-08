@@ -18,6 +18,7 @@ let test_button_dblclick_some () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -40,6 +41,7 @@ let test_input_blur_some () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -68,6 +70,7 @@ let test_input_keydown_some () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -94,6 +97,7 @@ let test_map_preserves_dblclick () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -118,6 +122,7 @@ let test_map_preserves_blur () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -148,6 +153,90 @@ let test_map_preserves_keydown () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
+    | Element.Scroll _
+    | Element.Keyed _
+    | Element.Draw _
+    | Element.Virtual_list _ ->
+        false)
+
+let test_map_rewrites_file_input_handler () =
+  let selection =
+    [
+      Element.file_info ~blob_id:"nopal-blob-1" ~name:"receipt.png" ~size:512
+        ~mime:"image/png" ~last_modified:1_700_000_000_000.0;
+    ]
+  in
+  let el =
+    Element.file_input
+      ~on_change:(fun files ->
+        KeyDown (String.concat "," (List.map (fun f -> f.Element.name) files)))
+      ()
+  in
+  let mapped = Element.map (fun m -> Wrapped m) el in
+  Alcotest.(check bool)
+    "map rewrites the file_info list handler" true
+    (match mapped with
+    | Element.File_input { on_change = Some f; _ } -> (
+        match f selection with
+        | Wrapped (KeyDown "receipt.png") -> true
+        | Wrapped (Click | DblClick | Blur | KeyDown _) -> false)
+    | Element.Empty
+    | Element.Text _
+    | Element.Box _
+    | Element.Row _
+    | Element.Column _
+    | Element.Button _
+    | Element.Input _
+    | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
+    | Element.File_input _
+    | Element.Scroll _
+    | Element.Keyed _
+    | Element.Draw _
+    | Element.Virtual_list _ ->
+        false)
+
+(* The handler-absent arm of the same [map] case: a handlerless picker must
+   survive the rewrite with its configuration intact and its handler still
+   [None], rather than acquiring one or losing its config. *)
+let test_map_preserves_handlerless_file_input () =
+  let el =
+    Element.file_input
+      ~attrs:[ ("data-field", "receipt") ]
+      ~accept:[ "image/*" ] ~capture:Element.Environment ~multiple:true ()
+  in
+  let mapped = Element.map (fun m -> Wrapped m) el in
+  Alcotest.(check bool)
+    "map preserves a file input with no handler" true
+    (match mapped with
+    | Element.File_input
+        { on_change = None; accept; capture; multiple; attrs; _ } ->
+        List.equal String.equal accept [ "image/*" ]
+        && (match capture with
+          | Some Element.Environment -> true
+          | Some Element.User
+          | None ->
+              false)
+        && multiple
+        && List.equal
+             (fun (k1, v1) (k2, v2) -> String.equal k1 k2 && String.equal v1 v2)
+             attrs
+             [ ("data-field", "receipt") ]
+    | Element.Empty
+    | Element.Text _
+    | Element.Box _
+    | Element.Row _
+    | Element.Column _
+    | Element.Button _
+    | Element.Input _
+    | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -172,5 +261,9 @@ let () =
           Alcotest.test_case "map_preserves_blur" `Quick test_map_preserves_blur;
           Alcotest.test_case "map_preserves_keydown" `Quick
             test_map_preserves_keydown;
+          Alcotest.test_case "map rewrites file_input handler" `Quick
+            test_map_rewrites_file_input_handler;
+          Alcotest.test_case "map preserves handlerless file_input" `Quick
+            test_map_preserves_handlerless_file_input;
         ] );
     ]

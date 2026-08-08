@@ -21,6 +21,7 @@ let test_empty_builder () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -43,6 +44,7 @@ let test_text_builder () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -63,6 +65,7 @@ let test_default_styles () =
       | Element.Select { style; _ } -> style
       | Element.Empty
       | Element.Text _
+      | Element.File_input _
       | Element.Button _
       | Element.Input _
       | Element.Keyed _
@@ -107,6 +110,7 @@ let test_box_preserves_children () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -129,6 +133,7 @@ let test_button_no_handler () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -151,6 +156,7 @@ let test_button_with_handler () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -175,6 +181,7 @@ let test_button_child () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -207,6 +214,7 @@ let test_input_defaults () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -229,6 +237,7 @@ let test_input_placeholder () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -258,6 +267,7 @@ let test_input_on_change () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -280,6 +290,7 @@ let test_input_on_submit () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -302,6 +313,7 @@ let test_image_required_fields () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -325,6 +337,7 @@ let test_scroll_child () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -347,6 +360,7 @@ let test_keyed_preserves_fields () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -367,6 +381,7 @@ let test_keyed_preserves_fields () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -393,6 +408,7 @@ let test_map_transforms_click () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -422,6 +438,7 @@ let test_map_transforms_input () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -466,6 +483,7 @@ let test_map_recursive () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -497,6 +515,7 @@ let test_map_column () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -521,6 +540,7 @@ let test_map_image () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -547,6 +567,7 @@ let test_map_scroll () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -578,6 +599,7 @@ let test_map_keyed () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -600,6 +622,7 @@ let test_map_empty_noop () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -623,6 +646,7 @@ let test_map_text_noop () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -774,6 +798,7 @@ let test_box_default_interaction () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -802,6 +827,7 @@ let test_button_with_interaction () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -825,6 +851,7 @@ let test_input_with_interaction () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -846,6 +873,7 @@ let test_map_preserves_interaction () =
       | Element.Select { interaction; _ } -> interaction
       | Element.Empty
       | Element.Text _
+      | Element.File_input _
       | Element.Image _
       | Element.Scroll _
       | Element.Keyed _
@@ -906,6 +934,7 @@ let test_styled_text_carries_style () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -929,11 +958,176 @@ let test_styled_text_with_default_is_some () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
     | Element.Virtual_list _ ->
         false)
+
+(* --- File input --- *)
+
+let test_file_input_carries_accept_capture_multiple () =
+  (match Element.file_input () with
+  | Element.File_input { accept; capture; multiple; on_change; attrs; _ } ->
+      Alcotest.(check (list string)) "accept defaults to empty" [] accept;
+      Alcotest.(check bool)
+        "capture defaults to None" true (Option.is_none capture);
+      Alcotest.(check bool) "multiple defaults to false" false multiple;
+      Alcotest.(check bool)
+        "on_change defaults to None" true (Option.is_none on_change);
+      Alcotest.(check (list (pair string string))) "attrs default" [] attrs
+  | Element.Empty
+  | Element.Text _
+  | Element.Box _
+  | Element.Row _
+  | Element.Column _
+  | Element.Button _
+  | Element.Input _
+  | Element.Image _
+  | Element.Checkbox _
+  | Element.Radio _
+  | Element.Select _
+  | Element.Scroll _
+  | Element.Keyed _
+  | Element.Draw _
+  | Element.Virtual_list _ ->
+      Alcotest.fail "defaults: expected File_input");
+  let handler (_ : Element.file_info list) = Click in
+  let ix = test_interaction in
+  match
+    Element.file_input ~interaction:ix
+      ~attrs:[ ("data-field", "receipt") ]
+      ~accept:[ "image/*"; ".pdf" ] ~capture:Element.Environment ~multiple:true
+      ~on_change:handler ()
+  with
+  | Element.File_input
+      { accept; capture; multiple; on_change; attrs; interaction; _ } ->
+      Alcotest.(check (list string))
+        "accept reaches the constructor" [ "image/*"; ".pdf" ] accept;
+      Alcotest.(check bool)
+        "capture reaches the constructor" true
+        (match capture with
+        | Some Element.Environment -> true
+        | Some Element.User
+        | None ->
+            false);
+      Alcotest.(check bool) "multiple reaches the constructor" true multiple;
+      Alcotest.(check (list (pair string string)))
+        "attrs reach the constructor"
+        [ ("data-field", "receipt") ]
+        attrs;
+      Alcotest.(check bool)
+        "interaction reaches the constructor" true
+        (Nopal_style.Interaction.equal interaction ix);
+      Alcotest.(check bool)
+        "on_change is the supplied handler" true
+        (match on_change with
+        | Some f -> f == handler
+        | None -> false)
+  | Element.Empty
+  | Element.Text _
+  | Element.Box _
+  | Element.Row _
+  | Element.Column _
+  | Element.Button _
+  | Element.Input _
+  | Element.Image _
+  | Element.Checkbox _
+  | Element.Radio _
+  | Element.Select _
+  | Element.Scroll _
+  | Element.Keyed _
+  | Element.Draw _
+  | Element.Virtual_list _ ->
+      Alcotest.fail "configured: expected File_input"
+
+let test_capture_to_string_covers_both_arms () =
+  Alcotest.(check string) "User" "user" (Element.capture_to_string Element.User);
+  Alcotest.(check string)
+    "Environment" "environment"
+    (Element.capture_to_string Element.Environment)
+
+let test_file_info_carries_every_field () =
+  let info =
+    Element.file_info ~blob_id:"nopal-blob-7" ~name:"receipt.png" ~size:512
+      ~mime:"image/png" ~last_modified:1_700_000_000_000.0
+  in
+  Alcotest.(check string) "blob_id" "nopal-blob-7" info.Element.blob_id;
+  Alcotest.(check string) "name" "receipt.png" info.Element.name;
+  Alcotest.(check int) "size" 512 info.Element.size;
+  Alcotest.(check string) "mime" "image/png" info.Element.mime;
+  Alcotest.(check bool)
+    "last_modified" true
+    (Float.equal info.Element.last_modified 1_700_000_000_000.0)
+
+let test_equal_distinguishes_file_input_config () =
+  let handler (_ : Element.file_info list) = Click in
+  let base () =
+    Element.file_input ~accept:[ "image/*" ] ~capture:Element.User
+      ~multiple:true ~on_change:handler ()
+  in
+  Alcotest.(check bool)
+    "same config and same handler are equal" true
+    (Element.equal (base ()) (base ()));
+  Alcotest.(check bool)
+    "different accept is not equal" false
+    (Element.equal (base ())
+       (Element.file_input ~accept:[ "video/*" ] ~capture:Element.User
+          ~multiple:true ~on_change:handler ()));
+  Alcotest.(check bool)
+    "different capture is not equal" false
+    (Element.equal (base ())
+       (Element.file_input ~accept:[ "image/*" ] ~capture:Element.Environment
+          ~multiple:true ~on_change:handler ()));
+  Alcotest.(check bool)
+    "absent capture is not equal" false
+    (Element.equal (base ())
+       (Element.file_input ~accept:[ "image/*" ] ~multiple:true
+          ~on_change:handler ()));
+  Alcotest.(check bool)
+    "different multiple is not equal" false
+    (Element.equal (base ())
+       (Element.file_input ~accept:[ "image/*" ] ~capture:Element.User
+          ~multiple:false ~on_change:handler ()));
+  let other (_ : Element.file_info list) = Click in
+  Alcotest.(check bool)
+    "a distinct handler closure is not equal" false
+    (Element.equal (base ())
+       (Element.file_input ~accept:[ "image/*" ] ~capture:Element.User
+          ~multiple:true ~on_change:other ()));
+  (* [equal] gates reconciliation skipping, so every field it compares needs an
+     arm here: a dropped conjunct would leave a changed style, interaction or
+     attribute list rendering the previous frame's DOM. *)
+  let padded =
+    Nopal_style.Style.with_layout
+      (Nopal_style.Style.padding_all 8.0)
+      Nopal_style.Style.empty
+  in
+  Alcotest.(check bool)
+    "a different style is not equal" false
+    (Element.equal (base ())
+       (Element.file_input ~style:padded ~accept:[ "image/*" ]
+          ~capture:Element.User ~multiple:true ~on_change:handler ()));
+  Alcotest.(check bool)
+    "a different interaction is not equal" false
+    (Element.equal (base ())
+       (Element.file_input ~interaction:test_interaction ~accept:[ "image/*" ]
+          ~capture:Element.User ~multiple:true ~on_change:handler ()));
+  Alcotest.(check bool)
+    "different attrs are not equal" false
+    (Element.equal (base ())
+       (Element.file_input
+          ~attrs:[ ("data-field", "receipt") ]
+          ~accept:[ "image/*" ] ~capture:Element.User ~multiple:true
+          ~on_change:handler ()));
+  (* Totality: a 'msg payload carrying a closure must not make equal raise. *)
+  let closure_handler (_ : Element.file_info list) = Handler (fun () -> ()) in
+  Alcotest.(check bool)
+    "equal is total on closure-valued msg" true
+    (Element.equal
+       (Element.file_input ~on_change:closure_handler ())
+       (Element.file_input ~on_change:closure_handler ()))
 
 let () =
   Alcotest.run "nopal_element"
@@ -958,6 +1152,12 @@ let () =
           Alcotest.test_case "scroll_child" `Quick test_scroll_child;
           Alcotest.test_case "keyed_preserves_fields" `Quick
             test_keyed_preserves_fields;
+          Alcotest.test_case "file_input carries accept capture multiple" `Quick
+            test_file_input_carries_accept_capture_multiple;
+          Alcotest.test_case "capture_to_string covers both arms" `Quick
+            test_capture_to_string_covers_both_arms;
+          Alcotest.test_case "file_info carries every field" `Quick
+            test_file_info_carries_every_field;
         ] );
       ( "map",
         [
@@ -1009,6 +1209,8 @@ let () =
             test_element_equal_no_raise_on_closures;
           Alcotest.test_case "equal_distinguishes_draw_handlers" `Quick
             test_element_equal_distinguishes_draw_handlers;
+          Alcotest.test_case "equal distinguishes file_input config" `Quick
+            test_equal_distinguishes_file_input_config;
         ] );
       ( "interaction",
         [

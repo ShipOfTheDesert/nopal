@@ -4,6 +4,7 @@ module Renderer = Renderer
 module Canvas_renderer = Canvas_renderer
 module Platform_web = Platform_web
 module Storage = Storage
+module Blob_store = Nopal_blob_web.Blob_store
 
 type mounted = { unmount : unit -> unit }
 

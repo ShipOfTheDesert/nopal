@@ -22,6 +22,7 @@ let test_draw_builder_defaults () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Virtual_list _ ->
@@ -50,6 +51,7 @@ let test_draw_builder_defaults () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -97,6 +99,7 @@ let test_draw_with_callbacks () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
@@ -132,6 +135,7 @@ let test_draw_map () =
     | Element.Checkbox _
     | Element.Radio _
     | Element.Select _
+    | Element.File_input _
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _

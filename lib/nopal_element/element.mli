@@ -21,6 +21,46 @@ type wheel_event = { delta_y : float; x : float; y : float }
 type select_option = { value : string; label : string; disabled : bool }
 (** A single option within a [Select] element. *)
 
+(** Which camera a capture-capable file input asks a mobile webview to prefer.
+    Mobile webviews only — on a desktop browser the hint is inert and ignored,
+    which is not an error. *)
+type capture =
+  | User  (** The front-facing camera. *)
+  | Environment  (** The rear-facing camera. *)
+
+val capture_to_string : capture -> string
+(** [capture_to_string c] is the wire token for [c]: ["user"] or
+    ["environment"]. The sole producer of that token — no call site spells it as
+    a bare string. *)
+
+type file_info = {
+  blob_id : string;
+      (** Opaque handle issued by the web blob store, valid for the page
+          session. Meaningful only to a [_web] backend; never fabricate one. *)
+  name : string;  (** File name as reported by the user agent. *)
+  size : int;
+      (** Byte length. Bounded by the OCaml int: a file of 2 GB or more exceeds
+          the js_of_ocaml int range, and while the value reaches this field
+          intact it is not safe to do arithmetic on. *)
+  mime : string;
+      (** MIME type as reported by the user agent. A hint, never validation — do
+          not treat it as a security check on the file's contents. *)
+  last_modified : float;  (** Milliseconds since the POSIX epoch. *)
+}
+(** Metadata for one selected file, plus the handle to its bytes. Carries no
+    platform type, so structural tests construct it directly. *)
+
+val file_info :
+  blob_id:string ->
+  name:string ->
+  size:int ->
+  mime:string ->
+  last_modified:float ->
+  file_info
+(** [file_info ~blob_id ~name ~size ~mime ~last_modified] creates a [file_info].
+    Application code receives these from a [File_input] handler; construct one
+    directly only in tests. *)
+
 type 'msg t =
   | Empty
   | Text of { content : string; text_style : Nopal_style.Text.t option }
@@ -91,6 +131,15 @@ type 'msg t =
       selected : string;
       disabled : bool;
       on_change : (string -> 'msg) option;
+    }
+  | File_input of {
+      style : Nopal_style.Style.t;
+      interaction : Nopal_style.Interaction.t;
+      attrs : (string * string) list;
+      accept : string list;  (** Empty means unrestricted. *)
+      capture : capture option;
+      multiple : bool;
+      on_change : (file_info list -> 'msg) option;
     }
   | Image of { style : Nopal_style.Style.t; src : string; alt : string }
   | Scroll of { style : Nopal_style.Style.t; child : 'msg t }
@@ -225,6 +274,47 @@ val select :
 
 val select_option : ?disabled:bool -> value:string -> string -> select_option
 (** [select_option ~value label] creates a select option. *)
+
+val file_input :
+  ?style:Nopal_style.Style.t ->
+  ?interaction:Nopal_style.Interaction.t ->
+  ?attrs:(string * string) list ->
+  ?accept:string list ->
+  ?capture:capture ->
+  ?multiple:bool ->
+  ?on_change:(file_info list -> 'msg) ->
+  unit ->
+  'msg t
+(** A native file picker.
+
+    [accept] lists user-agent hints (MIME types or extensions) narrowing what
+    the picker offers; the empty list — the default — means unrestricted. It is
+    only a hint: the selection is never validated against it, so a caller that
+    needs a guarantee must check [mime] or the bytes itself.
+
+    [capture] is a mobile-webview camera preference, inert on desktop.
+    [multiple] defaults to [false].
+
+    [on_change] receives the whole selection. It also fires with [[]] when the
+    user clears the picker, so a model tracking the selection is never left
+    stale. Elements carry no bytes: each [file_info] carries an opaque [blob_id]
+    that only a [_web] backend can resolve.
+
+    The bytes behind a [blob_id] are owned by the application, not by the
+    element and not by the mount that rendered it: they live for the page
+    session and are released only by an explicit call to the web blob store's
+    [remove] or [clear]. Superseding a selection does not release the handle it
+    held.
+
+    [File_input] has no label of its own to slugify, so supply any test anchor
+    through [attrs] at the call site — and any accessible name, since the DSL
+    has no label element to associate one with.
+
+    [attrs] is an escape hatch for keys this builder does not model. Do not put
+    [type], [accept], [capture] or [multiple] in it: those are written from the
+    typed arguments above, and a reconcile that leaves [attrs] unchanged
+    rewrites them from the typed values regardless of what the initial render
+    put there. *)
 
 val image :
   ?style:Nopal_style.Style.t -> src:string -> alt:string -> unit -> 'msg t

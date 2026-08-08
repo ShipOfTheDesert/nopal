@@ -122,6 +122,19 @@ val input : selector -> string -> 'msg rendered -> (unit, error) result
     message. Returns [Error (Not_found selector)] if no element matches,
     [Error (No_handler ...)] if the element has no change handler. *)
 
+val select_files :
+  selector ->
+  Nopal_element.Element.file_info list ->
+  'msg rendered ->
+  (unit, error) result
+(** [select_files selector files rendered] finds the first file input matching
+    [selector], invokes its file-selection handler with [files], and appends the
+    resulting message. Passing [[]] simulates the user clearing the picker: the
+    handler still fires, with an empty list, so a model tracking the selection
+    is never left stale. Returns [Error (Not_found selector)] if no element
+    matches, [Error (No_handler ...)] if the element has no file-selection
+    handler. *)
+
 val submit : selector -> 'msg rendered -> (unit, error) result
 (** [submit selector rendered] finds the first element matching [selector],
     invokes its [on_submit] handler, and appends the resulting message. Returns

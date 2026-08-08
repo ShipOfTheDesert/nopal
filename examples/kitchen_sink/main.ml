@@ -13,6 +13,7 @@ module Sub_navigation_bar = Kitchen_sink_app.Sub_navigation_bar
 module Sub_bottom_tabs = Kitchen_sink_app.Sub_bottom_tabs
 module Sub_modal = Kitchen_sink_app.Sub_modal
 module Sub_subscriptions = Kitchen_sink_app.Sub_subscriptions
+module Sub_file_input = Kitchen_sink_app.Sub_file_input
 
 (* Result-task chaining for the Tauri ops (RFC 0118, REQ-F5). See
    {!Kitchen_sink_app.Tauri_op} for the contract; instantiated here with the
@@ -431,6 +432,7 @@ let update model msg =
   | App.Bottom_tabs_msg _
   | App.Modal_msg _
   | App.Subs_msg _
+  | App.File_input_msg _
   | App.KeyboardHeightChanged _
   | App.Back_demo_push
   | App.Route_changed _
@@ -506,6 +508,15 @@ let serialize_msg : App.msg -> string = function
   | App.Subs_msg (Sub_subscriptions.VisibilityChanged v) ->
       "Subs:VisibilityChanged:" ^ string_of_bool v
   | App.Subs_msg (Sub_subscriptions.KeyCaptured k) -> "Subs:KeyCaptured:" ^ k
+  (* File-input selection: the count is what an E2E spec waits on before reading
+     the per-file fragments out of [serialize_model] below. Clearing the picker
+     reports a selection of 0 rather than dispatching nothing, so the wait has a
+     positive event to observe in both directions. The trailing ';' bounds the
+     count the way [serialize_model]'s fragments are bounded — telemetry
+     assertions match by substring, so [FilesSelected:1] would otherwise be
+     satisfied by a ten-file selection. *)
+  | App.File_input_msg (Sub_file_input.Selected files) ->
+      Printf.sprintf "FilesSelected:%d;" (List.length files)
   (* Mobile signals (RFC 0116): the keyboard-height readout (REQ-N2) and the
      back-demo route change the Tauri back-IPC e2e asserts on via the host
      [get_telemetry] mirror — [Route_changed] proves the hardware-back chain
@@ -687,13 +698,18 @@ let serialize_model (model : App.model) =
      back-IPC e2e can prove the model returned to [Back_home] after
      [simulate_back_pressed] via [assertModelContains]. The trailing ';' keeps
      [back_route=Back_home;] from prefix-aliasing a longer route name. *)
+  (* The current file selection is part of the asserted model surface so the
+     file-input spec can prove a picked file's name, mime and size reached the
+     model. [Sub_file_input.serialize_model] already terminates each
+     [field=value] with ';' so a size assertion cannot prefix-alias. *)
   Printf.sprintf
     "{pings=%d; clicks=%d; input=%S; storage=%s; win_visible=%b; win_title=%S; \
-     tauri_store=%s; back_route=%s; bottom_tabs={%s}}"
+     tauri_store=%s; back_route=%s; bottom_tabs={%s}; file_input={%s}}"
     model.telemetry_pings model.button_clicks model.input_text storage
     model.tauri_is_visible model.tauri_window_title tauri_store
     (back_route_to_string model.back_route)
     (Sub_bottom_tabs.serialize_model model.bottom_tabs)
+    (Sub_file_input.serialize_model model.file_input)
 
 (* The application owns telemetry policy: telemetry is on by default for the
    kitchen sink (it is the live E2E target), and disabled with [?telemetry=off]

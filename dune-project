@@ -262,6 +262,18 @@
   js_of_ocaml))
 
 (package
+ (name nopal_blob_web)
+ (synopsis "Session-local browser blob store for Nopal")
+ (depends
+  (alcotest
+   (and
+    (>= 1.9.1)
+    :with-test))
+  ocaml
+  brr
+  js_of_ocaml))
+
+(package
  (name nopal_web)
  (synopsis "Web renderer backend for Nopal")
  (depends
@@ -278,6 +290,7 @@
   nopal_platform
   nopal_storage
   nopal_storage_web
+  nopal_blob_web
   nopal_telemetry_wire
   lwd
   brr

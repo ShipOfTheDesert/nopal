@@ -108,6 +108,20 @@
 ; rAF, live-observer count) and subs_shim (window listener registry + per-type
 ; count) layered over dom_shim.
 
+; test_file_input_render drives the file-input create/reconcile paths and the
+; change listener. dom_shim covers element creation and event dispatch;
+; stylesheet_shim is needed because the interactive cases inject CSS rules
+; through Style_sheet. The FileList each case installs is a JS array of real
+; File objects built with Node's global File constructor, not a shimmed one.
+
+(test
+ (name test_file_input_render)
+ (package nopal_web)
+ (libraries nopal_web nopal_element nopal_style alcotest brr)
+ (modes js)
+ (js_of_ocaml
+  (javascript_files dom_shim.js stylesheet_shim.js)))
+
 (test
  (name test_mount_unmount)
  (package nopal_web)
