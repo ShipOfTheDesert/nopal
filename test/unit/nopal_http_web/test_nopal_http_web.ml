@@ -10,6 +10,42 @@ let flush_then_run k =
   let flush = Jv.get Jv.global "_flush" in
   ignore (Jv.apply flush [| Jv.callback ~arity:1 (fun _ -> k ()) |])
 
+(* Multipart file parts name their bytes by a blob-store handle, so the cases
+   below seed the store with real browser objects — Node supplies the [Blob] and
+   [File] globals [Brr.Blob] is built on.
+
+   Every fixture holds the same 13 bytes, which is what the fetch shim echoes
+   back as the appended value's [size]. A stringified value would report no size
+   at all, so the assertion distinguishes "the Blob reached FormData" from "some
+   description of it did". *)
+let fixture_text = "receipt bytes"
+
+let store_blob ~mime =
+  Nopal_blob_web.Blob_store.store
+    (Brr.Blob.of_jstr
+       ~init:(Brr.Blob.init ~type':(Jstr.of_string mime) ())
+       (Jstr.of_string fixture_text))
+
+(* [Brr] exposes no [File] constructor, and a [File] is what the picker actually
+   registers: a [Blob] that additionally carries its own [name]. Built through
+   raw [Jv] so the "no filename override" cases can assert that the name the
+   blob itself reports is the one the server sees. *)
+let store_file ~name ~mime =
+  let file =
+    Jv.new' (Jv.get Jv.global "File")
+      [|
+        Jv.of_array Jv.of_jstr [| Jstr.of_string fixture_text |];
+        Jv.of_jstr (Jstr.of_string name);
+        Jv.obj [| ("type", Jv.of_jstr (Jstr.of_string mime)) |];
+      |]
+  in
+  Nopal_blob_web.Blob_store.store (Brr.Blob.of_jv file)
+
+(* The shim counts every fetch call. Reading it either side of a [Task.run] is
+   what separates "resolved before issuing a request" from "issued a request and
+   then failed" — the outcome alone cannot tell those apart. *)
+let fetch_count () = Jv.Int.get Jv.global "_fetchCount"
+
 let () =
   (* Execute all async tasks now — resolves happen during microtask flush *)
   let results_get_success = ref [] in
@@ -26,6 +62,13 @@ let () =
   let results_delete_body = ref [] in
   let results_form_encoded = ref [] in
   let results_multipart = ref [] in
+  let results_multipart_file = ref [] in
+  let results_multipart_overrides = ref [] in
+  let results_multipart_dangling = ref [] in
+  let results_cancellable_dangling = ref [] in
+  let fetches_around_file_part = ref (0, 0) in
+  let fetches_around_dangling = ref (0, 0) in
+  let fetches_around_cancellable_dangling = ref (0, 0) in
   let results_timeout = ref [] in
   Nopal_mvu.Task.run (Nopal_http_web.get "https://example.com/success")
     (fun outcome -> results_get_success := Got outcome :: !results_get_success);
@@ -90,9 +133,128 @@ let () =
       results_form_encoded := Got outcome :: !results_form_encoded);
   Nopal_mvu.Task.run
     (Nopal_http_web.post
-       ~body:(Nopal_http.Multipart [ ("name", "nopal"); ("version", "1") ])
+       ~body:
+         (Nopal_http.Multipart
+            [
+              Nopal_http.Field ("name", "nopal");
+              Nopal_http.Field ("version", "1");
+            ])
        "https://example.com/success")
     (fun outcome -> results_multipart := Got outcome :: !results_multipart);
+  let receipt_handle = store_blob ~mime:"image/png" in
+  let fetches_before_file_part = fetch_count () in
+  Nopal_mvu.Task.run
+    (Nopal_http_web.post
+       ~body:
+         (Nopal_http.Multipart
+            [
+              Nopal_http.Field ("caption", "lunch");
+              Nopal_http.File
+                {
+                  name = "receipt";
+                  blob_id = receipt_handle;
+                  filename = None;
+                  mime = None;
+                };
+            ])
+       "https://example.com/success")
+    (fun outcome ->
+      results_multipart_file := Got outcome :: !results_multipart_file);
+  fetches_around_file_part := (fetches_before_file_part, fetch_count ());
+  (* Three entries from three separate store entries, so no case can pass by
+     observing another's blob: overrides on both axes, neither axis, and mime
+     alone — the last is what proves the two overrides are independent, since
+     re-typing a blob is what would otherwise discard the name it reports. *)
+  let overridden_handle = store_file ~name:"receipt.png" ~mime:"image/png" in
+  let deferred_handle = store_file ~name:"receipt.png" ~mime:"image/png" in
+  let retyped_handle = store_file ~name:"receipt.png" ~mime:"image/png" in
+  Nopal_mvu.Task.run
+    (Nopal_http_web.post
+       ~body:
+         (Nopal_http.Multipart
+            [
+              Nopal_http.File
+                {
+                  name = "overridden";
+                  blob_id = overridden_handle;
+                  filename = Some "invoice.pdf";
+                  mime = Some "application/pdf";
+                };
+              Nopal_http.File
+                {
+                  name = "deferred";
+                  blob_id = deferred_handle;
+                  filename = None;
+                  mime = None;
+                };
+              Nopal_http.File
+                {
+                  name = "retyped";
+                  blob_id = retyped_handle;
+                  filename = None;
+                  mime = Some "image/webp";
+                };
+            ])
+       "https://example.com/success")
+    (fun outcome ->
+      results_multipart_overrides := Got outcome :: !results_multipart_overrides);
+  (* Never issued by the store — [Blob_store.store] mints handles behind a
+     random per-session prefix, so a hand-written literal cannot collide with a
+     live entry. Paired with a [Field] so the assertion also covers atomicity:
+     the resolvable part must not be sent on its own. *)
+  let fabricated_handle = "nopal-blob-fabricated-0" in
+  let fetches_before_dangling = fetch_count () in
+  Nopal_mvu.Task.run
+    (Nopal_http_web.post
+       ~body:
+         (Nopal_http.Multipart
+            [
+              Nopal_http.Field ("caption", "lunch");
+              Nopal_http.File
+                {
+                  name = "receipt";
+                  blob_id = fabricated_handle;
+                  filename = None;
+                  mime = None;
+                };
+            ])
+       "https://example.com/success")
+    (fun outcome ->
+      results_multipart_dangling := Got outcome :: !results_multipart_dangling);
+  fetches_around_dangling := (fetches_before_dangling, fetch_count ());
+  (* [send_cancellable] carries its own copy of the body-preparation
+     short-circuit, and its .mli promises the same [Invalid_blob] behaviour as
+     {!send}. Sharing a pattern with a tested sibling is not coverage: an
+     implementation that issued the fetch anyway, or that collapsed the failure
+     into [Network_error], would pass every other case in this file. *)
+  let cancellable_fabricated_handle = "nopal-blob-fabricated-1" in
+  let fetches_before_cancellable_dangling = fetch_count () in
+  let _cancellable_dangling_token, cancellable_dangling_task =
+    Nopal_http_web.send_cancellable
+      {
+        Nopal_http.meth = POST;
+        url = "https://example.com/success";
+        headers = [];
+        body =
+          Nopal_http.Multipart
+            [
+              Nopal_http.Field ("caption", "lunch");
+              Nopal_http.File
+                {
+                  name = "receipt";
+                  blob_id = cancellable_fabricated_handle;
+                  filename = None;
+                  mime = None;
+                };
+            ];
+        timeout = None;
+      }
+  in
+  Nopal_mvu.Task.run cancellable_dangling_task (fun outcome ->
+      results_cancellable_dangling :=
+        Got outcome :: !results_cancellable_dangling);
+  fetches_around_cancellable_dangling :=
+    (fetches_before_cancellable_dangling, fetch_count ());
   Nopal_mvu.Task.run
     (Nopal_http_web.get ~timeout:0.01 "https://example.com/delay")
     (fun outcome -> results_timeout := Got outcome :: !results_timeout);
@@ -287,6 +449,157 @@ let () =
                   | _ ->
                       Alcotest.fail
                         "expected exactly one Got (Ok _) for multipart test");
+              Alcotest.test_case "multipart file part sends the stored blob"
+                `Quick (fun () ->
+                  match !results_multipart_file with
+                  | [ Got (Ok resp) ] ->
+                      let body = resp.Nopal_http.body in
+                      Alcotest.(check bool)
+                        "the string field is sent alongside the file" true
+                        (Test_util.string_contains body ~sub:"caption"
+                        && Test_util.string_contains body ~sub:"lunch");
+                      (* Size and type can only come from the Blob itself; a
+                         value stringified on the way into FormData would carry
+                         neither. That is what pins the blob being handed to
+                         FormData directly, rather than its bytes being read
+                         into OCaml first. *)
+                      (* [filename=blob] is what the shim records for a
+                         two-argument [append], and it is the platform's own
+                         default name for an omitted filename. A regression to
+                         an unconditional three-argument call carrying an absent
+                         filename would read [filename=undefined] here, which is
+                         the literal string real FormData would put on the
+                         wire. *)
+                      Alcotest.(check bool)
+                        "the appended value is the stored blob, named by the \
+                         platform default"
+                        true
+                        (Test_util.string_contains body
+                           ~sub:"<blob size=13 type=image/png filename=blob>");
+                      Alcotest.(check bool)
+                        "no filename was stated for it" false
+                        (Test_util.string_contains body
+                           ~sub:"filename=undefined");
+                      Alcotest.(check bool)
+                        "the appended value is not a stringified object" false
+                        (Test_util.string_contains body ~sub:"[object");
+                      let before, after = !fetches_around_file_part in
+                      Alcotest.(check int)
+                        "a resolvable multipart body issues its request"
+                        (before + 1) after
+                  | _ ->
+                      Alcotest.fail
+                        "expected exactly one Got (Ok _) for the multipart \
+                         file part test");
+              Alcotest.test_case
+                "multipart file part applies filename and mime overrides" `Quick
+                (fun () ->
+                  match !results_multipart_overrides with
+                  | [ Got (Ok resp) ] ->
+                      let body = resp.Nopal_http.body in
+                      Alcotest.(check bool)
+                        "both overrides reach the appended entry" true
+                        (Test_util.string_contains body
+                           ~sub:
+                             "<blob size=13 type=application/pdf \
+                              filename=invoice.pdf>");
+                      Alcotest.(check bool)
+                        "no override defers to the blob's own type and name"
+                        true
+                        (Test_util.string_contains body
+                           ~sub:
+                             "<blob size=13 type=image/png \
+                              filename=receipt.png>");
+                      Alcotest.(check bool)
+                        "a mime override alone leaves the blob's own name \
+                         intact"
+                        true
+                        (Test_util.string_contains body
+                           ~sub:
+                             "<blob size=13 type=image/webp \
+                              filename=receipt.png>")
+                  | _ ->
+                      Alcotest.fail
+                        "expected exactly one Got (Ok _) for the multipart \
+                         override test");
+              Alcotest.test_case
+                "multipart with unknown handle fails with Invalid_blob" `Quick
+                (fun () ->
+                  match !results_multipart_dangling with
+                  | [ Got (Error (Nopal_http.Invalid_blob handle)) ] ->
+                      Alcotest.(check string)
+                        "the error names the unresolvable handle"
+                        "nopal-blob-fabricated-0" handle;
+                      let before, after = !fetches_around_dangling in
+                      Alcotest.(check int)
+                        "nothing was sent — not even the resolvable part" before
+                        after
+                  | [ Got (Error (Nopal_http.Network_error msg)) ] ->
+                      Alcotest.fail
+                        ("expected Invalid_blob but got Network_error: " ^ msg)
+                  | [ Got (Error Nopal_http.Timeout) ] ->
+                      Alcotest.fail "expected Invalid_blob but got Timeout"
+                  | [ Got (Ok _) ] ->
+                      Alcotest.fail
+                        "expected Invalid_blob but the request was sent anyway"
+                  | _ ->
+                      Alcotest.fail
+                        "expected exactly one Got (Error (Invalid_blob _))");
+              Alcotest.test_case
+                "send_cancellable with unknown handle fails with Invalid_blob"
+                `Quick (fun () ->
+                  match !results_cancellable_dangling with
+                  | [ Got (Error (Nopal_http.Invalid_blob handle)) ] ->
+                      Alcotest.(check string)
+                        "the error names the unresolvable handle"
+                        "nopal-blob-fabricated-1" handle;
+                      let before, after =
+                        !fetches_around_cancellable_dangling
+                      in
+                      Alcotest.(check int)
+                        "nothing was sent — not even the resolvable part" before
+                        after
+                  | [ Got (Error (Nopal_http.Network_error msg)) ] ->
+                      Alcotest.fail
+                        ("expected Invalid_blob but got Network_error: " ^ msg)
+                  | [ Got (Error Nopal_http.Timeout) ] ->
+                      Alcotest.fail "expected Invalid_blob but got Timeout"
+                  | [ Got (Ok _) ] ->
+                      Alcotest.fail
+                        "expected Invalid_blob but the request was sent anyway"
+                  | _ ->
+                      Alcotest.fail
+                        "expected exactly one Got (Error (Invalid_blob _))");
+              (* The boundary the platform generates depends on this header being
+                 absent: a hand-written [Content-Type] would carry a boundary
+                 that does not match the encoded body. The one line that holds it
+                 ([content_type_from_body]'s [Multipart] arm) is otherwise
+                 guarded only by the browser E2E. *)
+              Alcotest.test_case "multipart sends no explicit Content-Type"
+                `Quick (fun () ->
+                  match (!results_multipart, !results_post) with
+                  | [ Got (Ok multipart) ], [ Got (Ok with_header) ] ->
+                      (* The shim echoes the request's headers as a JSON object.
+                         The affirmative arm is the sibling POST, which does set
+                         one — without it, an assertion that no header was
+                         echoed would also pass if the shim echoed no headers at
+                         all. *)
+                      Alcotest.(check bool)
+                        "a request that sets Content-Type echoes it" true
+                        (Test_util.string_contains with_header.Nopal_http.body
+                           ~sub:"content-type");
+                      Alcotest.(check bool)
+                        "the multipart request sent no headers at all" true
+                        (Test_util.string_contains multipart.Nopal_http.body
+                           ~sub:"\"headers\":{}");
+                      Alcotest.(check bool)
+                        "the multipart request sent no Content-Type" false
+                        (Test_util.string_contains multipart.Nopal_http.body
+                           ~sub:"content-type")
+                  | _ ->
+                      Alcotest.fail
+                        "expected one Got (Ok _) for both the multipart and \
+                         the Content-Type-setting POST");
               Alcotest.test_case "timeout aborts and dispatches Timeout" `Quick
                 (fun () ->
                   match !results_timeout with
