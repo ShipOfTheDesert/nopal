@@ -1,0 +1,35 @@
+(test
+ (name test_image_error)
+ (modules test_image_error)
+ (libraries nopal_image alcotest))
+
+(test
+ (name test_buffer)
+ (modules test_buffer)
+ (libraries nopal_image image_test_helpers alcotest))
+
+(test
+ (name test_luma)
+ (modules test_luma)
+ (libraries nopal_image image_test_helpers alcotest))
+
+(test
+ (name test_sharpness)
+ (modules test_sharpness)
+ (libraries nopal_image image_test_helpers alcotest))
+
+(test
+ (name test_config)
+ (modules test_config)
+ (libraries nopal_image image_test_helpers alcotest))
+
+(test
+ (name test_sharpness_props)
+ (package nopal_image)
+ (modules test_sharpness_props)
+ (libraries
+  nopal_image
+  image_test_helpers
+  qcheck-core
+  qcheck-alcotest
+  alcotest))

@@ -10,6 +10,8 @@ import { NopalTelemetryTauri } from "./nopal-telemetry-tauri";
 // Ordering note: we end on `hide`, so no interaction is attempted against a
 // hidden OS window. The title set and the visible→hidden transition are
 // sufficient to prove the IPC path; `set-focus`/`show` are exercised elsewhere.
+// Ordering alone is not enough, though — the hide *click itself* races the
+// window unmap under WebKitWebDriver, so it is dispatched in-page. See step 3.
 
 const NEW_TITLE = "Nopal E2E Window";
 
@@ -51,7 +53,23 @@ describe("Tauri window (REQ-F5)", () => {
 
     // 3. Hide → message + the visible→hidden model transition (asserted last so
     //    we never click a control on a hidden window).
-    await $('[data-action="tauri-window-hide"]').click();
+    //
+    //    Dispatched in-page rather than through `element.click()`. A WebDriver
+    //    click is synchronous: WebKitWebDriver synthesises the input event and
+    //    then waits for the browsing context to settle before answering the
+    //    POST. This click unmaps the OS window, and when the compositor wins
+    //    that race the response never arrives — the command hangs until the
+    //    spec timeout and takes the whole driver session with it
+    //    (`UND_ERR_SOCKET` on every subsequent request). An in-page `click()`
+    //    returns as soon as the DOM event is dispatched; the hide itself then
+    //    travels over Tauri IPC asynchronously, and the assertions below still
+    //    reach the webview because a hidden window's web process keeps running.
+    //    Same class of workaround as the title field above.
+    await browser.execute((sel) => {
+      const el = document.querySelector(sel) as HTMLElement | null;
+      if (el === null) return;
+      el.click();
+    }, '[data-action="tauri-window-hide"]');
     await telemetry.assertDispatched("HideTauriWindow");
     await telemetry.assertModelContains("win_visible=false");
 

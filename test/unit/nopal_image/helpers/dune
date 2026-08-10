@@ -1,0 +1,3 @@
+(library
+ (name image_test_helpers)
+ (libraries nopal_image alcotest))
