@@ -2,3 +2,23 @@
  (name test_router_demo)
  (modules test_router_demo)
  (libraries router_demo_app nopal_test nopal_mvu nopal_platform alcotest))
+
+; The image capture flow drives a whole MVU application - selection, the
+; processing command, the sharpness branch and the upload - through the test
+; renderer, so it belongs beside the other application-flow tests rather than
+; under test/unit/nopal_image. It reaches nopal_element, nopal_http and
+; nopal_test, all of which sit above nopal_image; keeping it in that package's
+; own test directory would have pointed the lowest package in the chain at three
+; packages above it.
+
+(test
+ (name test_image_processing_flow)
+ (modules test_image_processing_flow)
+ (libraries
+  nopal_image
+  nopal_mvu
+  nopal_element
+  nopal_http
+  nopal_test
+  test_util
+  alcotest))

@@ -7,6 +7,24 @@ let guard ~on_exn f resolve =
   try f resolve with
   | e -> resolve (Error (on_exn e))
 
+let guard_once ~on_exn f resolve =
+  (* Mutable: a one-shot latch over a single run's delivery. It has exactly one
+     transition, from undelivered to delivered, and nothing reads it but the
+     delivery it guards. It is taken here rather than inside [f] so that the
+     handler installed below reaches the latched resolver too - a latch applied
+     inside [f] shadows only [f]'s own deliveries, leaving the handler holding
+     the raw one. *)
+  let delivered = ref false in
+  let resolve outcome =
+    match !delivered with
+    | true -> ()
+    | false ->
+        delivered := true;
+        resolve outcome
+  in
+  try f resolve with
+  | e -> resolve (Error (on_exn e))
+
 let map f task resolve = task (fun x -> resolve (f x))
 let bind f task resolve = task (fun x -> f x resolve)
 let run task resolve = task resolve

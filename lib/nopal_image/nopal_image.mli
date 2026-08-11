@@ -1,11 +1,14 @@
 (** Pure pixel data: a validated RGBA buffer, its conversion to luminance, a
-    sharpness metric over that luminance, and the capture parameters a platform
-    backend reads.
+    sharpness metric over that luminance, the capture parameters a platform
+    backend reads, and the seam a platform backend registers itself into.
 
-    Nothing here touches compressed bytes, a canvas, or any platform API. A
-    backend hands in raw pixels through {!Buffer} and reads its encode settings
-    out of {!Config}; everything between those two points is ordinary OCaml and
-    is exercised without a browser.
+    Nothing here touches compressed bytes, a canvas, or any platform API. The
+    only dependency is [nopal_mvu], which supplies the task and command types
+    {!Processing} states its effect in; a canvas is named in a {!Processing}
+    failure but never reached for. A backend hands in raw pixels through
+    {!Buffer}, reads its encode settings out of {!Config}, and reports what it
+    produced back through {!Processing}; everything between those points is
+    ordinary OCaml and is exercised without a browser.
 
     Note that [open Nopal_image] shadows [Stdlib.Buffer]. Qualify the stdlib
     module as [Stdlib.Buffer] where a byte buffer rather than a pixel buffer is
@@ -37,3 +40,7 @@ module Sharpness = Sharpness
 
 module Config = Config
 (** Validated capture parameters for a platform backend. *)
+
+module Processing = Processing
+(** The seam an application calls to have a stored image processed, and the
+    failures a platform backend reports back through it. *)

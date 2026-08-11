@@ -168,7 +168,8 @@
    (and
     (>= 1.9.1)
     :with-test))
-  ocaml))
+  ocaml
+  nopal_mvu))
 
 (package
  (name nopal_test)
@@ -248,6 +249,21 @@
     :with-test))
   ocaml
   nopal_http
+  nopal_mvu
+  nopal_blob_web
+  brr
+  js_of_ocaml))
+
+(package
+ (name nopal_image_web)
+ (synopsis "Browser canvas image pipeline backend for Nopal")
+ (depends
+  (alcotest
+   (and
+    (>= 1.9.1)
+    :with-test))
+  ocaml
+  nopal_image
   nopal_mvu
   nopal_blob_web
   brr

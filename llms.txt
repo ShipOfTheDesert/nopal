@@ -24,13 +24,14 @@ nopal_charts    ← Composable interactive charts (Bar, Line, Area, Pie, Scatter
                    Color_scale, Domain_window, Viewport, Downsample, Snap)
 nopal_http      ← Pure HTTP types + backend abstraction — no platform deps
 nopal_navigation ← Nav_stack: pure stack-based navigation state (non-empty, total pop) — no platform deps
-nopal_image     ← Validated RGBA Buffer, perceptual Luma, Sharpness metric, capture Config — no platform deps
+nopal_image     ← Validated RGBA Buffer, perceptual Luma, Sharpness metric, capture Config, Processing seam — depends on nopal_mvu (Task/Cmd types); no platform deps
 nopal_ui        ← High-level UI components (Bottom_tabs, Button, Checkbox, Data_table, Modal, Navigation_bar, Radio_group, Select_input, Slug, Text_input, Toast) — no platform deps
 nopal_runtime   ← Lwd reactive integration + MVU loop; Telemetry (E2E event log)
 nopal_test      ← Pure OCaml test renderer + Telemetry_test harness — no js_of_ocaml
 nopal_web       ← js_of_ocaml + Brr DOM renderer (only browser-dependent package)
 nopal_http_web  ← Browser Fetch API backend for nopal_http — depends on nopal_blob_web (multipart file parts); js_of_ocaml + Brr, never nopal_web/nopal_runtime/lwd
 nopal_blob_web  ← Session-local handle ⇄ Brr.Blob.t registry, reachable from any _web backend — js_of_ocaml + Brr
+nopal_image_web ← Browser canvas pipeline implementing Nopal_image.Processing — depends on nopal_image + nopal_mvu + nopal_blob_web; js_of_ocaml + Brr, never nopal_web/nopal_runtime/lwd
 nopal_storage_web   ← IndexedDB backend implementing Nopal_storage.S — js_of_ocaml + Brr
 nopal_storage_tauri ← Filesystem (tauri-plugin-fs) backend implementing Nopal_storage.S — js_of_ocaml + Brr
 nopal_tauri     ← Tauri desktop/mobile bindings — depends on nopal_mvu (for Task.t), nopal_platform (for Platform.S)
@@ -153,6 +154,25 @@ Task.from_callback : (('a -> unit) -> unit) -> 'a Task.t  (* bridge callback-sty
 Task.map  : ('a -> 'b) -> 'a Task.t -> 'b Task.t      (* transform result *)
 Task.bind : ('a -> 'b Task.t) -> 'a Task.t -> 'b Task.t   (* sequence two tasks *)
 Task.run  : 'a Task.t -> ('a -> unit) -> unit          (* execute and observe result *)
+
+(* Guarded bridges for platform interop — a synchronous raise inside the body
+   becomes Error (on_exn e) instead of leaving the task unresolved forever. *)
+Task.guard : on_exn:(exn -> 'e) -> ((('a, 'e) result -> unit) -> unit)
+  -> ('a, 'e) result Task.t
+Task.guard_once : on_exn:(exn -> 'e) -> ((('a, 'e) result -> unit) -> unit)
+  -> ('a, 'e) result Task.t
+
+(* Prefer guard_once in any backend whose body can deliver an outcome
+   SYNCHRONOUSLY. guard is `try f resolve with e -> resolve (Error (on_exn e))`,
+   so its handler holds the resolver the task was run with. Delivering runs the
+   application's dispatch, which is arbitrary code: if that raises, guard catches
+   it and delivers a SECOND outcome, blaming the platform for an application bug.
+   A latch written inside the body shadows only the body's own deliveries and
+   cannot prevent this — guard_once latches the resolver before installing the
+   handler, which is the only placement that covers both. A raise reaching the
+   handler after an outcome was delivered is absorbed; a raise before any
+   delivery still becomes Error (on_exn e). `just lint-classes` fails a latch
+   written inside a Task.guard body. *)
 
 (* Cancellation *)
 type Task.cancellation_token
@@ -1127,11 +1147,14 @@ module App = App.Make (Platform_web)
 ### Image (`nopal_image`)
 
 Pure pixel data: a validated RGBA buffer, its conversion to perceptual luminance,
-a sharpness (focus) metric over that luminance, and the capture parameters a
-platform backend reads. Zero dependencies — not even `nopal_mvu` — and compiles
-native, so the metric is testable without a browser. Nothing here touches
-compressed bytes, a canvas, or any platform API: encoding, resizing and EXIF are
-the platform backend's concern, and `nopal_image` only describes them.
+a sharpness (focus) metric over that luminance, the capture parameters a platform
+backend reads, and the `Processing` seam a platform backend registers itself into.
+The only dependency is `nopal_mvu`, which supplies the `Task.t` and `Cmd.t` types
+the seam states its effect in; the package still compiles native, so the metric is
+testable without a browser. Nothing here touches compressed bytes, a canvas, or
+any platform API: encoding, resizing and EXIF are the platform backend's concern,
+and `nopal_image` only describes them — a canvas is named in a `Processing`
+failure but never reached for.
 
 ```ocaml
 type Nopal_image.error =
@@ -1216,6 +1239,60 @@ Config.metric_edge : Config.t -> int    (* long edge the sharpness pass scales d
 Config.quality     : Config.t -> float  (* 0.0-1.0, as the caller supplied it *)
 Config.format      : Config.t -> format
 Config.format_to_mime : format -> string   (* "image/jpeg" | "image/png" | "image/webp" *)
+```
+
+`Processing` is the platform-free seam an application calls to have a stored image
+turned into an upload-ready one. It is shaped exactly like `Nopal_http`'s backend
+seam: a record of functions, a `default_backend` that fails rather than hangs, a
+`register_backend` called once at mount, and a `Cmd`-returning entry point. An App
+module can name every type here without importing any platform package;
+`nopal_image_web` supplies the browser implementation.
+
+```ocaml
+type Nopal_image.Processing.error =
+  | Blob_not_found     of string   (* no stored image under the handle asked for *)
+  | Decode_failed      of string   (* the stored bytes did not decode as an image *)
+  | Canvas_unavailable of string   (* the drawing surface could not be obtained *)
+  | Pixel_read_failed  of string   (* the drawn pixels could not be read back *)
+  | Encode_failed      of string   (* the processed pixels did not re-encode *)
+
+Processing.message : error -> string
+      (* "Image decode failed: <detail>" and the four siblings — for display.
+         The detail is a sentence for a human, never a token to branch on. *)
+
+type Nopal_image.Processing.result_info = {
+  blob_id   : string;   (* NEW handle from the blob store; the processed handle
+                           keeps its own entry and stays usable *)
+  width     : int;      (* size the processed image was ACTUALLY stored at,
+                           read back off the canvas — not echoed from the config *)
+  height    : int;
+  byte_size : int;      (* length of the ENCODED blob. A different quantity from
+                           Buffer.byte_size, which is the raw RGBA length for the
+                           same picture, larger by roughly an order of magnitude *)
+  sharpness : float;    (* Sharpness.score over the processed pixels *)
+}
+
+type Nopal_image.Processing.backend = {
+  process : blob_id:string -> config:Config.t
+            -> (result_info, error) result Nopal_mvu.Task.t;
+}
+
+Processing.default_backend  : backend
+      (* in force before any platform registers one; resolves
+         Error (Canvas_unavailable _) — never raises, never leaves the task
+         unresolved. Public so a test can restore it. *)
+Processing.register_backend : backend -> unit
+Processing.process : blob_id:string -> config:Config.t
+                     -> ((result_info, error) result -> 'msg) -> 'msg Nopal_mvu.Cmd.t
+
+(* main.ml, once, before any command is built:
+     Nopal_image.Processing.register_backend
+       { Nopal_image.Processing.process = Nopal_image_web.process }
+
+   process reads the registered backend when the COMMAND IS BUILT, not when the
+   task runs — same as Nopal_http.send. Build it inside update; a command built at
+   module initialisation captures default_backend, because main.ml has not
+   registered yet. *)
 ```
 
 ### Scene Types (`nopal_scene`)
@@ -1801,6 +1878,87 @@ val clear  : unit -> unit
    Decision 1). Release is the application's responsibility. *)
 ```
 
+### Image Web (`nopal_image_web`)
+
+Browser implementation of `Nopal_image.Processing`. Decodes a stored image,
+downscales it natively on a detached canvas, re-encodes it back into
+`nopal_blob_web` under a fresh handle, and scores its sharpness. Returns a
+`Task.t` — used in `main.ml` to register the backend via
+`{ Nopal_image.Processing.process = Nopal_image_web.process }`. The encoded bytes
+never enter the OCaml heap; pixels cross the js_of_ocaml boundary exactly once,
+on the smaller sharpness canvas only, and only after the browser has done the
+downscaling itself.
+
+```ocaml
+val process : blob_id:string -> config:Nopal_image.Config.t
+  -> (Nopal_image.Processing.result_info, Nopal_image.Processing.error) result
+     Nopal_mvu.Task.t
+
+(* Stage order: blob lookup → decode → upload-canvas draw at
+   Dimensions.fit ~max_edge:(Config.max_edge config) → encode with
+   Config.format_to_mime (Config.format config) at Config.quality config →
+   Blob_store.store → metric-canvas draw at
+   Dimensions.fit ~max_edge:(Config.metric_edge config) → one pixel read →
+   Sharpness.score. The decoded bitmap is released on every exit path, success
+   and failure alike, and exactly once: the release and the delivery are one
+   action behind a one-shot latch, because the region around the delivery
+   finishes again when an application's dispatch raises.
+
+   The task is built with Nopal_mvu.Task.guard_once, not Task.guard. The handle
+   lookup delivers synchronously, inside the guard's own try; a guard holding the
+   raw resolver would answer a raising dispatch with a second outcome.
+
+   Failures are classified by WHICH STAGE raised, never by the text of the
+   browser's message. Note the consequence: a browser with no createImageBitmap
+   fails at the decode stage and therefore reports Decode_failed, NOT
+   Canvas_unavailable. An application testing for an unsupported environment must
+   treat Decode_failed as covering that case too. Canvas_unavailable means the 2D
+   context was refused, or that no backend was registered at all. *)
+```
+
+```ocaml
+Dimensions.fit : src_width:int -> src_height:int -> max_edge:int -> int * int
+(* Pure long-edge sizing, no platform types. Preserves aspect to within a whole
+   pixel; the longer returned edge is exactly max_edge whenever a cap applies; a
+   source already at or under the cap comes back unchanged (never enlarges); no
+   returned edge is ever zero. *)
+```
+
+`Canvas_ffi` holds the hand-written `Jv` bindings for the browser calls `brr` does
+not bind. It lives in the separate `nopal_image_web.internal` library and is
+deliberately NOT re-exported from `Nopal_image_web`: an application calls
+`process`, and calling `read_pixels` directly would carry a full-resolution image
+across the boundary, bypassing the single-crossing guarantee above. Reach it as
+`Nopal_image_web_internal.Canvas_ffi`, from a library you have to depend on by
+name — the pipeline's own tests are the intended audience. Every canvas it
+allocates is detached and never inserted into a document.
+
+```ocaml
+type Canvas_ffi.bitmap    (* a decoded image, held JavaScript-side *)
+type Canvas_ffi.canvas    (* detached canvas + its pixel backing store *)
+type Canvas_ffi.context   (* a canvas 2D drawing context *)
+
+Canvas_ffi.decode  : Brr.Blob.t -> ((bitmap, string) result -> unit) -> unit
+                     (* calls k exactly once; caller owns the bitmap *)
+Canvas_ffi.bitmap_width  : bitmap -> int
+Canvas_ffi.bitmap_height : bitmap -> int
+Canvas_ffi.release       : bitmap -> unit   (* idempotent *)
+Canvas_ffi.create_canvas : width:int -> height:int -> canvas
+Canvas_ffi.canvas_width  : canvas -> int    (* read back off the canvas *)
+Canvas_ffi.canvas_height : canvas -> int
+Canvas_ffi.context_2d    : canvas -> context option   (* None, not an exception *)
+Canvas_ffi.draw    : context -> bitmap -> width:int -> height:int -> unit
+Canvas_ffi.encode  : canvas -> mime:string -> quality:float
+                     -> ((Brr.Blob.t, string) result -> unit) -> unit
+Canvas_ffi.read_pixels : context -> Brr.Tarray.uint8_clamped
+                     (* whole backing store, packed RGBA, four bytes per pixel *)
+
+(* An asynchronous rejection arrives as Error message through the continuation; a
+   synchronous refusal lets the Jv.Error escape, so the caller attributes it to
+   the stage that raised. Nothing here classifies a failure. Derive encode's mime
+   from Config.format_to_mime on the typed variant, never from a caller string. *)
+```
+
 ### Test Renderer (`nopal_test`)
 
 Pure OCaml structural testing without a browser:
@@ -2199,7 +2357,7 @@ lib/
                        Trading.Candlestick, Trading.Drawdown, Chart_pane,
                        Color_scale, Domain_window, Viewport, Downsample, Snap
   nopal_http/        — Pure HTTP types + backend abstraction
-  nopal_image/       — Buffer, Luma, Sharpness, Config (pure pixel data; no platform deps)
+  nopal_image/       — Buffer, Luma, Sharpness, Config, Processing seam (pure pixel data; depends on nopal_mvu, no platform deps)
   nopal_ui/          — High-level UI components (Button, Checkbox, Data_table, Modal, Navigation_bar, Radio_group, Select_input, Slug, Text_input, Toast)
   nopal_runtime/     — Lwd integration + MVU loop; Telemetry (E2E event log)
   nopal_test/        — Pure OCaml test renderer + Telemetry_test harness
@@ -2207,6 +2365,9 @@ backends/
   nopal_web/         — js_of_ocaml + Brr DOM renderer
   nopal_http_web/    — Browser Fetch API backend for nopal_http
   nopal_blob_web/    — Session-local handle ⇄ Brr.Blob.t registry (leaf; no renderer dep)
+  nopal_image_web/   — Browser canvas pipeline implementing Nopal_image.Processing.
+                       Public module is the seam only; Canvas_ffi, Dimensions and
+                       Once sit in the nopal_image_web.internal sub-library
   nopal_storage_web/   — IndexedDB backend implementing Nopal_storage.S
   nopal_storage_tauri/ — Filesystem (tauri-plugin-fs) backend implementing Nopal_storage.S
   nopal_tauri/       — Tauri desktop/mobile bindings (depends on nopal_mvu, nopal_platform)

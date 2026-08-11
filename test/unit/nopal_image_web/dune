@@ -1,0 +1,93 @@
+; Suites in this directory run under Node via js_of_ocaml: the canvas pipeline
+; is browser-only, so its coverage needs the JS toolchain plus a shim standing
+; in for the canvas APIs. js_of_ocaml is deliberately absent from (libraries):
+; (modes js) already selects the JS toolchain, and listing it makes
+; opam-dune-lint demand a {with-test} dependency in every .opam file the suite
+; transitively touches.
+;
+; image_pipeline_shim.js fakes the browser calls the canvas bindings reach —
+; createImageBitmap, a detached canvas, its 2D context, drawImage, toBlob and
+; getImageData — and records the sequence, sizes and encoder arguments the
+; pipeline produced. It is self-contained and needs no dom_shim.js. Its decode
+; and encode answer on a later turn, so every suite that starts the pipeline
+; drains it through the shared helpers. See the file header for what it models
+; faithfully and what it deliberately does not.
+
+(test
+ (name test_dimensions)
+ (package nopal_image_web)
+ (modules test_dimensions)
+ (libraries nopal_image_web alcotest)
+ (modes js)
+ (js_of_ocaml))
+
+(test
+ (name test_once)
+ (package nopal_image_web)
+ (modules test_once)
+ (libraries nopal_image_web_internal alcotest)
+ (modes js)
+ (js_of_ocaml))
+
+(test
+ (name test_canvas_ffi)
+ (package nopal_image_web)
+ (modules test_canvas_ffi)
+ (libraries
+  nopal_image_web_internal
+  image_web_test_helpers
+  test_util
+  alcotest
+  brr)
+ (modes js)
+ (js_of_ocaml
+  (javascript_files image_pipeline_shim.js)))
+
+(test
+ (name test_pipeline)
+ (package nopal_image_web)
+ (modules test_pipeline)
+ (libraries
+  nopal_image_web
+  nopal_image
+  nopal_mvu
+  nopal_blob_web
+  image_web_test_helpers
+  alcotest
+  brr)
+ (modes js)
+ (js_of_ocaml
+  (javascript_files image_pipeline_shim.js)))
+
+(test
+ (name test_pipeline_errors)
+ (package nopal_image_web)
+ (modules test_pipeline_errors)
+ (libraries
+  nopal_image_web
+  nopal_image
+  nopal_mvu
+  nopal_blob_web
+  image_web_test_helpers
+  test_util
+  alcotest
+  brr)
+ (modes js)
+ (js_of_ocaml
+  (javascript_files image_pipeline_shim.js)))
+
+(test
+ (name test_pipeline_seam)
+ (package nopal_image_web)
+ (modules test_pipeline_seam)
+ (libraries
+  nopal_image_web
+  nopal_image
+  nopal_mvu
+  nopal_blob_web
+  image_web_test_helpers
+  alcotest
+  brr)
+ (modes js)
+ (js_of_ocaml
+  (javascript_files image_pipeline_shim.js)))

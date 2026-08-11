@@ -14,7 +14,11 @@ val height : t -> int
 (** Height in pixels. Always positive. *)
 
 val byte_size : t -> int
-(** Size of the packed RGBA data in bytes. *)
+(** Size of the packed RGBA data in bytes. This is the raw pixel length, four
+    bytes per pixel, which is a different quantity from the compressed length a
+    platform backend reports for the same picture in
+    [Processing.result_info.byte_size]; the two differ by roughly an order of
+    magnitude. *)
 
 val pixel : t -> x:int -> y:int -> (int * int * int * int) option
 (** [pixel t ~x ~y] is the red, green, blue and alpha channels at [(x, y)], each

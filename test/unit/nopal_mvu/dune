@@ -7,5 +7,6 @@
   test_sub_viewport
   test_app
   test_task
-  test_task_cancellation)
+  test_task_cancellation
+  test_task_guard_once)
  (libraries nopal_mvu nopal_element alcotest))
