@@ -21,6 +21,7 @@
   sub_modal
   sub_subscriptions
   sub_file_input
+  sub_receipt_flow
   tauri_op)
  (libraries
   nopal_element
@@ -30,6 +31,7 @@
   nopal_charts
   nopal_svg
   nopal_http
+  nopal_image
   nopal_ui
   nopal_navigation
   nopal_platform
@@ -44,6 +46,8 @@
   nopal_runtime
   nopal_web
   nopal_http_web
+  nopal_image
+  nopal_image_web
   nopal_tauri
   brr)
  (modes js)

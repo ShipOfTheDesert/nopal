@@ -209,6 +209,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     modal : Sub_modal.model;
     subs : Sub_subscriptions.model;
     file_input : Sub_file_input.model;
+    receipt_flow : Sub_receipt_flow.model;
     keyboard_height : int;  (** soft-keyboard height in logical px (REQ-N2) *)
     back_route : back_route;  (** current route of the back-navigation demo *)
   }
@@ -245,6 +246,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | Modal_msg of Sub_modal.msg
     | Subs_msg of Sub_subscriptions.msg
     | File_input_msg of Sub_file_input.msg
+    | Receipt_flow_msg of Sub_receipt_flow.msg
     | KeyboardHeightChanged of int  (** native soft-keyboard height (REQ-F5) *)
     | Back_demo_push  (** push the back-demo one step deep (to [Back_detail]) *)
     | Route_changed of back_route  (** popstate-driven route update (REQ-F3) *)
@@ -373,6 +375,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     let modal, modal_cmd = Sub_modal.init () in
     let subs, subs_cmd = Sub_subscriptions.init () in
     let file_input, file_input_cmd = Sub_file_input.init () in
+    let receipt_flow, receipt_flow_cmd = Sub_receipt_flow.init () in
     ( {
         button_clicks = 0;
         input_text = "";
@@ -438,6 +441,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         modal;
         subs;
         file_input;
+        receipt_flow;
         keyboard_height = 0;
         back_route = Back_home;
       },
@@ -458,6 +462,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           Nopal_mvu.Cmd.map (fun m -> Modal_msg m) modal_cmd;
           Nopal_mvu.Cmd.map (fun m -> Subs_msg m) subs_cmd;
           Nopal_mvu.Cmd.map (fun m -> File_input_msg m) file_input_cmd;
+          Nopal_mvu.Cmd.map (fun m -> Receipt_flow_msg m) receipt_flow_cmd;
           (* Re-read the persisted demo value so a reload dispatches a
              [StorageRestored] message — the E2E persistence proof (REQ-F3). *)
           Nopal_mvu.Cmd.task
@@ -615,6 +620,12 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         in
         ( { model with file_input },
           Nopal_mvu.Cmd.map (fun m -> File_input_msg m) fi_cmd )
+    | Receipt_flow_msg rf_msg ->
+        let receipt_flow, rf_cmd =
+          Sub_receipt_flow.update model.receipt_flow rf_msg
+        in
+        ( { model with receipt_flow },
+          Nopal_mvu.Cmd.map (fun m -> Receipt_flow_msg m) rf_cmd )
     | DrawPointerMove (x, y) ->
         ({ model with draw_pointer = Some (x, y) }, Nopal_mvu.Cmd.none)
     | DrawPointerLeave ->
@@ -3484,6 +3495,18 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                  (fun m -> File_input_msg m)
                  (Sub_file_input.view vp model.file_input);
              ];
+           (* Beside the raw file-input section on purpose: the two differ only
+              in what happens between the picker and the wire, so a reader
+              comparing an untouched upload against a decoded, downscaled and
+              re-encoded one has both in view at once. *)
+           view_section
+             ~attrs:[ ("data-testid", "receipt-flow-section") ]
+             "Receipt Capture"
+             [
+               Element.map
+                 (fun m -> Receipt_flow_msg m)
+                 (Sub_receipt_flow.view vp model.receipt_flow);
+             ];
            view_section "Focus & Keyboard"
              [
                Element.map
@@ -3586,6 +3609,9 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         Nopal_mvu.Sub.map
           (fun m -> Subs_msg m)
           (Sub_subscriptions.subscriptions model.subs);
+        Nopal_mvu.Sub.map
+          (fun m -> Receipt_flow_msg m)
+          (Sub_receipt_flow.subscriptions model.receipt_flow);
         (* Back-demo router consumer (REQ-F3): a [popstate] (from
            [window.history.back()], itself fired by the hardware-back IPC) parses
            the URL and dispatches [Route_changed], returning the demo to its prior
@@ -3609,4 +3635,5 @@ module Sub_bottom_tabs = Sub_bottom_tabs
 module Sub_modal = Sub_modal
 module Sub_subscriptions = Sub_subscriptions
 module Sub_file_input = Sub_file_input
+module Sub_receipt_flow = Sub_receipt_flow
 module Tauri_op = Tauri_op

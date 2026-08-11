@@ -1889,6 +1889,14 @@ never enter the OCaml heap; pixels cross the js_of_ocaml boundary exactly once,
 on the smaller sharpness canvas only, and only after the browser has done the
 downscaling itself.
 
+The worked example is the kitchen sink's "Receipt Capture" section
+(`examples/kitchen_sink/sub_receipt_flow.ml`), which is also this package's only
+real-browser coverage: `test/e2e/tests/kitchen-sink-receipt-flow.spec.ts` drives
+it in headless Chromium. Read it for the shape of a consumer — the section names
+its own `Config` rather than inheriting `Config.recommended`, holds the processed
+`result_info` in the same model arm as the upload state so the upload cannot name
+the picked handle by accident, and matches `Processing.error` exhaustively.
+
 ```ocaml
 val process : blob_id:string -> config:Nopal_image.Config.t
   -> (Nopal_image.Processing.result_info, Nopal_image.Processing.error) result
@@ -2375,7 +2383,15 @@ backends/
 examples/
   counter/           — Hello world
   todomvc/           — Complex app with routing & localStorage
-  kitchen_sink/      — Living visual reference for all features
+  kitchen_sink/      — Living visual reference for all features. Sections that
+                       demonstrate a whole capability rather than one element:
+                       "File Input" (pick → multipart upload of the untouched
+                       bytes) and, beside it, "Receipt Capture" (pick → canvas
+                       decode/downscale/re-encode via nopal_image_web → sharpness
+                       verdict and comparison against the previous photo →
+                       multipart upload of the PROCESSED handle). Each lives in
+                       its own sub_*.ml/.mli with its own structural suite; the
+                       receipt one is examples/kitchen_sink/sub_receipt_flow.ml
   dashboard/         — Charts showcase
 test/
   unit/              — Alcotest tests per package
