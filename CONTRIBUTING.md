@@ -250,12 +250,15 @@ nopal_style        ← no platform deps
 nopal_scene        ← depends on style, no platform deps (Color, Paint, Transform, Path, Scene)
 nopal_draw         ← depends on scene + style (Scale + higher-level Path algorithms)
 nopal_http         ← depends on mvu, no platform deps
-nopal_image        ← no platform deps (Buffer, Luma, Sharpness, Config)
+nopal_image        ← depends on mvu, no platform deps (Buffer, Luma, Sharpness, Config, Processing)
 nopal_router       ← no platform deps
 nopal_runtime      ← depends on mvu + element + lwd
 nopal_web          ← depends on runtime + brr + js_of_ocaml
 nopal_blob_web     ← depends on brr + js_of_ocaml (session-local blob handle registry)
 nopal_http_web     ← depends on nopal_http + nopal_blob_web + brr + js_of_ocaml
+nopal_image_web    ← depends on nopal_image + nopal_mvu + nopal_blob_web + brr + js_of_ocaml
+                     (public module is the seam; bindings live in the
+                      nopal_image_web.internal sub-library)
 nopal_test         ← depends on element + style + mvu + runtime (must build on native OCaml)
 ```
 
@@ -464,3 +467,14 @@ js_of_ocaml output without justification.
 Every PR that adds a new element, style feature, or interaction pattern
 must add a corresponding section to `examples/kitchen_sink/` in the same
 PR. The kitchen sink must always compile and render without errors.
+
+A backend package that adds no element, style feature or interaction pattern —
+`nopal_http_web`, `nopal_blob_web`, `nopal_image_web` — does not trigger the
+rule by itself. It does still need a section before the capability can be said
+to work in a real browser, because the kitchen sink is what Playwright drives.
+Deferring that section is allowed; leaving it unrecorded is not. Current
+deferrals:
+
+| Capability | Section owed | Owner |
+|---|---|---|
+| `nopal_image_web` — canvas processing pipeline | capture/process/upload section + Playwright spec | planning 03 F5. Deferred because telemetry ordering needs model serialisation that F5 introduces. Until then the package has NO real-browser coverage: its unit suites run against a fake canvas under Node. |

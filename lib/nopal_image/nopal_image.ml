@@ -9,3 +9,4 @@ module Buffer = Buffer
 module Luma = Luma
 module Sharpness = Sharpness
 module Config = Config
+module Processing = Processing

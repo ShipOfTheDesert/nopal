@@ -1,0 +1,24 @@
+; The pipeline's parts are a library of their own so that the package's public
+; module is the seam and nothing else. Canvas_ffi is raw browser bindings: a
+; caller reaching read_pixels directly would cross the js_of_ocaml boundary with
+; a full-resolution image, which is the one thing this package exists to do
+; once. Keeping it here rather than re-exporting from Nopal_image_web means it
+; is still reachable — by its own name, from a library an application has to ask
+; for — without sitting in the API an application reads.
+
+(library
+ (name nopal_image_web_internal)
+ (public_name nopal_image_web.internal)
+ (modules canvas_ffi dimensions once)
+ (libraries nopal_image brr js_of_ocaml))
+
+(library
+ (name nopal_image_web)
+ (public_name nopal_image_web)
+ (modules nopal_image_web)
+ (libraries
+  nopal_image
+  nopal_mvu
+  nopal_blob_web
+  nopal_image_web_internal
+  brr))

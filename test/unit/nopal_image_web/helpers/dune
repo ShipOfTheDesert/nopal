@@ -1,0 +1,9 @@
+(library
+ (name image_web_test_helpers)
+ (libraries
+  nopal_image
+  nopal_image_web
+  nopal_blob_web
+  nopal_mvu
+  alcotest
+  brr))

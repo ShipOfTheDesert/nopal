@@ -22,7 +22,7 @@ let part_filename ~filename blob =
 
 (* Appends one multipart [part] to [form_data]. Fails — as a value, never by
    raising — when a [File] part names a handle the blob store cannot resolve:
-   the enclosing {!Nopal_mvu.Task.guard} maps every exception to
+   the enclosing {!Nopal_mvu.Task.guard_once} maps every exception to
    [Network_error], so a raise here would be indistinguishable from a genuine
    network failure, which is exactly what [Invalid_blob] exists to prevent. *)
 let append_part form_data (part : Nopal_http.part) =
@@ -167,36 +167,27 @@ let read_response response resolve =
 
 (* Maps an exception thrown *synchronously* while building/issuing the request
    (e.g. [prepare_request], [Fetch.Request.init], [Fetch.url]) to a
-   [Network_error], for {!Nopal_mvu.Task.guard} — otherwise it would escape the
+   [Network_error], for {!Nopal_mvu.Task.guard_once} — otherwise it would escape the
    task body and leave the request unresolved. *)
 let error_of_exn = function
   | Jv.Error e -> Nopal_http.Network_error (Jstr.to_string (Jv.Error.message e))
   | e -> Nopal_http.Network_error (Printexc.to_string e)
 
-(* Delivers at most one outcome to [resolve].
-
-   {!Nopal_mvu.Task.guard} is [try f resolve with e -> resolve (Error …)], so
-   any [resolve] called *synchronously* inside the task body sits within that
-   [try]: if the dispatch it triggers raises — an application [update] is
-   arbitrary code — the guard catches the exception and resolves a second time
-   with a [Network_error], misattributing an application bug to the network.
-   Every other [resolve] in this backend runs from a [Fut.await] callback, which
-   is outside the [try]; the blob-handle failure is the one synchronous path, so
-   it is the one that needs the latch. {!Nopal_mvu.Task.cancellable} already
-   holds an equivalent latch, which is why {!send_cancellable} shares this one
-   only for symmetry rather than out of need. *)
-let once resolve =
-  let resolved = ref false in
-  fun outcome ->
-    match !resolved with
-    | true -> ()
-    | false ->
-        resolved := true;
-        resolve outcome
+(* {!Nopal_mvu.Task.guard_once} rather than {!Nopal_mvu.Task.guard} throughout
+   this backend. Any [resolve] called *synchronously* inside the task body sits
+   within the guard's own [try]: if the dispatch it triggers raises — an
+   application [update] is arbitrary code — a guard that does not deduplicate
+   catches the exception and resolves a second time with a [Network_error],
+   misattributing an application bug to the network. The blob-handle failure is
+   the one synchronous delivery path here; every other [resolve] runs from a
+   [Fut.await] callback, outside the [try]. Latching the resolver rather than
+   the body is what covers both, because the guard's own handler holds the
+   resolver too. {!Nopal_mvu.Task.cancellable} already holds an equivalent
+   latch, which is why {!send_cancellable} gains nothing from this beyond
+   symmetry. *)
 
 let send (request : Nopal_http.request) =
-  Nopal_mvu.Task.guard ~on_exn:error_of_exn (fun resolve ->
-      let resolve = once resolve in
+  Nopal_mvu.Task.guard_once ~on_exn:error_of_exn (fun resolve ->
       (* An unresolvable blob handle resolves the task here and returns: no
          fetch is issued, no timer is armed, and the single resolution the task
          contract allows has already happened. *)
@@ -255,8 +246,7 @@ let send_cancellable (request : Nopal_http.request) =
         Nopal_mvu.Task.set_on_cancel token (fun () ->
             aborted_by_cancel := true;
             Brr.Abort.abort controller);
-        Nopal_mvu.Task.guard ~on_exn:error_of_exn (fun resolve ->
-            let resolve = once resolve in
+        Nopal_mvu.Task.guard_once ~on_exn:error_of_exn (fun resolve ->
             (* As in {!send}: an unresolvable blob handle resolves the task
                before anything is fetched or any timer is armed. *)
             match prepare_request request with

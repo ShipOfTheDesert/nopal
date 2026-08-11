@@ -28,7 +28,32 @@ val guard :
     asynchronous callback (e.g. an [onerror] event or a rejected promise) fires
     on the event loop, outside [f], and must be resolved explicitly by [f]
     itself. [f] must resolve at most once before returning — [guard] does not
-    deduplicate, so a body that resolves and then raises would resolve twice. *)
+    deduplicate, so a body that resolves and then raises would resolve twice.
+    Use {!guard_once} for a body that cannot promise that. *)
+
+val guard_once :
+  on_exn:(exn -> 'e) -> ((('a, 'e) result -> unit) -> unit) -> ('a, 'e) result t
+(** [guard_once ~on_exn f] is {!guard} with the resolver latched: the first
+    outcome delivered is the only one a caller receives, whether the redundant
+    delivery comes from [f] calling its resolver twice, from a continuation
+    firing after [f] already answered, or from this combinator's own exception
+    handler.
+
+    That last case is the one {!guard} cannot cover and a caller cannot fix from
+    inside [f]. Delivering an outcome runs the application's dispatch, which is
+    arbitrary code: if it raises, the raise leaves [f], the handler catches it
+    and answers with [Error (on_exn e)] - a second outcome, blaming the platform
+    for an application bug. A latch written inside [f] shadows only [f]'s own
+    deliveries and never the handler's, so it cannot prevent this.
+
+    A raise reaching the handler after an outcome was already delivered is
+    therefore absorbed rather than propagated: the caller has its answer, and an
+    exception escaping the task would leave the caller unable to tell it ever
+    ran. A raise before any delivery still becomes [Error (on_exn e)], exactly
+    as in {!guard}.
+
+    Each {!run} of the task takes its own latch, so running one task twice is
+    two independent operations. *)
 
 val map : ('a -> 'b) -> 'a t -> 'b t
 (** [map f task] transforms the result of [task] by applying [f]. *)
