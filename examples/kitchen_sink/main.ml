@@ -14,6 +14,7 @@ module Sub_bottom_tabs = Kitchen_sink_app.Sub_bottom_tabs
 module Sub_modal = Kitchen_sink_app.Sub_modal
 module Sub_subscriptions = Kitchen_sink_app.Sub_subscriptions
 module Sub_file_input = Kitchen_sink_app.Sub_file_input
+module Sub_receipt_flow = Kitchen_sink_app.Sub_receipt_flow
 
 (* Result-task chaining for the Tauri ops (RFC 0118, REQ-F5). See
    {!Kitchen_sink_app.Tauri_op} for the contract; instantiated here with the
@@ -433,6 +434,7 @@ let update model msg =
   | App.Modal_msg _
   | App.Subs_msg _
   | App.File_input_msg _
+  | App.Receipt_flow_msg _
   | App.KeyboardHeightChanged _
   | App.Back_demo_push
   | App.Route_changed _
@@ -517,6 +519,12 @@ let serialize_msg : App.msg -> string = function
      otherwise be satisfied by a ten-file selection. The section owns the
      wording so its message and model fragments cannot drift apart. *)
   | App.File_input_msg fi_msg -> Sub_file_input.serialize_msg fi_msg
+  (* Receipt capture: the selection, each processing outcome and each upload
+     outcome are what an E2E spec waits on before reading the per-photo
+     fragments out of [serialize_model] below. The section owns the wording so
+     its message and model fragments cannot drift apart, and every fragment is
+     ';'-terminated for the same reason the file-input ones are. *)
+  | App.Receipt_flow_msg rf_msg -> Sub_receipt_flow.serialize_msg rf_msg
   (* Mobile signals (RFC 0116): the keyboard-height readout (REQ-N2) and the
      back-demo route change the Tauri back-IPC e2e asserts on via the host
      [get_telemetry] mirror — [Route_changed] proves the hardware-back chain
@@ -704,14 +712,22 @@ let serialize_model (model : App.model) =
      blob handle from a network failure. [Sub_file_input.serialize_model]
      already terminates each [field=value] with ';' so a size assertion cannot
      prefix-alias, and each upload failure carries its own tag. *)
+  (* The receipt section's stage, the stored dimensions and byte length, the
+     threshold verdict, the comparison against the previous photo and where its
+     upload stands are part of the asserted model surface so the receipt-flow
+     spec can prove the sharpness ordering, a decode failure and an upload
+     outcome against real canvas pixels. [Sub_receipt_flow.serialize_model]
+     already terminates each [field=value] with ';'. *)
   Printf.sprintf
     "{pings=%d; clicks=%d; input=%S; storage=%s; win_visible=%b; win_title=%S; \
-     tauri_store=%s; back_route=%s; bottom_tabs={%s}; file_input={%s}}"
+     tauri_store=%s; back_route=%s; bottom_tabs={%s}; file_input={%s}; \
+     receipt_flow={%s}}"
     model.telemetry_pings model.button_clicks model.input_text storage
     model.tauri_is_visible model.tauri_window_title tauri_store
     (back_route_to_string model.back_route)
     (Sub_bottom_tabs.serialize_model model.bottom_tabs)
     (Sub_file_input.serialize_model model.file_input)
+    (Sub_receipt_flow.serialize_model model.receipt_flow)
 
 (* The application owns telemetry policy: telemetry is on by default for the
    kitchen sink (it is the live E2E target), and disabled with [?telemetry=off]
@@ -757,6 +773,13 @@ let () =
   Nopal_http.register_backend { Nopal_http.send = Nopal_http_web.send };
   Nopal_http.register_cancellable_backend
     { Nopal_http.send_cancellable = Nopal_http_web.send_cancellable };
+  (* The browser canvas pipeline the receipt section dispatches to. Registered
+     here, in the one file that may name a platform type, and before [mount]:
+     [Nopal_image.Processing.process] reads the registered backend when the
+     command is built, so a registration that ran after the first selection
+     would send that photo to the unregistered-backend failure instead. *)
+  Nopal_image.Processing.register_backend
+    { Nopal_image.Processing.process = Nopal_image_web.process };
   let open Brr in
   let target =
     match Document.find_el_by_id G.document (Jstr.v "app") with

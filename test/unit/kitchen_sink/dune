@@ -96,3 +96,15 @@
   nopal_mvu
   test_util
   alcotest))
+
+(test
+ (name test_receipt_flow_section)
+ (libraries
+  kitchen_sink_app
+  nopal_test
+  nopal_element
+  nopal_http
+  nopal_image
+  nopal_mvu
+  test_util
+  alcotest))

@@ -222,6 +222,32 @@ diverging to Wasm on capable platforms.
 - The **Rust toolchain** (via [rustup](https://rustup.rs/)) and the Tauri
   system dependencies already required for desktop builds.
 
+### Android device confirmation (manual, not a gate)
+
+No CI job runs Nopal on an Android device, so nothing here goes red when
+Android behaviour regresses. The one on-device confirmation that exists was
+made by hand by **Miguel Lopez V** on **2026-08-11**, on his own machine and
+under his own authorisation: on a Pixel-7 AVD (x86_64, google_apis,
+API 35 / Android 15, Android System WebView 124.0.6367.219) built with
+tauri-cli 2.10.1, wry 0.54.4 and NDK r27c, the kitchen sink's receipt-capture
+section opened Android's system photo picker, and the selection reached the
+file-input change handler and ran through processing to a settled upload.
+
+Read that as a dated observation on one stack, not a supported guarantee — a
+green `just` says nothing about it, and a wry or WebView upgrade can break it
+with no test going red. Two gaps it explicitly leaves open, each with an owner:
+
+- **Camera capture on physical hardware.** `capture="environment"` resolved to
+  the picker on the AVD, which has no camera, so which of picker-vs-camera a
+  handset chooses is still unknown. Whoever first ships a feature that depends
+  on the camera intent must re-confirm it on a real device in that same change,
+  before writing UI copy that promises a camera.
+- **Automated on-device coverage.** Owned by the Phase 3 implementer, in the
+  feature that introduces the mobile E2E harness. Until that lands, an Android
+  change is confirmed by hand or not at all, and a PR touching Tauri's mobile
+  path should say which of the two happened — and, when it was by hand, who
+  ran it and on what date.
+
 ### iOS toolchain (CI only)
 
 iOS is built and smoke-tested on a GitHub-hosted **`macos-latest`** runner
@@ -472,9 +498,21 @@ A backend package that adds no element, style feature or interaction pattern —
 `nopal_http_web`, `nopal_blob_web`, `nopal_image_web` — does not trigger the
 rule by itself. It does still need a section before the capability can be said
 to work in a real browser, because the kitchen sink is what Playwright drives.
-Deferring that section is allowed; leaving it unrecorded is not. Current
-deferrals:
+Deferring that section is allowed; leaving it unrecorded is not. **There are no
+current deferrals.**
 
-| Capability | Section owed | Owner |
-|---|---|---|
-| `nopal_image_web` — canvas processing pipeline | capture/process/upload section + Playwright spec | planning 03 F5. Deferred because telemetry ordering needs model serialisation that F5 introduces. Until then the package has NO real-browser coverage: its unit suites run against a fake canvas under Node. |
+`nopal_image_web` was the last one. Its section is the kitchen sink's receipt
+flow, and `test/e2e/tests/kitchen-sink-receipt-flow.spec.ts` drives the real
+canvas pipeline through it — decode, downscale, re-encode, sharpness, and the
+multipart upload of the processed handle.
+
+Two things about that suite are worth knowing before extending it. Headless
+Chromium is the only browser it has run under, and the encoded byte counts and
+raw sharpness scores that browser produces are its own rather than a contract —
+so assert on the order two photographs come out in, never on a number. And it
+does not reach the `Canvas_unavailable` or `Pixel_read_failed` arms: neither is
+reachable from a page that renders with a backend registered, so both stay
+covered by the package's fake-canvas unit suites under Node alone. That is a
+decision not to cover them rather than work owed to anyone. Whoever meets a
+browser that refuses a 2D context or a pixel read owns reopening it, in the
+change that meets it.
