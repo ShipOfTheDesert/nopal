@@ -29,6 +29,43 @@ val lookup : string -> Brr.Blob.t option
     or fabricated handle is an absence, never an error and never an exception.
 *)
 
+val object_url : string -> string option
+(** [object_url handle] is a browser URL that displays [handle]'s blob, or
+    [None] when [handle] resolves to nothing or the environment mints no URL for
+    it. A minted URL is same-origin and meaningless outside the page session
+    that issued it, exactly like the handle it was minted from.
+
+    Both ways an environment can decline are that same [None]: one with no
+    notion of object URLs at all, and one that has the capability and refuses
+    the call — a quota, a hardened global, a blocked call. Neither raises, here
+    as everywhere in this module. Which of the three causes produced the [None]
+    is not recoverable from it; a caller that must tell a stale handle apart
+    from a declining platform asks {!lookup} first.
+
+    A URL pins its blob for as long as it is live: the bytes stay resident even
+    after the entry behind them is released with {!remove} or {!clear}, and
+    unmounting a Nopal application releases neither. Only {!revoke_url} does.
+    That makes revocation a caller obligation — a view that replaces one image
+    with another revokes the URL it is replacing, or every photograph the user
+    takes stays in memory for the rest of the session.
+
+    Every call mints a separate URL, including repeated calls with the same
+    handle. Two URLs for one blob are two resources to revoke, not one. *)
+
+val revoke_url : string -> unit
+(** [revoke_url url] releases [url], after which it displays nothing and its
+    blob is no longer pinned by it. Idempotent, and a no-op on a string this
+    store never minted, so a caller releasing whatever it happens to hold needs
+    no bookkeeping to avoid a double release.
+
+    An environment that cannot release, or that refuses to, is a no-op as well
+    rather than an exception: this reports no outcome at all, so a raise would
+    give the caller nothing to respond to while abandoning whatever else it was
+    in the middle of doing.
+
+    Revoking releases the URL only. The entry it was minted from stays
+    registered and can mint again; use {!remove} to release that. *)
+
 val remove : string -> unit
 (** [remove handle] releases [handle]'s entry. Idempotent: removing a handle
     that is unknown or already released does nothing. *)

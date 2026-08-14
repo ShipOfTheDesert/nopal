@@ -76,6 +76,25 @@
  (js_of_ocaml
   (javascript_files image_pipeline_shim.js)))
 
+; The preview seam touches no canvas — it mints and releases a browser URL for
+; bytes the blob store already holds — so this stanza needs neither
+; image_pipeline_shim.js nor the shared shim helpers. It runs under Node using
+; the global URL and Blob constructors Brr builds on.
+
+(test
+ (name test_preview_seam)
+ (package nopal_image_web)
+ (modules test_preview_seam)
+ (libraries
+  nopal_image_web
+  nopal_image
+  nopal_mvu
+  nopal_blob_web
+  alcotest
+  brr)
+ (modes js)
+ (js_of_ocaml))
+
 (test
  (name test_pipeline_seam)
  (package nopal_image_web)
