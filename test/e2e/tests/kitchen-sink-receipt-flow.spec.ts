@@ -1,7 +1,7 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { NopalTelemetry } from "./nopal-telemetry";
+import { NopalTelemetry, recordSlice } from "./nopal-telemetry";
 import { assertNoAxeViolations } from "./axe";
 
 // Receipt-flow E2E for the kitchen sink. This is the only place in the
@@ -49,6 +49,21 @@ const ACCEPT = `${SECTION} [data-field="receipt-accept"]`;
 // label, so it is neither scanned nor clicked by anything that only ever drives
 // the sharp fixture.
 const RESHOOT = `${SECTION} [data-field="receipt-reshoot"]`;
+// The before/after pair, and each half of it. `Element.image` carries no
+// per-element attributes, so the section hangs the anchor on the wrapper around
+// each picture and the `<img>` is selected through it. Rendered only once both
+// object URLs have arrived, so finding either half at all is part of what the
+// preview tests assert.
+const ORIGINAL_HALF = `${SECTION} [data-testid="receipt-flow-preview-original"]`;
+const PROCESSED_HALF = `${SECTION} [data-testid="receipt-flow-preview-processed"]`;
+const ORIGINAL_IMG = `${ORIGINAL_HALF} img`;
+const PROCESSED_IMG = `${PROCESSED_HALF} img`;
+// The headings. Read inside their own half rather than against the section:
+// "Original" is a short enough word that a section-wide match would be
+// satisfied by copy belonging to something else, and the whole content of the
+// pair is which picture is which.
+const ORIGINAL_LABEL = "Original";
+const PROCESSED_LABEL = "As uploaded";
 
 const SHARP = path.join(__dirname, "fixtures", "receipt-sharp.jpg");
 const BLURRED = path.join(__dirname, "fixtures", "receipt-blurred.jpg");
@@ -91,7 +106,16 @@ const SETTLE = 20000;
 // `SETTLE` rather than written as a number so the two cannot drift apart, plus
 // headroom for the navigation and the `setInputFiles` handoffs. Precedent:
 // `storage.spec.ts`, which pays the same headless warm-up twice.
-const CHAINED_WAITS = 4;
+//
+// Raised from four with the preview tests. The longest `SETTLE`-bounded chain
+// is still four — the axe-with-previews test waits on the message, the model
+// and each of the two images — but those tests put work inside the same budget
+// that the old figure did not account for: an axe scan of a section that now
+// carries two decoded photographs, and, in the re-selection loop, three
+// complete decode/scale/encode passes rather than one. The extra `SETTLE` is
+// headroom for that, so a slow box still fails on the wait it is in rather than
+// on the enclosing test timeout.
+const CHAINED_WAITS = 5;
 const TEST_TIMEOUT = CHAINED_WAITS * SETTLE + 30000;
 
 // This section's own record inside the kitchen sink's single serialized model.
@@ -99,7 +123,13 @@ const TEST_TIMEOUT = CHAINED_WAITS * SETTLE + 30000;
 // two of them emit a field named `upload=` — this section and the file-input
 // section above it — so a bare substring match is ambiguous for that field.
 // `NopalTelemetry.assertRecordContains` owns the extraction; every fragment
-// passed to it carries its trailing ';' so a match is bounded on both sides.
+// passed to it carries its trailing ';' so a match is bounded on the right.
+// The left is bounded by nothing, which matters for exactly one field in this
+// record: `original_byte_size=` ends in `byte_size=`, so a fragment naming the
+// processed length is satisfiable by the picked photo's fragment whenever the
+// two lengths coincide. Assertions on `byte_size=` therefore go through
+// `recordInt` below, which anchors; every other field name here is a suffix of
+// no other, so `assertRecordContains` stays correct for them.
 const RECORD = "receipt_flow";
 
 // The comparison field, used as the gate between two photos in one test. It is
@@ -141,6 +171,115 @@ function parseMultipart(
     });
   }
   return parts;
+}
+
+// One half of the rendered pair as the browser's own decoder describes it.
+// `naturalWidth`/`naturalHeight` are the intrinsic size found inside the
+// encoded bytes, untouched by the fixed CSS width the section draws at, so they
+// are the one place in this repo where the processed image is measured rather
+// than described.
+interface DecodedPreview {
+  src: string;
+  width: number;
+  height: number;
+}
+
+// Wait until both halves of the pair are on screen carrying object URLs the
+// browser has actually decoded, then read them.
+//
+// `naturalWidth > 0` is the load-bearing clause. A canvas that encoded nothing —
+// a black frame, a zero-byte re-encode, a handle pointing at the wrong blob —
+// still yields a perfectly valid `blob:` URL and still renders as an `<img>`; it
+// is only the decoder producing pixels that says the bytes leaving the device
+// are a picture. That is the failure this whole feature exists to make visible,
+// so it is the one the gate is written against.
+//
+// `stale` excludes URLs a previous selection minted. A re-selection unmounts the
+// pair and mounts a new one, so without it a wait entered while the previous
+// pair is still on screen resolves immediately on the photograph it is meant to
+// be replacing. Every selection mints its own URLs, so "not one of these" is a
+// signal only the current selection can produce — which is what `waitForModel`
+// cannot be here, since `previews=ready;` is byte-identical on every selection
+// and the log it reads is never drained.
+async function waitForDecodedPair(
+  page: Page,
+  stale: string[]
+): Promise<{ original: DecodedPreview; processed: DecodedPreview }> {
+  await page.waitForFunction(
+    ([originalSel, processedSel, seen]: [string, string, string[]]) => {
+      const decoded = (sel: string): boolean => {
+        const img = document.querySelector(sel) as HTMLImageElement | null;
+        if (img === null) return false;
+        return (
+          img.src.startsWith("blob:") &&
+          img.naturalWidth > 0 &&
+          !seen.includes(img.src)
+        );
+      };
+      return decoded(originalSel) && decoded(processedSel);
+    },
+    [ORIGINAL_IMG, PROCESSED_IMG, stale] as [string, string, string[]],
+    { timeout: SETTLE }
+  );
+
+  const pair = await page.evaluate(
+    ([originalSel, processedSel]: [string, string]) => {
+      const read = (sel: string) => {
+        const img = document.querySelector(sel) as HTMLImageElement | null;
+        if (img === null) return null;
+        return {
+          src: img.src,
+          width: img.naturalWidth,
+          height: img.naturalHeight,
+        };
+      };
+      return { original: read(originalSel), processed: read(processedSel) };
+    },
+    [ORIGINAL_IMG, PROCESSED_IMG] as [string, string]
+  );
+
+  // Not defensive: a selection landing between the wait and the read unmounts
+  // the pair, and a helper that returned zeroes for that would make every
+  // dimension assertion below fail on a number rather than on what happened.
+  if (pair.original === null || pair.processed === null)
+    throw new Error(
+      "the preview pair left the page between the decode gate and the read"
+    );
+  return { original: pair.original, processed: pair.processed };
+}
+
+// One integer field out of a serialized record. Anchored on both sides — a field
+// is preceded by the start of the record or by the space that separates it from
+// the previous one, and terminated by its own ';'. The left anchor is the whole
+// point: `original_byte_size=` ends in `byte_size=`, so an unanchored search for
+// the processed length finds the picked photo's fragment and reports it as the
+// processed one, which is exactly the reading this test exists to disprove.
+function recordInt(record: string, field: string): number {
+  const match = new RegExp(`(?:^|\\s)${field}=(\\d+);`).exec(record);
+  if (match === null)
+    throw new Error(`no ${field}=<integer>; fragment in record: ${record}`);
+  return Number(match[1]);
+}
+
+// The most recent serialized record under `name`. Read off the drained slice
+// rather than through `assertRecordContains`, which answers from the whole log
+// and per fragment: the two lengths below are compared against each other, so
+// they have to be read out of one model state rather than out of two that
+// happened to satisfy one fragment each.
+async function latestRecord(
+  telemetry: NopalTelemetry,
+  name: string
+): Promise<string> {
+  const events = await telemetry.events();
+  const records = events
+    .flatMap((e) =>
+      e.kind === "model_transition" ? [recordSlice(e.after, name)] : []
+    )
+    .filter((slice): slice is string => slice !== null);
+  const latest = records[records.length - 1];
+  if (latest === undefined)
+    throw new Error(`no ${name} record was recorded on the model`);
+  return latest;
 }
 
 test.beforeEach(async ({ page }) => {
@@ -327,7 +466,15 @@ test("accept uploads the processed blob and the text field", async ({
   // encoded size the model recorded for the processing pass. The encoder's
   // output size is Chromium's number, so it is read out of the model rather
   // than written here.
-  await telemetry.assertRecordContains(RECORD, `byte_size=${file.body.length};`);
+  //
+  // Read through `recordInt` rather than asserted as a fragment: the record also
+  // carries `original_byte_size=`, which ends in `byte_size=`, so a substring
+  // assertion on the processed length is satisfied by the picked photo's
+  // fragment the moment the two coincide. Nothing stops them coinciding — a
+  // photograph the encoder returns at its own length is the ordinary outcome for
+  // an already-small one — and the failure would be silent rather than red.
+  const record = await latestRecord(telemetry, RECORD);
+  expect(recordInt(record, "byte_size")).toBe(file.body.length);
   expect(file.body.length).not.toBe(fs.statSync(SHARP).size);
 
   // Where the upload ended up, scoped to this section's record — the file-input
@@ -340,7 +487,10 @@ test("accept uploads the processed blob and the text field", async ({
     timeout: SETTLE,
   });
 
-  await telemetry.events();
+  // No `events()` here, unlike the ordering tests above: `latestRecord` already
+  // drained, and the snapshot it left is the whole log since page load. A second
+  // drain would advance the cursor past it and attach the empty slice recorded
+  // since — the artifact would survive and say nothing.
   await telemetry.attachHistory(test.info());
 });
 
@@ -425,6 +575,275 @@ test("re-shooting keeps the comparison against the discarded photo", async ({
   await telemetry.attachHistory(test.info());
 });
 
+test("renders decoded before/after previews", async ({ page }) => {
+  const telemetry = new NopalTelemetry(page);
+
+  await page.locator(PICKER).setInputFiles(SHARP);
+  await telemetry.waitForMessage("ReceiptProcessed:ok;", SETTLE);
+
+  // The correctness claim, in the vocabulary the section owns for it: the
+  // serialized model is this suite's contract and the DOM assertions below are
+  // reserved for what only a rendered page can say. The `previews=` prefix is
+  // carried deliberately, not for symmetry: the preview failure tags reuse
+  // words the `processing=` vocabulary also uses — `blob_not_found` is spelled
+  // the same in both — so a bare `ready;`-shaped fragment would not say which
+  // state machine reached it. This is also the first proof anywhere
+  // that `main.ml`'s preview-backend registration is reached in a browser; the
+  // unit suites register their own.
+  await telemetry.waitForModel("previews=ready;", SETTLE);
+  await telemetry.assertRecordContains(RECORD, "previews=ready;");
+
+  // Render correctness, and the reason the feature exists. The model holding
+  // two URLs says nothing about whether a browser can turn them into pictures —
+  // see `waitForDecodedPair`, where the decode clause is argued.
+  const pair = await waitForDecodedPair(page, []);
+
+  expect(pair.original.src).toMatch(/^blob:/);
+  expect(pair.processed.src).toMatch(/^blob:/);
+  // Both axes, not only the one the decode gate reads: an image whose decoder
+  // reported a width and no height is not a picture either, and the gate above
+  // would let it through.
+  expect(pair.original.width).toBeGreaterThan(0);
+  expect(pair.original.height).toBeGreaterThan(0);
+  expect(pair.processed.width).toBeGreaterThan(0);
+  expect(pair.processed.height).toBeGreaterThan(0);
+
+  // Two different object URLs. One photograph shown twice under two headings
+  // satisfies every assertion above and is precisely the near-miss a
+  // before/after pair is vulnerable to.
+  expect(pair.original.src).not.toBe(pair.processed.src);
+
+  // Which picture is which. A pair a reviewer cannot label is two photographs,
+  // not a before and an after, so the headings are part of the render contract
+  // rather than decoration. Scoped inside each half for the reason recorded at
+  // the constants.
+  await expect(page.locator(ORIGINAL_HALF)).toContainText(ORIGINAL_LABEL);
+  await expect(page.locator(PROCESSED_HALF)).toContainText(PROCESSED_LABEL);
+
+  await telemetry.events();
+  await telemetry.attachHistory(test.info());
+});
+
+test("processed preview is downscaled", async ({ page }) => {
+  const telemetry = new NopalTelemetry(page);
+
+  await page.locator(PICKER).setInputFiles(SHARP);
+  await telemetry.waitForMessage("ReceiptProcessed:ok;", SETTLE);
+  await telemetry.waitForModel("previews=ready;", SETTLE);
+
+  const pair = await waitForDecodedPair(page, []);
+
+  // The decoded size of the bytes a server would receive. Everywhere else in
+  // this suite these two numbers are the model describing itself; here they are
+  // Chromium's decoder reporting what it found inside the encoded JPEG, which
+  // is the difference between a downscale that was recorded and a downscale
+  // that happened. Nothing in this repository could say that until the pair was
+  // rendered: the unit suites feed the section a stub, and the image package's
+  // own suites run against a fake canvas.
+  expect(pair.processed.width).toBe(STORED_WIDTH);
+  expect(pair.processed.height).toBe(STORED_HEIGHT);
+
+  // The affirmative arm for that pin: the photograph that went in really was
+  // larger, so the numbers above are a resize and not a fixture that happened
+  // to arrive already at the cap.
+  expect(pair.original.width).toBeGreaterThan(pair.processed.width);
+  expect(pair.original.height).toBeGreaterThan(pair.processed.height);
+
+  // ...and the same shape. A pass that cropped, or that scaled the two axes
+  // independently, still lands on the cap along the long edge and is still
+  // wrong. Within a pixel, because the pass rounds to whole pixels. Derived
+  // from what the original decoded to rather than from a fixture constant, so
+  // replacing the fixture does not silently turn this into a tautology.
+  const proportional =
+    (pair.original.width * pair.processed.height) / pair.original.height;
+  expect(Math.abs(pair.processed.width - proportional)).toBeLessThanOrEqual(1);
+
+  // The picture on screen is the blob the model measured, not some other one:
+  // the decoder's numbers and the model's numbers are the same numbers.
+  await telemetry.assertRecordContains(RECORD, `width=${STORED_WIDTH};`);
+  await telemetry.assertRecordContains(RECORD, `height=${STORED_HEIGHT};`);
+
+  await telemetry.events();
+  await telemetry.attachHistory(test.info());
+});
+
+test("re-selecting recovers the pair for every photo", async ({ page }) => {
+  const telemetry = new NopalTelemetry(page);
+  const picker = page.locator(PICKER);
+
+  // Three selections, alternating fixtures so each pass has a genuinely
+  // different photograph to describe. A section that quietly kept the pair it
+  // was already holding would still be showing the previous receipt.
+  const shots = [SHARP, BLURRED, SHARP];
+  const seen: string[] = [];
+
+  for (const shot of shots) {
+    await picker.setInputFiles(shot);
+
+    // The gate, and the reason it is a DOM gate: see `waitForDecodedPair`.
+    const pair = await waitForDecodedPair(page, seen);
+
+    // Read as a drained slice for the same reason. `assertRecordContains` reads
+    // the log whole and undrained, so from the second selection on it would be
+    // answered by the first one's `previews=ready;` forever. `events()`
+    // advances a cursor, so this is the model reaching `ready` again for THIS
+    // photograph.
+    await telemetry.events();
+    await telemetry.assertModelContains("previews=ready;");
+
+    seen.push(pair.original.src, pair.processed.src);
+  }
+
+  // Six distinct object URLs: every selection minted its own pair rather than
+  // re-showing one it was already holding. Nothing here can count how many of
+  // them are still live — no browser API enumerates the blob-URL registry — so
+  // the release is proven at the structural layer by
+  // `test_reshoot_loop_leak_count`, and this is the browser's half of that
+  // claim: the mints are counted here, the releases are counted there. The gap
+  // is deliberate, not an omission.
+  //
+  // That absence was measured rather than assumed, with a page holding two live
+  // `blob:` URLs both mounted as `<img src>`. In this project's Chromium:
+  //
+  //   performance.getEntriesByType("resource")
+  //     -> ["http://localhost:3000/kitchen_sink/main.bc.js",
+  //         "http://localhost:3000/kitchen_sink/assets/placeholder.png"]
+  //   performance.getEntriesByType("navigation")
+  //     -> ["http://localhost:3000/kitchen_sink/"]
+  //
+  // Neither live URL appears in either, and sweeping every one of the thirteen
+  // `PerformanceObserver.supportedEntryTypes` for a name containing "blob:"
+  // returned nothing at all. `Object.getOwnPropertyNames(URL)` is
+  // ["length","name","prototype","canParse","parse","createObjectURL",
+  // "revokeObjectURL"] — the registry has a mint and a release and no reader.
+  // Re-run that probe before reopening this gap.
+  expect(new Set(seen).size).toBe(shots.length * 2);
+
+  await telemetry.attachHistory(test.info());
+});
+
+test("a platform that mints no object URLs reports a preview failure", async ({
+  page,
+}) => {
+  // The one place a preview failure tag is produced by a browser. Everywhere
+  // else the `previews=failed:` vocabulary is driven through the structural
+  // suite's stub — yet the argument for carrying the `previews=` prefix at all
+  // is made here, in the browser layer, against a collision with `processing=`'s
+  // vocabulary (`blob_not_found` is spelled the same in both). A vocabulary no
+  // browser has ever emitted cannot demonstrate that; this case makes it
+  // demonstrable rather than asserted.
+  //
+  // Driven by taking `URL.createObjectURL` away before the bundle boots, not by
+  // a hook in the section: `Blob_store.object_url` probes for the member and
+  // answers `None` when it is absent, the seam turns a resolvable handle with no
+  // URL into `Url_unavailable`, and nothing else in the application mints an
+  // object URL — the decode path is `createImageBitmap` — so the processing pass
+  // is untouched by the removal. A hardened, proxied or policy-restricted global
+  // is the real condition this reproduces.
+  await page.addInitScript(() => {
+    delete (URL as unknown as Record<string, unknown>).createObjectURL;
+  });
+  // An init script applies from the next navigation onward and `beforeEach` has
+  // already navigated, so the page is re-entered here. `goto` rather than
+  // `reload`, for the reason recorded in this file's header.
+  await page.goto("/kitchen_sink/", { waitUntil: "load" });
+  await page.waitForFunction(
+    (sel) => document.querySelector(sel) !== null,
+    PICKER,
+    { timeout: 10000 }
+  );
+
+  const telemetry = new NopalTelemetry(page);
+
+  await page.locator(PICKER).setInputFiles(SHARP);
+  await telemetry.waitForMessage("ReceiptProcessed:ok;", SETTLE);
+  await telemetry.waitForModel("previews=failed:url_unavailable;", SETTLE);
+
+  // The tag, not merely the failure: the three preview errors have three
+  // different remedies — an unregistered backend is a wiring bug in `main.ml`, a
+  // missing blob is a handle that was let go, and this is the platform declining
+  // — so a bare `failed:` would not say which one a browser actually produced.
+  await telemetry.assertRecordContains(
+    RECORD,
+    "previews=failed:url_unavailable;"
+  );
+
+  // The affirmative arm for the tag above, and the whole reason the preview
+  // failure is a state of its own: a picture that cannot be shown is not a photo
+  // that failed to process. Without these two the assertion would be satisfied
+  // by a section that fell over entirely, which is the failure mode the separate
+  // vocabulary exists to distinguish.
+  await telemetry.assertRecordContains(RECORD, "processing=ready;");
+  await telemetry.assertRecordContains(RECORD, "upload=idle;");
+
+  // Render correctness: the pass that succeeded is still readable on screen, and
+  // the pair is genuinely absent rather than mounted empty or mounted broken —
+  // an `<img>` with a `src` the browser cannot resolve would satisfy a weaker
+  // check and is exactly what a section ignoring the failure would produce.
+  await expect(page.locator(METADATA)).toContainText(
+    `${STORED_WIDTH} by ${STORED_HEIGHT} pixels`,
+    { timeout: SETTLE }
+  );
+  await expect(page.locator(ORIGINAL_IMG)).toHaveCount(0);
+  await expect(page.locator(PROCESSED_IMG)).toHaveCount(0);
+
+  await telemetry.events();
+  await telemetry.attachHistory(test.info());
+});
+
+test("the pair reports the payload it saved", async ({ page }) => {
+  const telemetry = new NopalTelemetry(page);
+
+  // The photograph's own length, measured on disk rather than written here as a
+  // constant. It is the same file `setInputFiles` hands the browser, so
+  // replacing the fixture cannot leave this pinning a number nothing produces —
+  // the precedent is the multipart test, which reads the encoded part's length
+  // off the model for the same reason in the other direction.
+  const picked = fs.statSync(SHARP).size;
+
+  await page.locator(PICKER).setInputFiles(SHARP);
+  await telemetry.waitForMessage("ReceiptProcessed:ok;", SETTLE);
+  await telemetry.waitForModel("previews=ready;", SETTLE);
+
+  // The correctness claim, in the model, and the half of it a spec can name in
+  // advance: the length the section reports for the picked photo is that file's
+  // own length, not the encoder's and not the decoded bitmap's.
+  await telemetry.assertRecordContains(RECORD, `original_byte_size=${picked};`);
+
+  const record = await latestRecord(telemetry, RECORD);
+  const original = recordInt(record, "original_byte_size");
+  const processed = recordInt(record, "byte_size");
+
+  // The affirmative arms for the comparison below. An ordering between two
+  // numbers says nothing until both are known to have been produced: a section
+  // reporting nothing, or reporting a zero-byte encode, satisfies "smaller"
+  // perfectly well and is the failure this suite exists to catch.
+  expect(original).toBe(picked);
+  expect(processed).toBeGreaterThan(0);
+
+  // The payload proof, beside the pixel proof its siblings make: the bytes that
+  // would leave the device are fewer than the bytes that were picked. Compared
+  // rather than pinned — how far Chromium's encoder gets is its own number.
+  expect(processed).toBeLessThan(original);
+
+  // Render correctness: both numbers reach the person looking at the pair, each
+  // under the photograph it describes. Asserted inside each half, because a
+  // section-wide match is satisfied by two labels naming one length, which is
+  // the near-miss a before/after readout is most vulnerable to. The processed
+  // half's number and its direction are one assertion because they are one
+  // sentence — and the two directions share no wording, so a growth rendered as
+  // a reduction fails here rather than reading as a smaller number.
+  await expect(page.locator(ORIGINAL_HALF)).toContainText(`${original} bytes`, {
+    timeout: SETTLE,
+  });
+  await expect(page.locator(PROCESSED_HALF)).toContainText(
+    `${processed} bytes, reduced to`,
+    { timeout: SETTLE }
+  );
+
+  await telemetry.attachHistory(test.info());
+});
+
 test("receipt section has no axe violations", async ({ page }, testInfo) => {
   // The idle section: the picker has no `<label for>` of its own, so its
   // accessible name comes from the call-site `aria-label`, and axe's `label`
@@ -453,4 +872,33 @@ test("receipt section has no axe violations", async ({ page }, testInfo) => {
   // that never contained the control would be vacuous.
   await expect(page.locator(RESHOOT)).toBeVisible({ timeout: SETTLE });
   await assertNoAxeViolations(page, testInfo, SECTION);
+});
+
+test("axe passes with previews present", async ({ page }, testInfo) => {
+  const telemetry = new NopalTelemetry(page);
+
+  await page.locator(PICKER).setInputFiles(SHARP);
+  await telemetry.waitForMessage("ReceiptProcessed:ok;", SETTLE);
+  await telemetry.waitForModel("previews=ready;", SETTLE);
+
+  // The affirmative arm. A zero-violation scan of a section that rendered no
+  // pictures is vacuous, and the pictures are the entire subject here: an
+  // `<img>` with no accessible name is a wcag2a failure, so a scan taken before
+  // they mount reports clean about two elements it never saw.
+  //
+  // The sibling scan above does reach them today — measured, by giving one
+  // preview a whitespace-only alt and watching both tests go red — but only by
+  // timing accident: it waits on `ReceiptProcessed:ok;`, which the section
+  // records before either object URL exists, and it asserts nothing about the
+  // pair. A mint that arrived one frame later would leave it green over a
+  // section with no images in it. This is the scan that cannot: the model gate
+  // above says the pair is in the model and the two waits below say it is on
+  // the page, and with the pictures suppressed this test fails on them while
+  // the sibling stays green.
+  await expect(page.locator(ORIGINAL_IMG)).toBeVisible({ timeout: SETTLE });
+  await expect(page.locator(PROCESSED_IMG)).toBeVisible({ timeout: SETTLE });
+
+  await assertNoAxeViolations(page, testInfo, SECTION);
+
+  await telemetry.attachHistory(testInfo);
 });

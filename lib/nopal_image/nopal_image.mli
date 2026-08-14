@@ -1,6 +1,7 @@
 (** Pure pixel data: a validated RGBA buffer, its conversion to luminance, a
     sharpness metric over that luminance, the capture parameters a platform
-    backend reads, and the seam a platform backend registers itself into.
+    backend reads, and the two seams a platform backend registers itself into -
+    one for processing a stored image, one for displaying it.
 
     Nothing here touches compressed bytes, a canvas, or any platform API. The
     only dependency is [nopal_mvu], which supplies the task and command types
@@ -44,3 +45,7 @@ module Config = Config
 module Processing = Processing
 (** The seam an application calls to have a stored image processed, and the
     failures a platform backend reports back through it. *)
+
+module Preview = Preview
+(** The seam an application calls to obtain a displayable URL for a stored
+    image, and to release one it no longer shows. *)

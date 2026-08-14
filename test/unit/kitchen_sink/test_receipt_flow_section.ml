@@ -2,6 +2,7 @@ open Nopal_test.Test_renderer
 module Sub = Kitchen_sink_app__Sub_receipt_flow
 module E = Nopal_element.Element
 module Config = Nopal_image.Config
+module Preview = Nopal_image.Preview
 module Processing = Nopal_image.Processing
 
 let vp = Nopal_element.Viewport.desktop
@@ -12,6 +13,15 @@ let accept = By_attr ("data-field", "receipt-accept")
 let reshoot = By_attr ("data-field", "receipt-reshoot")
 let note = By_attr ("data-field", "receipt-note")
 let upload_readout = By_attr ("data-testid", "receipt-flow-upload")
+let preview_pair = By_attr ("data-testid", "receipt-flow-previews")
+let original_preview = By_attr ("data-testid", "receipt-flow-preview-original")
+let processed_preview = By_attr ("data-testid", "receipt-flow-preview-processed")
+
+(* The structural renderer names a picture [image] where a browser renders
+   [img]. Both are reached the same way in the end - through the anchor on the
+   wrapper around it, because a picture element carries no attributes of its
+   own - so the two suites select the same node under two names. *)
+let picture = By_tag "image"
 
 (* A selection as the renderer hands it over: an opaque store handle plus
    user-agent metadata. Built directly, which is what keeping [file_info]
@@ -159,6 +169,158 @@ let http_backend ~requests ~outcome =
             park (fun () -> resolve outcome)));
   }
 
+(* What the preview stub was asked to do, in the order it was asked. One ordered
+   ledger rather than two lists, because what a caller replacing one picture with
+   another owes is that the release happens BEFORE the request that replaces it -
+   and an order is not recoverable from two membership lists. *)
+type preview_event = Requested of string | Revoked of string
+
+(* The preview deliveries park on a queue of their own rather than the one
+   above. A single queue drained to quiescence answers these inside the same
+   drain that answers the processing pass, and the state between those two
+   answers - two URLs asked for, neither arrived - is precisely what this
+   section has to be able to report. *)
+let preview_pending : (unit -> unit) Queue.t = Queue.create ()
+
+(* Newest first while it is being built; the readers below put it back in the
+   order the calls happened. *)
+let preview_events : preview_event list ref = ref []
+
+(* Mutable: how many URLs the stub has minted, so that every mint is a distinct
+   string. The store this stands in for mints a separate URL per call, so a stub
+   answering the same string twice would let a section that released one of two
+   mints look as though it had released both. *)
+let preview_mints = ref 0
+
+let drain_previews () =
+  let rec loop steps =
+    match Queue.take_opt preview_pending with
+    | None -> ()
+    | Some deliver ->
+        (match steps < drain_limit with
+        | true -> ()
+        | false -> Alcotest.fail "the parked preview deliveries never ran out");
+        deliver ();
+        loop (steps + 1)
+  in
+  loop 0
+
+(* Exactly one delivery, oldest first, so a case can look at the section holding
+   half a pair. *)
+let deliver_next_preview () =
+  match Queue.take_opt preview_pending with
+  | None -> Alcotest.fail "no preview delivery is parked"
+  | Some deliver -> deliver ()
+
+(* The URL the stub mints on its [mint]th call. Named here rather than written
+   out at each call site, so a case can name the particular URL a section ought
+   to have released without restating the stub's format. *)
+let stub_url ~blob_id ~mint = Printf.sprintf "blob:stub/%s/%d" blob_id mint
+
+(* Handles the stub answers with a failure rather than a URL, scripted per case.
+   Failing by handle rather than by call number is what lets a case fail one half
+   of a pair and let the other half through, which is the state a section can
+   only reach when a picture it is showing has no twin to be shown beside. *)
+let preview_failures : (string * Preview.error) list ref = ref []
+
+(* A total fold rather than [List.assoc], which raises on a handle nothing was
+   scripted for - and most calls are for handles nothing was scripted for. *)
+let rec scripted_failure ~blob_id failures =
+  match failures with
+  | [] -> None
+  | (handle, error) :: rest -> (
+      match String.equal handle blob_id with
+      | true -> Some error
+      | false -> scripted_failure ~blob_id rest)
+
+(* The request is recorded in the [Task.from_callback] body rather than in the
+   body of [url]. The seam builds its task when the COMMAND is built and runs
+   that body when the command is EXECUTED, while a release is a [Cmd.perform]
+   whose thunk also runs at execution; recording both at execution time is what
+   makes the ledger above one order rather than a mixture of two clocks. The
+   closure this body parks - [fun () -> resolve ...] - is a third clock again,
+   DELIVERY, and is deliberately not where the ledger is written. Recording at
+   execution is also what the platform backend does, where the URL is minted
+   inside the task rather than while it is being built.
+
+   A scripted failure mints nothing, which is what the platform does too: there
+   is no URL to hand over and therefore none to release. That is what makes the
+   mint counter readable as "URLs that exist" in a case where one half of the
+   pair failed. *)
+let preview_backend =
+  {
+    Preview.url =
+      (fun ~blob_id ->
+        Nopal_mvu.Task.from_callback (fun resolve ->
+            preview_events := Requested blob_id :: !preview_events;
+            match scripted_failure ~blob_id !preview_failures with
+            | Some error ->
+                Queue.add (fun () -> resolve (Error error)) preview_pending
+            | None ->
+                preview_mints := !preview_mints + 1;
+                let url = stub_url ~blob_id ~mint:!preview_mints in
+                Queue.add (fun () -> resolve (Ok url)) preview_pending));
+    revoke = (fun ~url -> preview_events := Revoked url :: !preview_events);
+  }
+
+(* Written as total folds so nothing here reaches for a partial list function to
+   read what the section asked the seam for. *)
+let rec requested_handles events =
+  match events with
+  | [] -> []
+  | Requested blob_id :: rest -> blob_id :: requested_handles rest
+  | Revoked _ :: rest -> requested_handles rest
+
+let preview_requests () = requested_handles (List.rev !preview_events)
+
+let rec revoked_of events =
+  match events with
+  | [] -> []
+  | Revoked url :: rest -> url :: revoked_of rest
+  | Requested _ :: rest -> revoked_of rest
+
+let revoked_urls () = revoked_of (List.rev !preview_events)
+
+(* Written as a total fold for the same reason as the readers above. A URL
+   released twice would make a count of releases read as a release that never
+   happened, so a case counting what is still out has to be able to tell how many
+   distinct URLs were let go. *)
+let rec distinct values =
+  match values with
+  | [] -> []
+  | value :: rest ->
+      value
+      :: distinct
+           (List.filter (fun other -> not (String.equal other value)) rest)
+
+(* The whole ledger in the order the calls happened, requests and releases in one
+   list. What a section replacing one picture with another owes is that the
+   release happens BEFORE the request that replaces it, and that is a claim about
+   order which two membership lists cannot make. *)
+let ledger_entry = function
+  | Requested blob_id -> "requested:" ^ blob_id
+  | Revoked url -> "revoked:" ^ url
+
+let preview_ledger () = List.map ledger_entry (List.rev !preview_events)
+
+(* Installs the stub for the duration of [f] and restores the default afterwards,
+   so a failing assertion cannot leak it into the next case, and drops whatever
+   it had parked for the same reason. The ledger is reset on the way IN rather
+   than on the way out, so a case can read what the section asked for after the
+   exchange it was asked during has closed. *)
+let with_preview_backend f =
+  Queue.clear preview_pending;
+  preview_events := [];
+  preview_mints := 0;
+  preview_failures := [];
+  Fun.protect
+    ~finally:(fun () ->
+      Queue.clear preview_pending;
+      Preview.register_backend Preview.default_backend)
+    (fun () ->
+      Preview.register_backend preview_backend;
+      f ())
+
 let single_message rendered =
   match messages rendered with
   | [ msg ] -> msg
@@ -202,12 +364,13 @@ let select_and_run ~outcome files model =
     (select_files picker files rendered);
   let msg = single_message rendered in
   let current, send = driver model in
-  with_image_backend (image_backend ~calls ~outcome) (fun () ->
-      send msg;
-      Alcotest.(check bool)
-        "the pass has not answered before the drain" false
-        (pass_answered !current);
-      drain ());
+  with_preview_backend (fun () ->
+      with_image_backend (image_backend ~calls ~outcome) (fun () ->
+          send msg;
+          Alcotest.(check bool)
+            "the pass has not answered before the drain" false
+            (pass_answered !current);
+          drain ()));
   (!calls, !current)
 
 let model0 () = fst (Sub.init ())
@@ -315,9 +478,14 @@ let test_metadata_recorded_in_model () =
   Alcotest.(check bool)
     "the processed height is recorded" true
     (Test_util.string_contains fragments ~sub:"height=768;");
+  (* Anchored on the left, unlike its two neighbours: [original_byte_size=] ends
+     in [byte_size=], so a plain substring search for the processed length is
+     satisfied by the picked photo's fragment whenever the two lengths coincide.
+     The fixture's two lengths differ today, which is exactly what makes an
+     unanchored assertion here a latent one rather than a failing one. *)
   Alcotest.(check bool)
     "the processed byte size is recorded" true
-    (Test_util.string_contains fragments ~sub:"byte_size=214007;");
+    (Test_util.contains_fragment fragments ~fragment:"byte_size=214007;");
   (* Render correctness of the readout the browser spec reads the dimensions
      out of. *)
   Alcotest.(check bool)
@@ -736,6 +904,35 @@ let handle_keyed_image_backend outcomes =
               !parked_by_handle @ [ (blob_id, fun () -> resolve outcome) ]));
   }
 
+(* A backend that answers successive passes over ONE handle differently. The
+   handle-keyed fixture above maps a handle to a single outcome, so two passes
+   over the same photo always agree there - which is exactly the sequence it
+   cannot drive: one pass succeeding and the next failing. Outcomes are taken in
+   the order the passes were STARTED and parked under the handle they were
+   started for, so a case still chooses the order they answer in. A pass beyond
+   the prepared ones answers with a failure rather than nothing, so a fixture
+   that stopped reaching the backend could not read as a pass the section
+   correctly discarded. *)
+let sequenced_image_backend outcomes =
+  let remaining = ref outcomes in
+  {
+    Processing.process =
+      (fun ~blob_id ~config:_ ->
+        let outcome =
+          match !remaining with
+          | [] ->
+              Error
+                (Processing.Decode_failed
+                   "the suite ran out of prepared results")
+          | next :: rest ->
+              remaining := rest;
+              next
+        in
+        Nopal_mvu.Task.from_callback (fun resolve ->
+            parked_by_handle :=
+              !parked_by_handle @ [ (blob_id, fun () -> resolve outcome) ]));
+  }
+
 (* Clearing the picker is a first-class thing a user does - the browser fires
    the handler with an empty list rather than not firing at all - and it has to
    leave nothing of the cleared photo behind. The pre-clear assertions are the
@@ -1123,6 +1320,925 @@ let test_late_reply_is_not_recorded_against_the_next_photo () =
   Alcotest.(check bool)
     "the replacement can still be accepted" true (present accept !current)
 
+(* The pair the section owes a reviewer is the photo that was picked beside the
+   photo that will be sent, so a pass that succeeded has to ask the seam for a
+   URL naming each of the two handles. The processed handle is the one every
+   later step of the flow uses, which is exactly why an implementation drifts
+   towards asking for it twice; the ledger is compared as a whole so that
+   asking twice, asking once, or asking in the other order is a failure rather
+   than a pass on a membership check. *)
+let test_previews_requested_for_both_ids () =
+  let _, ready =
+    select_and_run
+      ~outcome:(Ok (processed_info ~sharpness:over_threshold))
+      [ receipt ] (model0 ())
+  in
+  Alcotest.(check bool)
+    "the pass whose handles are being previewed did complete" true
+    (Test_util.string_contains (serialized ready) ~sub:"processing=ready;");
+  Alcotest.(check (list string))
+    "the section asks for the picked photo and the processed photo, in that \
+     order"
+    [ receipt.E.blob_id; processed_handle ]
+    (preview_requests ())
+
+(* Where the pair stands is its own vocabulary and it has to move. The untouched
+   section is the affirmative arm for the two absences below: without it a
+   serializer that never emitted the fragment at all would satisfy every "not
+   ready" and "not pending" assertion here. *)
+let test_previews_fragment_pending_then_ready () =
+  let untouched = serialized (model0 ()) in
+  Alcotest.(check bool)
+    "an untouched section holds no previews" true
+    (Test_util.string_contains untouched ~sub:"previews=none;");
+  Alcotest.(check bool)
+    "and does not claim a pair" false
+    (Test_util.string_contains untouched ~sub:"previews=ready;");
+  let current, send = driver (model0 ()) in
+  with_preview_backend (fun () ->
+      with_image_backend
+        (image_backend ~calls:(ref [])
+           ~outcome:(Ok (processed_info ~sharpness:over_threshold)))
+        (fun () ->
+          send (select_message [ receipt ] !current);
+          drain ();
+          let asked = Sub.serialize_model !current in
+          Alcotest.(check bool)
+            "a section whose URLs are still out reports them pending" true
+            (Test_util.string_contains asked ~sub:"previews=pending;");
+          Alcotest.(check bool)
+            "and does not report a pair it has not got" false
+            (Test_util.string_contains asked ~sub:"previews=ready;");
+          (* Half a pair is not a pair. Without this the fragment could turn
+             over on the first URL to arrive and every other assertion here
+             would still pass. *)
+          deliver_next_preview ();
+          let half = Sub.serialize_model !current in
+          Alcotest.(check bool)
+            "one URL of the two leaves the pair pending" true
+            (Test_util.string_contains half ~sub:"previews=pending;");
+          Alcotest.(check bool)
+            "and is not reported as a pair" false
+            (Test_util.string_contains half ~sub:"previews=ready;");
+          drain_previews ();
+          let both = Sub.serialize_model !current in
+          Alcotest.(check bool)
+            "once both URLs arrive the section reports the pair ready" true
+            (Test_util.string_contains both ~sub:"previews=ready;");
+          Alcotest.(check bool)
+            "and no longer reports them pending" false
+            (Test_util.string_contains both ~sub:"previews=pending;");
+          (* The URLs themselves are runtime values no spec could name in
+             advance, so they stay out of the telemetry entirely. *)
+          Alcotest.(check bool)
+            "the URLs do not reach the telemetry" false
+            (Test_util.string_contains both ~sub:"blob:stub/")))
+
+(* The message a rendered control dispatches, handed back rather than folded in,
+   so a case that has to put several steps on one clock can send it through the
+   driver it is already using. *)
+let click_message selector model =
+  let rendered = render (Sub.view vp model) in
+  Alcotest.(check (result unit Test_util.error_testable))
+    "the control is clickable" (Ok ()) (click selector rendered);
+  single_message rendered
+
+(* The section driven through several photos with ONE preview backend installed
+   for the whole of it, so the ledger spans every step. [select_and_run] installs
+   and resets the stub per selection, which is what makes it useless for a case
+   about replacing one pair with another. Every photo scores under the demo
+   threshold, because that is the side of it on which the re-shoot control is
+   offered. Returns the model the whole exchange left behind; the ledger is read
+   afterwards, since the fixture resets it on the way in rather than out. *)
+let preview_session f =
+  let current, send = driver (model0 ()) in
+  with_preview_backend (fun () ->
+      with_image_backend
+        (image_backend ~calls:(ref [])
+           ~outcome:(Ok (processed_info ~sharpness:under_threshold)))
+        (fun () -> f ~current ~send));
+  !current
+
+(* One photo carried all the way through: picked, measured, and both URLs
+   arrived. *)
+let take_a_photo ~current ~send =
+  send (select_message [ receipt ] !current);
+  drain ();
+  drain_previews ()
+
+let showing_a_pair model =
+  Test_util.string_contains (Sub.serialize_model model) ~sub:"previews=ready;"
+
+(* Each call to the seam mints a URL of its own, so a section that replaces a
+   pair owes two releases rather than one - and it owes them BEFORE it asks for
+   the pair that replaces them, or a re-shoot loop holds every picture it has
+   ever shown. The whole ledger is compared as one ordered list because that
+   before is the property: releasing after the new request, or releasing only one
+   of the two, satisfies every membership check that could be written instead. *)
+let test_reshoot_revokes_before_requesting () =
+  let final =
+    preview_session (fun ~current ~send ->
+        take_a_photo ~current ~send;
+        Alcotest.(check bool)
+          "the section is holding a pair before it replaces one" true
+          (showing_a_pair !current);
+        send (click_message reshoot !current);
+        take_a_photo ~current ~send)
+  in
+  Alcotest.(check bool)
+    "the replacement's own pair is shown once the re-shoot has been through"
+    true (showing_a_pair final);
+  Alcotest.(check (list string))
+    "both URLs are released before either replacement is asked for"
+    [
+      "requested:" ^ receipt.E.blob_id;
+      "requested:" ^ processed_handle;
+      "revoked:" ^ stub_url ~blob_id:receipt.E.blob_id ~mint:1;
+      "revoked:" ^ stub_url ~blob_id:processed_handle ~mint:2;
+      "requested:" ^ receipt.E.blob_id;
+      "requested:" ^ processed_handle;
+    ]
+    (preview_ledger ())
+
+(* The re-shoot loop the feature exists to survive. A URL pins the picture it
+   names for as long as it is held and nothing in the browser reports how many
+   are out, so this count at the seam is the only place the leak is observable at
+   all: three photos mint six URLs, and a section that releases what it replaces
+   is holding the last two of them and nothing else. *)
+let test_reshoot_loop_leak_count () =
+  let final =
+    preview_session (fun ~current ~send ->
+        List.iter (fun (_ : int) -> take_a_photo ~current ~send) [ 1; 2; 3 ])
+  in
+  Alcotest.(check bool)
+    "the section ends the loop showing a pair" true (showing_a_pair final);
+  Alcotest.(check int) "three photos mint two URLs each" 6 !preview_mints;
+  let released = revoked_urls () in
+  Alcotest.(check int)
+    "every URL but the pair on screen has been released" 4
+    (List.length released);
+  (* A URL released twice would make the count above read as a release that never
+     happened, so the releases have to be distinct as well as numerous. *)
+  Alcotest.(check int)
+    "and no URL is released twice" 4
+    (List.length (distinct released));
+  Alcotest.(check int)
+    "which leaves exactly the pair the section is showing still out" 2
+    (!preview_mints - List.length released)
+
+(* A URL minted for a pair the user has already moved off. It arrives a turn or
+   more after it was asked for, so a re-shoot taken while both were still out
+   leaves two deliveries in flight for a pair nothing is going to show. They pin
+   their pictures exactly as a shown URL does, so they are released as they
+   arrive rather than dropped - and they are not written over the pair the
+   section is actually waiting for, which is what the generation is for. *)
+let test_superseded_url_revoked_on_arrival () =
+  let stale_original = stub_url ~blob_id:receipt.E.blob_id ~mint:1 in
+  let stale_processed = stub_url ~blob_id:processed_handle ~mint:2 in
+  let final =
+    preview_session (fun ~current ~send ->
+        send (select_message [ receipt ] !current);
+        drain ();
+        (* Re-shot while both URLs are still out, so the replacement's own pair
+           is asked for with two deliveries from the abandoned one parked ahead
+           of it. *)
+        send (click_message reshoot !current);
+        send (select_message [ receipt ] !current);
+        drain ();
+        deliver_next_preview ();
+        deliver_next_preview ();
+        let after_stale = Sub.serialize_model !current in
+        Alcotest.(check bool)
+          "the superseded pair leaves the section still waiting for its own"
+          true
+          (Test_util.string_contains after_stale ~sub:"previews=pending;");
+        Alcotest.(check bool)
+          "so it does not report a pair it never received" false
+          (Test_util.string_contains after_stale ~sub:"previews=ready;");
+        Alcotest.(check (list string))
+          "and both superseded URLs are released as they arrive"
+          [ stale_original; stale_processed ]
+          (revoked_urls ());
+        drain_previews ())
+  in
+  Alcotest.(check bool)
+    "the pair the section actually asked for still arrives" true
+    (showing_a_pair final);
+  Alcotest.(check int)
+    "and nothing beyond the superseded pair is released" 2
+    (List.length (revoked_urls ()));
+  Alcotest.(check int)
+    "which leaves exactly the pair on screen still out" 2
+    (!preview_mints - List.length (revoked_urls ()))
+
+(* Clearing the picker reaches the same reset by a different arm, and a section
+   that released a replaced pair but not a cleared one would hold two URLs for a
+   picture it is no longer showing anything of. *)
+let test_clearing_the_picker_releases_the_pair () =
+  let final =
+    preview_session (fun ~current ~send ->
+        take_a_photo ~current ~send;
+        Alcotest.(check bool)
+          "the section is holding a pair before the picker is cleared" true
+          (showing_a_pair !current);
+        send (clear_message !current))
+  in
+  Alcotest.(check bool)
+    "a cleared picker leaves no pair behind" true
+    (Test_util.string_contains
+       (Sub.serialize_model final)
+       ~sub:"previews=none;");
+  Alcotest.(check (list string))
+    "and releases both URLs it was holding"
+    [
+      stub_url ~blob_id:receipt.E.blob_id ~mint:1;
+      stub_url ~blob_id:processed_handle ~mint:2;
+    ]
+    (revoked_urls ());
+  Alcotest.(check int)
+    "leaving nothing out at all" 0
+    (!preview_mints - List.length (revoked_urls ()))
+
+(* Two passes started for the one picked photo, both of which the section
+   records - and the second one replaces the pair the first asked for. A URL of
+   that first pair has already been handed over by then, so this is the arm that
+   lets a pair go without the picker having changed at all: neither a re-shoot
+   nor a clear reaches it. The ledger is compared in full because the release has
+   to happen before the replacement is asked for here too, and because the second
+   of the abandoned URLs arrives afterwards and is released on arrival. *)
+let test_a_second_pass_releases_the_pair_it_replaces () =
+  let current, send = driver (model0 ()) in
+  with_preview_backend (fun () ->
+      with_image_backend
+        (handle_keyed_image_backend
+           [
+             (receipt.E.blob_id, Ok (processed_info ~sharpness:under_threshold));
+           ])
+        (fun () ->
+          send (select_message [ receipt ] !current);
+          send (select_message [ receipt ] !current);
+          answer_pass_for ~blob_id:receipt.E.blob_id;
+          (* One of the first pair's two URLs arrives before the second pass
+             answers, so the section is holding half a pair at the moment that
+             pair is replaced. *)
+          deliver_next_preview ();
+          answer_pass_for ~blob_id:receipt.E.blob_id;
+          drain_previews ()));
+  Alcotest.(check bool)
+    "the section ends up showing the pair the second pass asked for" true
+    (showing_a_pair !current);
+  Alcotest.(check (list string))
+    "the URL the replaced pair was holding is released before the replacement \
+     is asked for, and its late twin as it arrives"
+    [
+      "requested:" ^ receipt.E.blob_id;
+      "requested:" ^ processed_handle;
+      "revoked:" ^ stub_url ~blob_id:receipt.E.blob_id ~mint:1;
+      "requested:" ^ receipt.E.blob_id;
+      "requested:" ^ processed_handle;
+      "revoked:" ^ stub_url ~blob_id:processed_handle ~mint:2;
+    ]
+    (preview_ledger ());
+  Alcotest.(check int)
+    "which leaves exactly the pair on screen still out" 2
+    (!preview_mints - List.length (revoked_urls ()))
+
+(* One photo carried all the way through a pass that succeeded, with the seam
+   scripted to refuse a URL for the named handles. The processing backend answers
+   first and answers well, so what this leaves behind is a section that has
+   decoded, scaled, re-encoded and measured a photo and cannot show it - which is
+   the whole of what the failure arm has to leave standing. *)
+let photo_with_failing_previews ~failures ~sharpness =
+  let current, send = driver (model0 ()) in
+  with_preview_backend (fun () ->
+      preview_failures := failures;
+      with_image_backend
+        (image_backend ~calls:(ref [])
+           ~outcome:(Ok (processed_info ~sharpness)))
+        (fun () ->
+          send (select_message [ receipt ] !current);
+          drain ();
+          drain_previews ()));
+  !current
+
+(* A URL that could not be minted says nothing about the photo it was asked for:
+   that photo was decoded, scaled, re-encoded and measured before anything asked
+   to show it. So the failure lands in the preview vocabulary and leaves every
+   other readout where the pass left it - the control that sends the receipt
+   included, which a section reporting a processing failure would not be offering
+   at all. *)
+let test_preview_failure_preserves_processed () =
+  let failed =
+    photo_with_failing_previews
+      ~failures:
+        [
+          ( receipt.E.blob_id,
+            Preview.Blob_not_found "the store holds no entry under that handle"
+          );
+        ]
+      ~sharpness:over_threshold
+  in
+  let fragments = serialized failed in
+  (* The affirmative arms for the absences below. Without them a fixture that
+     stopped reaching the pass at all would satisfy every "not a failure" check
+     here while pinning nothing. *)
+  Alcotest.(check bool)
+    "the pass is still reported as complete" true
+    (Test_util.string_contains fragments ~sub:"processing=ready;");
+  Alcotest.(check bool)
+    "with the dimensions it stored" true
+    (Test_util.string_contains fragments ~sub:"width=1024;");
+  Alcotest.(check bool)
+    "and the verdict its score earned" true
+    (Test_util.string_contains fragments ~sub:"sharpness_ok=true;");
+  Alcotest.(check bool)
+    "the upload is still waiting to be started" true
+    (Test_util.string_contains fragments ~sub:"upload=idle;");
+  Alcotest.(check bool)
+    "and the control that starts it is still offered" true
+    (present accept failed);
+  Alcotest.(check bool)
+    "the picture that could not be shown is reported as such" true
+    (Test_util.string_contains fragments ~sub:"previews=failed:blob_not_found;");
+  Alcotest.(check bool)
+    "a preview that failed is not reported as a processing failure" false
+    (Test_util.string_contains fragments ~sub:"processing=failed:");
+  Alcotest.(check bool)
+    "nor as a pair the section can show" false
+    (Test_util.string_contains fragments ~sub:"previews=ready;");
+  Alcotest.(check bool)
+    "nor as one still on its way" false
+    (Test_util.string_contains fragments ~sub:"previews=pending;");
+  (* The twin of the picture that failed arrives after the pair has already
+     failed and has nothing to be shown beside. It pins its photo exactly as a
+     shown URL does, so it is released rather than held for the session. *)
+  Alcotest.(check int) "the other half of the pair was minted" 1 !preview_mints;
+  Alcotest.(check (list string))
+    "and released as it arrived to a pair that had already failed"
+    [ stub_url ~blob_id:processed_handle ~mint:1 ]
+    (revoked_urls ())
+
+(* Every way a URL can fail to be minted, paired with the fragment that names it.
+   The payloads are deliberately unlike each other so a serializer leaking one in
+   place of the constructor could not accidentally agree. *)
+let preview_failures_tagged =
+  [
+    ( Preview.Blob_not_found "the store holds no entry under that handle",
+      "previews=failed:blob_not_found;" );
+    ( Preview.Url_unavailable "this platform mints no displayable URL",
+      "previews=failed:url_unavailable;" );
+    ( Preview.Backend_unregistered "no backend was registered at mount",
+      "previews=failed:backend_unregistered;" );
+  ]
+
+(* A spec that asserts one preview failure must not be satisfiable by any other:
+   a handle nothing is stored under, a platform that mints no URLs and an
+   application that forgot to register a backend have three different remedies.
+   Each arm is checked to carry its own fragment AND none of the others, so a
+   scheme where one tag is a substring of another is caught here. *)
+let test_preview_failure_fragment_tagged () =
+  List.iter
+    (fun (error, tag) ->
+      let fragments =
+        serialized
+          (photo_with_failing_previews
+             ~failures:[ (receipt.E.blob_id, error) ]
+             ~sharpness:over_threshold)
+      in
+      Alcotest.(check bool)
+        (Printf.sprintf "%s is reported under its own tag" tag)
+        true
+        (Test_util.string_contains fragments ~sub:tag);
+      preview_failures_tagged
+      |> List.filter (fun (_, other) -> not (String.equal other tag))
+      |> List.iter (fun (_, other) ->
+          Alcotest.(check bool)
+            (Printf.sprintf "%s is not also reported as %s" tag other)
+            false
+            (Test_util.string_contains fragments ~sub:other)))
+    preview_failures_tagged
+
+(* One half of a pair can arrive before the other fails. The arm that records a
+   failure keeps no URL at all, so unless the transition into it releases what it
+   is discarding, the half that did arrive is lost to every release path the
+   section has - each of them reads the arm, and the arm has forgotten it. *)
+let test_a_failure_releases_the_half_pair_it_discards () =
+  let arrived = stub_url ~blob_id:receipt.E.blob_id ~mint:1 in
+  let failed =
+    photo_with_failing_previews
+      ~failures:
+        [
+          ( processed_handle,
+            Preview.Url_unavailable "this platform mints no displayable URL" );
+        ]
+      ~sharpness:under_threshold
+  in
+  Alcotest.(check bool)
+    "the pair is reported as failed" true
+    (Test_util.string_contains (serialized failed)
+       ~sub:"previews=failed:url_unavailable;");
+  Alcotest.(check int) "the half that did arrive was minted" 1 !preview_mints;
+  Alcotest.(check (list string))
+    "and is released as the failure discards it" [ arrived ] (revoked_urls ());
+  Alcotest.(check int)
+    "which leaves nothing at all still out" 0
+    (!preview_mints - List.length (revoked_urls ()))
+
+(* Both halves refused, and refused differently. The arm carries one reason, so
+   one of the two is what the section reports - and which one is a rule the
+   module owes a reader, because the whole point of having three distinct tags is
+   that an assertion aimed at one reason is not satisfiable by another. The rule
+   is first-wins: the failure that arrives first is the one that moves the arm,
+   and the second lands on a pair that has already failed and is dropped. The two
+   halves are asked for in the order they are shown, so here that is the picked
+   photo's reason. *)
+let test_a_pair_failing_both_ways_reports_the_first () =
+  let failed =
+    photo_with_failing_previews
+      ~failures:
+        [
+          ( receipt.E.blob_id,
+            Preview.Blob_not_found "the store holds no entry under that handle"
+          );
+          ( processed_handle,
+            Preview.Url_unavailable "this platform mints no displayable URL" );
+        ]
+      ~sharpness:over_threshold
+  in
+  (* The affirmative arm: both halves really were asked for, so the single tag
+     below is the section choosing one of two failures rather than the fixture
+     having produced only one. *)
+  Alcotest.(check (list string))
+    "both halves of the pair were asked for"
+    [ receipt.E.blob_id; processed_handle ]
+    (preview_requests ());
+  let fragments = serialized failed in
+  Alcotest.(check bool)
+    "the failure that arrived first is the one reported" true
+    (Test_util.string_contains fragments ~sub:"previews=failed:blob_not_found;");
+  Alcotest.(check bool)
+    "and the one that arrived after it is not also reported" false
+    (Test_util.string_contains fragments ~sub:"previews=failed:url_unavailable;");
+  (* Neither refusal minted anything, so a pair that failed both ways holds
+     nothing and has nothing to release. *)
+  Alcotest.(check int) "a refusal mints no URL" 0 !preview_mints;
+  Alcotest.(check (list string))
+    "so there is nothing for the failure to release" [] (revoked_urls ())
+
+(* Every picture the section is rendering at this viewport, however deep. The
+   count is what tells a pair from half of one, and a view showing the same URL
+   under both headings from one showing two photographs. *)
+let pictures_shown ~viewport model =
+  find_all picture (tree (render (Sub.view viewport model)))
+
+(* One half of the pair, by the anchor a browser spec reaches it through. The
+   anchor is on the wrapper rather than the picture because a picture element
+   takes no attributes, which is also what keeps this feature from having to
+   touch the element vocabulary at all. *)
+let half_of_the_pair ~anchor ~viewport model =
+  match find anchor (tree (render (Sub.view viewport model))) with
+  | Some node -> node
+  | None -> Alcotest.fail "a half of the before-and-after pair is not rendered"
+
+let picture_in wrapper =
+  match find picture wrapper with
+  | Some node -> node
+  | None -> Alcotest.fail "a half of the before-and-after pair holds no picture"
+
+(* The two photographs side by side, each under the heading that says which one
+   it is. That labelling is the whole point of the pair: an unlabelled before
+   and after lets a reviewer read the photo that is about to be sent as the one
+   that was picked, which is precisely the mistake the section exists to expose.
+   The URLs are asserted by value and per side, so a view that put the pair in
+   one wrapper, or filled both wrappers from one slot, is visible here rather
+   than passing as two pictures. *)
+let test_preview_pair_rendered_with_alt_and_testids () =
+  let picked_url = stub_url ~blob_id:receipt.E.blob_id ~mint:1 in
+  let sent_url = stub_url ~blob_id:processed_handle ~mint:2 in
+  let final =
+    preview_session (fun ~current ~send ->
+        send (select_message [ receipt ] !current);
+        drain ();
+        (* Half a pair is not a pair, and at this point the section holds none
+           of it. Without these two the assertions below would pass against a
+           view that showed whichever URL happened to be in hand. *)
+        Alcotest.(check int)
+          "a section still waiting for its URLs shows no photograph" 0
+          (List.length (pictures_shown ~viewport:vp !current));
+        deliver_next_preview ();
+        Alcotest.(check int)
+          "and one URL of the two still shows none" 0
+          (List.length (pictures_shown ~viewport:vp !current));
+        drain_previews ())
+  in
+  Alcotest.(check bool)
+    "the section ends the exchange holding a pair" true (showing_a_pair final);
+  Alcotest.(check int)
+    "which is two photographs and no more" 2
+    (List.length (pictures_shown ~viewport:vp final));
+  let picked = half_of_the_pair ~anchor:original_preview ~viewport:vp final in
+  let sent = half_of_the_pair ~anchor:processed_preview ~viewport:vp final in
+  Alcotest.(check (option string))
+    "the photo that was picked is shown under its own anchor" (Some picked_url)
+    (attr "src" (picture_in picked));
+  Alcotest.(check (option string))
+    "and the photo that will be sent under its own" (Some sent_url)
+    (attr "src" (picture_in sent));
+  Alcotest.(check bool)
+    "the picked photo says on screen which one it is" true
+    (Test_util.string_contains (text_content picked) ~sub:"Original");
+  Alcotest.(check bool)
+    "and the one that will be sent says so too" true
+    (Test_util.string_contains (text_content sent) ~sub:"As uploaded");
+  (* A pair of photographs with no alternative text is a pair of photographs a
+     screen reader cannot tell apart, and describing both the same way would be
+     the same failure spelled differently. *)
+  match (attr "alt" (picture_in picked), attr "alt" (picture_in sent)) with
+  | None, (None | Some _)
+  | Some _, None ->
+      Alcotest.fail "a half of the before-and-after pair carries no alt text"
+  | Some picked_alt, Some sent_alt ->
+      Alcotest.(check bool)
+        "the picked photo is described" true
+        (String.length picked_alt > 0);
+      Alcotest.(check bool)
+        "so is the one that will be sent" true
+        (String.length sent_alt > 0);
+      Alcotest.(check bool)
+        "and the two descriptions are not the same" false
+        (String.equal picked_alt sent_alt)
+
+(* The container the pair sits in, by the direction it lays its children out
+   in. *)
+let pair_container ~viewport model =
+  match find preview_pair (tree (render (Sub.view viewport model))) with
+  | Some (Element { tag; style = _; attrs = _; children = _; interaction = _ })
+    ->
+      tag
+  | Some (Empty | Text { content = _; text_style = _ }) ->
+      Alcotest.fail "the before-and-after container is not a layout element"
+  | None -> Alcotest.fail "the before-and-after container is not rendered"
+
+(* A before and an after are read against each other, so they go side by side
+   wherever there is room for two of them and stack where there is not. A phone
+   held upright has room for one, and two photographs squeezed into that width
+   are two photographs nobody can see the difference between. *)
+let test_preview_pair_stacks_on_compact_viewport () =
+  let final =
+    preview_session (fun ~current ~send -> take_a_photo ~current ~send)
+  in
+  Alcotest.(check bool)
+    "the section is holding a pair to lay out" true (showing_a_pair final);
+  Alcotest.(check string)
+    "a phone stacks the two photographs" "column"
+    (pair_container ~viewport:Nopal_element.Viewport.phone final);
+  Alcotest.(check string)
+    "a desktop puts them side by side" "row"
+    (pair_container ~viewport:Nopal_element.Viewport.desktop final);
+  (* Reflowing by showing less is not reflowing. Without these two, a compact
+     branch that rendered an empty container would satisfy the direction
+     assertions above. *)
+  Alcotest.(check int)
+    "the phone shows both of them" 2
+    (List.length (pictures_shown ~viewport:Nopal_element.Viewport.phone final));
+  Alcotest.(check int)
+    "and so does the desktop" 2
+    (List.length
+       (pictures_shown ~viewport:Nopal_element.Viewport.desktop final))
+
+(* Two passes started for the one picked photo, the first of which succeeds and
+   produces a pair, the second of which fails. The section is then holding a
+   photograph it cannot label - the lengths under the pair come off the
+   measurement, and the measurement is gone - so the pair has to go with it, and
+   the URLs holding it have to be released as it goes. Nothing else in the module
+   would ever let them go: a failed stage offers no re-shoot control, so the only
+   exit is the picker, and until the user finds it the pictures stay pinned. *)
+let test_a_failing_second_pass_releases_the_pair_the_first_produced () =
+  let current, send = driver (model0 ()) in
+  with_preview_backend (fun () ->
+      with_image_backend
+        (sequenced_image_backend
+           [
+             Ok (processed_info ~sharpness:over_threshold);
+             Error (Processing.Decode_failed "not a JPEG");
+           ])
+        (fun () ->
+          send (select_message [ receipt ] !current);
+          send (select_message [ receipt ] !current);
+          answer_pass_for ~blob_id:receipt.E.blob_id;
+          drain_previews ();
+          (* The affirmative arm: without it every absence below would be
+             satisfied by a fixture that never produced a pair at all. *)
+          Alcotest.(check bool)
+            "the first pass leaves a pair on screen" true
+            (showing_a_pair !current);
+          answer_pass_for ~blob_id:receipt.E.blob_id;
+          drain_previews ()));
+  let fragments = Sub.serialize_model !current in
+  Alcotest.(check bool)
+    "the failing second pass is reported as the failure it is" true
+    (Test_util.string_contains fragments ~sub:"processing=failed:decode_failed;");
+  Alcotest.(check bool)
+    "the section no longer claims a pair it can neither show nor label" false
+    (Test_util.string_contains fragments ~sub:"previews=ready;");
+  Alcotest.(check bool)
+    "reporting instead that it is holding none" true
+    (Test_util.string_contains fragments ~sub:"previews=none;");
+  Alcotest.(check int) "the first pass minted two URLs" 2 !preview_mints;
+  Alcotest.(check (list string))
+    "and both are released as the failure lets the pair go"
+    [
+      stub_url ~blob_id:receipt.E.blob_id ~mint:1;
+      stub_url ~blob_id:processed_handle ~mint:2;
+    ]
+    (revoked_urls ());
+  Alcotest.(check int)
+    "which leaves nothing at all still out" 0
+    (!preview_mints - List.length (revoked_urls ()));
+  (* And nothing is drawn from what was let go, which is what keeps the release
+     above from being true only in the ledger. *)
+  Alcotest.(check int)
+    "no photograph is left on screen" 0
+    (List.length (pictures_shown ~viewport:vp !current))
+
+(* A URL still in flight when the user empties the picker. The clear takes the
+   pair the section was waiting for with it, so the delivery arrives to a section
+   holding no pair at all - not to one waiting for a different pair, which is the
+   superseded case and is reached by generation instead. Every other case that
+   arrives at a section holding nothing arrives carrying a refusal, so this is
+   the only one that puts a real URL in the section's hands with nowhere to put
+   it. It pins its picture exactly as a shown one does, so it is released on
+   arrival rather than stored under a pair that has been let go. *)
+let test_a_url_arriving_after_a_clear_is_released () =
+  let current, send = driver (model0 ()) in
+  with_preview_backend (fun () ->
+      with_image_backend
+        (image_backend ~calls:(ref [])
+           ~outcome:(Ok (processed_info ~sharpness:over_threshold)))
+        (fun () ->
+          send (select_message [ receipt ] !current);
+          drain ();
+          (* The affirmative arm: the pair really was asked for and both URLs
+             are out at this point, so what arrives after the clear is a
+             delivery the fixture produced rather than one it never started. *)
+          Alcotest.(check bool)
+            "the section is waiting for a pair when the picker is emptied" true
+            (Test_util.string_contains
+               (Sub.serialize_model !current)
+               ~sub:"previews=pending;");
+          send (clear_message !current);
+          Alcotest.(check bool)
+            "which the clear takes away with it" true
+            (Test_util.string_contains
+               (Sub.serialize_model !current)
+               ~sub:"previews=none;");
+          Alcotest.(check (list string))
+            "with nothing to release, because neither URL had arrived yet" []
+            (revoked_urls ());
+          drain_previews ()));
+  let fragments = Sub.serialize_model !current in
+  Alcotest.(check bool)
+    "the section still reports itself holding no pair" true
+    (Test_util.string_contains fragments ~sub:"previews=none;");
+  Alcotest.(check bool)
+    "a URL arriving after the clear does not turn it back into one" false
+    (Test_util.string_contains fragments ~sub:"previews=ready;");
+  Alcotest.(check bool)
+    "nor into one still waiting" false
+    (Test_util.string_contains fragments ~sub:"previews=pending;");
+  Alcotest.(check int) "both URLs were minted" 2 !preview_mints;
+  Alcotest.(check (list string))
+    "and both are released as they arrive"
+    [
+      stub_url ~blob_id:receipt.E.blob_id ~mint:1;
+      stub_url ~blob_id:processed_handle ~mint:2;
+    ]
+    (revoked_urls ());
+  Alcotest.(check int)
+    "which leaves nothing at all still out" 0
+    (!preview_mints - List.length (revoked_urls ()));
+  (* And nothing is drawn from what arrived, which is what keeps the release
+     above from being true only in the ledger. *)
+  Alcotest.(check int)
+    "no photograph reaches the screen" 0
+    (List.length (pictures_shown ~viewport:vp !current))
+
+(* One photo carried all the way through to a shown pair, with the result the
+   pass produced written out at the call site. [preview_session] fixes that
+   result, which is what makes it useless for a case about what the pass cost:
+   the encoded byte length is the quantity under test here. *)
+let photo_with_result info =
+  let current, send = driver (model0 ()) in
+  with_preview_backend (fun () ->
+      with_image_backend
+        (image_backend ~calls:(ref []) ~outcome:(Ok info))
+        (fun () ->
+          send (select_message [ receipt ] !current);
+          drain ();
+          drain_previews ()));
+  !current
+
+(* A pass whose output is bigger than the photo it consumed. Re-encoding does not
+   always shrink: a small, already-optimised photo, or one whose long edge is
+   already under the section's stored edge so no downscale applies, comes back
+   larger. It is 119% of the picked file's own length, which is the number the
+   label has to be able to say without reading as a reduction that went wrong. *)
+let grown_byte_size = 2_500_000
+
+let grown_info =
+  {
+    Processing.blob_id = processed_handle;
+    width = 1024;
+    height = 768;
+    byte_size = grown_byte_size;
+    sharpness = over_threshold;
+  }
+
+(* The text of one half of the pair, by the anchor a browser spec reaches it
+   through. Read per half rather than off the section as a whole: what has to be
+   true is that each half names the length of the picture THAT half shows, and a
+   search over the whole subtree is satisfied by a section that puts both numbers
+   under one heading. *)
+let half_text ~anchor model =
+  text_content (half_of_the_pair ~anchor ~viewport:vp model)
+
+(* The numbers below are the suite's own fixtures written out rather than
+   recomputed from them: [receipt] is 2097152 bytes and the pass it drives
+   produces 214007, so 10% is arithmetic this file states rather than repeats
+   from the section. *)
+let test_preview_labels_carry_both_byte_sizes () =
+  let final = photo_with_result (processed_info ~sharpness:over_threshold) in
+  Alcotest.(check bool)
+    "the section is holding a pair to label" true (showing_a_pair final);
+  let picked = half_text ~anchor:original_preview final in
+  let sent = half_text ~anchor:processed_preview final in
+  Alcotest.(check bool)
+    "the picked photo is labelled with the length of the file that was picked"
+    true
+    (Test_util.string_contains picked ~sub:"2097152 bytes");
+  Alcotest.(check bool)
+    "and not with the length of the photo that will be sent" false
+    (Test_util.string_contains picked ~sub:"214007");
+  Alcotest.(check bool)
+    "the photo that will be sent is labelled with its own length" true
+    (Test_util.string_contains sent ~sub:"214007 bytes");
+  Alcotest.(check bool)
+    "and not with the length of the file that was picked" false
+    (Test_util.string_contains sent ~sub:"2097152")
+
+(* Two numbers side by side are two numbers a reader has to divide, and the
+   point of the readout is that they should not have to. The comparison belongs
+   to the half that was produced: the picked photo is not smaller than anything.
+*)
+let test_processed_label_reports_the_reduction () =
+  let final = photo_with_result (processed_info ~sharpness:over_threshold) in
+  let picked = half_text ~anchor:original_preview final in
+  let sent = half_text ~anchor:processed_preview final in
+  Alcotest.(check bool)
+    "the processed half says what it came to relative to the original" true
+    (Test_util.string_contains sent ~sub:"reduced to 10% of the original");
+  Alcotest.(check bool)
+    "and does not read as a pass that grew" false
+    (Test_util.string_contains sent ~sub:"grown to");
+  Alcotest.(check bool)
+    "the picked half claims no reduction of its own" false
+    (Test_util.string_contains picked ~sub:"reduced to")
+
+(* A pass that came out bigger. A label computing "N% of the original"
+   unconditionally is arithmetically right and reads, under a heading saying the
+   photo is the one about to be sent, as a reduction that went wrong rather than
+   as the normal outcome for an already-small photo. The two phrasings share no
+   substring, so an assertion aimed at one is not satisfiable by the other. *)
+let test_a_processed_image_that_grew_is_not_a_reduction () =
+  let final = photo_with_result grown_info in
+  Alcotest.(check bool)
+    "the section is holding a pair to label" true (showing_a_pair final);
+  let sent = half_text ~anchor:processed_preview final in
+  Alcotest.(check bool)
+    "a pass whose output is larger says so" true
+    (Test_util.string_contains sent ~sub:"grown to 119% of the original");
+  Alcotest.(check bool)
+    "and is not reported as a reduction" false
+    (Test_util.string_contains sent ~sub:"reduced to");
+  Alcotest.(check bool)
+    "the length it grew to is the one shown" true
+    (Test_util.string_contains sent ~sub:"2500000 bytes")
+
+(* A pass whose output is a fraction of one percent of the file it consumed. The
+   share is integer arithmetic, so anything under a hundredth floors to nothing:
+   rendered as a number it reads "reduced to 0% of the original", which is a
+   broken readout rather than a very good one - the same misreading the growth
+   wording exists to prevent, at the other end of the range. 4096 bytes of the
+   fixture's 2097152 is 0.2%. *)
+let tiny_byte_size = 4_096
+
+let tiny_info =
+  {
+    Processing.blob_id = processed_handle;
+    width = 1024;
+    height = 768;
+    byte_size = tiny_byte_size;
+    sharpness = over_threshold;
+  }
+
+let test_a_share_under_one_percent_is_not_rendered_as_none () =
+  let final = photo_with_result tiny_info in
+  Alcotest.(check bool)
+    "the section is holding a pair to label" true (showing_a_pair final);
+  let sent = half_text ~anchor:processed_preview final in
+  (* Anchored on the "reduced to" that precedes it rather than on "0%" alone:
+     every share ending in a zero digit contains "0% of the original", so the
+     looser assertion would read a perfectly good "reduced to 10%" as this
+     failure. *)
+  Alcotest.(check bool)
+    "a share too small to state is not rendered as no share at all" false
+    (Test_util.string_contains sent ~sub:"reduced to 0%");
+  Alcotest.(check bool)
+    "it is said in words instead" true
+    (Test_util.string_contains sent ~sub:"reduced to under 1% of the original");
+  Alcotest.(check bool)
+    "and it is still a reduction rather than a growth" false
+    (Test_util.string_contains sent ~sub:"grown to");
+  Alcotest.(check bool)
+    "beside the length it came to" true
+    (Test_util.string_contains sent ~sub:"4096 bytes")
+
+(* A pass whose output is exactly as long as the file it consumed - a photo
+   already at the stored edge and already at the encoder's quality, which comes
+   back the same length it went in. It is the middle of the three directions, and
+   the one the three-way variant was written to add: rendered as a share it reads
+   "reduced to 100% of the original", which is a reduction that achieved nothing
+   rather than a re-encode that changed nothing. *)
+let unchanged_byte_size = 2_097_152
+
+let unchanged_info =
+  {
+    Processing.blob_id = processed_handle;
+    width = 1024;
+    height = 768;
+    byte_size = unchanged_byte_size;
+    sharpness = over_threshold;
+  }
+
+let test_a_processed_image_of_equal_length_is_not_a_reduction () =
+  let final = photo_with_result unchanged_info in
+  Alcotest.(check bool)
+    "the section is holding a pair to label" true (showing_a_pair final);
+  let sent = half_text ~anchor:processed_preview final in
+  Alcotest.(check bool)
+    "a pass that came back the same length says so" true
+    (Test_util.string_contains sent ~sub:"the same size as the original");
+  (* The specific misreading first, then the general one: a pass that reduced
+     nothing may not be worded as a reduction at all, and "reduced to 100%" is
+     the particular rendering the direction exists to keep off the screen. *)
+  Alcotest.(check bool)
+    "and not as a reduction to all of the original" false
+    (Test_util.string_contains sent ~sub:"reduced to 100%");
+  Alcotest.(check bool)
+    "nor as a reduction of any kind" false
+    (Test_util.string_contains sent ~sub:"reduced to");
+  Alcotest.(check bool)
+    "nor as a growth" false
+    (Test_util.string_contains sent ~sub:"grown to");
+  Alcotest.(check bool)
+    "beside the length it came to" true
+    (Test_util.string_contains sent ~sub:"2097152 bytes")
+
+(* The payload change has to be readable by a browser spec, and a percentage is a
+   float by another name: its rendering depends on a rounding rule the spec would
+   have to reimplement to assert on. Two integers go on the wire and whoever
+   reads them does the division. The fragment is emitted only once a pass has
+   produced a length, so a section that has measured nothing cannot satisfy an
+   assertion naming one. *)
+let test_original_byte_size_fragment () =
+  let untouched = serialized (model0 ()) in
+  Alcotest.(check bool)
+    "an untouched section reports no length for a photo it has not measured"
+    false
+    (Test_util.string_contains untouched ~sub:"original_byte_size=");
+  let final = photo_with_result (processed_info ~sharpness:over_threshold) in
+  let fragments = serialized final in
+  Alcotest.(check bool)
+    "a completed pass reports the length of the file it consumed" true
+    (Test_util.string_contains fragments ~sub:"original_byte_size=2097152;");
+  (* Anchored, and here it is the whole point of the assertion: this case is the
+     one that puts the two lengths in the record together, so a search for the
+     processed one that a fragment naming the picked one could satisfy would
+     report the pair present when only half of it is. *)
+  Alcotest.(check bool)
+    "beside the length it produced" true
+    (Test_util.contains_fragment fragments ~fragment:"byte_size=214007;");
+  Alcotest.(check bool)
+    "no ratio reaches the telemetry" false
+    (String.contains fragments '%');
+  Alcotest.(check bool)
+    "and nothing on the wire is a float rendering" false
+    (String.contains fragments '.');
+  let cleared = clear_and_update final in
+  Alcotest.(check bool)
+    "and a section that has let the photo go stops reporting its length" false
+    (Test_util.string_contains (serialized cleared) ~sub:"original_byte_size=")
+
 let () =
   Alcotest.run "kitchen_sink_receipt_flow_section"
     [
@@ -1193,5 +2309,64 @@ let () =
           Alcotest.test_case
             "a late reply is not recorded against the next photo" `Quick
             test_late_reply_is_not_recorded_against_the_next_photo;
+        ] );
+      ( "previews",
+        [
+          Alcotest.test_case "a pass asks for a URL for both handles" `Quick
+            test_previews_requested_for_both_ids;
+          Alcotest.test_case "the pair is reported pending, then ready" `Quick
+            test_previews_fragment_pending_then_ready;
+          Alcotest.test_case
+            "a re-shoot releases both URLs before asking for their replacements"
+            `Quick test_reshoot_revokes_before_requesting;
+          Alcotest.test_case
+            "a re-shoot loop leaves only the pair on screen unreleased" `Quick
+            test_reshoot_loop_leak_count;
+          Alcotest.test_case "a superseded URL is released as it arrives" `Quick
+            test_superseded_url_revoked_on_arrival;
+          Alcotest.test_case "clearing the picker releases the pair it held"
+            `Quick test_clearing_the_picker_releases_the_pair;
+          Alcotest.test_case "a second pass releases the pair it replaces"
+            `Quick test_a_second_pass_releases_the_pair_it_replaces;
+          Alcotest.test_case
+            "a preview that failed leaves the processed photo standing" `Quick
+            test_preview_failure_preserves_processed;
+          Alcotest.test_case "every preview failure arm is distinguishable"
+            `Quick test_preview_failure_fragment_tagged;
+          Alcotest.test_case "a failure releases the half pair it discards"
+            `Quick test_a_failure_releases_the_half_pair_it_discards;
+          Alcotest.test_case
+            "a pair that failed both ways reports the failure that arrived \
+             first"
+            `Quick test_a_pair_failing_both_ways_reports_the_first;
+          Alcotest.test_case
+            "a failing second pass releases the pair the first produced" `Quick
+            test_a_failing_second_pass_releases_the_pair_the_first_produced;
+          Alcotest.test_case
+            "a URL arriving after the picker was cleared is released" `Quick
+            test_a_url_arriving_after_a_clear_is_released;
+          Alcotest.test_case
+            "the pair is rendered labelled, described and anchored" `Quick
+            test_preview_pair_rendered_with_alt_and_testids;
+          Alcotest.test_case "the pair stacks where there is room for one"
+            `Quick test_preview_pair_stacks_on_compact_viewport;
+        ] );
+      ( "payload",
+        [
+          Alcotest.test_case "each half names the length of its own picture"
+            `Quick test_preview_labels_carry_both_byte_sizes;
+          Alcotest.test_case "the processed half reports what the pass cost"
+            `Quick test_processed_label_reports_the_reduction;
+          Alcotest.test_case "a pass that grew is not reported as a reduction"
+            `Quick test_a_processed_image_that_grew_is_not_a_reduction;
+          Alcotest.test_case
+            "a share under one percent is not rendered as no share at all"
+            `Quick test_a_share_under_one_percent_is_not_rendered_as_none;
+          Alcotest.test_case
+            "a pass that came back the same length is not reported as a \
+             reduction"
+            `Quick test_a_processed_image_of_equal_length_is_not_a_reduction;
+          Alcotest.test_case "the picked photo's length reaches the telemetry"
+            `Quick test_original_byte_size_fragment;
         ] );
     ]

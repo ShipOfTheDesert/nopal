@@ -192,7 +192,12 @@ export class NopalTelemetry {
 // model carries no such record, which is what a section that has not been
 // registered, or a misspelled record name, looks like. A record holds no nested
 // braces, so the first `}` after the opening one closes it.
-function recordSlice(model: string, record: string): string | null {
+//
+// Exported so a spec that has to read a value out of a record rather than assert
+// a fragment against it — a number the browser produced, which no spec can name
+// in advance — extracts it the same way `assertRecordContains` does, rather than
+// carrying a second copy of the record shape.
+export function recordSlice(model: string, record: string): string | null {
   const prefix = `${record}={`;
   const start = model.indexOf(prefix);
   if (start === -1) return null;

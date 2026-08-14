@@ -36,3 +36,44 @@ val process :
       Nopal_image.Processing.register_backend
         { Nopal_image.Processing.process = Nopal_image_web.process }
     ]} *)
+
+val preview_url :
+  blob_id:string -> (string, Nopal_image.Preview.error) result Nopal_mvu.Task.t
+(** [preview_url ~blob_id] mints a browser URL that displays the image stored
+    under [blob_id], without reading its bytes back or copying them.
+
+    The two ways there can be no URL are kept apart, because they have different
+    owners. A handle the store resolves to nothing is [Blob_not_found], and it
+    is the application holding a stale handle. A handle it does resolve, for
+    which this browser still produced no URL - it has no notion of an object URL
+    at all, or it refused the call - is [Url_unavailable], and it is the
+    platform.
+
+    The minted URL pins the image's bytes until {!revoke_preview_url} releases
+    it. Nothing else releases it: not unmounting, not releasing the store entry
+    it was minted from. A caller that replaces one displayed image with another
+    releases the URL it is replacing, or every image it has ever shown stays
+    resident for the rest of the page session. Every call mints a URL of its
+    own, so two mints are two releases rather than one.
+
+    This is the browser implementation of the seam application code calls, and
+    it is wired in at the mounting layer, once, before any command is built:
+
+    {[
+      Nopal_image.Preview.register_backend
+        {
+          Nopal_image.Preview.url = Nopal_image_web.preview_url;
+          revoke = Nopal_image_web.revoke_preview_url;
+        }
+    ]} *)
+
+val revoke_preview_url : url:string -> unit
+(** [revoke_preview_url ~url] releases [url], after which it displays nothing
+    and no longer pins the image's bytes.
+
+    Idempotent, and a no-op on a string this browser never minted or in an
+    environment with no notion of an object URL at all, so a caller releasing
+    whatever it happens to hold needs no bookkeeping to avoid a double release.
+
+    Releasing a URL releases the URL only: the store entry it was minted from
+    stays registered and can mint again. *)

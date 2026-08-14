@@ -276,15 +276,16 @@ nopal_style        ← no platform deps
 nopal_scene        ← depends on style, no platform deps (Color, Paint, Transform, Path, Scene)
 nopal_draw         ← depends on scene + style (Scale + higher-level Path algorithms)
 nopal_http         ← depends on mvu, no platform deps
-nopal_image        ← depends on mvu, no platform deps (Buffer, Luma, Sharpness, Config, Processing)
+nopal_image        ← depends on mvu, no platform deps (Buffer, Luma, Sharpness, Config, Processing, Preview)
 nopal_router       ← no platform deps
 nopal_runtime      ← depends on mvu + element + lwd
 nopal_web          ← depends on runtime + brr + js_of_ocaml
-nopal_blob_web     ← depends on brr + js_of_ocaml (session-local blob handle registry)
+nopal_blob_web     ← depends on brr + js_of_ocaml (session-local blob handle registry
+                     + displayable object URLs)
 nopal_http_web     ← depends on nopal_http + nopal_blob_web + brr + js_of_ocaml
 nopal_image_web    ← depends on nopal_image + nopal_mvu + nopal_blob_web + brr + js_of_ocaml
-                     (public module is the seam; bindings live in the
-                      nopal_image_web.internal sub-library)
+                     (public module is the two seams — Processing and Preview;
+                      bindings live in the nopal_image_web.internal sub-library)
 nopal_test         ← depends on element + style + mvu + runtime (must build on native OCaml)
 ```
 
@@ -506,13 +507,56 @@ flow, and `test/e2e/tests/kitchen-sink-receipt-flow.spec.ts` drives the real
 canvas pipeline through it — decode, downscale, re-encode, sharpness, and the
 multipart upload of the processed handle.
 
-Two things about that suite are worth knowing before extending it. Headless
+That section now also renders the photograph it picked and the photograph it
+would send, side by side and labelled, from object URLs minted by
+`nopal_blob_web` and reached through the `Nopal_image.Preview` seam. The point
+is the one no assertion covers: compression artefacts on small text, a rotated
+image and a silently black canvas encode all produce a valid handle and a
+plausible byte count, and are obvious to a person looking at the pair. What the
+pair did make assertable is that the browser decodes both halves
+(`naturalWidth > 0`, so not a black or empty encode) and that the processed half
+is smaller than the original by the section's own cap while holding the
+fixture's aspect ratio.
+
+Each half is labelled with the byte length of the picture it shows, and the
+as-uploaded half with its share of the original, so the payload change is read
+off the same pair as the fidelity change. Both lengths are on the wire as
+integers — the picked file's beside the encoded one — and the share is not: a
+rendered percentage is a float by another name, and a spec asserting on one would
+have to reimplement its rounding rule. The spec computes the relationship itself
+from the two integers.
+
+Three things about that suite are worth knowing before extending it. Headless
 Chromium is the only browser it has run under, and the encoded byte counts and
 raw sharpness scores that browser produces are its own rather than a contract —
-so assert on the order two photographs come out in, never on a number. And it
-does not reach the `Canvas_unavailable` or `Pixel_read_failed` arms: neither is
+so assert on the order two photographs come out in, never on a number. The
+picked photograph's length is the exception that proves it: that number is the
+fixture's own length on disk, so the payload test reads it with `fs.statSync`
+and compares the encoded length against it rather than pinning either. It does
+not reach the `Canvas_unavailable` or `Pixel_read_failed` arms: neither is
 reachable from a page that renders with a backend registered, so both stay
-covered by the package's fake-canvas unit suites under Node alone. That is a
-decision not to cover them rather than work owed to anyone. Whoever meets a
-browser that refuses a 2D context or a pixel read owns reopening it, in the
-change that meets it.
+covered by the package's fake-canvas unit suites under Node alone. And it does
+not count live object URLs, because no browser API enumerates the blob-URL
+registry — measured against a page holding two live `blob:` URLs rather than
+argued from memory, with the observed output recorded beside the claim in
+`test/e2e/tests/kitchen-sink-receipt-flow.spec.ts` (`re-selecting recovers the
+pair for every photo`); re-run that probe before reopening the gap. So the claim
+that a re-shoot loop leaves exactly the pair on screen live is made by the
+structural suite's counting stub
+(`test/unit/kitchen_sink/test_receipt_flow_section.ml`,
+`test_reshoot_loop_leak_count`) and the browser only shows that each selection
+mints URLs it has not shown before.
+
+All three are decisions not to cover, rather than work owed to anyone. Whoever
+meets a browser that refuses a 2D context or a pixel read owns reopening the
+second one, in the change that meets it; whoever finds an API that reports live
+object URLs owns the third, in the change that would use it.
+
+The one preview state that is worth driving from the page is the failure. The
+section's `previews=` vocabulary reuses words `processing=` also uses, and the
+browser is where that collision is real, so the suite takes
+`URL.createObjectURL` away before the bundle boots and asserts the resulting
+`previews=failed:url_unavailable;` beside an untouched `processing=ready;`. It
+costs no production hook: the store probes for the member and reports its
+absence, and the decode path is `createImageBitmap`, so the pass itself does not
+notice.

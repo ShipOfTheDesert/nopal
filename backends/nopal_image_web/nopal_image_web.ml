@@ -223,6 +223,65 @@ let process_bitmap ~config ~bitmap ~finish =
                                          sharpness;
                                        })))))))
 
+(* The store is asked twice on purpose. [object_url] answers [None] both for a
+   handle it holds nothing under and for an environment that minted no URL, and
+   those are different failures with different owners - a stale handle belongs
+   to the application, an absent minting capability to the platform. [lookup] is
+   what separates them, and it reads the same registry [object_url] consults, so
+   the two answers cannot disagree about whether the image is there.
+
+   [guard_once] rather than a bare [Task.return] of the match: everything here
+   runs synchronously inside [update], and delivering an outcome runs the
+   application's own dispatch, which is arbitrary code. A raise out of that
+   dispatch leaves the body and lands in the exception handler the combinator
+   installs - a handler closing over a resolver of its own. Reached through a
+   resolver latched before it was installed, the raise is absorbed and the
+   caller keeps the outcome it already has; reached through an unlatched one,
+   the handler answers a second time and blames the browser for an application
+   bug.
+
+   Neither call in the body reports a refusal as an exception: the store answers
+   an unknown handle and a platform that mints nothing with the same [None], a
+   platform that refuses the call outright included, and telling those apart is
+   what the paragraph above is about. So [on_exn] describes nothing this body
+   can produce today. It names the mint because that is the only call here that
+   reaches the platform at all, and it stands against a store that stopped being
+   total rather than against a browser that declined. *)
+let preview_url ~blob_id =
+  Nopal_mvu.Task.guard_once
+    ~on_exn:(fun refusal ->
+      Preview.Url_unavailable
+        (Printf.sprintf
+           "the browser refused to mint a displayable URL for the stored image \
+            %s: %s"
+           blob_id
+           (description_of_exn refusal)))
+    (fun resolve ->
+      match Nopal_blob_web.Blob_store.lookup blob_id with
+      | None ->
+          resolve
+            (Error
+               (Preview.Blob_not_found
+                  (Printf.sprintf
+                     "the blob store holds no image under the handle %s" blob_id)))
+      | Some _stored -> (
+          match Nopal_blob_web.Blob_store.object_url blob_id with
+          | Some url -> resolve (Ok url)
+          | None ->
+              resolve
+                (Error
+                   (Preview.Url_unavailable
+                      (Printf.sprintf
+                         "this browser minted no displayable URL for the \
+                          stored image %s"
+                         blob_id)))))
+
+(* Releasing cannot fail, which is the seam's contract as well as the store's:
+   the platform is specified to ignore a string that names no live URL, and the
+   store answers an environment with no revocation capability by doing nothing.
+   So there is no outcome to report and nothing to guard. *)
+let revoke_preview_url ~url = Nopal_blob_web.Blob_store.revoke_url url
+
 let process ~blob_id ~config =
   (* [guard_once] rather than [guard]: the handle lookup below delivers
      synchronously, inside the guard's own [try], and delivering runs the

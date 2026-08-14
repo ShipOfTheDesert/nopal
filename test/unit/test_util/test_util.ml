@@ -10,6 +10,10 @@ let string_contains s ~sub =
     in
     check 0
 
+let contains_fragment s ~fragment =
+  String.starts_with ~prefix:fragment s
+  || string_contains s ~sub:(" " ^ fragment)
+
 open Nopal_test.Test_renderer
 
 let pp_selector fmt sel =

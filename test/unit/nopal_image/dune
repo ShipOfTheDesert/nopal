@@ -10,6 +10,12 @@
  (libraries nopal_image nopal_mvu alcotest))
 
 (test
+ (name test_preview)
+ (package nopal_image)
+ (modules test_preview)
+ (libraries nopal_image nopal_mvu alcotest))
+
+(test
  (name test_buffer)
  (modules test_buffer)
  (libraries nopal_image image_test_helpers alcotest))

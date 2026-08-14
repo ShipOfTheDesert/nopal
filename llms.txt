@@ -24,14 +24,14 @@ nopal_charts    ← Composable interactive charts (Bar, Line, Area, Pie, Scatter
                    Color_scale, Domain_window, Viewport, Downsample, Snap)
 nopal_http      ← Pure HTTP types + backend abstraction — no platform deps
 nopal_navigation ← Nav_stack: pure stack-based navigation state (non-empty, total pop) — no platform deps
-nopal_image     ← Validated RGBA Buffer, perceptual Luma, Sharpness metric, capture Config, Processing seam — depends on nopal_mvu (Task/Cmd types); no platform deps
+nopal_image     ← Validated RGBA Buffer, perceptual Luma, Sharpness metric, capture Config, Processing + Preview seams — depends on nopal_mvu (Task/Cmd types); no platform deps
 nopal_ui        ← High-level UI components (Bottom_tabs, Button, Checkbox, Data_table, Modal, Navigation_bar, Radio_group, Select_input, Slug, Text_input, Toast) — no platform deps
 nopal_runtime   ← Lwd reactive integration + MVU loop; Telemetry (E2E event log)
 nopal_test      ← Pure OCaml test renderer + Telemetry_test harness — no js_of_ocaml
 nopal_web       ← js_of_ocaml + Brr DOM renderer (only browser-dependent package)
 nopal_http_web  ← Browser Fetch API backend for nopal_http — depends on nopal_blob_web (multipart file parts); js_of_ocaml + Brr, never nopal_web/nopal_runtime/lwd
-nopal_blob_web  ← Session-local handle ⇄ Brr.Blob.t registry, reachable from any _web backend — js_of_ocaml + Brr
-nopal_image_web ← Browser canvas pipeline implementing Nopal_image.Processing — depends on nopal_image + nopal_mvu + nopal_blob_web; js_of_ocaml + Brr, never nopal_web/nopal_runtime/lwd
+nopal_blob_web  ← Session-local handle ⇄ Brr.Blob.t registry + displayable object URLs, reachable from any _web backend — js_of_ocaml + Brr
+nopal_image_web ← Browser canvas pipeline implementing Nopal_image.Processing, and the browser side of Nopal_image.Preview — depends on nopal_image + nopal_mvu + nopal_blob_web; js_of_ocaml + Brr, never nopal_web/nopal_runtime/lwd
 nopal_storage_web   ← IndexedDB backend implementing Nopal_storage.S — js_of_ocaml + Brr
 nopal_storage_tauri ← Filesystem (tauri-plugin-fs) backend implementing Nopal_storage.S — js_of_ocaml + Brr
 nopal_tauri     ← Tauri desktop/mobile bindings — depends on nopal_mvu (for Task.t), nopal_platform (for Platform.S)
@@ -1148,9 +1148,11 @@ module App = App.Make (Platform_web)
 
 Pure pixel data: a validated RGBA buffer, its conversion to perceptual luminance,
 a sharpness (focus) metric over that luminance, the capture parameters a platform
-backend reads, and the `Processing` seam a platform backend registers itself into.
+backend reads, and the two seams a platform backend registers itself into —
+`Processing` for turning a stored image into an upload-ready one, `Preview` for
+getting a stored image on screen.
 The only dependency is `nopal_mvu`, which supplies the `Task.t` and `Cmd.t` types
-the seam states its effect in; the package still compiles native, so the metric is
+the seams state their effect in; the package still compiles native, so the metric is
 testable without a browser. Nothing here touches compressed bytes, a canvas, or
 any platform API: encoding, resizing and EXIF are the platform backend's concern,
 and `nopal_image` only describes them — a canvas is named in a `Processing`
@@ -1293,6 +1295,57 @@ Processing.process : blob_id:string -> config:Config.t
    task runs — same as Nopal_http.send. Build it inside update; a command built at
    module initialisation captures default_backend, because main.ml has not
    registered yet. *)
+```
+
+`Preview` is the second seam in the same shape, and the package's other half of
+the story: `Processing` turns a stored image into an upload-ready one, `Preview`
+gets a stored image on screen. It hands back a platform reference naming bytes
+the blob store already holds — a browser object URL, under the web backend — so
+an application can show a picture it has stored without reading those bytes back
+into OCaml. `Element.image` takes a `src` string, so nothing in `nopal_element`
+had to change for this.
+
+The lifetime is the thing to get right. A minted URL PINS its image until it is
+released, releasing is only ever something the application asks for (no runtime,
+unmount or collector does it), and every mint is a separate resource — two mints
+are two releases. An application that replaces one displayed picture with
+another releases the URL it is replacing FIRST, or every picture it has ever
+shown stays resident for the page session. The kitchen sink's receipt section is
+the worked example of that hygiene, including the case where a URL arrives after
+the request for it was superseded and has to be released on arrival.
+
+```ocaml
+type Nopal_image.Preview.error =
+  | Blob_not_found      of string   (* no stored image under the handle asked for *)
+  | Url_unavailable     of string   (* stored, but this platform minted no URL for it *)
+  | Backend_unregistered of string  (* nothing was registered — a wiring failure in
+                                       the application, not a property of the image *)
+
+Preview.message : error -> string   (* human-readable, for display *)
+
+type Nopal_image.Preview.backend = {
+  url    : blob_id:string -> (string, error) result Nopal_mvu.Task.t;
+  revoke : url:string -> unit;   (* cannot fail: a URL already released, or one
+                                    this backend never minted, is a no-op *)
+}
+
+Preview.default_backend  : backend
+      (* in force before any platform registers one; its url resolves
+         Error (Backend_unregistered _) rather than raising or hanging, and its
+         revoke does nothing. Public so a test can restore it. *)
+Preview.register_backend : backend -> unit
+Preview.preview_url : blob_id:string
+                      -> ((string, error) result -> 'msg) -> 'msg Nopal_mvu.Cmd.t
+Preview.revoke      : url:string -> 'msg Nopal_mvu.Cmd.t
+
+(* revoke is a Cmd.perform and dispatches NO message: releasing cannot fail, so
+   there is no outcome to report and no reply to wait for. Both builders read the
+   registered backend when the COMMAND IS BUILT, exactly as Processing.process
+   and Nopal_http.send do — build them inside update.
+
+   This is the third seam built in this shape (nopal_http, Processing, Preview).
+   A fourth consumer is the point at which lifting a shared registry pays for
+   itself; a third is not, so the duplication is deliberate. *)
 ```
 
 ### Scene Types (`nopal_scene`)
@@ -1867,6 +1920,8 @@ the renderer.
 ```ocaml
 val store  : Brr.Blob.t -> string        (* fresh handle; never deduplicates, never recycles *)
 val lookup : string -> Brr.Blob.t option (* None for an unknown or released handle — never raises *)
+val object_url : string -> string option (* a URL that DISPLAYS the handle's blob *)
+val revoke_url : string -> unit          (* release one; idempotent *)
 val remove : string -> unit              (* idempotent *)
 val clear  : unit -> unit
 
@@ -1876,11 +1931,36 @@ val clear  : unit -> unit
    explicit remove/clear: unmounting a Nopal application does NOT clear them, so
    an upload in flight at teardown keeps a working handle (feature 0122,
    Decision 1). Release is the application's responsibility. *)
+
+(* object_url answers None for a handle that resolves to nothing AND for an
+   environment that mints no URL for it — an absence either way, never an error
+   and never an exception, matching lookup's own contract. The minted URL is
+   same-origin and meaningless outside the page session that issued it, exactly
+   like the handle it came from.
+
+   The lifetime is a caller obligation, and it is the sharp edge of this module.
+   A live URL PINS its blob: the bytes stay resident even after the entry behind
+   them is released with remove/clear, and unmounting releases neither. Only
+   revoke_url releases the URL. A view that replaces one image with another
+   revokes the URL it is replacing, or every photograph the user takes is held
+   for the rest of the session. Every call mints a SEPARATE URL, including
+   repeated calls with the same handle, so two mints are two revokes rather than
+   one — there is no memoisation, deliberately, because memoising would make the
+   store own a lifetime this interface says it does not own.
+
+   revoke_url is idempotent and a no-op on a string this store never minted, so a
+   caller releasing whatever it happens to hold needs no bookkeeping to avoid a
+   double release. It releases the URL only: the entry stays registered and can
+   mint again. Use remove to release that.
+
+   Application code does not call these directly — Nopal_image.Preview is the
+   platform-free seam, and Nopal_image_web wraps these two functions into it. *)
 ```
 
 ### Image Web (`nopal_image_web`)
 
-Browser implementation of `Nopal_image.Processing`. Decodes a stored image,
+Browser implementation of `Nopal_image.Processing` and of `Nopal_image.Preview`.
+The processing half decodes a stored image,
 downscales it natively on a detached canvas, re-encodes it back into
 `nopal_blob_web` under a fresh handle, and scores its sharpness. Returns a
 `Task.t` — used in `main.ml` to register the backend via
@@ -1895,7 +1975,19 @@ real-browser coverage: `test/e2e/tests/kitchen-sink-receipt-flow.spec.ts` drives
 it in headless Chromium. Read it for the shape of a consumer — the section names
 its own `Config` rather than inheriting `Config.recommended`, holds the processed
 `result_info` in the same model arm as the upload state so the upload cannot name
-the picked handle by accident, and matches `Processing.error` exhaustively.
+the picked handle by accident, and matches `Processing.error` exhaustively. That
+same arm also carries the byte length of the file the pass consumed, taken from
+the `Element.file_info` that passed the guard: the two lengths the section reports
+are then provably one photograph's, where reading the picked length back off the
+selection at render time would need an option the compiler cannot see is full.
+
+It is also the reference for preview hygiene, which is easy to get subtly wrong:
+the preview lifecycle is ONE variant (never a pair of `string option`s) carrying
+a generation counter, a replacement emits the revocations before the new requests
+in a single batch, a URL delivered for a superseded generation is released on
+arrival instead of stored, and the transition into the failure arm releases the
+half of the pair that had already arrived — that arm carries no URL, so nothing
+else would ever release it.
 
 ```ocaml
 val process : blob_id:string -> config:Nopal_image.Config.t
@@ -1922,6 +2014,37 @@ val process : blob_id:string -> config:Nopal_image.Config.t
    Canvas_unavailable. An application testing for an unsupported environment must
    treat Decode_failed as covering that case too. Canvas_unavailable means the 2D
    context was refused, or that no backend was registered at all. *)
+```
+
+The preview half wraps `nopal_blob_web`'s object URLs into `Nopal_image.Preview`,
+so a section can display a stored image without importing `Brr`. Registered in
+`main.ml` beside the processing backend, once, before any command is built.
+
+```ocaml
+val preview_url : blob_id:string
+  -> (string, Nopal_image.Preview.error) result Nopal_mvu.Task.t
+val revoke_preview_url : url:string -> unit
+
+(* Registration:
+     Nopal_image.Preview.register_backend
+       { Nopal_image.Preview.url = Nopal_image_web.preview_url;
+         revoke = Nopal_image_web.revoke_preview_url }
+
+   The two ways there can be no URL are kept apart because they have different
+   owners: a handle the store resolves to nothing is Blob_not_found and the
+   application is holding a stale handle; a handle it DOES resolve for which the
+   browser still produced no URL — no notion of an object URL at all, or a
+   refused call — is Url_unavailable and the platform is the reason. The mint
+   runs inside the Task rather than while the command is built, behind
+   Nopal_mvu.Task.guard_once, so a browser that refuses reports a failure of the
+   effect instead of raising out of the application's update.
+
+   Lifetime as in nopal_blob_web: the minted URL pins the image until
+   revoke_preview_url releases it, nothing else releases it, and every call mints
+   its own — two mints are two releases. revoke_preview_url is idempotent, is a
+   no-op on a string this browser never minted or in an environment with no
+   object URLs at all, and releases the URL only: the store entry stays
+   registered and can mint again. *)
 ```
 
 ```ocaml
@@ -2365,16 +2488,17 @@ lib/
                        Trading.Candlestick, Trading.Drawdown, Chart_pane,
                        Color_scale, Domain_window, Viewport, Downsample, Snap
   nopal_http/        — Pure HTTP types + backend abstraction
-  nopal_image/       — Buffer, Luma, Sharpness, Config, Processing seam (pure pixel data; depends on nopal_mvu, no platform deps)
+  nopal_image/       — Buffer, Luma, Sharpness, Config, Processing + Preview seams (pure pixel data; depends on nopal_mvu, no platform deps)
   nopal_ui/          — High-level UI components (Button, Checkbox, Data_table, Modal, Navigation_bar, Radio_group, Select_input, Slug, Text_input, Toast)
   nopal_runtime/     — Lwd integration + MVU loop; Telemetry (E2E event log)
   nopal_test/        — Pure OCaml test renderer + Telemetry_test harness
 backends/
   nopal_web/         — js_of_ocaml + Brr DOM renderer
   nopal_http_web/    — Browser Fetch API backend for nopal_http
-  nopal_blob_web/    — Session-local handle ⇄ Brr.Blob.t registry (leaf; no renderer dep)
-  nopal_image_web/   — Browser canvas pipeline implementing Nopal_image.Processing.
-                       Public module is the seam only; Canvas_ffi, Dimensions and
+  nopal_blob_web/    — Session-local handle ⇄ Brr.Blob.t registry + object URLs (leaf; no renderer dep)
+  nopal_image_web/   — Browser canvas pipeline implementing Nopal_image.Processing,
+                       plus the object-URL backend for Nopal_image.Preview.
+                       Public module is the seams only; Canvas_ffi, Dimensions and
                        Once sit in the nopal_image_web.internal sub-library
   nopal_storage_web/   — IndexedDB backend implementing Nopal_storage.S
   nopal_storage_tauri/ — Filesystem (tauri-plugin-fs) backend implementing Nopal_storage.S
@@ -2389,8 +2513,11 @@ examples/
                        bytes) and, beside it, "Receipt Capture" (pick → canvas
                        decode/downscale/re-encode via nopal_image_web → sharpness
                        verdict and comparison against the previous photo →
-                       multipart upload of the PROCESSED handle). Each lives in
-                       its own sub_*.ml/.mli with its own structural suite; the
+                       labelled before/after preview pair of the picked and the
+                       as-uploaded photograph, each half naming its own byte
+                       length and the as-uploaded half its share of the original
+                       → multipart upload of the PROCESSED handle). Each lives
+                       in its own sub_*.ml/.mli with its own structural suite; the
                        receipt one is examples/kitchen_sink/sub_receipt_flow.ml
   dashboard/         — Charts showcase
 test/
