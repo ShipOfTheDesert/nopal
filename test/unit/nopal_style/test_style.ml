@@ -175,6 +175,43 @@ let test_color_transparent () =
   | Named _ ->
       Alcotest.fail "expected Transparent"
 
+(* The colour type is defined in Nopal_style.Color and re-exported here by a
+   type equation, so the Style spelling keeps its constructors. This case pins
+   the three things a bare type alias would silently drop: unqualified
+   construction, an unqualified exhaustive match, and the identity of the two
+   spellings. *)
+let test_color_spelling_is_one_type () =
+  let c = Rgba { r = 12; g = 34; b = 56; a = 0.5 } in
+  Alcotest.(check string)
+    "Style constructor builds the Rgba arm" "rgba"
+    (match c with
+    | Rgba _ -> "rgba"
+    | Hex _ -> "hex"
+    | Named _ -> "named"
+    | Transparent -> "transparent");
+  Alcotest.(check string)
+    "Style.hex builds the Hex arm" "#ff0000"
+    (match hex "#ff0000" with
+    | Hex s -> s
+    | Rgba _
+    | Named _
+    | Transparent ->
+        "other");
+  Alcotest.(check bool)
+    "Color.hex is the same value as Style.Hex" true
+    (equal_color (Nopal_style.Color.hex "#ff0000") (Hex "#ff0000"));
+  Alcotest.(check bool)
+    "Color.rgba is the same value as Style.Rgba" true
+    (equal_color
+       (Nopal_style.Color.rgba 12 34 56 0.5)
+       (Rgba { r = 12; g = 34; b = 56; a = 0.5 }));
+  Alcotest.(check bool)
+    "Color.transparent is the same value as Style.transparent" true
+    (equal_color Nopal_style.Color.transparent transparent);
+  Alcotest.(check bool)
+    "equal_color still separates the arms" false
+    (equal_color (Nopal_style.Color.named "red") (Hex "#ff0000"))
+
 (* --- Border style tests --- *)
 
 let test_border_style_variants () =
@@ -600,6 +637,8 @@ let () =
           Alcotest.test_case "color_hex" `Quick test_color_hex;
           Alcotest.test_case "color_named" `Quick test_color_named;
           Alcotest.test_case "color_transparent" `Quick test_color_transparent;
+          Alcotest.test_case "color_spelling_is_one_type" `Quick
+            test_color_spelling_is_one_type;
         ] );
       ( "Border style",
         [

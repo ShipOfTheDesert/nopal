@@ -600,6 +600,7 @@ let run_app_tests =
 (* Task 5: Text style in test renderer *)
 module T = Nopal_style.Text
 module F = Nopal_style.Font
+module C = Nopal_style.Color
 
 let text_node_has_no_text_style () =
   let r = render (E.text "hello") in
@@ -649,6 +650,21 @@ let text_style_accessor_returns_none_for_element () =
   let result = text_style (tree r) in
   Alcotest.(check bool)
     "text_style returns None for element" true (Option.is_none result)
+
+(* The colour is authored, rendered and read back through the public path, so
+   this is the composition the two halves miss: the builder is pinned in the
+   style package's own suite, the accessor by the cases above with a font size,
+   and neither carries a colour across the renderer. *)
+let text_style_carries_colour () =
+  let c = C.rgba 12 34 56 0.5 in
+  let ts = T.default |> T.color c in
+  let r = render (E.styled_text ~text_style:ts "coloured") in
+  let result = text_style (tree r) in
+  Alcotest.(check bool) "text_style returns Some" true (Option.is_some result);
+  let ts' = Option.get result in
+  Alcotest.(check bool)
+    "authored colour survives the round-trip" true
+    (Option.equal C.equal ts'.color (Some c))
 
 let text_content_still_works () =
   let ts = T.default |> T.font_size 14.0 in
@@ -727,6 +743,8 @@ let text_style_tests =
       text_style_accessor_returns_none_for_plain;
     Alcotest.test_case "text_style_accessor_returns_none_for_element" `Quick
       text_style_accessor_returns_none_for_element;
+    Alcotest.test_case "text_style_carries_colour" `Quick
+      text_style_carries_colour;
     Alcotest.test_case "text_content_still_works" `Quick
       text_content_still_works;
     Alcotest.test_case "styled_text_reconciliation_changes_style" `Quick

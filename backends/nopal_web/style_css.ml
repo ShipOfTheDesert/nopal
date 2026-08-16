@@ -70,6 +70,11 @@ let of_text (text : Nopal_style.Text.t) =
     | None -> acc
   in
   let acc =
+    match text.color with
+    | Some c -> add acc "color" (color_to_css c)
+    | None -> acc
+  in
+  let acc =
     match text.line_height with
     | Some Nopal_style.Text.Lh_normal -> add acc "line-height" "normal"
     | Some (Nopal_style.Text.Lh_multiplier m) ->

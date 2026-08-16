@@ -93,4 +93,60 @@ test("typography section renders", async ({ page }) => {
     );
     expect(tt).toBe(transform);
   }
+
+  // Text color. Read off the span the color is authored on, never off the
+  // container: the container carries only the test anchor, and a color that
+  // reached it instead would still cascade down and look identical here.
+  const computedTextColor = async (testid: string) => {
+    const el = section.locator(`[data-testid="${testid}"] span`);
+    await expect(el).toBeVisible();
+    return el.evaluate((node) => getComputedStyle(node).color);
+  };
+
+  // Asserted in the computed rgb()/rgba() form the browser reports, never the
+  // authored "#c0392b" / "rebeccapurple" spelling — the authored string is an
+  // input to the style system, not something the rendered page ever shows.
+  const hexColor = await computedTextColor("text-color-hex");
+  expect(hexColor).toBe("rgb(192, 57, 43)");
+
+  // The fractional alpha is what makes this row a distinct oracle: a
+  // translucent color computes to an "rgba(...)" string, where the hex and
+  // named rows above both compute to an opaque "rgb(...)". Keep the alpha on an
+  // integral 8-bit boundary — 0.6 x 255 is exactly 153, so it round-trips
+  // through the browser's 8-bit color storage unchanged. A "nicer" 0.7 is
+  // 178.5, and this expectation would no longer be exact.
+  const rgbaColor = await computedTextColor("text-color-rgba");
+  expect(rgbaColor).toBe("rgba(30, 120, 200, 0.6)");
+
+  const namedColor = await computedTextColor("text-color-named");
+  expect(namedColor).toBe("rgb(102, 51, 153)");
+
+  // An unset color is inert: the row that authors none is left at whatever its
+  // container inherits. Compared against that container rather than against a
+  // literal black, so the assertion states the inheritance relationship instead
+  // of pinning the page's current default color.
+  const inheritedTestid = "text-color-inherited";
+  const inheritedColor = await computedTextColor(inheritedTestid);
+  const containerColor = await section
+    .locator(`[data-testid="${inheritedTestid}"]`)
+    .evaluate((el) => getComputedStyle(el).color);
+  expect(inheritedColor).toBe(containerColor);
+
+  // Affirmative arm for the assertion above. The uncolored row is built by the
+  // same helper as the three colored ones and differs from them in nothing but
+  // whether a color was authored, so "it matches its container" is a real
+  // observation only while an authored color does not.
+  expect(inheritedColor).not.toBe(hexColor);
+  expect(inheritedColor).not.toBe(rgbaColor);
+  expect(inheritedColor).not.toBe(namedColor);
+
+  // The color is a property of the text, not of the box around it. Without
+  // this line the assertions above would read the same on a page that colored
+  // the container and let the cascade carry it into the span, so the anchor
+  // container is checked to be left at the same inherited color as the
+  // uncolored row's.
+  const hexContainerColor = await section
+    .locator('[data-testid="text-color-hex"]')
+    .evaluate((el) => getComputedStyle(el).color);
+  expect(hexContainerColor).toBe(containerColor);
 });

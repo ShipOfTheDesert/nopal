@@ -1037,6 +1037,27 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
             label;
         ]
     in
+    (* Text color helper. Takes the color as an option so the uncolored row is
+       built by the same code path as the colored ones and differs from them in
+       nothing but whether a color was authored — otherwise "this row uses the
+       inherited color" could hold because the row never reached the text-style
+       path at all. Written Nopal_style.Color rather than the bare Color the
+       enclosing [let open] makes available: one line outside that [let open],
+       bare Color is Nopal_scene.Color via the file-level [open Nopal_draw] — a
+       float RGBA type, not this one — so the qualification keeps the helper
+       readable where it is likely to be moved or copied to. *)
+    let color_item (c : Nopal_style.Color.t option) (label : string)
+        (testid : string) =
+      let text_style =
+        let base = Text.default |> Text.font_size 1.0 in
+        match c with
+        | Some c -> base |> Text.color c
+        | None -> base
+      in
+      Element.box
+        ~attrs:[ ("data-testid", testid) ]
+        [ Element.styled_text ~text_style label ]
+    in
     Element.column ~style:section_style
       ~attrs:[ ("data-section", "typography") ]
       [
@@ -1158,6 +1179,27 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                 Element.styled_text
                   ~text_style:(Text.default |> Text.text_transform Capitalize)
                   "capitalize each word";
+              ];
+            Element.text "Text color:";
+            Element.column ~style:section_body_style
+              [
+                color_item
+                  (Some (Nopal_style.Color.hex "#c0392b"))
+                  "Hex color (#c0392b)" "text-color-hex";
+                (* Fractional alpha on purpose: it is what makes this row a
+                   distinct oracle. A translucent color computes to an
+                   "rgba(...)" string, where the hex and named rows both
+                   compute to an opaque "rgb(...)" — so this row exercises the
+                   alpha channel end to end instead of restating what the
+                   opaque rows already cover. *)
+                color_item
+                  (Some (Nopal_style.Color.rgba 30 120 200 0.6))
+                  "RGBA color with 0.6 alpha" "text-color-rgba";
+                color_item
+                  (Some (Nopal_style.Color.named "rebeccapurple"))
+                  "Named color (rebeccapurple)" "text-color-named";
+                color_item None "No color authored — inherited"
+                  "text-color-inherited";
               ];
           ];
       ]

@@ -464,6 +464,48 @@ let test_text_only_some_fields_emit () =
   check_has_prop "font-size" "2rem" props;
   check_has_prop "font-weight" "700" props
 
+let test_text_color_hex () =
+  let ts =
+    Nopal_style.Text.default
+    |> Nopal_style.Text.color (Nopal_style.Color.hex "#ff8800")
+  in
+  let props = text_props ts in
+  check_has_prop "color" "#ff8800" props;
+  check_no_prop "background-color" props
+
+let test_text_color_transparent () =
+  let ts =
+    Nopal_style.Text.default
+    |> Nopal_style.Text.color Nopal_style.Color.transparent
+  in
+  let props = text_props ts in
+  check_has_prop "color" "transparent" props
+
+let test_text_color_rgba () =
+  let fractional_alpha =
+    Nopal_style.Text.default
+    |> Nopal_style.Text.color (Nopal_style.Color.rgba 12 34 56 0.5)
+  in
+  check_has_prop "color" "rgba(12,34,56,0.5)" (text_props fractional_alpha);
+  (* Alpha 1.0 must render as "1", never "1." — a trailing dot is not a valid
+     CSS alpha and browsers drop the whole declaration silently. *)
+  let opaque =
+    Nopal_style.Text.default
+    |> Nopal_style.Text.color (Nopal_style.Color.rgba 12 34 56 1.0)
+  in
+  check_has_prop "color" "rgba(12,34,56,1)" (text_props opaque)
+
+let test_style_text_color () =
+  let style =
+    Nopal_style.Style.default
+    |> with_layout (fun l -> { l with direction = Some Row_dir })
+    |> with_text
+         (Nopal_style.Text.color (Nopal_style.Color.named "rebeccapurple"))
+  in
+  let props = of_style style in
+  check_has_prop "flex-direction" "row" props;
+  check_has_prop "color" "rebeccapurple" props
+
 let test_interaction_rules_focused_only () =
   let interaction =
     {
@@ -764,6 +806,12 @@ let () =
             test_text_overflow_no_wrap;
           Alcotest.test_case "only some fields emit" `Quick
             test_text_only_some_fields_emit;
+          Alcotest.test_case "color hex" `Quick test_text_color_hex;
+          Alcotest.test_case "color transparent" `Quick
+            test_text_color_transparent;
+          Alcotest.test_case "color rgba" `Quick test_text_color_rgba;
+          Alcotest.test_case "color through style text" `Quick
+            test_style_text_color;
         ] );
       ( "base_class_rule",
         [

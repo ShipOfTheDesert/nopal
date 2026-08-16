@@ -10,7 +10,12 @@ type direction = Row_dir | Column_dir
 type align = Start | Center | End_ | Stretch | Space_between
 type size = Fill | Hug | Fixed of float | Fraction of float
 
-type color =
+(** Color values. Defined in [Color], which sits below [Text] so that both a
+    text style and a box paint can name it, and re-exported here by a type
+    equation rather than a plain abbreviation so the four constructors stay
+    usable through the [Style] spelling. The two spellings denote one type and
+    are equally supported. *)
+type color = Color.t =
   | Rgba of { r : int; g : int; b : int; a : float }
   | Hex of string
   | Named of string
