@@ -13,7 +13,8 @@ let test_default_all_none () =
   Alcotest.(check (option reject)) "text_decoration" None t.text_decoration;
   Alcotest.(check (option reject)) "text_transform" None t.text_transform;
   Alcotest.(check (option reject)) "text_overflow" None t.text_overflow;
-  Alcotest.(check (option reject)) "italic" None t.italic
+  Alcotest.(check (option reject)) "italic" None t.italic;
+  Alcotest.(check (option reject)) "color" None t.color
 
 (* --- Builders --- *)
 
@@ -71,6 +72,15 @@ let test_italic_sets () =
   let t = italic true default in
   Alcotest.(check bool) "italic set" true (t.italic = Some true)
 
+let test_color_sets () =
+  let t = default |> italic true |> color (Nopal_style.Color.hex "#336699") in
+  Alcotest.(check bool)
+    "color set" true
+    (Option.equal Nopal_style.Color.equal t.color
+       (Some (Nopal_style.Color.hex "#336699")));
+  Alcotest.(check bool) "italic preserved" true (t.italic = Some true);
+  Alcotest.(check (option reject)) "font_size" None t.font_size
+
 let test_builders_compose () =
   let t =
     default
@@ -116,7 +126,8 @@ let test_builder_does_not_mutate_other_fields () =
   Alcotest.(check (option reject)) "text_decoration" None t.text_decoration;
   Alcotest.(check (option reject)) "text_transform" None t.text_transform;
   Alcotest.(check (option reject)) "text_overflow" None t.text_overflow;
-  Alcotest.(check (option reject)) "italic" None t.italic
+  Alcotest.(check (option reject)) "italic" None t.italic;
+  Alcotest.(check (option reject)) "color" None t.color
 
 (* --- Line height variants --- *)
 
@@ -191,6 +202,22 @@ let test_equal_letter_spacing_em_float () =
   Alcotest.(check bool) "same em" true (equal a b);
   Alcotest.(check bool) "different em" false (equal a c)
 
+let test_equal_color_differs () =
+  let hex s = color (Nopal_style.Color.hex s) default in
+  let alpha a = color (Nopal_style.Color.rgba 10 20 30 a) default in
+  Alcotest.(check bool)
+    "same colour" true
+    (equal (hex "#111111") (hex "#111111"));
+  Alcotest.(check bool)
+    "different colour" false
+    (equal (hex "#111111") (hex "#222222"));
+  Alcotest.(check bool) "set vs unset" false (equal (hex "#111111") default);
+  Alcotest.(check bool) "different alpha" false (equal (alpha 0.5) (alpha 1.0));
+  (* Pins the comparator: [Stdlib.(=)] reports two NaN alphas unequal. *)
+  Alcotest.(check bool)
+    "nan alpha" true
+    (equal (alpha Float.nan) (alpha Float.nan))
+
 (* --- Runner --- *)
 
 let () =
@@ -214,6 +241,7 @@ let () =
             test_text_transform_sets;
           Alcotest.test_case "text_overflow_sets" `Quick test_text_overflow_sets;
           Alcotest.test_case "italic_sets" `Quick test_italic_sets;
+          Alcotest.test_case "color_sets" `Quick test_color_sets;
           Alcotest.test_case "builders_compose" `Quick test_builders_compose;
           Alcotest.test_case "builder_does_not_mutate_other_fields" `Quick
             test_builder_does_not_mutate_other_fields;
@@ -252,5 +280,7 @@ let () =
             test_equal_line_height_multiplier_float;
           Alcotest.test_case "equal_letter_spacing_em_float" `Quick
             test_equal_letter_spacing_em_float;
+          Alcotest.test_case "equal_color_differs" `Quick
+            test_equal_color_differs;
         ] );
     ]

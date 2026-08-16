@@ -1591,6 +1591,34 @@ let test_reconcile_removes_dropped_inline_style () =
   let bg_after = Jv.Jstr.get style_obj "background-color" |> Jstr.to_string in
   Alcotest.(check string) "dropped background removed" "" bg_after
 
+(* Dropping the colour from a text style must clear the declaration the previous
+   render emitted, rather than leaving the stale one painted on the node. The
+   affirmative arm — reading the authored colour back before the reconcile — is
+   what stops the absence assertion passing against a text node that never
+   carried a colour at all. *)
+let test_reconcile_removes_dropped_text_colour () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let mk text_style = Text { content = "tinted"; text_style } in
+  let coloured =
+    Nopal_style.Text.color
+      (Nopal_style.Color.hex "#336699")
+      Nopal_style.Text.default
+  in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent (mk (Some coloured))
+  in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let style_obj = Jv.get node "style" in
+  Alcotest.(check string)
+    "authored colour painted before" "#336699"
+    (Jv.Jstr.get style_obj "color" |> Jstr.to_string);
+  Nopal_web.Renderer.update ~dispatch handle
+    (mk (Some Nopal_style.Text.default));
+  Alcotest.(check string)
+    "dropped colour removed" ""
+    (Jv.Jstr.get style_obj "color" |> Jstr.to_string)
+
 (* NFR-1: an identical re-render performs zero inline-style writes. The style is
    reconstructed each frame (physically distinct, structurally equal), as a real
    view function would, so this fails unless the guard uses structural equality. *)
@@ -2918,6 +2946,8 @@ let () =
             test_reconcile_input_skips_unchanged_attrs;
           Alcotest.test_case "reconcile removes dropped inline style" `Quick
             test_reconcile_removes_dropped_inline_style;
+          Alcotest.test_case "reconcile removes dropped text colour" `Quick
+            test_reconcile_removes_dropped_text_colour;
           Alcotest.test_case "reconcile unchanged style no write" `Quick
             test_reconcile_unchanged_style_no_write;
         ] );

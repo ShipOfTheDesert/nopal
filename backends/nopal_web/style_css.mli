@@ -9,8 +9,10 @@ type css_prop = { property : string; value : string }
 
 val of_text : Nopal_style.Text.t -> css_prop list
 (** [of_text text] returns the CSS properties for [text]. Only [Some] fields
-    emit properties — [Text.default] produces [[]]. Ellipsis overflow emits
-    [text-overflow:ellipsis], [overflow:hidden], and [white-space:nowrap]. *)
+    emit properties — [Text.default] produces [[]]. A set colour emits [color],
+    which paints the glyphs; the box background is [of_style]'s concern.
+    Ellipsis overflow emits [text-overflow:ellipsis], [overflow:hidden], and
+    [white-space:nowrap]. *)
 
 val of_style : Nopal_style.Style.t -> css_prop list
 (** [of_style style] returns the CSS properties for [style]. Only non-default

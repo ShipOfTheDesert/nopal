@@ -16,6 +16,7 @@ type t = {
   text_transform : text_transform option;
   text_overflow : text_overflow option;
   italic : bool option;
+  color : Color.t option;
 }
 
 let default =
@@ -30,6 +31,7 @@ let default =
     text_transform = None;
     text_overflow = None;
     italic = None;
+    color = None;
   }
 
 let font_family v t = { t with font_family = Some v }
@@ -42,6 +44,7 @@ let text_decoration v t = { t with text_decoration = Some v }
 let text_transform v t = { t with text_transform = Some v }
 let text_overflow v t = { t with text_overflow = Some v }
 let italic v t = { t with italic = Some v }
+let color v t = { t with color = Some v }
 
 let equal_line_height a b =
   match (a, b) with
@@ -99,3 +102,4 @@ let equal a b =
   && Option.equal equal_text_transform a.text_transform b.text_transform
   && Option.equal equal_text_overflow a.text_overflow b.text_overflow
   && Option.equal Bool.equal a.italic b.italic
+  && Option.equal Color.equal a.color b.color

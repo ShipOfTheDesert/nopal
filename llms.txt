@@ -376,9 +376,22 @@ type layout = {
 }
 (* Style.default_layout has all fields None. *)
 
-(* Colors *)
-type color = Rgba of { r : int; g : int; b : int; a : float }
-           | Hex of string | Named of string | Transparent
+(* Colors — defined in Color, a leaf module of nopal_style. Integer RGBA for CSS
+   authoring; distinct from Nopal_scene.Color, the float 0.0-1.0 graphics type. *)
+type Color.t = Rgba of { r : int; g : int; b : int; a : float }
+             | Hex of string | Named of string | Transparent
+
+Color.rgba        : int -> int -> int -> float -> Color.t
+Color.hex         : string -> Color.t     (* taken as given; not validated *)
+Color.named       : string -> Color.t     (* taken as given; not validated *)
+Color.transparent : Color.t
+Color.equal       : Color.t -> Color.t -> bool   (* Float.equal on alpha *)
+
+(* Style.color is a manifest type equation onto Color.t, so both spellings
+   construct and pattern-match the same four arms. The Style spelling is
+   permanent and supported, not a deprecation shim. *)
+type color = Color.t = Rgba of { r : int; g : int; b : int; a : float }
+                     | Hex of string | Named of string | Transparent
 
 (* Borders *)
 type border_style = Solid | Dashed | Dotted | No_border
@@ -426,7 +439,14 @@ type Text.t = {
   text_transform : text_transform option;  (* Uppercase | Lowercase | Capitalize | No_transform *)
   text_overflow  : text_overflow option;   (* Clip | Ellipsis | Wrap | No_wrap *)
   italic         : bool option;
+  color          : Color.t option;         (* Rgba | Hex | Named | Transparent *)
 }
+
+Text.color : Color.t -> Text.t -> Text.t
+(* Text color, like every other field here, inherits only where the target
+   platform cascades — the DOM backend does, a canvas or GPU backend does not.
+   Portable authoring puts the color on the text element rather than on an
+   ancestor box. The web backend emits it as the CSS color property. *)
 ```
 
 ### UI Components (`nopal_ui`)
@@ -2479,7 +2499,9 @@ would let the same assertion spec run against web and Tauri) is tracked in
 lib/
   nopal_mvu/         — Cmd, Sub, App — zero UI deps
   nopal_element/     — Element.t DSL + Virtual_list — zero platform deps
-  nopal_style/       — Style.t, Text.t, Interaction.t, Cursor.t
+  nopal_style/       — Style.t, Text.t, Interaction.t, Cursor.t, Font, Color
+                       (Color is the CSS-authoring colour type; distinct from
+                       nopal_scene/'s float-RGBA Color)
   nopal_storage/     — Nopal_storage.S, In_memory, With_codec (async key-value contract)
   nopal_platform/    — Router.t, Platform.NAV, Platform.S (storage capability) [renamed from nopal_router]
   nopal_scene/       — Pure scene types: Color, Paint, Transform, Path, Scene

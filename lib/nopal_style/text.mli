@@ -1,8 +1,15 @@
 (** Typed text/typography properties for Nopal elements.
 
     [Text.t] describes text presentation: font, size, weight, alignment,
-    decoration, overflow. All fields are [option] — [None] means the property is
-    unset, letting the platform default or CSS inheritance apply. *)
+    decoration, color, overflow. All fields are [option] — [None] means the
+    property is unset, letting the platform default or CSS inheritance apply.
+
+    Inheritance is a web-cascade property, not a Nopal one. A [Text.t] attached
+    to a box reaches that box's descendants only where the target platform
+    cascades — which the DOM backend does and a canvas or GPU backend does not.
+    Every field here shares that semantic, [color] included. Portable authoring
+    therefore puts the value on the text element itself rather than on an
+    ancestor box. *)
 
 type line_height = Lh_normal | Lh_multiplier of float | Lh_px of float
 type letter_spacing = Ls_normal | Ls_em of float
@@ -22,6 +29,7 @@ type t = {
   text_transform : text_transform option;
   text_overflow : text_overflow option;
   italic : bool option;
+  color : Color.t option;
 }
 
 (** {1 Defaults} *)
@@ -61,11 +69,15 @@ val text_overflow : text_overflow -> t -> t
 val italic : bool -> t -> t
 (** [italic b t] sets [italic] to [Some b]. *)
 
+val color : Color.t -> t -> t
+(** [color c t] sets [color] to [Some c]. *)
+
 (** {1 Comparison} *)
 
 val equal : t -> t -> bool
 (** Field-by-field equality. Uses [Float.equal] for [font_size] and float fields
-    inside [line_height] and [letter_spacing]. *)
+    inside [line_height] and [letter_spacing], and [Color.equal] for [color], so
+    the alpha component is compared float-safely too. *)
 
 val equal_line_height : line_height -> line_height -> bool
 val equal_letter_spacing : letter_spacing -> letter_spacing -> bool
