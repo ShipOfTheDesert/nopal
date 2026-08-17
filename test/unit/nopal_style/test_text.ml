@@ -14,7 +14,8 @@ let test_default_all_none () =
   Alcotest.(check (option reject)) "text_transform" None t.text_transform;
   Alcotest.(check (option reject)) "text_overflow" None t.text_overflow;
   Alcotest.(check (option reject)) "italic" None t.italic;
-  Alcotest.(check (option reject)) "color" None t.color
+  Alcotest.(check (option reject)) "color" None t.color;
+  Alcotest.(check (option reject)) "whitespace" None t.whitespace
 
 (* --- Builders --- *)
 
@@ -79,6 +80,17 @@ let test_color_sets () =
     (Option.equal Nopal_style.Color.equal t.color
        (Some (Nopal_style.Color.hex "#336699")));
   Alcotest.(check bool) "italic preserved" true (t.italic = Some true);
+  Alcotest.(check (option reject)) "font_size" None t.font_size
+
+let test_whitespace_builder_sets_only_its_field () =
+  let t = default |> italic true |> whitespace Preserve in
+  Alcotest.(check bool)
+    "whitespace set" true
+    (Option.equal equal_whitespace t.whitespace (Some Preserve));
+  Alcotest.(check bool) "italic preserved" true (t.italic = Some true);
+  Alcotest.(check (option reject)) "text_overflow" None t.text_overflow;
+  Alcotest.(check (option reject)) "text_transform" None t.text_transform;
+  Alcotest.(check (option reject)) "color" None t.color;
   Alcotest.(check (option reject)) "font_size" None t.font_size
 
 let test_builders_compose () =
@@ -218,6 +230,25 @@ let test_equal_color_differs () =
     "nan alpha" true
     (equal (alpha Float.nan) (alpha Float.nan))
 
+let test_equal_distinguishes_whitespace () =
+  let ws v = whitespace v default in
+  Alcotest.(check bool) "same Preserve" true (equal (ws Preserve) (ws Preserve));
+  Alcotest.(check bool) "same Collapse" true (equal (ws Collapse) (ws Collapse));
+  Alcotest.(check bool)
+    "Collapse vs Preserve" false
+    (equal (ws Collapse) (ws Preserve));
+  (* An explicit collapse is a distinct value from an absent one: the restyle
+     gate compares whole records, so "opt back into collapsing" must register as
+     a change against an unset field. *)
+  Alcotest.(check bool) "Collapse vs unset" false (equal (ws Collapse) default);
+  Alcotest.(check bool) "Preserve vs unset" false (equal (ws Preserve) default);
+  Alcotest.(check bool)
+    "constructors differ" false
+    (equal_whitespace Collapse Preserve);
+  Alcotest.(check bool)
+    "constructor reflexive" true
+    (equal_whitespace Collapse Collapse)
+
 (* --- Runner --- *)
 
 let () =
@@ -242,6 +273,8 @@ let () =
           Alcotest.test_case "text_overflow_sets" `Quick test_text_overflow_sets;
           Alcotest.test_case "italic_sets" `Quick test_italic_sets;
           Alcotest.test_case "color_sets" `Quick test_color_sets;
+          Alcotest.test_case "whitespace_builder_sets_only_its_field" `Quick
+            test_whitespace_builder_sets_only_its_field;
           Alcotest.test_case "builders_compose" `Quick test_builders_compose;
           Alcotest.test_case "builder_does_not_mutate_other_fields" `Quick
             test_builder_does_not_mutate_other_fields;
@@ -282,5 +315,7 @@ let () =
             test_equal_letter_spacing_em_float;
           Alcotest.test_case "equal_color_differs" `Quick
             test_equal_color_differs;
+          Alcotest.test_case "equal_distinguishes_whitespace" `Quick
+            test_equal_distinguishes_whitespace;
         ] );
     ]

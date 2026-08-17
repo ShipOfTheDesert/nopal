@@ -11,8 +11,28 @@ val of_text : Nopal_style.Text.t -> css_prop list
 (** [of_text text] returns the CSS properties for [text]. Only [Some] fields
     emit properties — [Text.default] produces [[]]. A set colour emits [color],
     which paints the glyphs; the box background is [of_style]'s concern.
-    Ellipsis overflow emits [text-overflow:ellipsis], [overflow:hidden], and
-    [white-space:nowrap]. *)
+    Ellipsis overflow emits [text-overflow:ellipsis] and [overflow:hidden].
+
+    [white-space] is the one property two fields feed, because CSS folds two
+    independent axes into it: whether runs of spaces and tabs collapse
+    ([Text.whitespace]) and whether a line breaks ([Text.text_overflow]'s [Wrap]
+    and [No_wrap], with [Ellipsis] implying [No_wrap] and [Clip] implying
+    neither). It is therefore resolved once from the pair and appears at most
+    once in the result, never emitted from either field's own arm. Both axes
+    unset emits nothing at all, so an unstyled element keeps the document
+    default. Otherwise: [Preserve] gives [pre-wrap], or [pre] where the wrapping
+    axis says no; an unset or [Collapse] whitespace gives [normal], or [nowrap]
+    on the same condition. [Some Collapse] is not the same as [None] — it emits,
+    so a descendant can climb out of an inherited preserving ancestor.
+
+    Two consequences of folding both axes into one property. First, every one of
+    those four values sets both axes, so an unset [Text.whitespace] stops
+    inheriting as soon as [Text.text_overflow] is set — [normal] and [nowrap]
+    reset collapsing on an element whose ancestor declared [pre-wrap]. A
+    descendant that wants the ancestor's preservation and its own wrapping must
+    author both. Second, [pre] and [pre-wrap] preserve line breaks as well as
+    spaces and tabs, so [Preserve] also makes a newline in the content
+    significant. *)
 
 val of_style : Nopal_style.Style.t -> css_prop list
 (** [of_style style] returns the CSS properties for [style]. Only non-default

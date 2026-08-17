@@ -4,6 +4,7 @@ type text_align = Align_left | Align_center | Align_right | Align_justify
 type text_decoration = Underline | Line_through | Overline | No_decoration
 type text_transform = Uppercase | Lowercase | Capitalize | No_transform
 type text_overflow = Clip | Ellipsis | Wrap | No_wrap
+type whitespace = Collapse | Preserve
 
 type t = {
   font_family : Font.family option;
@@ -17,6 +18,7 @@ type t = {
   text_overflow : text_overflow option;
   italic : bool option;
   color : Color.t option;
+  whitespace : whitespace option;
 }
 
 let default =
@@ -32,6 +34,7 @@ let default =
     text_overflow = None;
     italic = None;
     color = None;
+    whitespace = None;
   }
 
 let font_family v t = { t with font_family = Some v }
@@ -45,6 +48,7 @@ let text_transform v t = { t with text_transform = Some v }
 let text_overflow v t = { t with text_overflow = Some v }
 let italic v t = { t with italic = Some v }
 let color v t = { t with color = Some v }
+let whitespace v t = { t with whitespace = Some v }
 
 let equal_line_height a b =
   match (a, b) with
@@ -91,6 +95,12 @@ let equal_text_overflow a b =
   | No_wrap, No_wrap -> true
   | (Clip | Ellipsis | Wrap | No_wrap), _ -> false
 
+let equal_whitespace a b =
+  match (a, b) with
+  | Collapse, Collapse -> true
+  | Preserve, Preserve -> true
+  | (Collapse | Preserve), _ -> false
+
 let equal a b =
   Option.equal Font.equal_family a.font_family b.font_family
   && Option.equal Float.equal a.font_size b.font_size
@@ -103,3 +113,4 @@ let equal a b =
   && Option.equal equal_text_overflow a.text_overflow b.text_overflow
   && Option.equal Bool.equal a.italic b.italic
   && Option.equal Color.equal a.color b.color
+  && Option.equal equal_whitespace a.whitespace b.whitespace

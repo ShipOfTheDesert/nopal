@@ -667,6 +667,26 @@ let text_style_carries_colour () =
     "authored colour survives the round-trip" true
     (Option.equal C.equal ts'.color (Some c))
 
+(* Same composition as the colour case above, for the whitespace pair: the style
+   package's suite pins the builders and the accessor cases above pin the
+   accessor with a font size, so nothing yet carries this field across the
+   renderer. The fixture is the consumer's own spelling: preserved spaces on a
+   line that must not wrap. Its leading run is a reader's hint and nothing here
+   asserts on it, because text_content_element and text_content_still_works
+   below already fail if the renderer touches the content. *)
+let text_style_carries_whitespace () =
+  let ts = T.default |> T.whitespace T.Preserve |> T.text_overflow T.No_wrap in
+  let r = render (E.styled_text ~text_style:ts "    indented") in
+  let result = text_style (tree r) in
+  Alcotest.(check bool) "text_style returns Some" true (Option.is_some result);
+  let ts' = Option.get result in
+  Alcotest.(check bool)
+    "authored whitespace survives the round-trip" true
+    (Option.equal T.equal_whitespace ts'.whitespace (Some T.Preserve));
+  Alcotest.(check bool)
+    "the wrapping axis beside it survives too" true
+    (Option.equal T.equal_text_overflow ts'.text_overflow (Some T.No_wrap))
+
 let text_content_still_works () =
   let ts = T.default |> T.font_size 14.0 in
   let r =
@@ -746,6 +766,8 @@ let text_style_tests =
       text_style_accessor_returns_none_for_element;
     Alcotest.test_case "text_style_carries_colour" `Quick
       text_style_carries_colour;
+    Alcotest.test_case "text_style_carries_whitespace" `Quick
+      text_style_carries_whitespace;
     Alcotest.test_case "text_content_still_works" `Quick
       text_content_still_works;
     Alcotest.test_case "styled_text_reconciliation_changes_style" `Quick
