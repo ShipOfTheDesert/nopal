@@ -119,12 +119,35 @@ let of_text (text : Nopal_style.Text.t) =
     match text.text_overflow with
     | Some Nopal_style.Text.Ellipsis ->
         let acc = add acc "text-overflow" "ellipsis" in
-        let acc = add acc "overflow" "hidden" in
-        add acc "white-space" "nowrap"
+        add acc "overflow" "hidden"
     | Some Nopal_style.Text.Clip -> add acc "text-overflow" "clip"
-    | Some Nopal_style.Text.Wrap -> add acc "white-space" "normal"
-    | Some Nopal_style.Text.No_wrap -> add acc "white-space" "nowrap"
+    | Some (Nopal_style.Text.Wrap | Nopal_style.Text.No_wrap) -> acc
     | None -> acc
+  in
+  (* One CSS property covers two independent axes: whether whitespace collapses
+     (Text.whitespace) and whether lines wrap (Text.text_overflow's Wrap and
+     No_wrap). It is therefore resolved here, from the pair, and emitted at most
+     once — never from either field's own arm, where two emissions would make
+     the last one written the winner. Both axes unset emits nothing, so an
+     unstyled element is unaffected. *)
+  let acc =
+    match (text.whitespace, text.text_overflow) with
+    | None, (None | Some Nopal_style.Text.Clip) -> acc
+    | None, Some Nopal_style.Text.Wrap -> add acc "white-space" "normal"
+    | None, Some (Nopal_style.Text.No_wrap | Nopal_style.Text.Ellipsis) ->
+        add acc "white-space" "nowrap"
+    | ( Some Nopal_style.Text.Collapse,
+        (None | Some (Nopal_style.Text.Clip | Nopal_style.Text.Wrap)) ) ->
+        add acc "white-space" "normal"
+    | ( Some Nopal_style.Text.Collapse,
+        Some (Nopal_style.Text.No_wrap | Nopal_style.Text.Ellipsis) ) ->
+        add acc "white-space" "nowrap"
+    | ( Some Nopal_style.Text.Preserve,
+        (None | Some (Nopal_style.Text.Clip | Nopal_style.Text.Wrap)) ) ->
+        add acc "white-space" "pre-wrap"
+    | ( Some Nopal_style.Text.Preserve,
+        Some (Nopal_style.Text.No_wrap | Nopal_style.Text.Ellipsis) ) ->
+        add acc "white-space" "pre"
   in
   List.rev acc
 

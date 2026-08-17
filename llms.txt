@@ -487,6 +487,7 @@ type Text.t = {
   text_overflow  : text_overflow option;   (* Clip | Ellipsis | Wrap | No_wrap *)
   italic         : bool option;
   color          : Color.t option;         (* Rgba | Hex | Named | Transparent *)
+  whitespace     : whitespace option;      (* Collapse | Preserve *)
 }
 
 Text.color : Color.t -> Text.t -> Text.t
@@ -494,6 +495,26 @@ Text.color : Color.t -> Text.t -> Text.t
    platform cascades — the DOM backend does, a canvas or GPU backend does not.
    Portable authoring puts the color on the text element rather than on an
    ancestor box. The web backend emits it as the CSS color property. *)
+
+Text.whitespace : whitespace -> Text.t -> Text.t
+(* Whether runs of spaces and tabs in the content are significant — Preserve
+   keeps them, so indented code keeps its indentation. Preserve also makes line
+   breaks in the content significant: a newline renders as a break, because no
+   platform value preserves spaces while collapsing newlines. This is only the
+   collapsing axis; whether a line breaks stays with text_overflow's Wrap and
+   No_wrap, and the two compose within one Text.t rather than override each
+   other. The web backend folds the pair into a single white-space declaration
+   emitted at most once: Preserve gives pre-wrap, or pre where the wrapping axis
+   says no; unset or Collapse gives normal, or nowrap on the same condition;
+   both axes unset emits nothing. Collapse is therefore not the same as None —
+   it emits, which is how a descendant of a preserving ancestor gets back to
+   collapsing on a platform that inherits the property. The mirror of that: an
+   unset whitespace does NOT inherit once text_overflow is set, because every
+   value of the emitted shorthand sets both axes — normal and nowrap reset
+   collapsing too, so a descendant that wants an ancestor's Preserve and its own
+   No_wrap must author both. Inert on a backend that lays text out from a scene
+   rather than from an element, and there the polarity inverts: a shaper is
+   handed the string as written, so Collapse is the side needing work. *)
 ```
 
 ### UI Components (`nopal_ui`)

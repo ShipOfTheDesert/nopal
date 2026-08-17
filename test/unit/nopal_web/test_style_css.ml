@@ -26,6 +26,11 @@ let check_no_prop name props =
            name
            (String.concat "; " (List.map css_prop_to_string props)))
 
+(* find_prop stops at the first match, so check_has_prop passes even when a
+   property is declared twice. Counting is the only way to see a duplicate. *)
+let count_prop name props =
+  List.length (List.filter (fun p -> String.equal p.property name) props)
+
 (* 1 *)
 let test_default_style_produces_empty () =
   let props = of_style default in
@@ -296,6 +301,65 @@ let test_interaction_rules_default_empty () =
 
 let text_props ts = of_text ts
 
+(* Every field is spelled out rather than taken from Nopal_style.Text.default:
+   the two axes under test are set explicitly on every row, and a field added to
+   Text.t later has to be named here instead of joining the sweep silently. *)
+let text_style_with ~whitespace ~text_overflow =
+  {
+    Nopal_style.Text.font_family = None;
+    font_size = None;
+    font_weight = None;
+    line_height = None;
+    letter_spacing = None;
+    text_align = None;
+    text_decoration = None;
+    text_transform = None;
+    text_overflow;
+    italic = None;
+    color = None;
+    whitespace;
+  }
+
+let whitespace_row_label whitespace text_overflow =
+  let ws =
+    match whitespace with
+    | None -> "whitespace=None"
+    | Some Nopal_style.Text.Collapse -> "whitespace=Collapse"
+    | Some Nopal_style.Text.Preserve -> "whitespace=Preserve"
+  in
+  let ov =
+    match text_overflow with
+    | None -> "text_overflow=None"
+    | Some Nopal_style.Text.Clip -> "text_overflow=Clip"
+    | Some Nopal_style.Text.Ellipsis -> "text_overflow=Ellipsis"
+    | Some Nopal_style.Text.Wrap -> "text_overflow=Wrap"
+    | Some Nopal_style.Text.No_wrap -> "text_overflow=No_wrap"
+  in
+  ws ^ " " ^ ov
+
+(* Every combination of the two axes and the one white-space value each must
+   produce. Fifteen rows rather than one case per axis, so their join is pinned
+   and not just each axis on its own. *)
+let whitespace_resolution_table =
+  let open Nopal_style.Text in
+  [
+    (None, None, None);
+    (None, Some Clip, None);
+    (None, Some Wrap, Some "normal");
+    (None, Some No_wrap, Some "nowrap");
+    (None, Some Ellipsis, Some "nowrap");
+    (Some Collapse, None, Some "normal");
+    (Some Collapse, Some Clip, Some "normal");
+    (Some Collapse, Some Wrap, Some "normal");
+    (Some Collapse, Some No_wrap, Some "nowrap");
+    (Some Collapse, Some Ellipsis, Some "nowrap");
+    (Some Preserve, None, Some "pre-wrap");
+    (Some Preserve, Some Clip, Some "pre-wrap");
+    (Some Preserve, Some Wrap, Some "pre-wrap");
+    (Some Preserve, Some No_wrap, Some "pre");
+    (Some Preserve, Some Ellipsis, Some "pre");
+  ]
+
 let test_text_none_fields_no_css () =
   let props = text_props Nopal_style.Text.default in
   Alcotest.(check int) "no properties" 0 (List.length props)
@@ -505,6 +569,96 @@ let test_style_text_color () =
   let props = of_style style in
   check_has_prop "flex-direction" "row" props;
   check_has_prop "color" "rebeccapurple" props
+
+(* of_style gates the whole text block behind [Text.equal … default], so a field
+   reached through [Style.with_text] is only emitted if that gate registers the
+   change. This is the path the kitchen sink's preserving container takes, and
+   the mechanism FR-6 exists for; without this case it is pinned only in a
+   browser. *)
+let test_style_text_whitespace () =
+  let style =
+    Nopal_style.Style.default
+    |> with_layout (fun l -> { l with direction = Some Row_dir })
+    |> with_text (Nopal_style.Text.whitespace Nopal_style.Text.Preserve)
+  in
+  let props = of_style style in
+  check_has_prop "flex-direction" "row" props;
+  check_has_prop "white-space" "pre-wrap" props
+
+let test_of_text_preserve_alone_wraps () =
+  let props =
+    text_props
+      (text_style_with ~whitespace:(Some Nopal_style.Text.Preserve)
+         ~text_overflow:None)
+  in
+  (* Declaring the whitespace significant must not also take line breaking
+     away: that stays with text_overflow. *)
+  check_has_prop "white-space" "pre-wrap" props;
+  Alcotest.(check int) "exactly one property" 1 (List.length props)
+
+let test_of_text_preserve_with_no_wrap () =
+  (* Written through the public builders because this is the shape a consumer
+     writes, and the only place the builders and the emit site meet. *)
+  let ts =
+    Nopal_style.Text.default
+    |> Nopal_style.Text.whitespace Nopal_style.Text.Preserve
+    |> Nopal_style.Text.text_overflow Nopal_style.Text.No_wrap
+  in
+  let props = text_props ts in
+  check_has_prop "white-space" "pre" props;
+  Alcotest.(check int)
+    "one white-space declaration" 1
+    (count_prop "white-space" props)
+
+let test_of_text_preserve_with_ellipsis () =
+  let props =
+    text_props
+      (text_style_with ~whitespace:(Some Nopal_style.Text.Preserve)
+         ~text_overflow:(Some Nopal_style.Text.Ellipsis))
+  in
+  check_has_prop "text-overflow" "ellipsis" props;
+  check_has_prop "overflow" "hidden" props;
+  check_has_prop "white-space" "pre" props;
+  Alcotest.(check int)
+    "one white-space declaration" 1
+    (count_prop "white-space" props)
+
+let test_of_text_collapse_is_expressible () =
+  let collapse_alone =
+    text_props
+      (text_style_with ~whitespace:(Some Nopal_style.Text.Collapse)
+         ~text_overflow:None)
+  in
+  check_has_prop "white-space" "normal" collapse_alone;
+  Alcotest.(check int) "exactly one property" 1 (List.length collapse_alone);
+  (* Collapse is not the same as leaving the field unset: an unset field emits
+     nothing, which cannot override an inherited preserving ancestor. *)
+  let unset =
+    text_props (text_style_with ~whitespace:None ~text_overflow:None)
+  in
+  check_no_prop "white-space" unset;
+  let collapse_no_wrap =
+    text_props
+      (text_style_with ~whitespace:(Some Nopal_style.Text.Collapse)
+         ~text_overflow:(Some Nopal_style.Text.No_wrap))
+  in
+  check_has_prop "white-space" "nowrap" collapse_no_wrap
+
+let test_of_text_emits_whitespace_declaration_at_most_once () =
+  List.iter
+    (fun (whitespace, text_overflow, expected) ->
+      let props = text_props (text_style_with ~whitespace ~text_overflow) in
+      let label = whitespace_row_label whitespace text_overflow in
+      Alcotest.(check int)
+        (label ^ " — white-space occurrences")
+        (match expected with
+        | None -> 0
+        | Some _ -> 1)
+        (count_prop "white-space" props);
+      match expected with
+      | None -> ()
+      | Some value -> check_has_prop "white-space" value props)
+    whitespace_resolution_table
 
 let test_interaction_rules_focused_only () =
   let interaction =
@@ -812,6 +966,18 @@ let () =
           Alcotest.test_case "color rgba" `Quick test_text_color_rgba;
           Alcotest.test_case "color through style text" `Quick
             test_style_text_color;
+          Alcotest.test_case "whitespace through style text" `Quick
+            test_style_text_whitespace;
+          Alcotest.test_case "preserve alone wraps" `Quick
+            test_of_text_preserve_alone_wraps;
+          Alcotest.test_case "preserve with no wrap" `Quick
+            test_of_text_preserve_with_no_wrap;
+          Alcotest.test_case "preserve with ellipsis" `Quick
+            test_of_text_preserve_with_ellipsis;
+          Alcotest.test_case "collapse is expressible" `Quick
+            test_of_text_collapse_is_expressible;
+          Alcotest.test_case "whitespace declaration at most once" `Quick
+            test_of_text_emits_whitespace_declaration_at_most_once;
         ] );
       ( "base_class_rule",
         [

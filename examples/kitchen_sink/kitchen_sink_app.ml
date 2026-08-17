@@ -1069,6 +1069,56 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         ~attrs:[ ("data-testid", testid) ]
         [ Element.styled_text ~text_style label ]
     in
+    (* Sample every whitespace row renders, so a reader compares rows rather
+       than strings, and a measurement can compare two rows' rendered widths.
+       Four leading spaces and a four-space run inside, both of which the
+       document default throws away. Deliberately one short literal: a
+       formatter-inserted line continuation swallows the blanks that follow it,
+       which would silently delete the leading run these rows exist to show. *)
+    let whitespace_sample = "    let x = 42 in    x + 1" in
+    (* Whitespace helper. Takes both axes as options so the row that authors
+       neither travels the same code path as the rows that do — otherwise "this
+       row lost its indentation" could hold because the row never reached the
+       text-style path at all. The axes are independent: one says whether runs of
+       spaces and tabs in the content are significant, the other whether the line
+       breaks. Every row uses the same sample, the same monospace family and the
+       same narrow container, so the only difference between two rows is what
+       each authored. The anchor carries the sample alone — the label is a
+       sibling, not a child, so one span sits under each anchor. Both axes are
+       labelled: they are the same shape ([option] of a variant), so positional
+       call sites would give a reader no way to tell which axis is which. *)
+    let whitespace_item ~(whitespace : Text.whitespace option)
+        ~(overflow : Text.text_overflow option) (label : string) ~testid =
+      let text_style =
+        let base = Text.default |> Text.font_family Monospace in
+        let base =
+          match whitespace with
+          | Some w -> base |> Text.whitespace w
+          | None -> base
+        in
+        match overflow with
+        | Some ov -> base |> Text.text_overflow ov
+        | None -> base
+      in
+      Element.column
+        [
+          Element.text label;
+          Element.box ~style:fixed_width_style
+            ~attrs:[ ("data-testid", testid) ]
+            [ Element.styled_text ~text_style whitespace_sample ];
+        ]
+    in
+    (* Container that declares preservation for its own subtree. On a platform
+       that cascades text properties — which the DOM backend does — the rows
+       inside inherit it, which is what gives an explicit Collapse something to
+       override. Without this container a Collapse row and an unset row render
+       identically, and neither the eye nor a measurement could tell an
+       implemented Collapse from a missing one. *)
+    let preserving_container_style =
+      Style.default
+      |> Style.with_layout (fun l -> { l with gap = Some 8.0 })
+      |> Style.with_text (fun t -> t |> Text.whitespace Preserve)
+    in
     Element.column ~style:section_style
       ~attrs:[ ("data-section", "typography") ]
       [
@@ -1211,6 +1261,62 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                   "Named color (rebeccapurple)" "text-color-named";
                 color_item None "No color authored — inherited"
                   "text-color-inherited";
+              ];
+            Element.text "Whitespace:";
+            Element.column ~style:section_body_style
+              [
+                whitespace_item ~whitespace:None ~overflow:None
+                  "Neither axis authored — the runs of spaces collapse"
+                  ~testid:"whitespace-unset";
+                (* The counterpart of the row below: same sample, same wrapping
+                   axis, whitespace unauthored. It is what makes "the preserved
+                   row kept its indentation" an observation instead of a
+                   restatement — the two differ in one authored value, so a
+                   reader and a measurement can both see which one did it. *)
+                whitespace_item ~whitespace:None ~overflow:(Some No_wrap)
+                  "No whitespace authored, no wrap — the runs still collapse"
+                  ~testid:"whitespace-unset-nowrap";
+                whitespace_item ~whitespace:(Some Preserve) ~overflow:None
+                  "Preserve alone — runs kept, the line still wraps"
+                  ~testid:"whitespace-preserve";
+                (* The row a downstream consumer renders per diff line, and the
+                   first place the two axes are set together outside a test: the
+                   indentation survives and the line does not break, so a long
+                   line overflows its pane instead of reflowing. It must survive
+                   as long as the field does. *)
+                whitespace_item ~whitespace:(Some Preserve)
+                  ~overflow:(Some No_wrap)
+                  "Preserve with no wrap — runs kept, the line overflows"
+                  ~testid:"whitespace-preserve-nowrap";
+              ];
+            Element.text
+              "Whitespace inherited from a container, and overridden:";
+            Element.column ~style:preserving_container_style
+              ~attrs:[ ("data-testid", "whitespace-preserving-container") ]
+              [
+                whitespace_item ~whitespace:None ~overflow:None
+                  "Nothing authored — inherits the container's preservation"
+                  ~testid:"whitespace-inherited";
+                whitespace_item ~whitespace:(Some Collapse) ~overflow:None
+                  "Collapse — opts back out of the inherited preservation"
+                  ~testid:"whitespace-collapse";
+                whitespace_item ~whitespace:(Some Collapse)
+                  ~overflow:(Some No_wrap)
+                  "Collapse with no wrap — collapsed and unbroken"
+                  ~testid:"whitespace-collapse-nowrap";
+                (* The trap row. It authors only the wrapping axis, inside a
+                   container that preserves — and loses the preservation
+                   anyway, because the two axes resolve to one CSS shorthand
+                   and every shorthand value sets both. An unset whitespace is
+                   therefore not neutral once text_overflow is set; the row
+                   above it keeps its runs only because nothing else is
+                   authored. It sits on the page so the reset is visible where
+                   the composition it breaks is demonstrated, rather than being
+                   discovered downstream. *)
+                whitespace_item ~whitespace:None ~overflow:(Some No_wrap)
+                  "No whitespace authored, no wrap — loses the container's \
+                   preservation"
+                  ~testid:"whitespace-inherited-nowrap";
               ];
           ];
       ]

@@ -1623,6 +1623,114 @@ let test_reconcile_removes_dropped_text_colour () =
     "dropped colour removed" ""
     (Jv.Jstr.get style_obj "color" |> Jstr.to_string)
 
+(* Every one of the twelve Text.t fields is named, so a thirteenth field is a
+   compile error here rather than a silent inheritance from Text.default — and
+   the all-unset fixture the drop case needs is spelled out rather than borrowed.
+   Built fresh on every call, so no assertion below can pass on physical
+   identity: the restyle guard compares by value. *)
+let text_style_with ~whitespace ~text_overflow =
+  {
+    Nopal_style.Text.font_family = None;
+    font_size = None;
+    font_weight = None;
+    line_height = None;
+    letter_spacing = None;
+    text_align = None;
+    text_decoration = None;
+    text_transform = None;
+    text_overflow;
+    italic = None;
+    color = None;
+    whitespace;
+  }
+
+(* Changing only the whitespace field must repaint the declaration it resolves
+   to. Both values are non-empty, so this also pins the clear-then-reapply order:
+   a clear that ran after the reapply would leave nothing painted. *)
+let test_reconcile_updates_whitespace () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let mk whitespace =
+    Text
+      {
+        content = "    indented";
+        text_style = Some (text_style_with ~whitespace ~text_overflow:None);
+      }
+  in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (mk (Some Nopal_style.Text.Collapse))
+  in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let style_obj = Jv.get node "style" in
+  Alcotest.(check string)
+    "collapsing declaration painted before" "normal"
+    (Jv.Jstr.get style_obj "white-space" |> Jstr.to_string);
+  Nopal_web.Renderer.update ~dispatch handle
+    (mk (Some Nopal_style.Text.Preserve));
+  Alcotest.(check string)
+    "preserving declaration painted after" "pre-wrap"
+    (Jv.Jstr.get style_obj "white-space" |> Jstr.to_string)
+
+(* The emitted declaration resolves from BOTH axes, so the transition the
+   coupling introduces is the one where whitespace holds still and text_overflow
+   moves: (Preserve, None) must repaint pre-wrap as pre. A restyle gate that
+   watched only the whitespace field would leave the stale pre-wrap painted. The
+   affirmative arm reads pre-wrap back before the restyle, so the "after" value
+   cannot pass against a node that never carried the declaration. *)
+let test_reconcile_updates_whitespace_on_overflow_change () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let mk text_overflow =
+    Text
+      {
+        content = "    indented";
+        text_style =
+          Some
+            (text_style_with ~whitespace:(Some Nopal_style.Text.Preserve)
+               ~text_overflow);
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent (mk None) in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let style_obj = Jv.get node "style" in
+  Alcotest.(check string)
+    "preserving-and-wrapping declaration painted before" "pre-wrap"
+    (Jv.Jstr.get style_obj "white-space" |> Jstr.to_string);
+  Nopal_web.Renderer.update ~dispatch handle
+    (mk (Some Nopal_style.Text.No_wrap));
+  Alcotest.(check string)
+    "cross-axis change repaints the declaration" "pre"
+    (Jv.Jstr.get style_obj "white-space" |> Jstr.to_string)
+
+(* Dropping the field must clear the declaration the previous render emitted,
+   rather than leaving the stale one painted. The affirmative arm — reading the
+   preserving value back before the reconcile — is what stops the absence
+   assertion passing against a text node that never carried the declaration. *)
+let test_reconcile_removes_dropped_whitespace () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let mk whitespace =
+    Text
+      {
+        content = "    indented";
+        text_style = Some (text_style_with ~whitespace ~text_overflow:None);
+      }
+  in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (mk (Some Nopal_style.Text.Preserve))
+  in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let style_obj = Jv.get node "style" in
+  Alcotest.(check string)
+    "preserving declaration painted before" "pre-wrap"
+    (Jv.Jstr.get style_obj "white-space" |> Jstr.to_string);
+  Nopal_web.Renderer.update ~dispatch handle (mk None);
+  Alcotest.(check string)
+    "dropped declaration removed" ""
+    (Jv.Jstr.get style_obj "white-space" |> Jstr.to_string)
+
 (* NFR-1: an identical re-render performs zero inline-style writes. The style is
    reconstructed each frame (physically distinct, structurally equal), as a real
    view function would, so this fails unless the guard uses structural equality. *)
@@ -3239,6 +3347,12 @@ let () =
             test_reconcile_removes_dropped_inline_style;
           Alcotest.test_case "reconcile removes dropped text colour" `Quick
             test_reconcile_removes_dropped_text_colour;
+          Alcotest.test_case "reconcile updates whitespace" `Quick
+            test_reconcile_updates_whitespace;
+          Alcotest.test_case "reconcile updates whitespace on overflow change"
+            `Quick test_reconcile_updates_whitespace_on_overflow_change;
+          Alcotest.test_case "reconcile removes dropped whitespace" `Quick
+            test_reconcile_removes_dropped_whitespace;
           Alcotest.test_case "reconcile unchanged style no write" `Quick
             test_reconcile_unchanged_style_no_write;
         ] );

@@ -150,3 +150,124 @@ test("typography section renders", async ({ page }) => {
     .evaluate((el) => getComputedStyle(el).color);
   expect(hexContainerColor).toBe(containerColor);
 });
+
+// Whitespace. A separate case because it is the only part of this section that
+// needs the browser's layout and not just its computed values: whether runs of
+// spaces survive is a question about the ink on the page. DOM assertions rather
+// than MVU telemetry are correct here for the reason the testing strategy
+// carves out — these rows are a pure view derivation with no model state, so
+// there is no event for telemetry to report and nothing it could assert.
+test("whitespace preservation keeps real indentation", async ({ page }) => {
+  const section = page.locator(SECTION);
+  await expect(section).toBeVisible();
+
+  // Every whitespace row's box is the same fixed width, so the box itself
+  // discriminates nothing between preserved and collapsed content and a
+  // left-offset check reads zero on all of them. A Range over the span's
+  // contents measures the text the browser actually laid out, which is the
+  // thing that differs. textContent comes back too: it is the source text and
+  // is unaffected by the declaration, so it says whether the fixture had any
+  // indentation to lose in the first place.
+  const measure = async (testid: string) => {
+    const el = section.locator(`[data-testid="${testid}"] span`);
+    await expect(el).toBeVisible();
+    return el.evaluate((node) => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const ink = range.getBoundingClientRect();
+      return {
+        whiteSpace: getComputedStyle(node).whiteSpace,
+        inkWidth: ink.width,
+        inkHeight: ink.height,
+        text: node.textContent ?? "",
+      };
+    });
+  };
+
+  // One row per reachable combination of the two style axes, with the value
+  // each pair resolves to. The last four sit inside a container that declares
+  // preservation, so they also cover a descendant opting back out of an
+  // inherited one — which is the only situation an explicit collapse exists
+  // for, and unobservable outside such a container. The last of them is the
+  // trap: an unset whitespace does not survive a set text_overflow, because
+  // the emitted shorthand sets both axes, so it resolves to "nowrap" and not
+  // to the container's "pre" — pinned here so the reset cannot change silently.
+  const rows: Array<[string, string]> = [
+    ["whitespace-unset", "normal"],
+    ["whitespace-unset-nowrap", "nowrap"],
+    ["whitespace-preserve", "pre-wrap"],
+    ["whitespace-preserve-nowrap", "pre"],
+    ["whitespace-inherited", "pre-wrap"],
+    ["whitespace-collapse", "normal"],
+    ["whitespace-collapse-nowrap", "nowrap"],
+    ["whitespace-inherited-nowrap", "nowrap"],
+  ];
+  for (const [testid, value] of rows) {
+    const row = await measure(testid);
+    expect(row.whiteSpace, `${testid} resolved white-space`).toBe(value);
+  }
+
+  // The container itself, not just its children: the "inherited" row above
+  // computes a preserving value only because something above it declares one,
+  // and without this line that row would read the same on a page that authored
+  // the value directly on the span.
+  const container = section.locator(
+    '[data-testid="whitespace-preserving-container"]'
+  );
+  await expect(container).toBeVisible();
+  const containerWhiteSpace = await container.evaluate(
+    (el) => getComputedStyle(el).whiteSpace
+  );
+  expect(containerWhiteSpace).toBe("pre-wrap");
+
+  // The rendered consequence, which a computed-value read cannot see. These two
+  // rows render the same string in the same monospace family inside the same
+  // box and differ in exactly one authored value, so their ink widths are
+  // comparable and the difference between them is the indentation.
+  const preserved = await measure("whitespace-preserve-nowrap");
+  const collapsed = await measure("whitespace-unset-nowrap");
+  expect(preserved.text).toBe(collapsed.text);
+  expect(preserved.text.startsWith("    ")).toBe(true);
+
+  // What the document default does to that string, derived from the string
+  // itself rather than hardcoded: leading and trailing runs go entirely, and
+  // every interior run of spaces or tabs becomes one space. The assertion
+  // guards that derivation — a regex that stopped matching would leave the two
+  // forms the same length and silently make the character count below trivial.
+  // It is a self-check on the spec, not a reading of the page; the rendered
+  // premise is measured at the ink-width comparison further down.
+  const collapsedForm = preserved.text.trim().replace(/[ \t]+/g, " ");
+  expect(collapsedForm.length).toBeLessThan(preserved.text.length);
+
+  // Character counts, never the pixel widths this host happens to produce: the
+  // sample is monospace, so one character's advance is the collapsed row's ink
+  // over the number of characters it was left with. The preserved row then has
+  // to account for every character of the source, including both runs. A
+  // browser that collapsed both rows, or preserved both, fails this — the
+  // derived advance moves with it and the count does not come out. The divisor
+  // assumes Chromium's collapsing, which drops the leading and trailing runs
+  // entirely; an engine that renders one leading space, or a "monospace" that
+  // is not truly fixed-advance, shifts it by a few percent and the rounded
+  // count comes out one short — a failure in the divisor, not in the feature.
+  const charWidth = collapsed.inkWidth / collapsedForm.length;
+  expect(charWidth).toBeGreaterThan(0);
+  expect(Math.round(preserved.inkWidth / charWidth)).toBe(
+    preserved.text.length
+  );
+  expect(preserved.inkWidth).toBeGreaterThan(collapsed.inkWidth);
+
+  // The two axes compose rather than one overriding the other: both of these
+  // rows preserve their runs, and only the one that also authored no-wrap keeps
+  // the sample on a single line. Heights, because a row that wrapped is bounded
+  // by the box it wrapped inside and its width stops meaning anything.
+  const preservedWrapping = await measure("whitespace-preserve");
+  expect(preservedWrapping.inkHeight).toBeGreaterThan(preserved.inkHeight);
+  expect(preserved.inkHeight).toBe(collapsed.inkHeight);
+
+  // An explicit collapse inside the preserving container throws the runs away
+  // again, down to the same ink as the row outside it that authored nothing.
+  // Exactly equal, not approximately: same string, same family, same size, so
+  // any difference at all is a bug worth seeing undamped.
+  const collapsedInsideContainer = await measure("whitespace-collapse-nowrap");
+  expect(collapsedInsideContainer.inkWidth).toBe(collapsed.inkWidth);
+});
