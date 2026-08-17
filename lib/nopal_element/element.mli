@@ -142,7 +142,12 @@ type 'msg t =
       on_change : (file_info list -> 'msg) option;
     }
   | Image of { style : Nopal_style.Style.t; src : string; alt : string }
-  | Scroll of { style : Nopal_style.Style.t; child : 'msg t }
+  | Scroll of {
+      style : Nopal_style.Style.t;
+      reveal : Reveal.t option;
+          (** [None] asks for nothing and costs nothing. *)
+      child : 'msg t;
+    }
   | Keyed of { key : string; child : 'msg t }
   | Draw of {
       width : float;
@@ -320,12 +325,26 @@ val image :
   ?style:Nopal_style.Style.t -> src:string -> alt:string -> unit -> 'msg t
 (** An image element. [src] and [alt] are required. *)
 
-val scroll : ?style:Nopal_style.Style.t -> 'msg t -> 'msg t
-(** A scrollable container wrapping a single child. *)
+val scroll : ?style:Nopal_style.Style.t -> ?reveal:Reveal.t -> 'msg t -> 'msg t
+(** A scrollable container wrapping a single child.
+
+    [reveal] names a keyed descendant that must be brought into view, and the
+    alignment it should come to rest under. It is a request, not an invariant: a
+    backend acts on it when it changes and at no other time, so a reader who
+    scrolls away from the named child keeps their position. See {!Reveal} for
+    the whole rule and its consequences. Omitting the argument asks for nothing,
+    and a container that asks for nothing behaves exactly as it did before the
+    argument existed. *)
 
 val keyed : string -> 'msg t -> 'msg t
-(** [keyed key child] wraps [child] with a stable identity key for list
-    reconciliation. *)
+(** [keyed key child] wraps [child] with a stable identity key.
+
+    That key is the child's identity for two purposes: reconciling a list across
+    renders, and naming the child a scroll container asks to reveal. Keys must
+    therefore be unique within the container that holds them; where a key is
+    repeated, the first match in document order is the one that resolves. Keys
+    are opaque application strings and are compared and resolved as written, so
+    any punctuation is safe to use. *)
 
 val draw :
   ?on_pointer_move:(pointer_event -> 'msg) ->

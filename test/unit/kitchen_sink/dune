@@ -108,3 +108,7 @@
   nopal_mvu
   test_util
   alcotest))
+
+(test
+ (name test_reveal_list_section)
+ (libraries kitchen_sink_app nopal_test nopal_element nopal_mvu alcotest))

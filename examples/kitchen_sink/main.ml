@@ -15,6 +15,7 @@ module Sub_modal = Kitchen_sink_app.Sub_modal
 module Sub_subscriptions = Kitchen_sink_app.Sub_subscriptions
 module Sub_file_input = Kitchen_sink_app.Sub_file_input
 module Sub_receipt_flow = Kitchen_sink_app.Sub_receipt_flow
+module Sub_reveal_list = Kitchen_sink_app.Sub_reveal_list
 
 (* Result-task chaining for the Tauri ops (RFC 0118, REQ-F5). See
    {!Kitchen_sink_app.Tauri_op} for the contract; instantiated here with the
@@ -435,6 +436,7 @@ let update model msg =
   | App.Subs_msg _
   | App.File_input_msg _
   | App.Receipt_flow_msg _
+  | App.Reveal_list_msg _
   | App.KeyboardHeightChanged _
   | App.Back_demo_push
   | App.Route_changed _
@@ -525,6 +527,12 @@ let serialize_msg : App.msg -> string = function
      its message and model fragments cannot drift apart, and every fragment is
      ';'-terminated for the same reason the file-input ones are. *)
   | App.Receipt_flow_msg rf_msg -> Sub_receipt_flow.serialize_msg rf_msg
+  (* Reveal list: the selection message is what an e2e spec waits on before
+     reading the selected key back out of [serialize_model] below, and the
+     scroll offset it caused off the page itself. The section owns the wording
+     so its message and model fragments cannot drift apart, and every fragment
+     is ';'-terminated for the same reason the file-input ones are. *)
+  | App.Reveal_list_msg rl_msg -> Sub_reveal_list.serialize_msg rl_msg
   (* Mobile signals (RFC 0116): the keyboard-height readout (REQ-N2) and the
      back-demo route change the Tauri back-IPC e2e asserts on via the host
      [get_telemetry] mirror — [Route_changed] proves the hardware-back chain
@@ -718,16 +726,23 @@ let serialize_model (model : App.model) =
      spec can prove the sharpness ordering, a decode failure and an upload
      outcome against real canvas pixels. [Sub_receipt_flow.serialize_model]
      already terminates each [field=value] with ';'. *)
+  (* The reveal list's selected key and alignment are part of the asserted model
+     surface so its spec can prove which child the container was asked to bring
+     into view before reading the offset that request produced off the DOM.
+     [Sub_reveal_list.serialize_model] already terminates each [field=value]
+     with ';' and quotes the key, so a key carrying punctuation cannot look like
+     a delimiter. *)
   Printf.sprintf
     "{pings=%d; clicks=%d; input=%S; storage=%s; win_visible=%b; win_title=%S; \
      tauri_store=%s; back_route=%s; bottom_tabs={%s}; file_input={%s}; \
-     receipt_flow={%s}}"
+     receipt_flow={%s}; reveal_list={%s}}"
     model.telemetry_pings model.button_clicks model.input_text storage
     model.tauri_is_visible model.tauri_window_title tauri_store
     (back_route_to_string model.back_route)
     (Sub_bottom_tabs.serialize_model model.bottom_tabs)
     (Sub_file_input.serialize_model model.file_input)
     (Sub_receipt_flow.serialize_model model.receipt_flow)
+    (Sub_reveal_list.serialize_model model.reveal_list)
 
 (* The application owns telemetry policy: telemetry is on by default for the
    kitchen sink (it is the live E2E target), and disabled with [?telemetry=off]

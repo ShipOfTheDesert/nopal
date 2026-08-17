@@ -22,6 +22,7 @@
   sub_subscriptions
   sub_file_input
   sub_receipt_flow
+  sub_reveal_list
   tauri_op)
  (libraries
   nopal_element

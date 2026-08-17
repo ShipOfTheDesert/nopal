@@ -8,7 +8,11 @@
 //   - Element: appendChild, removeChild, replaceChild, insertBefore,
 //     setAttribute, getAttribute, style (Proxy-based), classList,
 //     addEventListener, removeEventListener, dispatchEvent
+//   - Element: querySelector / querySelectorAll over a single attribute
+//     selector, and the vertical scroll geometry (scrollTop, clientHeight,
+//     clientTop, scrollHeight, getBoundingClientRect) — see "Layout" below
 //   - window.requestAnimationFrame, setTimeout, getComputedStyle
+//   - CSS.escape
 //   - Event, KeyboardEvent, InputEvent constructors
 //
 // Why this is needed: dune's `(modes js)` test stanza compiles OCaml to
@@ -19,9 +23,38 @@
 // code runs, we get fast, CI-friendly unit tests that verify renderer logic
 // (element creation, reconciliation, event dispatch) without a real browser.
 //
-// It does NOT provide layout, rendering, or network APIs. Nodes track their
+// It does NOT provide rendering or network APIs. Nodes track their
 // parent/child relationships in plain JS arrays so that tests can assert on
 // DOM structure without a real browser engine.
+//
+// ## Layout
+//
+// There is no layout engine, but there is a vertical layout *model*, because a
+// renderer that brings a child of a scroll container into view has to measure
+// one. A test states where a node sits by setting `_layoutTop` (its top edge
+// within its parent's content) and, for a leaf, `_layoutHeight`; a container
+// states its visible height with `_clientHeight`. Everything a renderer can
+// read is then derived rather than supplied:
+//
+//   - `scrollHeight` is the furthest extent of the element's children, never a
+//     test-supplied number, so content and viewport cannot be set to disagree.
+//   - `getBoundingClientRect()` walks the ancestors, adding each `_layoutTop`
+//     and subtracting each scroll offset, so a child's rect MOVES when its
+//     container scrolls — exactly as it does in a browser. A renderer that
+//     measures a child without accounting for the container's current offset
+//     therefore fails here rather than only on a real page.
+//   - A container's `_borderTop` separates the top of its bounding box from the
+//     origin its own `scrollTop` counts from, and is reported as `clientTop`.
+//     A container with one moves its content without moving itself.
+//   - `scrollTop` is writable, starts at 0, and clamps to
+//     `[0, scrollHeight - clientHeight]`, which is the platform's own
+//     behaviour. `_scrollWrites` counts assignments (mirroring the inline-style
+//     and input-value counters below) so a test can tell "wrote the value it
+//     already held" from "did not write".
+//
+// Defaults are the platform's, not the convenient ones: an element nobody has
+// laid out has `clientHeight` 0 and a zero-height rect, so a test that forgets
+// to lay out its fixture sees nothing move.
 //
 // ## Maintenance Checklist (run when upgrading Brr)
 //
@@ -112,6 +145,116 @@
         return true;
       },
     });
+  }
+
+  // An element's own height when a test gave it one, and otherwise the extent
+  // of whatever it contains — so an intermediate wrapper needs no layout of its
+  // own and cannot contradict the rows inside it.
+  function layoutHeight(el) {
+    return el._layoutHeight !== undefined ? el._layoutHeight : contentExtent(el);
+  }
+
+  function contentExtent(el) {
+    let extent = 0;
+    for (const child of el.childNodes) {
+      if (child.nodeType !== 1) continue;
+      extent = Math.max(extent, (child._layoutTop || 0) + layoutHeight(child));
+    }
+    return extent;
+  }
+
+  // CSS.escape, per the CSSOM spec's serialize-an-identifier algorithm. Real
+  // enough that a key escaped here parses as an identifier below, and that a
+  // key which was NOT escaped does not.
+  function cssEscape(value) {
+    const string = String(value);
+    const length = string.length;
+    const firstCodeUnit = string.charCodeAt(0);
+    let result = "";
+    let index = -1;
+    while (++index < length) {
+      const codeUnit = string.charCodeAt(index);
+      if (codeUnit === 0x0000) {
+        result += "\uFFFD";
+      } else if (
+        (codeUnit >= 0x0001 && codeUnit <= 0x001f) ||
+        codeUnit === 0x007f ||
+        (index === 0 && codeUnit >= 0x0030 && codeUnit <= 0x0039) ||
+        (index === 1 &&
+          codeUnit >= 0x0030 &&
+          codeUnit <= 0x0039 &&
+          firstCodeUnit === 0x002d)
+      ) {
+        result += "\\" + codeUnit.toString(16) + " ";
+      } else if (index === 0 && length === 1 && codeUnit === 0x002d) {
+        result += "\\" + string.charAt(index);
+      } else if (
+        codeUnit >= 0x0080 ||
+        codeUnit === 0x002d ||
+        codeUnit === 0x005f ||
+        (codeUnit >= 0x0030 && codeUnit <= 0x0039) ||
+        (codeUnit >= 0x0041 && codeUnit <= 0x005a) ||
+        (codeUnit >= 0x0061 && codeUnit <= 0x007a)
+      ) {
+        result += string.charAt(index);
+      } else {
+        result += "\\" + string.charAt(index);
+      }
+    }
+    return result;
+  }
+
+  const IDENT_CHAR = /[-_A-Za-z0-9\u00a0-\uffff]/;
+
+  // Read an attribute selector's value back to the string it names. A character
+  // that may not appear unescaped in an identifier is a SyntaxError, which is
+  // what a browser raises too — so a selector built from a raw consumer key
+  // fails loudly here instead of silently matching nothing.
+  function unescapeIdent(token, selector) {
+    let out = "";
+    let i = 0;
+    while (i < token.length) {
+      const ch = token.charAt(i);
+      if (ch === "\\") {
+        const rest = token.slice(i + 1);
+        const hex = /^([0-9a-fA-F]{1,6}) ?/.exec(rest);
+        if (hex) {
+          out += String.fromCodePoint(parseInt(hex[1], 16));
+          i += 1 + hex[0].length;
+        } else if (rest.length > 0) {
+          out += rest.charAt(0);
+          i += 2;
+        } else {
+          throw new SyntaxError("dom_shim: trailing '\\' in '" + selector + "'");
+        }
+        continue;
+      }
+      if (!IDENT_CHAR.test(ch)) {
+        throw new SyntaxError(
+          "dom_shim: '" + selector + "' is not a valid selector"
+        );
+      }
+      out += ch;
+      i += 1;
+    }
+    return out;
+  }
+
+  const ATTR_SELECTOR = /^\[([A-Za-z_-][A-Za-z0-9_-]*)(?:=([\s\S]+))?\]$/;
+
+  // The one selector shape the renderer builds: [attr] or [attr=value].
+  // Anything else is unsupported rather than quietly matching nothing.
+  function parseSelector(selector) {
+    const parts = ATTR_SELECTOR.exec(String(selector).trim());
+    if (parts === null) {
+      throw new SyntaxError(
+        "dom_shim: unsupported selector '" + selector + "'"
+      );
+    }
+    return {
+      name: parts[1],
+      value: parts[2] === undefined ? null : unescapeIdent(parts[2], selector),
+    };
   }
 
   function makeNode(nodeType, nodeName) {
@@ -288,6 +431,31 @@
       },
     });
 
+    // Descendants matching one attribute selector, in document order (a node is
+    // visited before the subtree below it). Elements only: a text or comment
+    // node carries no attributes.
+    node.querySelectorAll = function (selector) {
+      const spec = parseSelector(selector);
+      const found = [];
+      const walk = function (parent) {
+        for (const child of parent.childNodes) {
+          if (child.nodeType !== 1) continue;
+          const value = child.getAttribute(spec.name);
+          if (value !== null && (spec.value === null || value === spec.value)) {
+            found.push(child);
+          }
+          walk(child);
+        }
+      };
+      walk(node);
+      return found;
+    };
+
+    node.querySelector = function (selector) {
+      const found = node.querySelectorAll(selector);
+      return found.length > 0 ? found[0] : null;
+    };
+
     Object.defineProperty(node, "nextElementSibling", {
       get() {
         if (!node.parentNode) return null;
@@ -325,8 +493,67 @@
       delete el._attributes[name];
     };
 
+    // Vertical layout. `_layoutTop` is where a test put this element inside its
+    // parent's content and `_clientHeight` how much of its own content is
+    // visible; both start at the platform's value for an element nobody has
+    // laid out. `_layoutHeight` stays undefined so an un-laid-out element takes
+    // the extent of its children rather than a fabricated zero.
+    el._layoutTop = 0;
+    el._borderTop = 0;
+    el._clientHeight = 0;
+    el._scrollTop = 0;
+    el._scrollWrites = 0;
+
+    Object.defineProperty(el, "clientHeight", {
+      get() { return el._clientHeight; },
+      configurable: true,
+    });
+
+    // The width of the top border, which is what separates the top of an
+    // element's bounding box from the origin its own scroll offset counts from.
+    // A test that gives a container a border therefore moves its content
+    // without moving the container, which is a distinction a renderer
+    // computing a content-relative position has to make.
+    Object.defineProperty(el, "clientTop", {
+      get() { return el._borderTop; },
+      configurable: true,
+    });
+
+    Object.defineProperty(el, "scrollHeight", {
+      get() { return Math.max(el._clientHeight, contentExtent(el)); },
+      configurable: true,
+    });
+
+    Object.defineProperty(el, "scrollTop", {
+      get() { return el._scrollTop; },
+      set(v) {
+        const max = Math.max(0, el.scrollHeight - el.clientHeight);
+        el._scrollTop = Math.max(0, Math.min(Number(v), max));
+        el._scrollWrites++;
+      },
+      configurable: true,
+    });
+
+    // Viewport-relative, so every ancestor's position adds and every ancestor's
+    // scroll offset subtracts. This is what makes a child's rect move when the
+    // container it lives in scrolls.
     el.getBoundingClientRect = function () {
-      return { x: 0, y: 0, width: 0, height: 0, top: 0, right: 0, bottom: 0, left: 0 };
+      const height = layoutHeight(el);
+      let top = 0;
+      let node = el;
+      while (node && node.nodeType === 1) {
+        top += node._layoutTop || 0;
+        const parent = node.parentNode;
+        if (parent && parent.nodeType === 1) {
+          top -= parent._scrollTop || 0;
+          top += parent._borderTop || 0;
+        }
+        node = parent;
+      }
+      return {
+        x: 0, y: top, width: 0, height: height,
+        top: top, right: 0, bottom: top + height, left: 0,
+      };
     };
 
     // innerHTML setter: clears all children (write) and serializes (read)
@@ -486,6 +713,7 @@
   globalThis.Event = function (type, opts) { return makeEvent(type, opts); };
   globalThis.KeyboardEvent = function (type, opts) { return makeEvent(type, opts); };
   globalThis.InputEvent = function (type, opts) { return makeEvent(type, opts); };
+  globalThis.CSS = { escape: cssEscape };
   globalThis.getComputedStyle = function (el) { return el.style; };
   globalThis.requestAnimationFrame = function (cb) { setTimeout(cb, 0); return 0; };
   globalThis.cancelAnimationFrame = function () {};

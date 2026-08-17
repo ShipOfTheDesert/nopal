@@ -210,6 +210,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     subs : Sub_subscriptions.model;
     file_input : Sub_file_input.model;
     receipt_flow : Sub_receipt_flow.model;
+    reveal_list : Sub_reveal_list.model;
     keyboard_height : int;  (** soft-keyboard height in logical px (REQ-N2) *)
     back_route : back_route;  (** current route of the back-navigation demo *)
   }
@@ -247,6 +248,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | Subs_msg of Sub_subscriptions.msg
     | File_input_msg of Sub_file_input.msg
     | Receipt_flow_msg of Sub_receipt_flow.msg
+    | Reveal_list_msg of Sub_reveal_list.msg
     | KeyboardHeightChanged of int  (** native soft-keyboard height (REQ-F5) *)
     | Back_demo_push  (** push the back-demo one step deep (to [Back_detail]) *)
     | Route_changed of back_route  (** popstate-driven route update (REQ-F3) *)
@@ -376,6 +378,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     let subs, subs_cmd = Sub_subscriptions.init () in
     let file_input, file_input_cmd = Sub_file_input.init () in
     let receipt_flow, receipt_flow_cmd = Sub_receipt_flow.init () in
+    let reveal_list, reveal_list_cmd = Sub_reveal_list.init () in
     ( {
         button_clicks = 0;
         input_text = "";
@@ -442,6 +445,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         subs;
         file_input;
         receipt_flow;
+        reveal_list;
         keyboard_height = 0;
         back_route = Back_home;
       },
@@ -463,6 +467,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           Nopal_mvu.Cmd.map (fun m -> Subs_msg m) subs_cmd;
           Nopal_mvu.Cmd.map (fun m -> File_input_msg m) file_input_cmd;
           Nopal_mvu.Cmd.map (fun m -> Receipt_flow_msg m) receipt_flow_cmd;
+          Nopal_mvu.Cmd.map (fun m -> Reveal_list_msg m) reveal_list_cmd;
           (* Re-read the persisted demo value so a reload dispatches a
              [StorageRestored] message — the E2E persistence proof (REQ-F3). *)
           Nopal_mvu.Cmd.task
@@ -626,6 +631,12 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         in
         ( { model with receipt_flow },
           Nopal_mvu.Cmd.map (fun m -> Receipt_flow_msg m) rf_cmd )
+    | Reveal_list_msg rl_msg ->
+        let reveal_list, rl_cmd =
+          Sub_reveal_list.update model.reveal_list rl_msg
+        in
+        ( { model with reveal_list },
+          Nopal_mvu.Cmd.map (fun m -> Reveal_list_msg m) rl_cmd )
     | DrawPointerMove (x, y) ->
         ({ model with draw_pointer = Some (x, y) }, Nopal_mvu.Cmd.none)
     | DrawPointerLeave ->
@@ -3579,6 +3590,19 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                  (fun m -> Virtual_list_msg m)
                  (Sub_virtual_list.view vp model.virtual_list);
              ];
+           (* Beside the virtual list on purpose: both are long lists in a fixed
+              frame, and the contrast is the point. The virtual list mirrors the
+              container's offset into the model and assumes one row height; this
+              one drives the container from the model and its rows are all
+              different heights. *)
+           view_section
+             ~attrs:[ ("data-testid", "reveal-list-section") ]
+             "Reveal a child in a scroll container"
+             [
+               Element.map
+                 (fun m -> Reveal_list_msg m)
+                 (Sub_reveal_list.view vp model.reveal_list);
+             ];
            view_section
              ~attrs:[ ("data-testid", "navigation-bar-section") ]
              "Navigation Bar"
@@ -3654,6 +3678,9 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         Nopal_mvu.Sub.map
           (fun m -> Receipt_flow_msg m)
           (Sub_receipt_flow.subscriptions model.receipt_flow);
+        Nopal_mvu.Sub.map
+          (fun m -> Reveal_list_msg m)
+          (Sub_reveal_list.subscriptions model.reveal_list);
         (* Back-demo router consumer (REQ-F3): a [popstate] (from
            [window.history.back()], itself fired by the hardware-back IPC) parses
            the URL and dispatches [Route_changed], returning the demo to its prior
@@ -3678,4 +3705,5 @@ module Sub_modal = Sub_modal
 module Sub_subscriptions = Sub_subscriptions
 module Sub_file_input = Sub_file_input
 module Sub_receipt_flow = Sub_receipt_flow
+module Sub_reveal_list = Sub_reveal_list
 module Tauri_op = Tauri_op

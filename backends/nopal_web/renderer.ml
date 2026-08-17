@@ -42,12 +42,36 @@ and 'msg live =
   | Live_comment of 'msg live_comment
   | Live_text of 'msg live_text
 
+type reveal_request = { container : Brr.El.t; request : Nopal_element.Reveal.t }
+(* One scroll container that asked, on this pass, for a child to be brought
+   into view. The container is carried rather than looked up again later
+   because the request is only meaningful for the element that declared it —
+   nothing outside that container is ever scrolled. *)
+
 type 'msg t = {
   mutable root : 'msg live;
   (* mutable: root is replaced on reconciliation when element variant changes *)
   parent : Brr.El.t;
   sheet : Style_sheet.t;
+  reveals : reveal_request Queue.t;
+      (* mutable: a queue is mutable state on an otherwise immutable handle.
+     Requests are collected while the tree is being built or patched and acted
+     on once the pass is over, because a child's layout is not settled until
+     the whole tree is patched. Emptied at the start of every pass, so a
+     request can never survive into the next one. *)
 }
+
+(* Collect a request for [container], if the change from [previous] to [next]
+   is one that must be acted on. The decision is entirely
+   [Reveal.should_reveal]'s — nothing here decides whether to reveal. The
+   [None] arm is what makes a container that declares nothing free: it reaches
+   no [Reveal] call, allocates nothing and touches no DOM, on any pass. *)
+let collect_reveal ~reveals ~container ~previous ~next =
+  match next with
+  | None -> ()
+  | Some request ->
+      if Nopal_element.Reveal.should_reveal ~previous ~next then
+        Queue.add { container; request } reveals
 
 let doc () = Jv.get Jv.global "document"
 
@@ -411,8 +435,8 @@ let wire_box_pointer_events ~dispatch el on_pointer_move on_pointer_leave
    set, [set_data_key], and [get_data_key] always agree (FR-4). *)
 let comment_key_prop = "__nopal_key"
 
-let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
-    'msg live =
+let rec create_live ~sheet ~reveals ~dispatch
+    (element : 'msg Nopal_element.Element.t) : 'msg live =
   match element with
   | Empty ->
       let comment =
@@ -456,7 +480,7 @@ let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
         (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
         attrs;
       let live_children =
-        List.map (create_and_append ~sheet ~dispatch el) children
+        List.map (create_and_append ~sheet ~reveals ~dispatch el) children
       in
       let listeners =
         wire_box_pointer_events ~dispatch el on_pointer_move on_pointer_leave
@@ -484,7 +508,7 @@ let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
         (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
         attrs;
       let live_children =
-        List.map (create_and_append ~sheet ~dispatch el) children
+        List.map (create_and_append ~sheet ~reveals ~dispatch el) children
       in
       Live_node
         {
@@ -508,7 +532,7 @@ let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
         (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
         attrs;
       let live_children =
-        List.map (create_and_append ~sheet ~dispatch el) children
+        List.map (create_and_append ~sheet ~reveals ~dispatch el) children
       in
       Live_node
         {
@@ -527,7 +551,7 @@ let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
       List.iter
         (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
         attrs;
-      let live_child = create_and_append ~sheet ~dispatch el child in
+      let live_child = create_and_append ~sheet ~reveals ~dispatch el child in
       let listeners =
         wire_click ~dispatch el on_click
         @ wire_dblclick ~dispatch el on_dblclick
@@ -687,11 +711,15 @@ let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
           base_id = None;
           interaction_id = None;
         }
-  | Scroll { style; child } ->
+  | Scroll { style; reveal; child } ->
       let el = Brr.El.v (Jstr.v "div") [] in
       Brr.El.set_inline_style (Jstr.v "overflow") (Jstr.v "auto") el;
       apply_style el style;
-      let live_child = create_and_append ~sheet ~dispatch el child in
+      (* A container being created carried no declaration a moment ago, so
+         [previous] is [None]. Collected before the child is built, so an outer
+         container is queued ahead of any container nested inside it. *)
+      collect_reveal ~reveals ~container:el ~previous:None ~next:reveal;
+      let live_child = create_and_append ~sheet ~reveals ~dispatch el child in
       Live_node
         {
           dom = el;
@@ -702,7 +730,7 @@ let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
           interaction_id = None;
         }
   | Keyed { key; child } ->
-      let live_child = create_live ~sheet ~dispatch child in
+      let live_child = create_live ~sheet ~reveals ~dispatch child in
       (* Set the key on the rendered node so it round-trips across reconciles.
          Elements/text carry it in a data-key attribute; comment nodes can't,
          so they carry it in [comment_key_prop] instead (FR-4). *)
@@ -808,7 +836,7 @@ let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
             (range.last - range.first + 1)
             (fun i ->
               let item_el = render_item (range.first + i) in
-              create_and_append ~sheet ~dispatch row_wrapper item_el)
+              create_and_append ~sheet ~reveals ~dispatch row_wrapper item_el)
       in
       (* rAF-gated scroll listener *)
       let raf_pending = ref false in
@@ -845,19 +873,136 @@ let rec create_live ~sheet ~dispatch (element : 'msg Nopal_element.Element.t) :
           interaction_id = None;
         }
 
-and create_and_append ~sheet ~dispatch parent
+and create_and_append ~sheet ~reveals ~dispatch parent
     (element : 'msg Nopal_element.Element.t) =
-  let live = create_live ~sheet ~dispatch element in
+  let live = create_live ~sheet ~reveals ~dispatch element in
   let jv = jv_of_live live in
   ignore (Jv.call (Brr.El.to_jv parent) "appendChild" [| jv |]);
   live
 
+(* Act on the requests a pass collected, once the pass is over — not inside the
+   reconcile arm, because a child's layout is not settled until the whole tree
+   is patched. The queue is left as it is rather than consumed: it is emptied
+   at the start of the next pass, so a request can be read back after the pass
+   that produced it without ever being acted on twice.
+
+   It is also what fixes the order against the backend's post-frame focus
+   drain:
+
+   Reveal first, focus second, an app doing both lands focus last. *)
+let key_attribute = "data-key"
+
+(* [CSS.escape] applied to a key, when the browser has it. A key is an opaque
+   application string — the first consumer's are file paths — so it cannot be
+   pasted into a selector as written: a quote or a backslash would change what
+   the selector means, and a browser rejects the result outright rather than
+   matching nothing. The escape is probed for rather than assumed, so a browser
+   without it takes the scan below instead of raising. *)
+let escaped_key key =
+  match Jv.find Jv.global "CSS" with
+  | None -> None
+  | Some css -> (
+      match Jv.find css "escape" with
+      | None -> None
+      | Some _escape ->
+          Some (Jv.to_string (Jv.call css "escape" [| Jv.of_string key |])))
+
+let child_by_selector ~container ~escaped =
+  let selector = "[" ^ key_attribute ^ "=" ^ escaped ^ "]" in
+  let found =
+    Jv.call (Brr.El.to_jv container) "querySelector" [| Jv.of_string selector |]
+  in
+  if Jv.is_none found then None else Some (Brr.El.of_jv found)
+
+(* The fallback: every keyed descendant of the container, compared by the
+   attribute's value rather than through a selector, so no escaping is involved
+   at all. [querySelectorAll] yields document order and this walks it forwards,
+   so it resolves the same node the selector above would — the first match in
+   document order, which is the identity a keyed child promises. Total for any
+   key and any list length: no partial list function, and a key naming nothing
+   simply runs off the end. *)
+let child_by_scan ~container ~key =
+  let nodes =
+    Jv.call (Brr.El.to_jv container) "querySelectorAll"
+      [| Jv.of_string ("[" ^ key_attribute ^ "]") |]
+  in
+  let count = Jv.Int.get nodes "length" in
+  let rec first index =
+    if index >= count then None
+    else
+      let node = Jv.get nodes (string_of_int index) in
+      let value =
+        Jv.call node "getAttribute" [| Jv.of_string key_attribute |]
+      in
+      if (not (Jv.is_none value)) && String.equal (Jv.to_string value) key then
+        Some (Brr.El.of_jv node)
+      else first (index + 1)
+  in
+  first 0
+
+(* Resolve the requested child inside [container] and nowhere else — an
+   ancestor is never searched, so it can never be the thing that moves. The
+   path is chosen by feature detection, never by result: a key that resolves to
+   nothing has resolved to nothing on either path, and retrying the other one
+   would only do the same work twice. *)
+let reveal_child ~container ~key =
+  match escaped_key key with
+  | Some escaped -> child_by_selector ~container ~escaped
+  | None -> child_by_scan ~container ~key
+
+(* Act on one collected request: measure, ask [Reveal] where the container must
+   sit, and move it only if the answer differs from where it already sits.
+   Nothing here decides anything — the alignment arithmetic is the pure
+   module's, and this supplies the measurements only it cannot take.
+
+   Both ways of not being able to act are the same typed no-op: a key that
+   names no child, and a measurement that is not finite (which [offset_for]
+   answers [None] to). Neither is reported anywhere; a request that cannot be
+   satisfied leaves the container exactly as it found it.
+
+   Only the container's own scroll offset is ever written. No ancestor is
+   touched, the document is not touched, and nothing here focuses anything — a
+   reveal that moved focus would break the container-level key handler this
+   exists to serve. *)
+let apply_reveal { container; request } =
+  let { Nopal_element.Reveal.key; align } = request in
+  match reveal_child ~container ~key with
+  | None -> ()
+  | Some child -> (
+      let scroll_offset = Brr.El.scroll_y container in
+      let viewport_height = Brr.El.inner_h container in
+      let content_height = Brr.El.scroll_h container in
+      (* [inner_y] is the width of the container's top border, and the origin
+         [scroll_offset] counts from — the top of the scrollable content — sits
+         exactly that far below the top of the container's bounding box. The
+         child's own top is measured from the same origin, which is why the
+         container's current offset is added back: the rects are where things
+         are on screen now, and the arithmetic is about where they are in the
+         content. *)
+      let content_origin =
+        Brr.El.bound_y container +. Brr.El.inner_y container
+      in
+      let child_top = Brr.El.bound_y child -. content_origin +. scroll_offset in
+      let child_height = Brr.El.bound_h child in
+      let offset =
+        Nopal_element.Reveal.offset_for ~scroll_offset ~viewport_height
+          ~content_height ~child_top ~child_height ~align
+      in
+      match offset with
+      | None -> ()
+      | Some offset -> Jv.Float.set (Brr.El.to_jv container) "scrollTop" offset)
+
+let drain_reveals (reveals : reveal_request Queue.t) =
+  Queue.iter apply_reveal reveals
+
 let create ~dispatch ~parent element =
   let sheet = Style_sheet.create () in
-  let live = create_live ~sheet ~dispatch element in
+  let reveals = Queue.create () in
+  let live = create_live ~sheet ~reveals ~dispatch element in
   let jv = jv_of_live live in
   ignore (Jv.call (Brr.El.to_jv parent) "appendChild" [| jv |]);
-  { root = live; parent; sheet }
+  drain_reveals reveals;
+  { root = live; parent; sheet; reveals }
 
 let unlisten_all listeners = List.iter Brr.Ev.unlisten listeners
 
@@ -1032,8 +1177,8 @@ let maybe_apply_style dom old_el new_el =
          don't (Empty, Text, Keyed) never reach this path. *)
       ()
 
-let rec reconcile_keyed_children ~sheet ~dispatch parent_el old_children
-    new_pairs =
+let rec reconcile_keyed_children ~sheet ~reveals ~dispatch parent_el
+    old_children new_pairs =
   let parent_jv = Brr.El.to_jv parent_el in
   let old_map = Hashtbl.create (List.length old_children) in
   List.iter (fun (key, live) -> Hashtbl.replace old_map key live) old_children;
@@ -1045,7 +1190,7 @@ let rec reconcile_keyed_children ~sheet ~dispatch parent_el old_children
         | Some old_live ->
             Hashtbl.remove old_map key;
             let updated =
-              reconcile_live ~sheet ~dispatch parent_el old_live child
+              reconcile_live ~sheet ~reveals ~dispatch parent_el old_live child
             in
             (* On a variant change reconcile_live replaces the DOM node with a
                freshly-created one that does not carry the key, so re-establish
@@ -1057,7 +1202,7 @@ let rec reconcile_keyed_children ~sheet ~dispatch parent_el old_children
               set_data_key updated key;
             (key, updated)
         | None ->
-            let live = create_live ~sheet ~dispatch child in
+            let live = create_live ~sheet ~reveals ~dispatch child in
             set_data_key live key;
             (key, live))
       new_pairs
@@ -1096,7 +1241,8 @@ let rec reconcile_keyed_children ~sheet ~dispatch parent_el old_children
   reorder Jv.null (List.rev new_lives);
   List.map snd new_lives
 
-and reconcile_children ~sheet ~dispatch parent_el old_children new_elements =
+and reconcile_children ~sheet ~reveals ~dispatch parent_el old_children
+    new_elements =
   (* If all new elements are Keyed, use keyed reconciliation *)
   match extract_keyed_pairs new_elements with
   | Some keyed_pairs ->
@@ -1128,13 +1274,16 @@ and reconcile_children ~sheet ~dispatch parent_el old_children new_elements =
                 None)
           old_children
       in
-      reconcile_keyed_children ~sheet ~dispatch parent_el old_keyed keyed_pairs
+      reconcile_keyed_children ~sheet ~reveals ~dispatch parent_el old_keyed
+        keyed_pairs
   | None ->
       let rec go olds news acc =
         match (olds, news) with
         | [], [] -> List.rev acc
         | [], new_el :: rest_new ->
-            let live = create_and_append ~sheet ~dispatch parent_el new_el in
+            let live =
+              create_and_append ~sheet ~reveals ~dispatch parent_el new_el
+            in
             go [] rest_new (live :: acc)
         | old_live :: rest_old, [] ->
             let old_jv = jv_of_live old_live in
@@ -1143,13 +1292,13 @@ and reconcile_children ~sheet ~dispatch parent_el old_children new_elements =
             go rest_old [] acc
         | old_live :: rest_old, new_el :: rest_new ->
             let updated =
-              reconcile_live ~sheet ~dispatch parent_el old_live new_el
+              reconcile_live ~sheet ~reveals ~dispatch parent_el old_live new_el
             in
             go rest_old rest_new (updated :: acc)
       in
       go old_children new_elements []
 
-and reconcile_live ~sheet ~dispatch parent_el (old_live : 'msg live)
+and reconcile_live ~sheet ~reveals ~dispatch parent_el (old_live : 'msg live)
     (new_element : 'msg Nopal_element.Element.t) : 'msg live =
   match (old_live, new_element) with
   | Live_text t, Text { content = s; text_style } ->
@@ -1178,7 +1327,7 @@ and reconcile_live ~sheet ~dispatch parent_el (old_live : 'msg live)
       Live_text t
   | Live_comment c, Empty -> Live_comment c
   | Live_node old_n, new_el when same_variant old_n.element new_el ->
-      reconcile_node ~sheet ~dispatch old_n new_el;
+      reconcile_node ~sheet ~reveals ~dispatch old_n new_el;
       Live_node old_n
   | ( Live_text _,
       ( Empty | Box _ | Row _ | Column _ | Button _ | Input _ | Checkbox _
@@ -1190,7 +1339,7 @@ and reconcile_live ~sheet ~dispatch parent_el (old_live : 'msg live)
       | Draw _ | Virtual_list _ ) )
   | Live_node _, _ ->
       (* Different variant or same_variant returned false — replace *)
-      let new_live = create_live ~sheet ~dispatch new_element in
+      let new_live = create_live ~sheet ~reveals ~dispatch new_element in
       let old_jv = jv_of_live old_live in
       let new_jv = jv_of_live new_live in
       ignore
@@ -1313,7 +1462,7 @@ and maybe_reconcile_styles ~sheet (old_n : 'msg live_node)
       (* Both non-interactive: inline style reconciliation *)
       maybe_apply_style old_n.dom old_el new_el
 
-and reconcile_node ~sheet ~dispatch (old_n : 'msg live_node)
+and reconcile_node ~sheet ~reveals ~dispatch (old_n : 'msg live_node)
     (new_el : 'msg Nopal_element.Element.t) =
   let el = old_n.dom in
   maybe_reconcile_styles ~sheet old_n old_n.element new_el;
@@ -1344,19 +1493,19 @@ and reconcile_node ~sheet ~dispatch (old_n : 'msg live_node)
         wire_box_pointer_events ~dispatch el on_pointer_move on_pointer_leave
           on_pointer_down on_pointer_up on_wheel;
       old_n.children <-
-        reconcile_children ~sheet ~dispatch el old_n.children children
+        reconcile_children ~sheet ~reveals ~dispatch el old_n.children children
   | Row { children; _ } ->
       maybe_apply_attrs el old_n.element new_el;
       (* Re-assert hardcoded direction after style reconciliation. *)
       Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v "row") el;
       old_n.children <-
-        reconcile_children ~sheet ~dispatch el old_n.children children
+        reconcile_children ~sheet ~reveals ~dispatch el old_n.children children
   | Column { children; _ } ->
       maybe_apply_attrs el old_n.element new_el;
       (* Re-assert hardcoded direction after style reconciliation. *)
       Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v "column") el;
       old_n.children <-
-        reconcile_children ~sheet ~dispatch el old_n.children children
+        reconcile_children ~sheet ~reveals ~dispatch el old_n.children children
   | Button { on_click; on_dblclick; child; _ } ->
       maybe_apply_attrs el old_n.element new_el;
       unlisten_all old_n.listeners;
@@ -1364,7 +1513,7 @@ and reconcile_node ~sheet ~dispatch (old_n : 'msg live_node)
         wire_click ~dispatch el on_click
         @ wire_dblclick ~dispatch el on_dblclick;
       old_n.children <-
-        reconcile_children ~sheet ~dispatch el old_n.children [ child ]
+        reconcile_children ~sheet ~reveals ~dispatch el old_n.children [ child ]
   | Input { value; placeholder; on_change; on_submit; on_blur; on_keydown; _ }
     ->
       (* Controlled input: reflect the model, but only write when the DOM value
@@ -1425,9 +1574,34 @@ and reconcile_node ~sheet ~dispatch (old_n : 'msg live_node)
              returns true, so old_n.element is always Image here *)
           Brr.El.set_at (Jstr.v "src") (Some (Jstr.v src)) el;
           Brr.El.set_at (Jstr.v "alt") (Some (Jstr.v alt)) el)
-  | Scroll { child; _ } ->
+  | Scroll { reveal; child; _ } ->
+      let previous =
+        match old_n.element with
+        | Scroll { reveal = previous; _ } -> previous
+        | Empty
+        | Text _
+        | Box _
+        | Row _
+        | Column _
+        | Button _
+        | Input _
+        | Checkbox _
+        | Radio _
+        | Select _
+        | File_input _
+        | Image _
+        | Keyed _
+        | Draw _
+        | Virtual_list _ ->
+            (* Unreachable: reconcile_node is only called when same_variant
+               returns true, so old_n.element is always Scroll here. A tree
+               that did arrive here another way has no previous declaration to
+               compare against, which is the same case as a fresh container. *)
+            None
+      in
+      collect_reveal ~reveals ~container:el ~previous ~next:reveal;
       old_n.children <-
-        reconcile_children ~sheet ~dispatch el old_n.children [ child ]
+        reconcile_children ~sheet ~reveals ~dispatch el old_n.children [ child ]
   | Draw
       {
         width;
@@ -1602,7 +1776,7 @@ and reconcile_node ~sheet ~dispatch (old_n : 'msg live_node)
             (range.last - range.first + 1)
             (fun i ->
               let item_el = render_item (range.first + i) in
-              create_and_append ~sheet ~dispatch row_wrapper item_el)
+              create_and_append ~sheet ~reveals ~dispatch row_wrapper item_el)
       in
       old_n.children <- live_children;
       (* Rewire scroll listener *)
@@ -1680,6 +1854,10 @@ and reconcile_node ~sheet ~dispatch (old_n : 'msg live_node)
   old_n.element <- new_el
 
 let update ~dispatch handle new_element =
+  Queue.clear handle.reveals;
   handle.root <-
-    reconcile_live ~sheet:handle.sheet ~dispatch handle.parent handle.root
-      new_element
+    reconcile_live ~sheet:handle.sheet ~reveals:handle.reveals ~dispatch
+      handle.parent handle.root new_element;
+  drain_reveals handle.reveals
+
+let reveal_request_count handle = Queue.length handle.reveals

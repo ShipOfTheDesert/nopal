@@ -1,5 +1,6 @@
 open Nopal_test.Test_renderer
 module E = Nopal_element.Element
+module R = Nopal_element.Reveal
 module Ix = Nopal_style.Interaction
 
 let ix0 = Ix.default
@@ -960,6 +961,86 @@ let file_input_tests =
       file_input_node_shape_unconfigured;
   ]
 
+(* Reveal request projection — a scroll container's declaration of which child
+   must be brought into view is inspectable on its node. *)
+
+let scroll_node_of label r =
+  match find (By_tag "scroll") (tree r) with
+  | Some (Element _ as node) -> node
+  | Some (Empty | Text _)
+  | None ->
+      Alcotest.fail label
+
+let scroll_reveal_attrs () =
+  let r = render (E.scroll ~reveal:(R.center "row-7") (E.text "content")) in
+  match find (By_attr ("reveal", "row-7")) (tree r) with
+  | Some (Element { tag; _ } as node) ->
+      Alcotest.(check string)
+        "the node carrying the request is the container itself" "scroll" tag;
+      Alcotest.(check (option string))
+        "it names the child to bring into view" (Some "row-7")
+        (attr "reveal" node);
+      Alcotest.(check (option string))
+        "and the alignment to bring it into view under" (Some "center")
+        (attr "reveal-align" node)
+  | Some (Empty | Text _)
+  | None ->
+      Alcotest.fail "no node is findable by the declared reveal key"
+
+let scroll_no_reveal_attrs () =
+  let child = E.text "content" in
+  let without =
+    scroll_node_of "no scroll node without a request" (render (E.scroll child))
+  in
+  let containing =
+    scroll_node_of "no scroll node with a request"
+      (render (E.scroll ~reveal:(R.start "row-3") child))
+  in
+  (match without with
+  | Element { attrs; _ } ->
+      Alcotest.(check (list (pair string string)))
+        "a container with no request carries no attributes at all" [] attrs
+  | Empty
+  | Text _ ->
+      Alcotest.fail "the scroll node is not an element");
+  (* The affirmative arm, on the same child and the same builder: the emptiness
+     above is caused by the absent request, not by the fixture failing to reach
+     the container arm at all. *)
+  Alcotest.(check (option string))
+    "the same container with a request names the child" (Some "row-3")
+    (attr "reveal" containing);
+  Alcotest.(check (option string))
+    "and its alignment" (Some "start")
+    (attr "reveal-align" containing)
+
+let scroll_reveal_hostile_key () =
+  (* Written as a quoted literal so the bytes are legible: a double quote and a
+     backslash, the two characters a query built by concatenation would let
+     through. *)
+  let key = {|a"b\c|} in
+  let r = render (E.scroll ~reveal:(R.end_ key) (E.text "content")) in
+  let node = scroll_node_of "no scroll node for a hostile key" r in
+  (* Spelled with escapes rather than reusing [key], so the expectation is the
+     bytes themselves and not the same literal compared with itself. Storing it
+     escaped would be a defect here: escaping belongs at the point a backend
+     builds a query, and a value escaped twice resolves to nothing. *)
+  Alcotest.(check (option string))
+    "the key reaches the attributes exactly as written" (Some "a\"b\\c")
+    (attr "reveal" node);
+  Alcotest.(check (option string))
+    "its alignment travels with it" (Some "end") (attr "reveal-align" node);
+  Alcotest.(check bool)
+    "and the unescaped key finds the container back" true
+    (Option.is_some (find (By_attr ("reveal", key)) (tree r)))
+
+let reveal_tests =
+  [
+    Alcotest.test_case "scroll_reveal_attrs" `Quick scroll_reveal_attrs;
+    Alcotest.test_case "scroll_no_reveal_attrs" `Quick scroll_no_reveal_attrs;
+    Alcotest.test_case "scroll_reveal_hostile_key" `Quick
+      scroll_reveal_hostile_key;
+  ]
+
 let () =
   Alcotest.run "Test_renderer"
     [
@@ -971,4 +1052,5 @@ let () =
       ("text_style", text_style_tests);
       ("virtual_list", virtual_list_tests);
       ("file_input", file_input_tests);
+      ("reveal", reveal_tests);
     ]

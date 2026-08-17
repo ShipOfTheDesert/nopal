@@ -171,7 +171,11 @@ let test_scroll_creates_div_overflow_auto () =
   let dispatch, _msgs = fresh_dispatch () in
   let el =
     Scroll
-      { style = default; child = Text { content = "x"; text_style = None } }
+      {
+        style = default;
+        reveal = None;
+        child = Text { content = "x"; text_style = None };
+      }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
   let node = Nopal_web.Renderer.dom_node handle in
@@ -2858,9 +2862,296 @@ let test_drain_focus_unknown_id_is_noop () =
     "no focus recorded for an unknown id" [] (focus_log ());
   Alcotest.(check bool) "queue still drained" true (Queue.is_empty q)
 
+(* Reveal collection.
+
+   Every fixture is rebuilt from scratch on each call, so a reconcile case
+   compares two structurally-equal but physically distinct elements; a guard
+   written as physical equality would pass vacuously against a shared value.
+   [default] is this file's shared style spelling and carries no meaning here —
+   the collection predicate reads only the reveal declaration. *)
+let scroll_declaring reveal =
+  Scroll
+    {
+      style = default;
+      reveal;
+      child =
+        Keyed
+          { key = "row-1"; child = Text { content = "row"; text_style = None } };
+    }
+
+let test_reveal_enqueued_on_create () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (scroll_declaring (Some (Nopal_element.Reveal.nearest "row-1")))
+  in
+  Alcotest.(check int)
+    "a container created with a declaration collects one request" 1
+    (Nopal_web.Renderer.reveal_request_count handle)
+
+let test_reveal_skipped_when_unchanged () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (scroll_declaring (Some (Nopal_element.Reveal.nearest "row-1")))
+  in
+  Alcotest.(check int)
+    "the fixture reaches the collection path on create" 1
+    (Nopal_web.Renderer.reveal_request_count handle);
+  Nopal_web.Renderer.update ~dispatch handle
+    (scroll_declaring (Some (Nopal_element.Reveal.nearest "row-1")));
+  Alcotest.(check int)
+    "an unchanged declaration collects nothing" 0
+    (Nopal_web.Renderer.reveal_request_count handle)
+
+let test_reveal_enqueued_on_changed_key () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (scroll_declaring (Some (Nopal_element.Reveal.nearest "row-1")))
+  in
+  Nopal_web.Renderer.update ~dispatch handle
+    (scroll_declaring (Some (Nopal_element.Reveal.nearest "row-2")));
+  Alcotest.(check int)
+    "a changed key collects one request" 1
+    (Nopal_web.Renderer.reveal_request_count handle)
+
+let test_reveal_enqueued_on_changed_align () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (scroll_declaring (Some (Nopal_element.Reveal.nearest "row-1")))
+  in
+  Nopal_web.Renderer.update ~dispatch handle
+    (scroll_declaring (Some (Nopal_element.Reveal.center "row-1")));
+  Alcotest.(check int)
+    "a changed alignment collects one request" 1
+    (Nopal_web.Renderer.reveal_request_count handle)
+
+let test_no_reveal_enqueues_nothing () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent (scroll_declaring None)
+  in
+  Alcotest.(check int)
+    "no declaration collects nothing on create" 0
+    (Nopal_web.Renderer.reveal_request_count handle);
+  Nopal_web.Renderer.update ~dispatch handle (scroll_declaring None);
+  Alcotest.(check int)
+    "no declaration collects nothing on reconcile" 0
+    (Nopal_web.Renderer.reveal_request_count handle);
+  (* Affirmative arm on the same fixture: the container is reachable by the
+     collection path, so the two zeros above are caused by the absent
+     declaration rather than by a fixture that never gets there. *)
+  Nopal_web.Renderer.update ~dispatch handle
+    (scroll_declaring (Some (Nopal_element.Reveal.start "row-1")));
+  Alcotest.(check int)
+    "the same container collects once a declaration appears" 1
+    (Nopal_web.Renderer.reveal_request_count handle)
+
+(* Reveal application.
+
+   The fixture is a container of six equal rows: 50 pixels each, 300 of
+   content, 100 of it visible, so the container's scrollable range is 0 to 200.
+   The layout is stated through the shim's layout model and every measurement
+   the drain reads is derived from it — a row's rect moves as the container
+   scrolls, exactly as it does on a page — so a drain that measures the wrong
+   thing lands on a wrong offset rather than on a convenient zero.
+
+   Geometry is applied after the tree exists and before any declaration
+   appears, which is the order a page produces: layout settles, then a
+   selection moves. Each case reads the container's own scroll offset back, and
+   the shim counts writes, so "wrote the value it already held" is
+   distinguishable from "left the container alone". *)
+
+let row_height = 50.
+let visible_height = 100.
+let border_top = 7.
+let plain_rows = [ "row-0"; "row-1"; "row-2"; "row-3"; "row-4"; "row-5" ]
+
+(* A key a consumer could plausibly hand over — the first consumer's keys are
+   file paths — carrying the two characters that would end a quoted selector
+   and start an escape. Placed fourth so revealing it needs a real scroll. *)
+let hostile_key = {|a"b\c|}
+let hostile_rows = [ "row-0"; "row-1"; "row-2"; "row-3"; hostile_key; "row-5" ]
+
+let scroll_of_rows keys reveal =
+  Scroll
+    {
+      style = default;
+      reveal;
+      child =
+        Column
+          {
+            style = default;
+            interaction = Nopal_style.Interaction.default;
+            attrs = [];
+            children =
+              List.map
+                (fun key ->
+                  Keyed
+                    { key; child = Text { content = key; text_style = None } })
+                keys;
+          };
+    }
+
+let child_nodes jv =
+  let nodes = Jv.get jv "childNodes" in
+  let count = Jv.Int.get nodes "length" in
+  List.init count (fun i -> Jv.get nodes (string_of_int i))
+
+let scroll_top jv = Jv.Float.get jv "scrollTop"
+let set_scroll_top jv v = Jv.Float.set jv "scrollTop" v
+let scroll_writes jv = Jv.Int.get jv "_scrollWrites"
+let reset_scroll_writes jv = Jv.Int.set jv "_scrollWrites" 0
+
+(* Render the rows with no declaration, then lay the result out: the container
+   shows [visible_height], and the rows stack from the top of its content. *)
+let laid_out_rows keys =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent (scroll_of_rows keys None)
+  in
+  let container = Nopal_web.Renderer.dom_node handle in
+  Jv.Float.set container "_clientHeight" visible_height;
+  (* A container with a top border, because the origin its scroll offset counts
+     from is not the top of its bounding box, and a measurement that confuses
+     the two is off by exactly this much on every row. *)
+  Jv.Float.set container "_borderTop" border_top;
+  (match child_nodes container with
+  | [] -> Alcotest.fail "the fixture rendered no column to lay out"
+  | column :: _ ->
+      List.iteri
+        (fun i row ->
+          Jv.Float.set row "_layoutTop" (float_of_int i *. row_height);
+          Jv.Float.set row "_layoutHeight" row_height)
+        (child_nodes column));
+  (dispatch, handle, container)
+
+let test_reveal_scrolls_container () =
+  let dispatch, handle, container = laid_out_rows plain_rows in
+  Nopal_web.Renderer.update ~dispatch handle
+    (scroll_of_rows plain_rows (Some (Nopal_element.Reveal.nearest "row-4")));
+  (* row-4 spans 200 to 250 of the content. Showing all of it in a 100-tall
+     viewport means an offset of 150 — the row's own top would show only its
+     first 50 pixels' worth of the rows below it. *)
+  Alcotest.(check (float 0.001))
+    "the container takes the offset the alignment asks for" 150.
+    (scroll_top container)
+
+let test_reveal_no_write_when_visible () =
+  let dispatch, handle, container = laid_out_rows plain_rows in
+  set_scroll_top container 100.;
+  reset_scroll_writes container;
+  Nopal_web.Renderer.update ~dispatch handle
+    (scroll_of_rows plain_rows (Some (Nopal_element.Reveal.nearest "row-2")));
+  (* row-2 spans 100 to 150 and the visible band is 100 to 200, so the offset
+     the alignment asks for is the one the container already holds. *)
+  Alcotest.(check int)
+    "a child already visible is not written" 0 (scroll_writes container);
+  Alcotest.(check (float 0.001))
+    "the position a reader scrolled to is kept" 100. (scroll_top container);
+  (* Affirmative arm on the same fixture: the same container, one declaration
+     later, does move — so the two assertions above are caused by the child
+     being visible and not by a fixture the drain never reaches. *)
+  Nopal_web.Renderer.update ~dispatch handle
+    (scroll_of_rows plain_rows (Some (Nopal_element.Reveal.nearest "row-5")));
+  Alcotest.(check int)
+    "a child below the fold is written exactly once" 1 (scroll_writes container);
+  Alcotest.(check (float 0.001))
+    "and lands at the bottom of the scrollable range" 200.
+    (scroll_top container)
+
+let test_reveal_missing_key_no_write () =
+  let dispatch, handle, container = laid_out_rows plain_rows in
+  reset_scroll_writes container;
+  Nopal_web.Renderer.update ~dispatch handle
+    (scroll_of_rows plain_rows
+       (Some (Nopal_element.Reveal.start "no-such-row")));
+  Alcotest.(check int)
+    "a key naming no child writes nothing" 0 (scroll_writes container);
+  Alcotest.(check (float 0.001))
+    "and leaves the container where it was" 0. (scroll_top container);
+  (* Affirmative arm on the same fixture: a key that does name a child. Under a
+     centring alignment, so the declared alignment is shown to reach the
+     arithmetic rather than every case landing on a child's own top edge. *)
+  Nopal_web.Renderer.update ~dispatch handle
+    (scroll_of_rows plain_rows (Some (Nopal_element.Reveal.center "row-3")));
+  Alcotest.(check int)
+    "a key that names one writes exactly once" 1 (scroll_writes container);
+  Alcotest.(check (float 0.001))
+    "centring row-3's 150-to-200 band in a 100-tall viewport" 125.
+    (scroll_top container)
+
+let test_reveal_hostile_key_resolves () =
+  let dispatch, handle, container = laid_out_rows hostile_rows in
+  Nopal_web.Renderer.update ~dispatch handle
+    (scroll_of_rows hostile_rows
+       (Some (Nopal_element.Reveal.nearest hostile_key)));
+  Alcotest.(check (float 0.001))
+    "a key carrying a quote and a backslash resolves to its own child" 150.
+    (scroll_top container)
+
+(* Run [f] with [CSS] absent from the global object, restoring it afterwards
+   even if an assertion inside raises, so the cases that follow are unaffected.
+   A browser that predates [CSS.escape] is the reason the drain has a second
+   resolution path at all; this is the only way to reach it. *)
+let without_css_escape f =
+  let css = Jv.get Jv.global "CSS" in
+  Jv.delete Jv.global "CSS";
+  Fun.protect ~finally:(fun () -> Jv.set Jv.global "CSS" css) f
+
+let test_reveal_without_css_escape_falls_back () =
+  let dispatch, handle, container = laid_out_rows hostile_rows in
+  without_css_escape (fun () ->
+      Alcotest.(check bool)
+        "the escaping the other path relies on is genuinely gone" true
+        (Option.is_none (Jv.find_path Jv.global [ "CSS"; "escape" ]));
+      Nopal_web.Renderer.update ~dispatch handle
+        (scroll_of_rows hostile_rows
+           (Some (Nopal_element.Reveal.nearest hostile_key))));
+  Alcotest.(check (float 0.001))
+    "the same child resolves by scanning, to the same offset" 150.
+    (scroll_top container);
+  Alcotest.(check bool)
+    "and CSS is restored for every case after this one" true
+    (Option.is_some (Jv.find_path Jv.global [ "CSS"; "escape" ]))
+
 let () =
   Alcotest.run "nopal_web"
     [
+      ( "reveal application",
+        [
+          Alcotest.test_case "scrolls the container" `Quick
+            test_reveal_scrolls_container;
+          Alcotest.test_case "no write when already visible" `Quick
+            test_reveal_no_write_when_visible;
+          Alcotest.test_case "missing key writes nothing" `Quick
+            test_reveal_missing_key_no_write;
+          Alcotest.test_case "hostile key resolves" `Quick
+            test_reveal_hostile_key_resolves;
+          Alcotest.test_case "falls back without CSS.escape" `Quick
+            test_reveal_without_css_escape_falls_back;
+        ] );
+      ( "reveal collection",
+        [
+          Alcotest.test_case "enqueued on create" `Quick
+            test_reveal_enqueued_on_create;
+          Alcotest.test_case "skipped when unchanged" `Quick
+            test_reveal_skipped_when_unchanged;
+          Alcotest.test_case "enqueued on changed key" `Quick
+            test_reveal_enqueued_on_changed_key;
+          Alcotest.test_case "enqueued on changed align" `Quick
+            test_reveal_enqueued_on_changed_align;
+          Alcotest.test_case "no declaration enqueues nothing" `Quick
+            test_no_reveal_enqueues_nothing;
+        ] );
       ( "focus queue drain",
         [
           Alcotest.test_case "drains in FIFO order, last wins" `Quick

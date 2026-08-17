@@ -23,6 +23,16 @@ val update :
     tree against [new_element], patching the DOM in place. Reuses existing DOM
     nodes where possible. Updates event listeners if handlers changed. *)
 
+val reveal_request_count : 'msg t -> int
+(** [reveal_request_count handle] is how many scroll containers asked, during
+    the most recent {!create} or {!update}, for a child to be brought into view.
+    A container asks when it gains a request or changes the one it carries, and
+    never when it carries none or repeats the one it already had, so this counts
+    changes rather than containers. The window is one pass: a pass clears the
+    count before it patches anything, so the number always describes the pass
+    that just finished and never accumulates across passes. Exposed for unit
+    testing which changes are collected; not part of the behavioural API. *)
+
 val dom_node : 'msg t -> Jv.t
 (** [dom_node handle] returns the top-level DOM node for this rendered tree.
     Returns a comment node for [Empty], a span for [Text], or the element node

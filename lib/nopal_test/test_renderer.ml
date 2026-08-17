@@ -317,12 +317,27 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             children = [];
             interaction = Nopal_style.Interaction.default;
           }
-    | Scroll { style; child } ->
+    | Scroll { style; reveal; child } ->
         Element
           {
             tag = "scroll";
             style;
-            attrs = [];
+            (* A reveal request is surfaced for inspection, so a structural test
+               can read back which child a view asked to bring into view and
+               under which alignment. The key is carried exactly as the view
+               wrote it — escaping belongs to whichever backend builds a query
+               out of it, and a value escaped here would be escaped twice there
+               and resolve to nothing. A container with no request carries no
+               attributes at all, so every tree that renders today reads back
+               unchanged. *)
+            attrs =
+              (match reveal with
+              | None -> []
+              | Some { Nopal_element.Reveal.key; align } ->
+                  [
+                    ("reveal", key);
+                    ("reveal-align", Nopal_element.Reveal.align_token align);
+                  ]);
             children = [ go (0 :: rev_path) child ];
             interaction = Nopal_style.Interaction.default;
           }

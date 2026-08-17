@@ -344,6 +344,55 @@ let test_scroll_child () =
     | Element.Virtual_list _ ->
         false)
 
+let test_scroll_without_reveal_unchanged () =
+  Alcotest.(check bool)
+    "omitting the argument declares no reveal" true
+    (match Element.scroll (Element.text "inner") with
+    | Element.Scroll { reveal = None; _ } -> true
+    | Element.Scroll { reveal = Some _; _ }
+    | Element.Empty
+    | Element.Text _
+    | Element.Box _
+    | Element.Row _
+    | Element.Column _
+    | Element.Button _
+    | Element.Input _
+    | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
+    | Element.File_input _
+    | Element.Keyed _
+    | Element.Draw _
+    | Element.Virtual_list _ ->
+        false);
+  (* Affirmative arm on the same fixture. Without it the absence above goes
+     green against a builder that dropped the argument on the floor. *)
+  Alcotest.(check bool)
+    "the same builder given the argument declares one" true
+    (match
+       Element.scroll ~reveal:(Reveal.nearest "inner") (Element.text "inner")
+     with
+    | Element.Scroll { reveal = Some r; _ } ->
+        Reveal.equal r (Reveal.nearest "inner")
+    | Element.Scroll { reveal = None; _ }
+    | Element.Empty
+    | Element.Text _
+    | Element.Box _
+    | Element.Row _
+    | Element.Column _
+    | Element.Button _
+    | Element.Input _
+    | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
+    | Element.File_input _
+    | Element.Keyed _
+    | Element.Draw _
+    | Element.Virtual_list _ ->
+        false)
+
 let test_keyed_preserves_fields () =
   Alcotest.(check bool)
     "keyed preserves key" true
@@ -574,6 +623,43 @@ let test_map_scroll () =
     | Element.Virtual_list _ ->
         false)
 
+let test_scroll_reveal_roundtrip () =
+  let el =
+    Element.scroll ~reveal:(Reveal.center "row-7")
+      (Element.button ~on_click:Click (Element.text "s"))
+  in
+  let mapped = Element.map (fun m -> Wrapped m) el in
+  (* The expected declaration is rebuilt rather than shared, so an
+     implementation that carried the field through by physical identity alone
+     would still have to have carried the right one. *)
+  Alcotest.(check bool)
+    "the declaration reaches the constructor and survives map" true
+    (match mapped with
+    | Element.Scroll
+        {
+          reveal = Some r;
+          child = Element.Button { on_click = Some (Wrapped Click); _ };
+          _;
+        } ->
+        Reveal.equal r (Reveal.center "row-7")
+    | Element.Scroll _
+    | Element.Empty
+    | Element.Text _
+    | Element.Box _
+    | Element.Row _
+    | Element.Column _
+    | Element.Button _
+    | Element.Input _
+    | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
+    | Element.File_input _
+    | Element.Keyed _
+    | Element.Draw _
+    | Element.Virtual_list _ ->
+        false)
+
 let test_map_keyed () =
   let el =
     Element.keyed "k" (Element.button ~on_click:Click (Element.text "k"))
@@ -740,6 +826,39 @@ let test_equal_scroll_different_child () =
   let b = Element.scroll (Element.text "b") in
   Alcotest.(check bool)
     "different scroll child not equal" false (Element.equal a b)
+
+let test_equal_distinguishes_reveal () =
+  let make reveal = Element.scroll ?reveal (Element.text "inner") in
+  Alcotest.(check bool)
+    "the same declaration, separately built, is equal" true
+    (Element.equal
+       (make (Some (Reveal.start "a")))
+       (make (Some (Reveal.start "a"))));
+  Alcotest.(check bool)
+    "a different key is not equal" false
+    (Element.equal
+       (make (Some (Reveal.start "a")))
+       (make (Some (Reveal.start "b"))));
+  Alcotest.(check bool)
+    "a different alignment is not equal" false
+    (Element.equal
+       (make (Some (Reveal.start "a")))
+       (make (Some (Reveal.center "a"))));
+  Alcotest.(check bool)
+    "a declaration is not equal to none" false
+    (Element.equal (make (Some (Reveal.start "a"))) (make None));
+  Alcotest.(check bool)
+    "no declaration on either side is equal" true
+    (Element.equal (make None) (make None));
+  (* Totality: an arm reaching for structural ( = ) over the whole record
+     would raise Invalid_argument on the closure this child carries. *)
+  let closure_scroll =
+    Element.scroll ~reveal:(Reveal.end_ "z")
+      (Element.button ~on_click:(Handler (fun () -> ())) (Element.text "x"))
+  in
+  Alcotest.(check bool)
+    "equal stays total on a declaring container with a closure child" true
+    (Element.equal closure_scroll closure_scroll)
 
 let test_equal_keyed_distinct () =
   let make () = Element.keyed "k" (Element.text "x") in
@@ -1150,6 +1269,8 @@ let () =
           Alcotest.test_case "image_required_fields" `Quick
             test_image_required_fields;
           Alcotest.test_case "scroll_child" `Quick test_scroll_child;
+          Alcotest.test_case "scroll_without_reveal_unchanged" `Quick
+            test_scroll_without_reveal_unchanged;
           Alcotest.test_case "keyed_preserves_fields" `Quick
             test_keyed_preserves_fields;
           Alcotest.test_case "file_input carries accept capture multiple" `Quick
@@ -1169,6 +1290,8 @@ let () =
           Alcotest.test_case "map_column" `Quick test_map_column;
           Alcotest.test_case "map_image" `Quick test_map_image;
           Alcotest.test_case "map_scroll" `Quick test_map_scroll;
+          Alcotest.test_case "scroll_reveal_roundtrip" `Quick
+            test_scroll_reveal_roundtrip;
           Alcotest.test_case "map_keyed" `Quick test_map_keyed;
           Alcotest.test_case "map_empty_noop" `Quick test_map_empty_noop;
           Alcotest.test_case "map_text_noop" `Quick test_map_text_noop;
@@ -1201,6 +1324,8 @@ let () =
             test_equal_scroll_distinct;
           Alcotest.test_case "equal_scroll_different_child" `Quick
             test_equal_scroll_different_child;
+          Alcotest.test_case "equal_distinguishes_reveal" `Quick
+            test_equal_distinguishes_reveal;
           Alcotest.test_case "equal_keyed_distinct" `Quick
             test_equal_keyed_distinct;
           Alcotest.test_case "equal_keyed_different_fields" `Quick

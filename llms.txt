@@ -265,10 +265,57 @@ Element.file_input : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(str
 
 (* Media and scrolling *)
 Element.image  : ?style:Style.t -> src:string -> alt:string -> unit -> 'msg Element.t
-Element.scroll : ?style:Style.t -> 'msg Element.t -> 'msg Element.t
+Element.scroll : ?style:Style.t -> ?reveal:Reveal.t -> 'msg Element.t -> 'msg Element.t
+  (* [reveal] names a keyed descendant that must be brought into view, and the
+     alignment it should come to rest under. It is a request, not an invariant:
+     a backend acts on it when it changes and at no other time, so a reader who
+     scrolls away from the named child keeps their position. Omitting it asks
+     for nothing, and a container that asks for nothing behaves exactly as it
+     did before the argument existed. *)
 
-(* Identity for list reconciliation *)
+(* Identity for list reconciliation, and for naming a scroll container's
+   reveal target *)
 Element.keyed : string -> 'msg Element.t -> 'msg Element.t
+  (* Keys must be unique within the container that holds them; where a key is
+     repeated, the first match in document order is the one that resolves. Keys
+     are opaque application strings and are compared and resolved as written,
+     so any punctuation is safe to use. *)
+
+(* Bringing a child of a scroll container into view — pure, native-compiling,
+   references nothing else in the package *)
+module Reveal : sig
+  type align = Nearest | Start | Center | End_   (* [End_]: [end] is a keyword *)
+  type t = { key : string; align : align }
+  val nearest : string -> t
+  val start : string -> t
+  val center : string -> t
+  val end_ : string -> t
+  val align_token : align -> string  (* "nearest" | "start" | "center" | "end";
+                                        the sole producer of the string form *)
+  val equal : t -> t -> bool
+  val should_reveal : previous:t option -> next:t option -> bool
+  val offset_for :
+    scroll_offset:float -> viewport_height:float -> content_height:float ->
+    child_top:float -> child_height:float -> align:align -> float option
+end
+  (* [should_reveal] is the whole rule: act when a container that carried no
+     request gains one, and when a request changes in either its key or its
+     alignment; do nothing when it is unchanged, withdrawn, or never existed.
+     The effect is therefore edge-triggered — resizing the visible area with an
+     unchanged request re-asserts nothing, and the requested child can sit
+     outside the visible area until the request next changes.
+
+     That decision is portable and so is [offset_for]; taking the measurements
+     and moving the container are each backend's own concern, and on a backend
+     that does not render elements the request is inert, which is not an error.
+
+     [offset_for]'s six measurements share one origin, the top of the
+     container's scrollable content, so [child_top] does not change as the
+     container scrolls. It is total: the result is clamped to an offset the
+     container can take, and [None] means either that the alignment asks for
+     the offset the container already holds or that a measurement is not
+     finite. A child taller than [viewport_height] falls back to showing its
+     top edge under every alignment. *)
 
 (* 2D canvas drawing *)
 Element.draw : ?on_pointer_move:(pointer_event -> 'msg) -> ?on_click:(pointer_event -> 'msg)
@@ -2498,7 +2545,7 @@ would let the same assertion spec run against web and Tauri) is tracked in
 ```
 lib/
   nopal_mvu/         — Cmd, Sub, App — zero UI deps
-  nopal_element/     — Element.t DSL + Virtual_list — zero platform deps
+  nopal_element/     — Element.t DSL + Virtual_list + Reveal — zero platform deps
   nopal_style/       — Style.t, Text.t, Interaction.t, Cursor.t, Font, Color
                        (Color is the CSS-authoring colour type; distinct from
                        nopal_scene/'s float-RGBA Color)
@@ -2538,9 +2585,18 @@ examples/
                        labelled before/after preview pair of the picked and the
                        as-uploaded photograph, each half naming its own byte
                        length and the as-uploaded half its share of the original
-                       → multipart upload of the PROCESSED handle). Each lives
-                       in its own sub_*.ml/.mli with its own structural suite; the
-                       receipt one is examples/kitchen_sink/sub_receipt_flow.ml
+                       → multipart upload of the PROCESSED handle); and "Reveal
+                       a child in a scroll container" (arrow-key selection over
+                       rows of deliberately unequal height inside a fixed-height
+                       scroll container — the container follows because the view
+                       names the selected row as its reveal target, with an
+                       alignment selector, a row whose key carries a quote and a
+                       backslash, and a checkbox gating the arrow keys, which
+                       prevent the browser default page-wide and so must not be
+                       live all the time). Each lives in its own sub_*.ml/.mli
+                       with its own structural suite; the receipt one is
+                       examples/kitchen_sink/sub_receipt_flow.ml and the reveal
+                       one examples/kitchen_sink/sub_reveal_list.ml
   dashboard/         — Charts showcase
 test/
   unit/              — Alcotest tests per package

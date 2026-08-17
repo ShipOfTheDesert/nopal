@@ -158,6 +158,30 @@ opens the Tauri window. File changes trigger a rebuild automatically.
 `build-tauri` produces an optimized release binary bundled with the
 kitchen sink frontend.
 
+#### Tauri E2E on a Wayland host
+
+```bash
+GDK_BACKEND=x11 just e2e-tauri
+```
+
+`just e2e-tauri` drives the built binary under `xvfb-run`, which puts a virtual
+X server in `DISPLAY`. On a Wayland desktop `WAYLAND_DISPLAY` is set too — and
+it survives into a distrobox container — so GTK prefers the Wayland backend,
+the window is created on the real compositor instead of the virtual X server,
+and it is never mapped. An unmapped GTK window has no frame clock, so
+`requestAnimationFrame` never fires inside the webview: measured at **0 callbacks
+in 2 seconds**, against 134 with `GDK_BACKEND=x11`.
+
+That is invisible to five of the six specs, because they assert through IPC and
+the telemetry mirror, which do not need a frame. The sixth,
+`mobile_signals.e2e.ts`, is the only one asserting a DOM change — the safe-area
+inset readout, which is render correctness rather than model state and so has
+nothing for telemetry to assert. It is therefore the only one that goes red, and
+it goes red with no browser error, no failed `invoke`, and a correctly delivered
+event, which reads exactly like an application bug. CI is unaffected: its runner
+has no Wayland session, so the X11 backend is already the only one available.
+Export the variable in your container shell profile if you run this gate often.
+
 ### Mobile Development (Tauri)
 
 Nopal targets Android and iOS through Tauri's mobile webview. Android has

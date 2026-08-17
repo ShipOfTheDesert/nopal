@@ -33,3 +33,8 @@
 (test
  (name test_virtual_list_structural)
  (libraries nopal_element nopal_test nopal_style alcotest))
+
+(test
+ (name test_reveal)
+ (package nopal_element)
+ (libraries nopal_element qcheck-core qcheck-alcotest alcotest))
