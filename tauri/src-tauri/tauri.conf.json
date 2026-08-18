@@ -9,6 +9,11 @@
     "beforeBuildCommand": "just tauri-prepare-build",
     "beforeDevCommand": ""
   },
+  "bundle": {
+    "iOS": {
+      "minimumSystemVersion": "16.0"
+    }
+  },
   "app": {
     "windows": [
       {

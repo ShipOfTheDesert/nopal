@@ -21,7 +21,17 @@ concurrency:
 
 jobs:
   ios-simulator-smoke:
-    runs-on: macos-latest
+    # Pinned, not macos-latest. On 2026-07-02 macos-latest rolled from
+    # macos-15-arm64 (Xcode 16.4) to macos-26-arm64 (Xcode 26.6), which drops the
+    # Swift back-deployment archives libswiftCompatibility56.a and
+    # libswiftCompatibilityConcurrency.a. libapp.a's Swift objects (swift-rs,
+    # Tauri's Channel.swift) autolink them whenever the deployment target is low
+    # enough to need back-deployment, so every run since #67 died at Ld with
+    # "Undefined symbols: __swift_FORCE_LOAD_$_swiftCompatibility56". The
+    # iOS 16.0 floor in tauri.conf.json is the actual fix; this pin is the
+    # last-known-good runner, held until a run proves Xcode 26 links clean.
+    runs-on: macos-15
+    timeout-minutes: 45
 
     env:
       BUNDLE_ID: run.nopal.kitchen-sink

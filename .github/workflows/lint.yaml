@@ -18,6 +18,7 @@ concurrency:
 jobs:
   lint-doc:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: "!github.event.pull_request.draft"
 
     steps:
@@ -42,6 +43,7 @@ jobs:
 
   lint-fmt:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: "!github.event.pull_request.draft"
 
     steps:
@@ -66,6 +68,7 @@ jobs:
 
   lint-opam:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: "!github.event.pull_request.draft"
 
     steps:
@@ -90,6 +93,7 @@ jobs:
 
   lint-classes:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: "!github.event.pull_request.draft"
 
     steps:
@@ -99,10 +103,16 @@ jobs:
         with:
           just-version: '1.46.0'
 
+      # apt is bounded on both axes. Without Acquire::http::Timeout a half-open
+      # connection to a mirror blocks forever, and without a noninteractive
+      # frontend a debconf prompt blocks on a TTY that does not exist — both
+      # observed as jobs that never finish (run 32069072523, this step).
       - name: Install ripgrep
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ripgrep
+          sudo apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=30
+          sudo apt-get install -y -o Acquire::Retries=3 -o Acquire::http::Timeout=30 ripgrep
 
       - name: Detect recurring bug classes
         run: just lint-classes

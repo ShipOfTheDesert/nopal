@@ -17,6 +17,7 @@ concurrency:
 jobs:
   commitizen:
     runs-on: ubuntu-22.04
+    timeout-minutes: 10
     if: "!github.event.pull_request.draft"
 
     steps:

@@ -18,6 +18,7 @@ concurrency:
 jobs:
   unit-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: "!github.event.pull_request.draft"
 
     steps:
@@ -44,6 +45,7 @@ jobs:
 
   tauri-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     if: "!github.event.pull_request.draft"
 
     steps:
@@ -61,10 +63,14 @@ jobs:
         with:
           workspaces: tauri/src-tauri
 
+      # See the apt note on lint.yaml's ripgrep step: unbounded apt is how a job
+      # hangs instead of failing.
       - name: Install Tauri system dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=30
+          sudo apt-get install -y -o Acquire::Retries=3 -o Acquire::http::Timeout=30 libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - name: Install Tauri CLI
         run: cd tauri && npm ci
@@ -74,6 +80,7 @@ jobs:
 
   e2e-web:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     if: "!github.event.pull_request.draft"
 
     steps:
@@ -103,6 +110,7 @@ jobs:
   # check-e2e-wired guarantees every spec is matched by a project this job runs.
   e2e-tauri:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     if: "!github.event.pull_request.draft"
 
     steps:
@@ -120,10 +128,14 @@ jobs:
         with:
           workspaces: tauri/src-tauri
 
+      # See the apt note on lint.yaml's ripgrep step: unbounded apt is how a job
+      # hangs instead of failing (run 32069072987 stalled here for over an hour).
       - name: Install Tauri + WebDriver system dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf webkit2gtk-driver xvfb
+          sudo apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=30
+          sudo apt-get install -y -o Acquire::Retries=3 -o Acquire::http::Timeout=30 libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf webkit2gtk-driver xvfb
 
       - name: Install tauri-driver
         run: cargo install tauri-driver
