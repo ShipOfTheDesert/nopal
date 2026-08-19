@@ -29,6 +29,12 @@ module Make (A : Nopal_mvu.App.S) = struct
            and cascading dispatches are shallow. Revisit if profiling shows
            unbounded growth in real applications. *)
     focus : string -> unit;
+    scroll_by : string -> Nopal_element.Scroll_delta.t -> unit;
+        (* Platform-supplied relative-scroll callback used to implement
+           {!Nopal_mvu.Cmd.scroll_by}. Defaults to a no-op, so a runtime on a
+           backend that renders no elements leaves the request inert rather than
+           reporting it. Read only from [execute_cmd], never on the per-message
+           path. *)
     schedule_after : int -> (unit -> unit) -> unit;
     on_error : string -> unit;
         (* Reports any exception raised by [A.update], [A.subscriptions], an
@@ -89,9 +95,10 @@ module Make (A : Nopal_mvu.App.S) = struct
      difference between [create] and [create_with_telemetry] is the recorder and
      serialisers wired in here, so they share this assembly to keep the two
      entry points in lockstep. *)
-  let make ?(focus = fun _id -> ()) ?(schedule_after = fun _ms _f -> ())
-      ?(on_error = default_on_error) ?(interpret_atom = default_interpret_atom)
-      ~recording ~recorder ~serialize_msg ~serialize_model () =
+  let make ?(focus = fun _id -> ()) ?(scroll_by = fun _id _delta -> ())
+      ?(schedule_after = fun _ms _f -> ()) ?(on_error = default_on_error)
+      ?(interpret_atom = default_interpret_atom) ~recording ~recorder
+      ~serialize_msg ~serialize_model () =
     let init_model, init_cmd = A.init () in
     let model_var = Lwd.var init_model in
     let viewport_var = Lwd.var Nopal_element.Viewport.desktop in
@@ -104,6 +111,7 @@ module Make (A : Nopal_mvu.App.S) = struct
       interpret_atom;
       queue = Queue.create ();
       focus;
+      scroll_by;
       schedule_after;
       on_error;
       recording;
@@ -114,20 +122,20 @@ module Make (A : Nopal_mvu.App.S) = struct
       phase = Created;
     }
 
-  let create ?focus ?schedule_after ?on_error ?interpret_atom () =
-    make ?focus ?schedule_after ?on_error ?interpret_atom ~recording:false
-      ~recorder:Telemetry.off
+  let create ?focus ?scroll_by ?schedule_after ?on_error ?interpret_atom () =
+    make ?focus ?scroll_by ?schedule_after ?on_error ?interpret_atom
+      ~recording:false ~recorder:Telemetry.off
       ~serialize_msg:(fun _msg -> "<opaque>")
       ~serialize_model:(fun _model -> "<opaque>")
       ()
 
-  let create_with_telemetry ?focus ?schedule_after ?on_error ?interpret_atom
-      ?(serialize_msg = fun _msg -> "<opaque>")
+  let create_with_telemetry ?focus ?scroll_by ?schedule_after ?on_error
+      ?interpret_atom ?(serialize_msg = fun _msg -> "<opaque>")
       ?(serialize_model = fun _model -> "<opaque>") () =
     let recorder, handle = Telemetry.create () in
     let rt =
-      make ?focus ?schedule_after ?on_error ?interpret_atom ~recording:true
-        ~recorder ~serialize_msg ~serialize_model ()
+      make ?focus ?scroll_by ?schedule_after ?on_error ?interpret_atom
+        ~recording:true ~recorder ~serialize_msg ~serialize_model ()
     in
     (rt, handle)
 
@@ -288,7 +296,7 @@ module Make (A : Nopal_mvu.App.S) = struct
        raising perform/task/focus thunk is reported, not propagated (REQ-F1).
        Post-shutdown completions route back through [dispatch], which drops. *)
     guard rt "command effect" (fun () ->
-        Nopal_mvu.Cmd.interpret ~focus:rt.focus
+        Nopal_mvu.Cmd.interpret ~focus:rt.focus ~scroll_by:rt.scroll_by
           ~dispatch:(fun msg -> dispatch rt msg)
           ~schedule_after:(fun ms msg ->
             rt.schedule_after ms (fun () -> dispatch rt msg))

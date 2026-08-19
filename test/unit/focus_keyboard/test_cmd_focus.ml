@@ -23,6 +23,7 @@ let test_focus_interpret_calls_callback () =
   let recorded = ref [] in
   Nopal_mvu.Cmd.interpret
     ~focus:(fun id -> recorded := id :: !recorded)
+    ~scroll_by:(fun _id _delta -> ())
     ~dispatch:ignore
     ~schedule_after:(fun _ _ -> ())
     (Nopal_mvu.Cmd.focus "target");

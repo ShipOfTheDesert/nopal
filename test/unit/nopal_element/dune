@@ -38,3 +38,8 @@
  (name test_reveal)
  (package nopal_element)
  (libraries nopal_element qcheck-core qcheck-alcotest alcotest))
+
+(test
+ (name test_scroll_delta)
+ (package nopal_element)
+ (libraries nopal_element qcheck-core qcheck-alcotest alcotest))

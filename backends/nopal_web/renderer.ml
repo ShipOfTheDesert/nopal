@@ -711,10 +711,13 @@ let rec create_live ~sheet ~reveals ~dispatch
           base_id = None;
           interaction_id = None;
         }
-  | Scroll { style; reveal; child } ->
+  | Scroll { style; attrs; reveal; child } ->
       let el = Brr.El.v (Jstr.v "div") [] in
       Brr.El.set_inline_style (Jstr.v "overflow") (Jstr.v "auto") el;
       apply_style el style;
+      List.iter
+        (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
+        attrs;
       (* A container being created carried no declaration a moment ago, so
          [previous] is [None]. Collected before the child is built, so an outer
          container is queued ahead of any container nested inside it. *)
@@ -886,10 +889,14 @@ and create_and_append ~sheet ~reveals ~dispatch parent
    at the start of the next pass, so a request can be read back after the pass
    that produced it without ever being acted on twice.
 
-   It is also what fixes the order against the backend's post-frame focus
-   drain:
+   It is also what fixes the order against the backend's two post-frame drains:
 
-   Reveal first, focus second, an app doing both lands focus last. *)
+   Reveal first, relative scroll second, focus last. All three can write the
+   same container's scroll offset, so the order is last-write-wins and is
+   stated rather than left to queue accident: the movement the application
+   asked for in this update wins over the one derived from a changed
+   declaration, and a focus wins over both because the browser brings its
+   target into view with no way to decline from here. *)
 let key_attribute = "data-key"
 
 (* [CSS.escape] applied to a key, when the browser has it. A key is an opaque
@@ -1091,12 +1098,12 @@ let attrs_of (el : 'msg Nopal_element.Element.t) =
   | Checkbox { attrs; _ }
   | Radio { attrs; _ }
   | Select { attrs; _ }
-  | File_input { attrs; _ } ->
+  | File_input { attrs; _ }
+  | Scroll { attrs; _ } ->
       attrs
   | Empty
   | Text _
   | Image _
-  | Scroll _
   | Keyed _
   | Draw _
   | Virtual_list _ ->
@@ -1575,6 +1582,7 @@ and reconcile_node ~sheet ~reveals ~dispatch (old_n : 'msg live_node)
           Brr.El.set_at (Jstr.v "src") (Some (Jstr.v src)) el;
           Brr.El.set_at (Jstr.v "alt") (Some (Jstr.v alt)) el)
   | Scroll { reveal; child; _ } ->
+      maybe_apply_attrs el old_n.element new_el;
       let previous =
         match old_n.element with
         | Scroll { reveal = previous; _ } -> previous

@@ -94,6 +94,54 @@ let drain_focus pending =
     focus_element (Queue.take pending)
   done
 
+(* Act on one queued relative-scroll request: resolve the container by its DOM
+   id, take the three measurements only a live document can take, and ask
+   [Scroll_delta] where the container must sit. Nothing here decides anything —
+   the clamping and the leave-it-alone rule are the pure module's, and this
+   supplies what it cannot see.
+
+   Both ways of not being able to act are the same typed no-op: an id that
+   names no element, and an offset the container already holds (which is what a
+   container that cannot scroll answers to every request). Neither is reported
+   anywhere, and neither leaves the container anywhere other than where it was.
+
+   Only the named container's own scroll offset is ever written. The id
+   namespace is the document's, so the element reached may be something that is
+   not a scroll container at all; that needs no special case, because an element
+   with nothing to scroll has no offset to move to. *)
+let scroll_element_by id delta =
+  let document = Jv.get Jv.global "document" in
+  let el = Jv.call document "getElementById" [| Jv.of_string id |] in
+  if Jv.is_none el then ()
+  else
+    let container = Brr.El.of_jv el in
+    let scroll_offset = Brr.El.scroll_y container in
+    let viewport_height = Brr.El.inner_h container in
+    let content_height = Brr.El.scroll_h container in
+    match
+      Nopal_element.Scroll_delta.offset_for ~scroll_offset ~viewport_height
+        ~content_height delta
+    with
+    | None -> ()
+    | Some offset -> Jv.Float.set el "scrollTop" offset
+
+(* Drain queued [Cmd.scroll_by] requests, applying each in request order. A
+   relative movement is not idempotent, so requests compose rather than
+   overwrite: each one is measured against the offset the container holds when
+   it is applied, and two half-viewport requests in one frame move a whole
+   viewport. That is the opposite of the focus drain's last-wins result on the
+   same queue shape.
+
+   The loop is the empty-queue guard. Every measurement and every document
+   lookup happens inside it, so a frame that requested nothing reaches no DOM
+   read at all rather than reading first and discovering there was nothing to
+   do. *)
+let drain_scroll_by pending =
+  while not (Queue.is_empty pending) do
+    let id, delta = Queue.take pending in
+    scroll_element_by id delta
+  done
+
 (* The DOM keydown/keyup [event.key] string the subscription handler receives.
    A held [Shift] is folded into a ["Shift+<key>"] prefix (except for the bare
    [Shift] keypress itself) so handlers can match chords like ["Shift+Tab"]
@@ -185,7 +233,7 @@ let web_interpret_atom (type msg) ~(dispatch : msg -> unit)
 let drive (type msg) ~(start : unit -> unit)
     ~(set_viewport : Nopal_element.Viewport.t -> unit)
     ~(view_lwd : msg Nopal_element.Element.t Lwd.t) ~(dispatch : msg -> unit)
-    ~(flush_focus : unit -> unit)
+    ~(flush_scroll : unit -> unit) ~(flush_focus : unit -> unit)
     ~(safe_area_source :
        ((Nopal_element.Viewport.safe_area -> unit) -> unit -> unit) option)
     ~(shutdown : unit -> unit) ~(bridge : Nopal_runtime.Telemetry.handle option)
@@ -262,8 +310,14 @@ let drive (type msg) ~(start : unit -> unit)
              let new_element = Lwd.quick_sample root in
              Renderer.update ~dispatch handle new_element
            end;
-           (* After the DOM patch so a [Cmd.focus] for an element created by this
-              frame's update finds it in the DOM (FR-3). *)
+           (* Both drains run after the DOM patch, and in this order. A frame
+              applies the reveal the render pass collected first, then the
+              relative-scroll requests the model issued, then the focus queue.
+              Each measures the tree the patch produced: a request acted on
+              before it would size itself against the previous frame's layout,
+              and a focus for an element this frame created would find nothing
+              to focus. *)
+           flush_scroll ();
            flush_focus ();
            raf_id := Jv.call w "requestAnimationFrame" [| Jv.repr !raf_loop |]);
   (* Install the browser telemetry bridge over the driven runtime's handle
@@ -292,9 +346,15 @@ let mount (type model msg) ?safe_area_source ?on_error
     (target : Brr.El.t) : mounted =
   let module R = Nopal_runtime.Runtime.Make (A) in
   let pending_focus = Queue.create () in
+  (* Mutable state local to this mount, never a module-level ref: two mounts in
+     one document each carry their own requests, and a torn-down mount's queue
+     goes with it. Commands are interpreted during dispatch, so the queue is
+     what carries a request across to the frame that can act on it. *)
+  let pending_scroll = Queue.create () in
   let rt =
     R.create
       ~focus:(fun id -> Queue.add id pending_focus)
+      ~scroll_by:(fun id delta -> Queue.add (id, delta) pending_scroll)
       ~schedule_after ?on_error ~interpret_atom:web_interpret_atom ()
   in
   let unmount =
@@ -303,6 +363,7 @@ let mount (type model msg) ?safe_area_source ?on_error
       ~set_viewport:(fun vp -> R.set_viewport rt vp)
       ~view_lwd:(R.view rt)
       ~dispatch:(fun msg -> R.dispatch rt msg)
+      ~flush_scroll:(fun () -> drain_scroll_by pending_scroll)
       ~flush_focus:(fun () -> drain_focus pending_focus)
       ~safe_area_source
       ~shutdown:(fun () -> R.shutdown rt)
@@ -316,9 +377,12 @@ let mount_with_telemetry (type model msg) ?safe_area_source ?on_error
     =
   let module R = Nopal_runtime.Runtime.Make (A) in
   let pending_focus = Queue.create () in
+  (* Mount-local, for the reason the sibling entry point states. *)
+  let pending_scroll = Queue.create () in
   let rt, handle =
     R.create_with_telemetry
       ~focus:(fun id -> Queue.add id pending_focus)
+      ~scroll_by:(fun id delta -> Queue.add (id, delta) pending_scroll)
       ~schedule_after ?on_error ~interpret_atom:web_interpret_atom
       ?serialize_msg ?serialize_model ()
   in
@@ -328,6 +392,7 @@ let mount_with_telemetry (type model msg) ?safe_area_source ?on_error
       ~set_viewport:(fun vp -> R.set_viewport rt vp)
       ~view_lwd:(R.view rt)
       ~dispatch:(fun msg -> R.dispatch rt msg)
+      ~flush_scroll:(fun () -> drain_scroll_by pending_scroll)
       ~flush_focus:(fun () -> drain_focus pending_focus)
       ~safe_area_source
       ~shutdown:(fun () -> R.shutdown rt)

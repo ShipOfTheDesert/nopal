@@ -100,6 +100,7 @@ type 'msg t =
   | Image of { style : Nopal_style.Style.t; src : string; alt : string }
   | Scroll of {
       style : Nopal_style.Style.t;
+      attrs : (string * string) list;
       reveal : Reveal.t option;
       child : 'msg t;
     }
@@ -212,8 +213,8 @@ let file_input ?(style = Nopal_style.Style.empty)
 let image ?(style = Nopal_style.Style.empty) ~src ~alt () =
   Image { style; src; alt }
 
-let scroll ?(style = Nopal_style.Style.empty) ?reveal child =
-  Scroll { style; reveal; child }
+let scroll ?(style = Nopal_style.Style.empty) ?(attrs = []) ?reveal child =
+  Scroll { style; attrs; reveal; child }
 
 let keyed key child = Keyed { key; child }
 
@@ -359,8 +360,8 @@ let rec map f = function
           on_change = Option.map (fun g files -> f (g files)) on_change;
         }
   | Image { style; src; alt } -> Image { style; src; alt }
-  | Scroll { style; reveal; child } ->
-      Scroll { style; reveal; child = map f child }
+  | Scroll { style; attrs; reveal; child } ->
+      Scroll { style; attrs; reveal; child = map f child }
   | Keyed { key; child } -> Keyed { key; child = map f child }
   | Draw
       {
@@ -560,9 +561,10 @@ let rec equal a b =
       Nopal_style.Style.equal s1 s2
       && String.equal src1 src2
       && String.equal alt1 alt2
-  | ( Scroll { style = s1; reveal = r1; child = ch1 },
-      Scroll { style = s2; reveal = r2; child = ch2 } ) ->
+  | ( Scroll { style = s1; attrs = a1; reveal = r1; child = ch1 },
+      Scroll { style = s2; attrs = a2; reveal = r2; child = ch2 } ) ->
       Nopal_style.Style.equal s1 s2
+      && equal_attrs a1 a2
       && Option.equal Reveal.equal r1 r2
       && equal ch1 ch2
   | Keyed { key = k1; child = ch1 }, Keyed { key = k2; child = ch2 } ->

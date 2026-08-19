@@ -173,6 +173,7 @@ let test_scroll_creates_div_overflow_auto () =
     Scroll
       {
         style = default;
+        attrs = [];
         reveal = None;
         child = Text { content = "x"; text_style = None };
       }
@@ -1399,6 +1400,64 @@ let test_reconcile_box_removes_stale_attrs () =
     Jv.call node "getAttribute" [| Jv.of_string "data-extra" |] |> Jv.is_null
   in
   Alcotest.(check bool) "data-extra removed from DOM" true removed
+
+(* Scroll: application attributes reach the DOM on create and follow a change
+   across a reconcile. Every pass builds a fresh value rather than sharing one,
+   mirroring a view that rebuilds its output each frame — a skip guard written
+   as physical equality would pass vacuously against a shared fixture. *)
+let scroll_carrying attrs =
+  Scroll
+    {
+      style = default;
+      attrs;
+      reveal = None;
+      child = Text { content = "x"; text_style = None };
+    }
+
+let test_scroll_renders_and_reconciles_attrs () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (scroll_carrying [ ("id", "reading-pane"); ("data-testid", "pane") ])
+  in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let get name = Jv.call node "getAttribute" [| Jv.of_string name |] in
+  Alcotest.(check string)
+    "the container carries its id on create" "reading-pane"
+    (get "id" |> Jv.to_string);
+  Alcotest.(check string)
+    "and every other attribute it was given" "pane"
+    (get "data-testid" |> Jv.to_string);
+  (* A changed value, not an added one: an add-only assertion goes green
+     against a renderer that writes on create and never again. *)
+  Nopal_web.Renderer.update ~dispatch handle
+    (scroll_carrying [ ("id", "reading-pane"); ("data-testid", "renamed") ]);
+  Alcotest.(check string)
+    "a changed value reaches the node on reconcile" "renamed"
+    (get "data-testid" |> Jv.to_string);
+  Alcotest.(check string)
+    "and the attribute that did not change is still there" "reading-pane"
+    (get "id" |> Jv.to_string);
+  Nopal_web.Renderer.update ~dispatch handle
+    (scroll_carrying [ ("id", "reading-pane") ]);
+  Alcotest.(check bool)
+    "an attribute the view dropped is cleared from the node" true
+    (get "data-testid" |> Jv.is_null);
+  (* The skip arm, on a fresh-but-equal value: unchanged input writes nothing.
+     The container it runs against does carry an attribute, so the zero below
+     is the guard firing and not an empty list having nothing to write. *)
+  let count = spy_set_attr node in
+  Nopal_web.Renderer.update ~dispatch handle
+    (scroll_carrying [ ("id", "reading-pane") ]);
+  Alcotest.(check int) "unchanged attributes write nothing" 0 !count;
+  (* Affirmative arm on the same spied node: it can still write. *)
+  Nopal_web.Renderer.update ~dispatch handle
+    (scroll_carrying [ ("id", "other-pane") ]);
+  Alcotest.(check int) "a changed attribute writes once" 1 !count;
+  Alcotest.(check string)
+    "with the value the last pass asked for" "other-pane"
+    (get "id" |> Jv.to_string)
 
 (* Button: unchanged attrs must not trigger setAttribute *)
 let test_reconcile_button_skips_unchanged_attrs () =
@@ -2970,6 +3029,112 @@ let test_drain_focus_unknown_id_is_noop () =
     "no focus recorded for an unknown id" [] (focus_log ());
   Alcotest.(check bool) "queue still drained" true (Queue.is_empty q)
 
+(* The shim's id resolution.
+
+   A registered focus target wins; a real created element carrying a matching
+   [id] attribute is the fallback; an id matching neither still resolves to
+   null; duplicates resolve to the first created. Registered targets are
+   synthetic objects with a [focus] method and no geometry, so inverting that
+   precedence would silently change what the focus-drain cases above assert
+   against without failing any of them — which is why the precedence case below
+   exists at all.
+
+   Every case builds the elements it asserts on and gives them ids of its own,
+   so none of them depends on an id another case in this file left behind. *)
+let lookup_by_id id =
+  Jv.call (js_document ()) "getElementById" [| Jv.of_string id |]
+
+let div_with_id ?(extra = []) id =
+  Brr.El.v
+    ~at:
+      (Brr.At.id (Jstr.v id)
+      :: List.map (fun (n, v) -> Brr.At.v (Jstr.v n) (Jstr.v v)) extra)
+    (Jstr.v "div") []
+
+let attribute node name =
+  Jv.call node "getAttribute" [| Jv.of_string name |] |> Jv.to_string
+
+let test_shim_resolves_a_rendered_element_by_id () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (scroll_carrying [ ("id", "shim-rendered-pane") ])
+  in
+  let node = Nopal_web.Renderer.dom_node handle in
+  Alcotest.(check bool)
+    "a rendered container resolves to the very node the renderer created" true
+    (lookup_by_id "shim-rendered-pane" == node);
+  (* The scan reads the attribute the node carries now, not the one it was
+     created with: a view that renames its container must move the lookup with
+     it, and the old name must stop resolving. *)
+  Nopal_web.Renderer.update ~dispatch handle
+    (scroll_carrying [ ("id", "shim-renamed-pane") ]);
+  Alcotest.(check bool)
+    "the new id resolves to the same node after a reconcile" true
+    (lookup_by_id "shim-renamed-pane" == node);
+  Alcotest.(check bool)
+    "and the id it no longer carries resolves to null" true
+    (Jv.is_none (lookup_by_id "shim-rendered-pane"))
+
+let test_shim_returns_null_for_unknown_id () =
+  (* Affirmative arm first, on an element this case creates: it proves the
+     lookup below reaches the scan at all, so the null is the id being absent
+     and not the fallback being broken. *)
+  let present = div_with_id "shim-present-id" in
+  Alcotest.(check bool)
+    "an id this case just created resolves" true
+    (lookup_by_id "shim-present-id" == Brr.El.to_jv present);
+  Alcotest.(check bool)
+    "an id nothing carries resolves to null" true
+    (Jv.is_none (lookup_by_id "shim-absent-id"))
+
+let test_shim_prefers_a_registered_focus_target () =
+  register_focus_target "shim-contested";
+  reset_focus_log ();
+  let real = div_with_id "shim-contested" in
+  let found = lookup_by_id "shim-contested" in
+  Alcotest.(check bool)
+    "an id both a registered target and a real element claim resolves" true
+    (not (Jv.is_none found));
+  Alcotest.(check bool)
+    "and it is not the real element" false
+    (found == Brr.El.to_jv real);
+  (* Behavioural rather than structural: the registered target is the only
+     object in the shim that records a focus() call, so the log is what says
+     which of the two the drain would reach. *)
+  ignore (Jv.call found "focus" [||]);
+  Alcotest.(check (list string))
+    "focusing what resolved records against the registered target"
+    [ "shim-contested" ] (focus_log ());
+  (* Affirmative arm on the same fixture shape: with no target registered the
+     real element is what resolves, so the assertions above are precedence and
+     not the fallback being absent. *)
+  let uncontested = div_with_id "shim-uncontested" in
+  Alcotest.(check bool)
+    "an id no registered target claims resolves to the real element" true
+    (lookup_by_id "shim-uncontested" == Brr.El.to_jv uncontested)
+
+let test_shim_resolves_duplicates_to_first_in_tree_order () =
+  let first =
+    div_with_id ~extra:[ ("data-which", "first") ] "shim-duplicated"
+  in
+  let second =
+    div_with_id ~extra:[ ("data-which", "second") ] "shim-duplicated"
+  in
+  (* The fixture is a genuine duplicate — both elements claim the id — so the
+     choice below is the shim's and not one element having failed to claim it. *)
+  Alcotest.(check string)
+    "the later element claims the same id" "shim-duplicated"
+    (attribute (Brr.El.to_jv second) "id");
+  let found = lookup_by_id "shim-duplicated" in
+  Alcotest.(check bool)
+    "resolves to the first of the two" true
+    (found == Brr.El.to_jv first);
+  Alcotest.(check string)
+    "and reads back the first element's own marker" "first"
+    (attribute found "data-which")
+
 (* Reveal collection.
 
    Every fixture is rebuilt from scratch on each call, so a reconcile case
@@ -2981,6 +3146,7 @@ let scroll_declaring reveal =
   Scroll
     {
       style = default;
+      attrs = [];
       reveal;
       child =
         Keyed
@@ -3088,10 +3254,11 @@ let plain_rows = [ "row-0"; "row-1"; "row-2"; "row-3"; "row-4"; "row-5" ]
 let hostile_key = {|a"b\c|}
 let hostile_rows = [ "row-0"; "row-1"; "row-2"; "row-3"; hostile_key; "row-5" ]
 
-let scroll_of_rows keys reveal =
+let scroll_of_rows ?(attrs = []) keys reveal =
   Scroll
     {
       style = default;
+      attrs;
       reveal;
       child =
         Column
@@ -3120,11 +3287,12 @@ let reset_scroll_writes jv = Jv.Int.set jv "_scrollWrites" 0
 
 (* Render the rows with no declaration, then lay the result out: the container
    shows [visible_height], and the rows stack from the top of its content. *)
-let laid_out_rows keys =
+let laid_out_rows ?(attrs = []) keys =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
   let handle =
-    Nopal_web.Renderer.create ~dispatch ~parent (scroll_of_rows keys None)
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (scroll_of_rows ~attrs keys None)
   in
   let container = Nopal_web.Renderer.dom_node handle in
   Jv.Float.set container "_clientHeight" visible_height;
@@ -3231,9 +3399,305 @@ let test_reveal_without_css_escape_falls_back () =
     "and CSS is restored for every case after this one" true
     (Option.is_some (Jv.find_path Jv.global [ "CSS"; "escape" ]))
 
+(* The relative-scroll drain.
+
+   [Nopal_web.drain_scroll_by] is the second thing in this backend that writes a
+   container's scroll offset, and the frame applies the two in a fixed order:
+   the reveal the render pass collected first, the relative scroll second, the
+   focus queue last. The cases below drive the drain directly, against the same
+   six-row container the reveal cases use — 300 of content, 100 of it visible,
+   so the scrollable range is 0 to 200 and a half-viewport request is 50.
+
+   Every case names its own container, because the shim's element registry is
+   never pruned: an id another case left behind would shadow this one's. *)
+let delta = Nopal_element.Scroll_delta.viewports
+
+let laid_out_pane id =
+  let dispatch, handle, container =
+    laid_out_rows ~attrs:[ ("id", id) ] plain_rows
+  in
+  reset_scroll_writes container;
+  (dispatch, handle, container)
+
+let queued requests =
+  let q = Queue.create () in
+  List.iter (fun request -> Queue.add request q) requests;
+  q
+
+let test_scrolls_container_by_half_its_height () =
+  let _dispatch, _handle, container = laid_out_pane "scroll-half" in
+  let q = queued [ ("scroll-half", delta 0.5) ] in
+  Nopal_web.drain_scroll_by q;
+  Alcotest.(check (float 0.001))
+    "the container lands half a visible height further on" 50.
+    (scroll_top container);
+  Alcotest.(check int) "written exactly once" 1 (scroll_writes container);
+  Alcotest.(check bool) "and the queue is drained" true (Queue.is_empty q)
+
+let test_unknown_id_is_a_no_op () =
+  let _dispatch, _handle, container = laid_out_pane "scroll-unknown-host" in
+  let q = queued [ ("no-container-carries-this", delta 0.5) ] in
+  Nopal_web.drain_scroll_by q;
+  Alcotest.(check int)
+    "an id naming nothing writes nothing" 0 (scroll_writes container);
+  Alcotest.(check (float 0.001))
+    "and leaves the container where it was" 0. (scroll_top container);
+  Alcotest.(check bool) "the queue is drained anyway" true (Queue.is_empty q);
+  (* Affirmative arm on the same fixture: the same delta, named correctly, does
+     move it — so the zero above is the id resolving to nothing and not a
+     container that could not have moved. *)
+  let q = queued [ ("scroll-unknown-host", delta 0.5) ] in
+  Nopal_web.drain_scroll_by q;
+  Alcotest.(check int)
+    "the same delta under the right id writes once" 1 (scroll_writes container);
+  Alcotest.(check (float 0.001))
+    "and lands where it asked" 50. (scroll_top container)
+
+let test_non_scrollable_target_is_a_no_op () =
+  (* The cost of naming a container by a document-wide id: the id can be
+     carried by something that is not a scroll container at all. Nothing
+     special-cases that — an element with no viewport and no content has no
+     offset to move to, so the arithmetic answers "leave it alone" by itself. *)
+  let target = Brr.El.to_jv (div_with_id "scroll-flat-target") in
+  let q = queued [ ("scroll-flat-target", delta 0.5) ] in
+  Nopal_web.drain_scroll_by q;
+  Alcotest.(check int)
+    "an element that cannot scroll is written to zero times" 0
+    (scroll_writes target);
+  Alcotest.(check (float 0.001)) "and stays at the top" 0. (scroll_top target);
+  (* Affirmative arm on the same element: give it a viewport and content taller
+     than that viewport and the identical request moves it, so the zero above is
+     the measurement and not the id having failed to resolve. *)
+  let content = Brr.El.v (Jstr.v "div") [] in
+  ignore (Jv.call target "appendChild" [| Brr.El.to_jv content |]);
+  Jv.Float.set (Brr.El.to_jv content) "_layoutHeight" 300.;
+  Jv.Float.set target "_clientHeight" 100.;
+  let q = queued [ ("scroll-flat-target", delta 0.5) ] in
+  Nopal_web.drain_scroll_by q;
+  Alcotest.(check int)
+    "once it has something to scroll, the same request writes once" 1
+    (scroll_writes target);
+  Alcotest.(check (float 0.001))
+    "half of its now-visible height" 50. (scroll_top target)
+
+let test_empty_queue_touches_nothing () =
+  let _dispatch, _handle, container = laid_out_pane "scroll-empty-queue" in
+  let q = queued [] in
+  Nopal_web.drain_scroll_by q;
+  Alcotest.(check int)
+    "a frame that requested nothing writes nothing" 0 (scroll_writes container);
+  Alcotest.(check (float 0.001))
+    "and the container is untouched" 0. (scroll_top container);
+  (* Affirmative arm on the same container: it would have moved had the queue
+     held anything, so the zero above is the empty queue and not a fixture the
+     drain could never have moved. *)
+  let q = queued [ ("scroll-empty-queue", delta 0.5) ] in
+  Nopal_web.drain_scroll_by q;
+  Alcotest.(check int)
+    "the same container moves once the queue holds a request" 1
+    (scroll_writes container);
+  Alcotest.(check (float 0.001)) "by half its height" 50. (scroll_top container)
+
+let test_two_deltas_compose () =
+  let _dispatch, _handle, container = laid_out_pane "scroll-compose" in
+  let q =
+    queued [ ("scroll-compose", delta 0.5); ("scroll-compose", delta 0.5) ]
+  in
+  Nopal_web.drain_scroll_by q;
+  (* Each request measures the offset the container holds when it is applied, so
+     two half-viewport requests move a whole viewport. A drain that measured
+     once and applied both against that measurement would land on 50. *)
+  Alcotest.(check (float 0.001))
+    "two half-viewport requests in one frame move a full viewport" 100.
+    (scroll_top container);
+  Alcotest.(check int) "each one writes" 2 (scroll_writes container)
+
+let test_reveal_then_scroll_lands_at_the_scroll () =
+  let dispatch, handle, container = laid_out_pane "scroll-reveal-first" in
+  (* Issued before the render pass, which is where a command is really
+     interpreted: the runtime acts on it during dispatch, and the frame's DOM
+     patch has not happened yet. *)
+  let q = queued [ ("scroll-reveal-first", delta (-0.5)) ] in
+  Nopal_web.Renderer.update ~dispatch handle
+    (scroll_of_rows
+       ~attrs:[ ("id", "scroll-reveal-first") ]
+       plain_rows
+       (Some (Nopal_element.Reveal.nearest "row-4")));
+  Alcotest.(check (float 0.001))
+    "the reveal moves the container first" 150. (scroll_top container);
+  Nopal_web.drain_scroll_by q;
+  Alcotest.(check (float 0.001))
+    "and the relative scroll moves it again, from where the reveal left it" 100.
+    (scroll_top container);
+  Alcotest.(check int) "one write each" 2 (scroll_writes container)
+
+let test_scroll_then_reveal_lands_at_the_scroll () =
+  let dispatch, handle, container = laid_out_pane "scroll-reveal-second" in
+  Nopal_web.Renderer.update ~dispatch handle
+    (scroll_of_rows
+       ~attrs:[ ("id", "scroll-reveal-second") ]
+       plain_rows
+       (Some (Nopal_element.Reveal.nearest "row-4")));
+  (* The mirror of the case above: the request is enqueued after the pass rather
+     than before it, and the container ends in the same place. What decides the
+     outcome is the order the drains run in, not the order the two were asked
+     for. *)
+  let q = queued [ ("scroll-reveal-second", delta (-0.5)) ] in
+  Nopal_web.drain_scroll_by q;
+  Alcotest.(check (float 0.001))
+    "the same pairing, enqueued the other way round, lands identically" 100.
+    (scroll_top container);
+  Alcotest.(check int) "one write each" 2 (scroll_writes container)
+
+(* A container whose rows carry both a key and an id, because the three-stage
+   order needs all three writers pointed at one container at once: a reveal
+   names a row by its key, a relative scroll names the container by its id, and
+   a focus names a row by its id. *)
+let boxes_pane ~id ~reveal ~rows =
+  Scroll
+    {
+      style = default;
+      attrs = [ ("id", id) ];
+      reveal;
+      child =
+        Column
+          {
+            style = default;
+            interaction = Nopal_style.Interaction.default;
+            attrs = [];
+            children =
+              List.init rows (fun i ->
+                  Keyed
+                    {
+                      key = "row-" ^ string_of_int i;
+                      child =
+                        Box
+                          {
+                            style = default;
+                            interaction = Nopal_style.Interaction.default;
+                            attrs = [ ("id", id ^ "-row-" ^ string_of_int i) ];
+                            children = [];
+                            on_pointer_move = None;
+                            on_pointer_leave = None;
+                            on_pointer_down = None;
+                            on_pointer_up = None;
+                            on_wheel = None;
+                          };
+                    });
+          };
+    }
+
+let laid_out_boxes id =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let rows = List.length plain_rows in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (boxes_pane ~id ~reveal:None ~rows)
+  in
+  let container = Nopal_web.Renderer.dom_node handle in
+  Jv.Float.set container "_clientHeight" visible_height;
+  Jv.Float.set container "_borderTop" border_top;
+  (match child_nodes container with
+  | [] -> Alcotest.fail "the fixture rendered no column to lay out"
+  | column :: _ ->
+      List.iteri
+        (fun i row ->
+          Jv.Float.set row "_layoutTop" (float_of_int i *. row_height);
+          Jv.Float.set row "_layoutHeight" row_height)
+        (child_nodes column));
+  reset_scroll_writes container;
+  (dispatch, handle, container)
+
+let test_focus_after_scroll_wins () =
+  let dispatch, handle, container = laid_out_boxes "scroll-focus-pane" in
+  reset_focus_log ();
+  let scrolls = queued [ ("scroll-focus-pane", delta (-0.5)) ] in
+  let focuses = queued [ "scroll-focus-pane-row-5" ] in
+  (* All three stages act on this one container in this one frame, each aimed
+     somewhere different, so the order they run in is the only thing that can
+     decide where the container ends up. *)
+  Nopal_web.Renderer.update ~dispatch handle
+    (boxes_pane ~id:"scroll-focus-pane"
+       ~reveal:(Some (Nopal_element.Reveal.nearest "row-3"))
+       ~rows:(List.length plain_rows));
+  Alcotest.(check (float 0.001))
+    "the reveal moves the container first" 100. (scroll_top container);
+  Nopal_web.drain_scroll_by scrolls;
+  Alcotest.(check (float 0.001))
+    "the relative scroll moves it second, from where the reveal left it" 50.
+    (scroll_top container);
+  Nopal_web.drain_focus focuses;
+  Alcotest.(check (list string))
+    "the focus reaches the child it named"
+    [ "scroll-focus-pane-row-5" ]
+    (focus_log ());
+  (* The focus path passes no options object, so the browser's own
+     scroll-into-view applies and overwrites the offset the other two stages
+     agreed on. Declining it needs [{ preventScroll: true }], which this backend
+     does not pass; the number below is what a consumer batching the two gets
+     today, pinned so that changing it has to be deliberate. *)
+  Alcotest.(check (float 0.001))
+    "and focusing an off-screen child overwrites that offset last" 200.
+    (scroll_top container);
+  Alcotest.(check int)
+    "one write from each of the three" 3 (scroll_writes container)
+
+let test_unchanged_reveal_still_writes_nothing () =
+  let dispatch, handle, container = laid_out_pane "scroll-reveal-edge" in
+  let declared key = Some (Nopal_element.Reveal.nearest key) in
+  let pass key =
+    Nopal_web.Renderer.update ~dispatch handle
+      (scroll_of_rows ~attrs:[ ("id", "scroll-reveal-edge") ] plain_rows key)
+  in
+  pass (declared "row-4");
+  Alcotest.(check (float 0.001))
+    "the first declaration moves the container" 150. (scroll_top container);
+  reset_scroll_writes container;
+  (* Two further passes, each rebuilding a fresh but structurally equal
+     declaration exactly as a view rebuilding its output every frame would. A
+     guard written as physical equality would fire here and hide nothing; one
+     written as an edge over the value is what keeps the count at zero. *)
+  pass (declared "row-4");
+  pass (declared "row-4");
+  Alcotest.(check int)
+    "an unchanged declaration writes nothing, twice over" 0
+    (scroll_writes container);
+  Alcotest.(check (float 0.001))
+    "and the container stays where the first pass put it" 150.
+    (scroll_top container);
+  (* Affirmative arm on the same fixture: a declaration that did change still
+     moves it, so the zero above is the edge trigger and not a reveal path that
+     stopped working. *)
+  pass (Some (Nopal_element.Reveal.center "row-3"));
+  Alcotest.(check int)
+    "a changed declaration writes once" 1 (scroll_writes container);
+  Alcotest.(check (float 0.001))
+    "centring row-3 in a 100-tall viewport" 125. (scroll_top container)
+
 let () =
   Alcotest.run "nopal_web"
     [
+      ( "relative scroll drain",
+        [
+          Alcotest.test_case "scrolls a container by half its height" `Quick
+            test_scrolls_container_by_half_its_height;
+          Alcotest.test_case "unknown id is a no-op" `Quick
+            test_unknown_id_is_a_no_op;
+          Alcotest.test_case "non-scrollable target is a no-op" `Quick
+            test_non_scrollable_target_is_a_no_op;
+          Alcotest.test_case "empty queue touches nothing" `Quick
+            test_empty_queue_touches_nothing;
+          Alcotest.test_case "two deltas compose" `Quick test_two_deltas_compose;
+          Alcotest.test_case "reveal then scroll lands at the scroll" `Quick
+            test_reveal_then_scroll_lands_at_the_scroll;
+          Alcotest.test_case "scroll then reveal lands at the scroll" `Quick
+            test_scroll_then_reveal_lands_at_the_scroll;
+          Alcotest.test_case "focus after scroll wins" `Quick
+            test_focus_after_scroll_wins;
+          Alcotest.test_case "unchanged reveal still writes nothing" `Quick
+            test_unchanged_reveal_still_writes_nothing;
+        ] );
       ( "reveal application",
         [
           Alcotest.test_case "scrolls the container" `Quick
@@ -3266,6 +3730,17 @@ let () =
             test_drain_focus_fifo_last_wins;
           Alcotest.test_case "unknown id is a no-op" `Quick
             test_drain_focus_unknown_id_is_noop;
+        ] );
+      ( "shim id resolution",
+        [
+          Alcotest.test_case "resolves a rendered element by id" `Quick
+            test_shim_resolves_a_rendered_element_by_id;
+          Alcotest.test_case "returns null for an unknown id" `Quick
+            test_shim_returns_null_for_unknown_id;
+          Alcotest.test_case "prefers a registered focus target" `Quick
+            test_shim_prefers_a_registered_focus_target;
+          Alcotest.test_case "resolves duplicates to first in tree order" `Quick
+            test_shim_resolves_duplicates_to_first_in_tree_order;
         ] );
       ( "element creation",
         [
@@ -3331,6 +3806,8 @@ let () =
             test_reconcile_box_updates_changed_attrs;
           Alcotest.test_case "reconcile box removes stale attrs" `Quick
             test_reconcile_box_removes_stale_attrs;
+          Alcotest.test_case "scroll renders and reconciles attrs" `Quick
+            test_scroll_renders_and_reconciles_attrs;
           Alcotest.test_case "reconcile button skips unchanged attrs" `Quick
             test_reconcile_button_skips_unchanged_attrs;
           Alcotest.test_case "reconcile input skips unchanged placeholder"

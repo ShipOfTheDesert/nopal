@@ -53,6 +53,25 @@ end
 
 module RS = Nopal_runtime.Runtime.Make (Sub_telemetry_app)
 
+(* App whose every message issues a relative-scroll request, so one dispatch
+   produces both a recorded command and a platform call. The container id and
+   the delta are named once here and reused by the assertion. *)
+let pane_id = "reading-pane"
+let requested = Nopal_element.Scroll_delta.viewports 0.5
+
+module Scroll_telemetry_app :
+  Nopal_mvu.App.S with type model = int and type msg = int = struct
+  type model = int
+  type msg = int
+
+  let init () = (0, Nopal_mvu.Cmd.none)
+  let update model msg = (model + msg, Nopal_mvu.Cmd.scroll_by pane_id requested)
+  let view _vp model = Nopal_element.Element.text (string_of_int model)
+  let subscriptions _model = Nopal_mvu.Sub.none
+end
+
+module RSB = Nopal_runtime.Runtime.Make (Scroll_telemetry_app)
+
 let test_dispatch_records_message_and_transition () =
   let rt, handle =
     R.create_with_telemetry ~serialize_msg:string_of_int
@@ -131,6 +150,34 @@ let test_omitted_serialiser_yields_placeholder () =
     ]
     (Telemetry.events handle)
 
+(* Two claims on one dispatch. The label is the only name the telemetry mirror
+   exposes for this command, so a rename has to break something here. The
+   second is that [create_with_telemetry] threads its platform callback as
+   [create] does — recording a command is not the same as routing it, and this
+   constructor could accept the argument and drop it without the first
+   assertion noticing. *)
+let test_scroll_by_recorded_with_its_describe_label () =
+  let seen = ref [] in
+  let rt, handle =
+    RSB.create_with_telemetry
+      ~scroll_by:(fun id delta -> seen := !seen @ [ (id, delta) ])
+      ~serialize_msg:string_of_int ~serialize_model:string_of_int ()
+  in
+  RSB.start rt;
+  RSB.dispatch rt 1;
+  Alcotest.(check (list event_testable))
+    "the relative-scroll command is recorded under its describe label"
+    [
+      Telemetry.Message "1";
+      Telemetry.Model_transition { before = "0"; after = "1" };
+      Telemetry.Command "scroll_by";
+    ]
+    (Telemetry.events handle);
+  Alcotest.check Scroll_request.requests
+    "and the recording constructor routed the request to its callback"
+    [ (pane_id, requested) ]
+    !seen
+
 let () =
   Alcotest.run "runtime_telemetry"
     [
@@ -146,5 +193,7 @@ let () =
             test_plain_runtime_records_nothing;
           Alcotest.test_case "omitted serialiser yields placeholder" `Quick
             test_omitted_serialiser_yields_placeholder;
+          Alcotest.test_case "scroll_by recorded with its describe label" `Quick
+            test_scroll_by_recorded_with_its_describe_label;
         ] );
     ]

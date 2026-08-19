@@ -158,6 +158,21 @@ val drain_focus : string Queue.t -> unit
     testing the drain order and last-wins result; not part of the behavioural
     API. *)
 
+val drain_scroll_by : (string * Nopal_element.Scroll_delta.t) Queue.t -> unit
+(** [drain_scroll_by pending] applies each queued relative-scroll request in
+    request order, emptying the queue. A request names its container by DOM id;
+    the container's own scroll offset, visible height and content height are
+    measured, {!Nopal_element.Scroll_delta.offset_for} is asked where the
+    container must sit, and only an answer it gives is written. Both ways of not
+    acting are the same no-op and neither is reported: an id naming nothing, and
+    a measurement that leaves the container where it already is.
+
+    Requests compose rather than overwrite, because each is measured against the
+    offset the container holds when it is applied. Called once per frame after
+    {!Renderer.update} and before the focus drain, so a request sizes itself
+    against the layout the frame produced. Exposed for unit testing that
+    ordering and that arithmetic; not part of the behavioural API. *)
+
 module Storage = Storage
 (** Browser localStorage access. See {!Storage}. *)
 

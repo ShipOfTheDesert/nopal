@@ -11,6 +11,7 @@
 //   - Element: querySelector / querySelectorAll over a single attribute
 //     selector, and the vertical scroll geometry (scrollTop, clientHeight,
 //     clientTop, scrollHeight, getBoundingClientRect) — see "Layout" below
+//   - document.getElementById — see "Element lookup by id" below
 //   - window.requestAnimationFrame, setTimeout, getComputedStyle
 //   - CSS.escape
 //   - Event, KeyboardEvent, InputEvent constructors
@@ -56,6 +57,61 @@
 // laid out has `clientHeight` 0 and a zero-height rect, so a test that forgets
 // to lay out its fixture sees nothing move.
 //
+// ## Element lookup by id
+//
+// `document.getElementById` resolves in a fixed order, and the order is the
+// contract rather than an accident of how it was written:
+//
+//   1. A registered focus target, if one was registered under that id. These
+//      are synthetic objects with a `focus` method and no geometry, created by
+//      `_registerFocusTarget` so a test can assert the focus drain's order and
+//      its last-wins result. They win, because a test that registered one is
+//      asking about the drain, not about a rendered node.
+//   2. Otherwise the first created element carrying that id as an attribute.
+//      This is what lets a test resolve a container the renderer just built and
+//      then measure or scroll it.
+//   3. Otherwise `null`, which is what a browser answers for an id nothing
+//      carries. An unknown id is never an error here and never a fabricated
+//      element.
+//
+// The scan reads each element's current `id` attribute, so a container the
+// renderer renames stops answering to its old id and starts answering to the
+// new one, exactly as a live document would.
+//
+// Two divergences from a browser, stated rather than relied on:
+//
+//   - The scan covers every element `createElement` has produced, not the
+//     document tree, because renderer tests mount into a detached parent that
+//     is never appended to `document.body`. A browser would answer `null` for
+//     all of them. Restricting the scan to `document.documentElement` would
+//     make it useless here, so the wider scan is deliberate.
+//   - Creation order therefore stands in for tree order when two elements claim
+//     one id, and the first created wins. For anything the renderer produces
+//     the two orders coincide, since a parent is created before its children
+//     and siblings left to right. The consequence to know about is that an
+//     element created, given an id and then discarded still shadows a later one
+//     with the same id — within one test executable the registry is never
+//     pruned. Give each case its own ids rather than sharing one across cases.
+//
+// ## Focus
+//
+// A registered focus target's `focus()` records the call and becomes
+// `activeElement`, and nothing else — those objects have no geometry to move.
+//
+// A real created element's `focus()` also does what a browser's does with no
+// options object: after becoming `activeElement` it is brought into view
+// inside its nearest scrolling ancestor, which is moved by the smallest amount
+// that shows it. "Nearest scrolling ancestor" is read off the inline
+// `overflow` property, the same way a browser reads it, so an ordinary
+// container between the element and a scroll container is stepped over rather
+// than treated as a viewport.
+//
+// That second half is a platform default, not a convenience: a caller
+// suppresses it by passing `{ preventScroll: true }`, and nothing in this repo
+// passes any options at all. A shim whose `focus()` only logged would hide the
+// fact that focusing an off-screen element overwrites a scroll offset another
+// write just set.
+//
 // ## Maintenance Checklist (run when upgrading Brr)
 //
 // When Brr is upgraded to a new version, verify this shim still covers its
@@ -76,6 +132,8 @@
 //    - `Ev.listen`   -> addEventListener
 //    - `Ev.unlisten`  -> removeEventListener
 //    - `G.document`  -> globalThis.document
+//    - `Document.find_el_by_id` -> document.getElementById
+//    - `El.set_has_focus` -> element.focus()
 //
 // 4. After adding new shim APIs, add a corresponding test in
 //    test_nopal_web.ml that exercises the new DOM path.
@@ -84,6 +142,11 @@
   if (typeof globalThis.document !== "undefined") return;
 
   let idCounter = 0;
+
+  // Every element createElement has produced, in creation order, so
+  // getElementById can fall back to a scan of them. See "Element lookup by id"
+  // in the header block for what this does and does not model.
+  const createdElements = [];
 
   function makeClassList(el) {
     const classes = new Set();
@@ -161,6 +224,38 @@
       extent = Math.max(extent, (child._layoutTop || 0) + layoutHeight(child));
     }
     return extent;
+  }
+
+  // A scrolling box, read off the inline `overflow` property exactly as a
+  // browser reads it. An ordinary container that merely happens to be taller
+  // than its children is not one, so a focus walking outwards steps over it.
+  function isScrollPort(el) {
+    const overflow = el.style.overflow || "";
+    return overflow === "auto" || overflow === "scroll";
+  }
+
+  // The browser's default when an element is focused with no options object:
+  // bring it into view inside its nearest scrolling ancestor, moving that
+  // ancestor by the smallest amount that shows it. Already-visible elements
+  // move nothing. See "Focus" in the header block for why this is modelled.
+  function scrollIntoNearestView(el) {
+    let top = 0;
+    let node = el;
+    let parent = node.parentNode;
+    while (parent && parent.nodeType === 1) {
+      top += node._layoutTop || 0;
+      if (isScrollPort(parent)) {
+        const height = layoutHeight(el);
+        const view = parent.clientHeight;
+        const offset = parent.scrollTop;
+        if (top < offset) parent.scrollTop = top;
+        else if (top + height > offset + view)
+          parent.scrollTop = top + height - view;
+        return;
+      }
+      node = parent;
+      parent = node.parentNode;
+    }
   }
 
   // CSS.escape, per the CSSOM spec's serialize-an-identifier algorithm. Real
@@ -556,6 +651,15 @@
       };
     };
 
+    // See "Focus" in the header block: activeElement, the same log a
+    // registered target writes, and the platform's own scroll-into-view.
+    el.focus = function () {
+      const doc = globalThis.document;
+      doc.activeElement = el;
+      doc._focusLog.push(el.getAttribute("id") || "");
+      scrollIntoNearestView(el);
+    };
+
     // innerHTML setter: clears all children (write) and serializes (read)
     Object.defineProperty(el, "innerHTML", {
       get() {
@@ -623,6 +727,7 @@
       });
     }
 
+    createdElements.push(el);
     return el;
   }
 
@@ -677,11 +782,12 @@
     createElement: createElement,
     createTextNode: createTextNode,
     createComment: createComment,
-    // Focus test support: getElementById returns null (real-browser default for
-    // an unknown id) unless a target has been explicitly registered. Registered
-    // targets record every focus() call in order into _focusLog and update
-    // activeElement, so a test can assert the drain order and the last-wins
-    // result of Nopal_web.drain_focus.
+    // Focus test support. A registered target records every focus() call in
+    // order into _focusLog and updates activeElement, so a test can assert the
+    // drain order and the last-wins result of Nopal_web.drain_focus. Registered
+    // targets take precedence over the created-element scan in getElementById
+    // below; see "Element lookup by id" in the header block for the full order
+    // and for what the scan does and does not model.
     _focusLog: [],
     _focusTargets: {},
     _registerFocusTarget: function (id) {
@@ -697,9 +803,12 @@
       return el;
     },
     getElementById: function (id) {
-      return Object.prototype.hasOwnProperty.call(this._focusTargets, id)
-        ? this._focusTargets[id]
-        : null;
+      if (Object.prototype.hasOwnProperty.call(this._focusTargets, id))
+        return this._focusTargets[id];
+      for (const el of createdElements) {
+        if (el.getAttribute("id") === id) return el;
+      }
+      return null;
     },
     getElementsByName: function (_name) { return []; },
   };

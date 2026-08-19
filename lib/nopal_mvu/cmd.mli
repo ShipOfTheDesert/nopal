@@ -80,6 +80,14 @@ val focus : string -> 'msg t
     runtime interprets this by calling the platform's focus mechanism. Focus
     commands carry no message — they are pure side effects. *)
 
+val scroll_by : string -> Nopal_element.Scroll_delta.t -> 'msg t
+(** [scroll_by id delta] asks the platform to move the scroll container carrying
+    the DOM id [id] by [delta]. One-shot: it is acted on once and never
+    replayed, so several in one batch compose rather than overwrite. An [id]
+    naming nothing, or naming something that cannot scroll, is a no-op and not
+    an error. On a backend that renders no elements the request is inert, which
+    is also not an error. Like {!focus}, it carries no message. *)
+
 val map : ('a -> 'b) -> 'a t -> 'b t
 (** Transform the message type of a command. *)
 
@@ -89,8 +97,8 @@ val is_none : 'msg t -> bool
 
 val describe : 'msg t -> string
 (** A stable label naming the command's top-level constructor ([none] | [batch]
-    | [perform] | [task] | [after] | [focus]), for telemetry [Command] events.
-    Total over the variant. *)
+    | [perform] | [task] | [after] | [focus] | [scroll_by]), for telemetry
+    [Command] events. Total over the variant. *)
 
 val execute : 'msg dispatch -> 'msg t -> unit
 (** [execute dispatch cmd] interprets a command tree, calling [dispatch] for
@@ -110,16 +118,28 @@ val extract_focuses : 'msg t -> string list
 (** [extract_focuses cmd] collects all focus ids from a command tree, recursing
     into [batch]. *)
 
+val extract_scroll_bys : 'msg t -> (string * Nopal_element.Scroll_delta.t) list
+(** [extract_scroll_bys cmd] collects every relative-scroll request in a command
+    tree, recursing into [batch], in issue order. This is the only way a
+    structural test can see the request: unlike a declaration on an element, a
+    command leaves no trace in the element tree. *)
+
 val interpret :
   focus:(string -> unit) ->
+  scroll_by:(string -> Nopal_element.Scroll_delta.t -> unit) ->
   dispatch:'msg dispatch ->
   schedule_after:(int -> 'msg -> unit) ->
   'msg t ->
   unit
-(** [interpret ~focus ~dispatch ~schedule_after cmd] processes the entire
-    command tree in a single pass. [Perform] and [Task] nodes are executed with
-    [dispatch]. [After] nodes are passed to [schedule_after]. [Focus] nodes call
-    [focus] with the element id. [None] is ignored.
+(** [interpret ~focus ~scroll_by ~dispatch ~schedule_after cmd] processes the
+    entire command tree in a single pass. [Perform] and [Task] nodes are
+    executed with [dispatch]. [After] nodes are passed to [schedule_after].
+    [Focus] nodes call [focus] with the element id. [Scroll_by] nodes call
+    [scroll_by] with the container id and the delta. [None] is ignored.
+
+    [scroll_by] is a required label rather than an optional one: an interpreter
+    allowed to omit it would discard the request without saying so, which is the
+    silently-dropped-effect shape this codebase rules out.
 
     Note: [schedule_after] receives the raw message (['msg]), not a callback.
     The runtime wraps this to produce the [(int -> (unit -> unit) -> unit)]

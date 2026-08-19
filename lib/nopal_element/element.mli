@@ -144,6 +144,8 @@ type 'msg t =
   | Image of { style : Nopal_style.Style.t; src : string; alt : string }
   | Scroll of {
       style : Nopal_style.Style.t;
+      attrs : (string * string) list;
+          (** Application attributes, carried to the rendered container. *)
       reveal : Reveal.t option;
           (** [None] asks for nothing and costs nothing. *)
       child : 'msg t;
@@ -325,7 +327,12 @@ val image :
   ?style:Nopal_style.Style.t -> src:string -> alt:string -> unit -> 'msg t
 (** An image element. [src] and [alt] are required. *)
 
-val scroll : ?style:Nopal_style.Style.t -> ?reveal:Reveal.t -> 'msg t -> 'msg t
+val scroll :
+  ?style:Nopal_style.Style.t ->
+  ?attrs:(string * string) list ->
+  ?reveal:Reveal.t ->
+  'msg t ->
+  'msg t
 (** A scrollable container wrapping a single child.
 
     [reveal] names a keyed descendant that must be brought into view, and the
@@ -334,7 +341,17 @@ val scroll : ?style:Nopal_style.Style.t -> ?reveal:Reveal.t -> 'msg t -> 'msg t
     scrolls away from the named child keeps their position. See {!Reveal} for
     the whole rule and its consequences. Omitting the argument asks for nothing,
     and a container that asks for nothing behaves exactly as it did before the
-    argument existed. *)
+    argument existed.
+
+    [attrs] are application attributes, carried to the rendered container as
+    written. They are the container's own identity, which is what lets a
+    platform request name it directly instead of reaching it through a wrapper
+    around it; an [id] is the spelling a relative-scroll request resolves
+    against. The names and values are opaque application strings, never
+    interpreted here, and the list is compared in order, so two containers
+    carrying the same pairs in a different order are not equal. Omitting the
+    argument carries none, and a container carrying none renders exactly as it
+    did before the argument existed. *)
 
 val keyed : string -> 'msg t -> 'msg t
 (** [keyed key child] wraps [child] with a stable identity key.
