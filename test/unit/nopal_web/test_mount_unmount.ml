@@ -54,11 +54,18 @@ let keydown_listener_count () =
 
 let live_observers () = Jv.to_int (Jv.get Jv.global "__nopal_observer_live")
 
-(* Fire a window keydown carrying a plain key (no modifier), the trigger the
-   Key_app subscription turns into a [Bump]. *)
+(* Fire a window keydown carrying a plain key, the trigger the Key_app
+   subscription turns into a [Bump]. Both modifier flags are set explicitly and
+   false: the interpreter folds a held modifier into the key string, so leaving
+   either unsaid would leave it unstated whether this is the bare key at all. *)
 let fire_keydown () =
   let opts =
-    Jv.obj [| ("key", Jv.of_string "a"); ("shiftKey", Jv.of_bool false) |]
+    Jv.obj
+      [|
+        ("key", Jv.of_string "a");
+        ("ctrlKey", Jv.of_bool false);
+        ("shiftKey", Jv.of_bool false);
+      |]
   in
   let ev =
     Jv.new'

@@ -11,7 +11,7 @@ Homepage: nopal.run
 Every concern is a separate opam package with strict one-way dependency flow:
 
 ```
-nopal_mvu       ← MVU core (Cmd, Sub, App) — no UI or platform deps
+nopal_mvu       ← MVU core (Cmd, Sub, App, Task, Key_chord) — no UI or platform deps
 nopal_element   ← Element.t DSL — no platform deps
 nopal_style     ← Typed layout/paint — no platform deps
 nopal_storage   ← Backend-agnostic async key-value storage contract (module type S, In_memory, With_codec) — no platform deps
@@ -198,6 +198,7 @@ Sub.none                                                        (* no subs *)
 Sub.batch : 'msg Sub.t list -> 'msg Sub.t                       (* combine *)
 Sub.every : string -> int -> (unit -> 'msg) -> 'msg Sub.t       (* timer, key + ms *)
 Sub.on_keydown : string -> (string -> 'msg) -> 'msg Sub.t       (* global keydown *)
+Sub.on_key : string -> key:string -> prevent:bool -> 'msg -> 'msg Sub.t   (* one folded key string *)
 Sub.on_keyup : string -> (string -> 'msg) -> 'msg Sub.t         (* global keyup *)
 Sub.on_resize : string -> (int -> int -> 'msg) -> 'msg Sub.t    (* window resize *)
 Sub.on_visibility_change : string -> (bool -> 'msg) -> 'msg Sub.t
@@ -206,6 +207,14 @@ Sub.on_keydown_prevent : string -> (string -> ('msg * bool) option) -> 'msg Sub.
 Sub.custom : string -> (('msg -> unit) -> unit -> unit) -> 'msg Sub.t  (* setup returns cleanup *)
 Sub.map : ('a -> 'b) -> 'a Sub.t -> 'b Sub.t
 ```
+
+**Key strings are modifier-folded.** The string a keydown/keyup handler receives — and the string `on_key`'s `~key:` is compared against — folds the modifiers held during the event into the key name the platform reports. A held Ctrl becomes the prefix `Ctrl+`, a held Shift becomes `Shift+`, and when both are held they appear in the canonical order `Ctrl+Shift+key`, which is the only accepted spelling of a two-modifier chord. With neither held the key name passes through unchanged. Handlers match the whole string, never a substring: `"ArrowDown"` names bare ArrowDown and does not match Ctrl+ArrowDown, and `"Shift+Tab"` names Shift+Tab and does not match Ctrl+Shift+Tab.
+
+Letter case is the platform's own and differs between the two modifiers: Ctrl leaves a letter lowercase while Shift uppercases it, and Ctrl does not suppress that uppercasing — the chord on the D key is `"Ctrl+d"` under Ctrl alone, `"Shift+D"` under Shift alone and `"Ctrl+Shift+D"` under both. Punctuation that needs Shift to type arrives with Shift held, so it carries the prefix and the bare mark matches nothing: the question mark is `"Shift+?"`, while the bare key on that same physical key is `"/"` on a US layout.
+
+A keypress of the Ctrl or Shift key itself carries no prefixes at all, whichever other modifier is held, and reports the platform's own name: `"Control"` and `"Shift"`, which are not the prefix tokens `Ctrl+` and `Shift+`. A subscription matching a bare Ctrl press writes `~key:"Control"`; one matching a chord writes `~key:"Ctrl+d"`. Those two are the only key names exempt from prefixing — a keydown of the Alt key while Ctrl is held is `"Ctrl+Alt"`.
+
+Only Ctrl and Shift are folded, so a subscription naming a bare key still matches an Alt chord and a Meta chord — neither flag is read. The fold applies to these window-level key subscriptions only: `Element.input ~on_keydown` receives the platform's raw key name with no prefixes on it.
 
 ### Element DSL (`nopal_element`)
 
@@ -2565,7 +2574,7 @@ would let the same assertion spec run against web and Tauri) is tracked in
 
 ```
 lib/
-  nopal_mvu/         — Cmd, Sub, App — zero UI deps
+  nopal_mvu/         — Cmd, Sub, App, Task, Key_chord — zero UI deps
   nopal_element/     — Element.t DSL + Virtual_list + Reveal — zero platform deps
   nopal_style/       — Style.t, Text.t, Interaction.t, Cursor.t, Font, Color
                        (Color is the CSS-authoring colour type; distinct from
