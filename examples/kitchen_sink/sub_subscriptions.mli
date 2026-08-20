@@ -36,7 +36,12 @@ val update : model -> msg -> model * msg Nopal_mvu.Cmd.t
     - [KeyCaptured k] records the key. *)
 
 val view : Nopal_element.Viewport.t -> model -> msg Nopal_element.Element.t
-(** Renders the timer toggle, tick count, resize/visibility/key readouts. *)
+(** Renders the timer toggle, tick count, resize/visibility/key readouts, and
+    the copy stating the key-capture contract a reader of the running page needs
+    — the modifier prefixes, their canonical order, the letter case under each,
+    and the bare name a modifier keypress reports. The key readout echoes
+    whatever string the handler received, verbatim, so the page is where that
+    contract is observable rather than merely described. *)
 
 val subscriptions : model -> msg Nopal_mvu.Sub.t
 (** Always subscribes resize, visibility, and key-capture; adds the [every]
