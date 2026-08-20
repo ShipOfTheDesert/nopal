@@ -244,7 +244,11 @@ val input :
   ?on_keydown:(string -> 'msg option) ->
   string ->
   'msg t
-(** A text input. The positional argument is the current value. *)
+(** A text input. The positional argument is the current value. [on_keydown]
+    receives the key name exactly as the platform reports it, with no ["Ctrl+"]
+    or ["Shift+"] prefix added for the modifiers held during the event — unlike
+    the window-level key subscriptions, whose strings fold those modifiers into
+    the key name. *)
 
 val checkbox :
   ?style:Nopal_style.Style.t ->

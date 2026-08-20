@@ -120,6 +120,14 @@ let view _vp model =
       readout ~testid:"subs-visibility-readout"
         ("Visible: " ^ string_of_bool model.visible);
       readout ~testid:"subs-key-readout" key_label;
+      Element.text
+        "Key capture echoes the folded key string a subscription matches on. A \
+         held Ctrl becomes a Ctrl+ prefix and a held Shift a Shift+ prefix, \
+         always in the order Ctrl+Shift+key. Ctrl leaves a letter lowercase \
+         while Shift uppercases it, so the D key reads Ctrl+d under Ctrl \
+         alone, Shift+D under Shift alone and Ctrl+Shift+D under both. A \
+         modifier pressed by itself reports its own name, Control or Shift, \
+         with no prefix. Hold Ctrl and press D to see Ctrl+d above.";
     ]
 
 (* Subscriptions *)

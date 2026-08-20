@@ -9,5 +9,6 @@
   test_app
   test_task
   test_task_cancellation
-  test_task_guard_once)
+  test_task_guard_once
+  test_key_chord)
  (libraries nopal_mvu nopal_element alcotest))

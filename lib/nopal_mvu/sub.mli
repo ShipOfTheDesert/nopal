@@ -25,18 +25,60 @@ val on_keydown : string -> (string -> ('msg * bool) option) -> 'msg t
     - [None] to ignore the key entirely
 
     This unifies the former plain-keydown and preventDefault-capable forms into
-    a single constructor. *)
+    a single constructor.
+
+    The key string folds the modifiers held during the event into the key name
+    the platform reports, and it is the whole string a handler matches on, never
+    a substring of one. A held Ctrl becomes the prefix ["Ctrl+"] and a held
+    Shift becomes ["Shift+"]; when both are held the prefixes appear in the
+    canonical order ["Ctrl+Shift+"], which is the only accepted spelling of a
+    two-modifier chord. With neither held the key name passes through unchanged.
+    So ["ArrowDown"] names bare ArrowDown and does not match Ctrl+ArrowDown, and
+    ["Shift+Tab"] names Shift+Tab and does not match Ctrl+Shift+Tab; a handler
+    wanting both spellings matches both.
+
+    Letter case is the platform's own and differs between the two modifiers:
+    Ctrl leaves a letter lowercase while Shift uppercases it, and Ctrl does not
+    suppress that uppercasing. The chord on the D key is therefore ["Ctrl+d"]
+    under Ctrl alone, ["Shift+D"] under Shift alone, and ["Ctrl+Shift+D"] under
+    both. Nothing here transforms the case; the browser does.
+
+    Punctuation that needs Shift to type arrives with Shift held, so its string
+    carries the prefix and a subscriber who writes the bare mark matches
+    nothing: the question mark is ["Shift+?"]. The bare key on that same
+    physical key is a different string again — ["/"] on a US layout, which is
+    the layout every spelling in this comment is drawn from.
+
+    A keypress of the Ctrl or Shift key itself carries no prefixes at all,
+    whichever other modifier is held: pressing Ctrl while Shift is down is
+    ["Control"], and releasing Shift while Ctrl is still down is ["Shift"]. The
+    names the modifier keys report are ["Control"] and ["Shift"], which are not
+    the prefix tokens ["Ctrl+"] and ["Shift+"] — a subscription matching a bare
+    Ctrl press writes ["Control"], one matching a chord writes ["Ctrl+d"], and
+    the two vocabularies genuinely differ.
+
+    Only Ctrl and Shift are folded. A subscription naming a bare key therefore
+    still matches an Alt chord and a Meta chord, because neither of those flags
+    is read, and those two are also the only key names the no-prefix rule above
+    covers: a keydown of the Alt key while Ctrl is held is ["Ctrl+Alt"]. *)
 
 val on_key : string -> key:string -> prevent:bool -> 'msg -> 'msg t
 (** [on_key sub_key ~key ~prevent msg] is a convenience over {!on_keydown} for
     the match-one-key case: it dispatches [msg] (preventing default when
     [prevent]) on the keydown of [key] and ignores every other key. [prevent] is
-    required — there is no behavioural default. *)
+    required — there is no behavioural default. [key] is compared against the
+    whole modifier-folded key string documented on {!on_keydown}, so a bare key
+    name here means that key with neither Ctrl nor Shift held, and a chord is
+    named by its prefixes: ["Ctrl+d"], ["Shift+Tab"], ["Ctrl+Shift+D"]. *)
 
 val on_keyup : string -> (string -> 'msg option) -> 'msg t
 (** [on_keyup key f] subscribes to global keyup events. [f] returns [None] to
     ignore the key. There is no prevent flag — keyup has no default action to
-    prevent. *)
+    prevent. [f] receives the same modifier-folded key string documented on
+    {!on_keydown}, built from the modifiers still held at the moment of the
+    release: releasing D while Ctrl is still down is ["Ctrl+d"], while releasing
+    the Ctrl key itself is ["Control"], because a modifier's own flag is already
+    clear on its release. *)
 
 val on_resize : string -> (int -> int -> 'msg) -> 'msg t
 (** [on_resize key f] subscribes to window resize events. [f] receives width and

@@ -143,15 +143,16 @@ let drain_scroll_by pending =
   done
 
 (* The DOM keydown/keyup [event.key] string the subscription handler receives.
-   A held [Shift] is folded into a ["Shift+<key>"] prefix (except for the bare
-   [Shift] keypress itself) so handlers can match chords like ["Shift+Tab"]
-   without reading the modifier flags themselves — preserving the contract the
-   pre-interpreter rAF keydown listener established (REQ-F3). *)
+   This reads the two modifier flags off the event and hands them to
+   {!Nopal_mvu.Key_chord.of_event}, which owns the grammar; the contract a
+   subscriber matches against is stated on the subscription interface in
+   {!Nopal_mvu.Sub}, and is deliberately not restated here where it could drift
+   away from the signature people read. *)
 let event_key event =
-  let raw_key = Jv.to_string (Jv.get event "key") in
-  let shift = Jv.to_bool (Jv.get event "shiftKey") in
-  if shift && not (String.equal raw_key "Shift") then "Shift+" ^ raw_key
-  else raw_key
+  Nopal_mvu.Key_chord.of_event
+    ~key:(Jv.to_string (Jv.get event "key"))
+    ~ctrl:(Jv.to_bool (Jv.get event "ctrlKey"))
+    ~shift:(Jv.to_bool (Jv.get event "shiftKey"))
 
 (* Web backend's per-atom subscription interpreter handed to the runtime
    ([Sub_manager.diff] via [Runtime.create ~interpret_atom]). Exhaustive over
