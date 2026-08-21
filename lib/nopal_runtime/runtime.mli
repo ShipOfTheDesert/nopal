@@ -10,6 +10,7 @@ module Make (A : Nopal_mvu.App.S) : sig
 
   val create :
     ?focus:(string -> unit) ->
+    ?scroll_by:(string -> Nopal_element.Scroll_delta.t -> unit) ->
     ?schedule_after:(int -> (unit -> unit) -> unit) ->
     ?on_error:(string -> unit) ->
     ?interpret_atom:
@@ -18,12 +19,19 @@ module Make (A : Nopal_mvu.App.S) : sig
       (unit -> unit, string) result) ->
     unit ->
     t
-  (** [create ?focus ?schedule_after ?on_error ()] builds a runtime for the app
-      [A].
+  (** [create ?focus ?scroll_by ?schedule_after ?on_error ()] builds a runtime
+      for the app [A].
 
       [focus id] is a platform-provided callback used to implement
       {!Nopal_mvu.Cmd.focus}. Defaults to a no-op. The web backend passes a
       callback that calls [document.getElementById(id).focus()].
+
+      [scroll_by id delta] is a platform-provided callback used to implement
+      {!Nopal_mvu.Cmd.scroll_by}: it moves the scroll container carrying the DOM
+      id [id] by [delta]. Defaults to a no-op, so a runtime on a backend that
+      renders no elements leaves the request inert rather than reporting it —
+      the same posture [focus] takes. The web backend passes a callback that
+      queues the request for the drain running after the frame's DOM patch.
 
       [schedule_after ms callback] is a platform-provided timer used to
       implement {!Nopal_mvu.Cmd.after}. Defaults to a no-op that silently drops
@@ -57,6 +65,7 @@ module Make (A : Nopal_mvu.App.S) : sig
 
   val create_with_telemetry :
     ?focus:(string -> unit) ->
+    ?scroll_by:(string -> Nopal_element.Scroll_delta.t -> unit) ->
     ?schedule_after:(int -> (unit -> unit) -> unit) ->
     ?on_error:(string -> unit) ->
     ?interpret_atom:
@@ -67,16 +76,16 @@ module Make (A : Nopal_mvu.App.S) : sig
     ?serialize_model:(A.model -> string) ->
     unit ->
     t * Telemetry.handle
-  (** [create_with_telemetry ?focus ?schedule_after ?serialize_msg
+  (** [create_with_telemetry ?focus ?scroll_by ?schedule_after ?serialize_msg
        ?serialize_model ()] builds a runtime that records every dispatched
       message, model transition, issued command, and subscription firing into an
       in-process log, and returns it alongside the {!Telemetry.handle} that
       queries that log.
 
-      [focus], [schedule_after], [on_error], and [interpret_atom] behave exactly
-      as in {!create}. The returned runtime has the same type [t] and identical
-      loop semantics — telemetry only observes, it never alters dispatch
-      behaviour (REQ-N3).
+      [focus], [scroll_by], [schedule_after], [on_error], and [interpret_atom]
+      behave exactly as in {!create}. The returned runtime has the same type [t]
+      and identical loop semantics — telemetry only observes, it never alters
+      dispatch behaviour (REQ-N3).
 
       [serialize_msg] / [serialize_model] render recorded values to the strings
       stored in [Message] and [Model_transition] events. Each defaults to

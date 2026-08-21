@@ -211,6 +211,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     file_input : Sub_file_input.model;
     receipt_flow : Sub_receipt_flow.model;
     reveal_list : Sub_reveal_list.model;
+    scroll_pane : Sub_scroll_pane.model;
     keyboard_height : int;  (** soft-keyboard height in logical px (REQ-N2) *)
     back_route : back_route;  (** current route of the back-navigation demo *)
   }
@@ -249,6 +250,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | File_input_msg of Sub_file_input.msg
     | Receipt_flow_msg of Sub_receipt_flow.msg
     | Reveal_list_msg of Sub_reveal_list.msg
+    | Scroll_pane_msg of Sub_scroll_pane.msg
     | KeyboardHeightChanged of int  (** native soft-keyboard height (REQ-F5) *)
     | Back_demo_push  (** push the back-demo one step deep (to [Back_detail]) *)
     | Route_changed of back_route  (** popstate-driven route update (REQ-F3) *)
@@ -379,6 +381,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     let file_input, file_input_cmd = Sub_file_input.init () in
     let receipt_flow, receipt_flow_cmd = Sub_receipt_flow.init () in
     let reveal_list, reveal_list_cmd = Sub_reveal_list.init () in
+    let scroll_pane, scroll_pane_cmd = Sub_scroll_pane.init () in
     ( {
         button_clicks = 0;
         input_text = "";
@@ -446,6 +449,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         file_input;
         receipt_flow;
         reveal_list;
+        scroll_pane;
         keyboard_height = 0;
         back_route = Back_home;
       },
@@ -468,6 +472,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           Nopal_mvu.Cmd.map (fun m -> File_input_msg m) file_input_cmd;
           Nopal_mvu.Cmd.map (fun m -> Receipt_flow_msg m) receipt_flow_cmd;
           Nopal_mvu.Cmd.map (fun m -> Reveal_list_msg m) reveal_list_cmd;
+          Nopal_mvu.Cmd.map (fun m -> Scroll_pane_msg m) scroll_pane_cmd;
           (* Re-read the persisted demo value so a reload dispatches a
              [StorageRestored] message — the E2E persistence proof (REQ-F3). *)
           Nopal_mvu.Cmd.task
@@ -637,6 +642,12 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         in
         ( { model with reveal_list },
           Nopal_mvu.Cmd.map (fun m -> Reveal_list_msg m) rl_cmd )
+    | Scroll_pane_msg sp_msg ->
+        let scroll_pane, sp_cmd =
+          Sub_scroll_pane.update model.scroll_pane sp_msg
+        in
+        ( { model with scroll_pane },
+          Nopal_mvu.Cmd.map (fun m -> Scroll_pane_msg m) sp_cmd )
     | DrawPointerMove (x, y) ->
         ({ model with draw_pointer = Some (x, y) }, Nopal_mvu.Cmd.none)
     | DrawPointerLeave ->
@@ -3709,6 +3720,19 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                  (fun m -> Reveal_list_msg m)
                  (Sub_reveal_list.view vp model.reveal_list);
              ];
+           (* Beside the reveal section on purpose: one container, two ways of
+              moving it. The reveal is a declaration compared for change and the
+              relative movement is a one-shot request, and the waypoint control
+              here fires both at once so the order they are applied in is
+              visible rather than argued. *)
+           view_section
+             ~attrs:[ ("data-testid", "scroll-pane-section") ]
+             "Relative scroll of a scroll container"
+             [
+               Element.map
+                 (fun m -> Scroll_pane_msg m)
+                 (Sub_scroll_pane.view vp model.scroll_pane);
+             ];
            view_section
              ~attrs:[ ("data-testid", "navigation-bar-section") ]
              "Navigation Bar"
@@ -3787,6 +3811,9 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         Nopal_mvu.Sub.map
           (fun m -> Reveal_list_msg m)
           (Sub_reveal_list.subscriptions model.reveal_list);
+        Nopal_mvu.Sub.map
+          (fun m -> Scroll_pane_msg m)
+          (Sub_scroll_pane.subscriptions model.scroll_pane);
         (* Back-demo router consumer (REQ-F3): a [popstate] (from
            [window.history.back()], itself fired by the hardware-back IPC) parses
            the URL and dispatches [Route_changed], returning the demo to its prior
@@ -3812,4 +3839,5 @@ module Sub_subscriptions = Sub_subscriptions
 module Sub_file_input = Sub_file_input
 module Sub_receipt_flow = Sub_receipt_flow
 module Sub_reveal_list = Sub_reveal_list
+module Sub_scroll_pane = Sub_scroll_pane
 module Tauri_op = Tauri_op

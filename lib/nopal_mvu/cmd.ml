@@ -7,6 +7,7 @@ type 'msg t =
   | Task of 'msg Task.t
   | After of { ms : int; msg : 'msg }
   | Focus of { id : string }
+  | Scroll_by of { id : string; delta : Nopal_element.Scroll_delta.t }
 
 let none = None
 
@@ -21,6 +22,7 @@ let perform f = Perform f
 let task t = Task t
 let after ms msg = After { ms; msg }
 let focus id = Focus { id }
+let scroll_by id delta = Scroll_by { id; delta }
 
 let is_none = function
   | None -> true
@@ -28,7 +30,8 @@ let is_none = function
   | Perform _
   | Task _
   | After _
-  | Focus _ ->
+  | Focus _
+  | Scroll_by _ ->
       false
 
 let describe = function
@@ -38,6 +41,7 @@ let describe = function
   | Task _ -> "task"
   | After _ -> "after"
   | Focus _ -> "focus"
+  | Scroll_by _ -> "scroll_by"
 
 let rec map f cmd =
   match cmd with
@@ -47,6 +51,7 @@ let rec map f cmd =
   | Task t -> Task (Task.map f t)
   | After { ms; msg } -> After { ms; msg = f msg }
   | Focus { id } -> Focus { id }
+  | Scroll_by { id; delta } -> Scroll_by { id; delta }
 
 let rec execute dispatch cmd =
   match cmd with
@@ -55,7 +60,8 @@ let rec execute dispatch cmd =
   | Perform f -> f dispatch
   | Task t -> Task.run t dispatch
   | After _
-  | Focus _ ->
+  | Focus _
+  | Scroll_by _ ->
       ()
 
 let extract_after = function
@@ -64,7 +70,8 @@ let extract_after = function
   | Batch _
   | Perform _
   | Task _
-  | Focus _ ->
+  | Focus _
+  | Scroll_by _ ->
       Option.none
 
 let extract_focus = function
@@ -73,7 +80,8 @@ let extract_focus = function
   | Batch _
   | Perform _
   | Task _
-  | After _ ->
+  | After _
+  | Scroll_by _ ->
       Option.none
 
 let rec extract_focuses = function
@@ -82,13 +90,26 @@ let rec extract_focuses = function
   | None
   | Perform _
   | Task _
-  | After _ ->
+  | After _
+  | Scroll_by _ ->
       []
 
-let rec interpret ~focus ~dispatch ~schedule_after = function
+let rec extract_scroll_bys = function
+  | Scroll_by { id; delta } -> [ (id, delta) ]
+  | Batch cmds -> List.concat_map extract_scroll_bys cmds
+  | None
+  | Perform _
+  | Task _
+  | After _
+  | Focus _ ->
+      []
+
+let rec interpret ~focus ~scroll_by ~dispatch ~schedule_after = function
   | None -> ()
-  | Batch cmds -> List.iter (interpret ~focus ~dispatch ~schedule_after) cmds
+  | Batch cmds ->
+      List.iter (interpret ~focus ~scroll_by ~dispatch ~schedule_after) cmds
   | Perform f -> f dispatch
   | Task t -> Task.run t dispatch
   | After { ms; msg } -> schedule_after ms msg
   | Focus { id } -> focus id
+  | Scroll_by { id; delta } -> scroll_by id delta

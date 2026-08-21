@@ -63,12 +63,27 @@ val mount :
     is embedded in a larger page and does not resize with the window, viewport
     updates may not fire.
 
-    [~on_error] is forwarded to {!Nopal_runtime.Runtime.Make.create}: it
-    receives a description of any exception raised by the app's [update],
+    [~on_error] is the mount's single fault sink, and two layers report through
+    it. It is forwarded to {!Nopal_runtime.Runtime.Make.create}, which sends it
+    a description of any exception raised by the app's [update],
     [subscriptions], an effect thunk, or telemetry serialization, and of every
-    post-shutdown dispatch that is dropped. When omitted, the runtime's default
-    (console report) applies. The kitchen sink wires it to a visible toast as
-    the reference pattern for surfacing runtime faults in a packaged app.
+    post-shutdown dispatch that is dropped. It also receives the faults the
+    frame itself catches — an exception escaping the DOM reconcile (which runs
+    the app's [view]), the relative-scroll drain, or the focus drain — since
+    nothing above a [requestAnimationFrame] callback would catch those, and
+    without this they would reach the browser as uncaught errors the application
+    cannot observe. Every description names the stage that failed, then the
+    exception, then its backtrace: [render pass], [scroll drain] (a failing
+    request also names its container id, in brackets), [focus drain], and the
+    runtime's own labels alongside them.
+
+    The two layers differ only in where a fault goes when [~on_error] is
+    omitted: the runtime falls back to its own default (console report), the
+    frame to this backend's, which tags the line with the backend name and
+    writes it to standard error. Supplying [~on_error] therefore also routes
+    render-pass and drain faults to it — the kitchen sink wires it to a visible
+    toast as the reference pattern for surfacing faults in a packaged app, so a
+    [view] that raises surfaces there too.
 
     This wires everything together: runtime creation, Lwd root subscription, DOM
     rendering, and event dispatch. It records no telemetry and installs no
@@ -157,6 +172,55 @@ val drain_focus : string Queue.t -> unit
     calls this once per frame after {!Renderer.update} (FR-3). Exposed for unit
     testing the drain order and last-wins result; not part of the behavioural
     API. *)
+
+val drain_scroll_by :
+  ?on_error:(string -> unit) ->
+  (string * Nopal_element.Scroll_delta.t) Queue.t ->
+  unit
+(** [drain_scroll_by pending] applies each queued relative-scroll request in
+    request order, emptying the queue. A request names its container by DOM id;
+    the container's own scroll offset, visible height and content height are
+    measured, {!Nopal_element.Scroll_delta.offset_for} is asked where the
+    container must sit, and only an answer it gives is written. Both ways of not
+    acting are the same no-op and neither is reported: an id naming nothing, and
+    a measurement that leaves the container where it already is.
+
+    [on_error] receives a description of any exception a request's measurement
+    or write raises — naming the stage and the container id of the request that
+    failed, so several queued requests stay tellable apart, and carrying the
+    exception and its backtrace — and the drain carries on with the rest of the
+    queue. Stopping at the failing request would strand the ones behind it, to
+    be applied on a later frame against a layout one patch newer, which is what
+    draining after the patch exists to prevent. It defaults to a report on
+    standard error; {!mount} and {!mount_with_telemetry} pass their own
+    [on_error] through, so an application's fault sink sees these too.
+
+    Requests compose rather than overwrite, because each is measured against the
+    offset the container holds when it is applied. Called once per frame after
+    {!Renderer.update} and before the focus drain, so a request sizes itself
+    against the layout the frame produced. The frame is also the only place it
+    is called, so requests issued while the page is hidden — where the browser
+    produces no frames — are not dropped but accumulate, and the first visible
+    frame applies the whole backlog composed; an application issuing them from a
+    timer can gate that on {!Nopal_mvu.Sub.on_visibility_change}.
+
+    Alongside that unbounded backlog, and recorded for the same reason it is —
+    as a decision rather than an oversight — the drain says nothing about what
+    it did. Four different situations reach the same silent outcome: an id
+    naming no element, an id naming an element with nothing to scroll, a
+    platform measurement that is not finite, and a delta the application
+    computed that is not finite. A telemetry log records that a relative-scroll
+    command was issued and never whether it landed, so a mis-typed id and a
+    container that would not have moved are indistinguishable from outside.
+    {!Nopal_mvu.Cmd.focus} sets the precedent that a request naming nothing is a
+    no-op and not a fault, and that is deliberately kept here. The trigger for
+    revisiting it is the first consumer that has to tell those two apart —
+    debugging a scroll that does not happen, with an id it cannot verify. Giving
+    the drain an outcome to report before then would be a guess at what the
+    outcome should say.
+
+    Exposed for unit testing that ordering and that arithmetic; not part of the
+    behavioural API. *)
 
 module Storage = Storage
 (** Browser localStorage access. See {!Storage}. *)

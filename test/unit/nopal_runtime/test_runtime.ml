@@ -171,6 +171,109 @@ let test_task_completion_after_shutdown_dropped_not_raised () =
     "model unchanged by post-shutdown completion" 0 (R.model rt);
   Alcotest.(check bool) "the late completion was reported" true (!errors <> [])
 
+(* ------------------------------------------------------------------ *)
+(* The relative-scroll platform callback                                *)
+(* ------------------------------------------------------------------ *)
+
+(* One container id and one delta, shared by every case below so a mismatch is
+   always about routing rather than about which fixture was used. *)
+let pane_id = "reading-pane"
+let requested = Nopal_element.Scroll_delta.viewports 0.5
+
+(* The message whose update issues the request. Every other message is an
+   ordinary model change, so the model reading is an independent witness that
+   the dispatch happened at all. *)
+let scroll_msg = 1
+
+(* App whose update turns [scroll_msg] into a relative-scroll request. The
+   request carries no message, so the only place it can become observable is a
+   platform callback — which is precisely what these cases are about. *)
+module Scroller : Nopal_mvu.App.S with type model = int and type msg = int =
+struct
+  type model = int
+  type msg = int
+
+  let init () = (0, Nopal_mvu.Cmd.none)
+
+  let update model msg =
+    let cmd =
+      if msg = scroll_msg then Nopal_mvu.Cmd.scroll_by pane_id requested
+      else Nopal_mvu.Cmd.none
+    in
+    (model + msg, cmd)
+
+  let view _vp model = Nopal_element.Element.text (string_of_int model)
+  let subscriptions _model = Nopal_mvu.Sub.none
+end
+
+module R_scroller = Nopal_runtime.Runtime.Make (Scroller)
+
+(* Run one scrolling message through a runtime built with (or without) a
+   platform callback, and hand back the model it reached and everything it
+   reported. Reaching the caller at all is the no-raise witness: an exception
+   escaping [start] or [dispatch] would fail the case before any assertion. *)
+let drive ?scroll_by () =
+  let errors = ref [] in
+  let rt =
+    R_scroller.create ?scroll_by ~on_error:(fun e -> errors := e :: !errors) ()
+  in
+  R_scroller.start rt;
+  R_scroller.dispatch rt scroll_msg;
+  (R_scroller.model rt, List.rev !errors)
+
+let append sink id delta = sink := !sink @ [ (id, delta) ]
+
+(* The constructor's default and an interpreter that quietly drops the request
+   are indistinguishable from a single sink, because both produce nothing. Two
+   runtimes with two sinks is what tells them apart: each request must land in
+   the sink its own constructor was handed, and nowhere else. *)
+let test_scroll_by_reaches_the_platform_callback () =
+  let first = ref [] in
+  let second = ref [] in
+  let model_first, errors_first = drive ~scroll_by:(append first) () in
+  Alcotest.check Scroll_request.requests
+    "the request the update issued reached this runtime's own callback"
+    [ (pane_id, requested) ]
+    !first;
+  Alcotest.(check (list string))
+    "an honoured request reports nothing" [] errors_first;
+  Alcotest.(check int)
+    "the model advanced, so the dispatch really happened" scroll_msg model_first;
+  let model_second, errors_second = drive ~scroll_by:(append second) () in
+  Alcotest.check Scroll_request.requests
+    "a second runtime routes to the callback it was given"
+    [ (pane_id, requested) ]
+    !second;
+  Alcotest.check Scroll_request.requests
+    "and not to the first runtime's, which saw nothing further"
+    [ (pane_id, requested) ]
+    !first;
+  Alcotest.(check (list string))
+    "the second runtime reported nothing either" [] errors_second;
+  Alcotest.(check int) "and reached the same model" scroll_msg model_second
+
+(* Absence arm plus its affirmative arm on the same app and the same message: a
+   runtime given no callback has nowhere to route the request, which is inert
+   rather than an error. The affirmative arm is what stops that silence from
+   being caused by an update that issued nothing at all. *)
+let test_absent_callback_is_a_no_op () =
+  let model_absent, errors_absent = drive () in
+  Alcotest.(check (list string))
+    "an unroutable request is inert, not reported" [] errors_absent;
+  Alcotest.(check int)
+    "the model advanced despite there being nowhere to route the request"
+    scroll_msg model_absent;
+  let seen = ref [] in
+  let model_present, errors_present = drive ~scroll_by:(append seen) () in
+  Alcotest.check Scroll_request.requests
+    "the very same dispatch does produce a request once a callback exists"
+    [ (pane_id, requested) ]
+    !seen;
+  Alcotest.(check (list string)) "and still reports nothing" [] errors_present;
+  Alcotest.(check int)
+    "the model is identical whether or not the callback is there" model_present
+    model_absent
+
 let () =
   Alcotest.run "nopal_runtime_lifecycle"
     [
@@ -192,5 +295,12 @@ let () =
           Alcotest.test_case
             "task completion after shutdown dropped, not raised" `Quick
             test_task_completion_after_shutdown_dropped_not_raised;
+        ] );
+      ( "Relative-scroll platform callback",
+        [
+          Alcotest.test_case "scroll_by reaches the platform callback" `Quick
+            test_scroll_by_reaches_the_platform_callback;
+          Alcotest.test_case "absent callback is a no-op" `Quick
+            test_absent_callback_is_a_no_op;
         ] );
     ]

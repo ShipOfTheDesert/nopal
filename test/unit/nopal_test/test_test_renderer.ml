@@ -1055,12 +1055,58 @@ let scroll_reveal_hostile_key () =
     "and the unescaped key finds the container back" true
     (Option.is_some (find (By_attr ("reveal", key)) (tree r)))
 
+(* Application attributes on a scroll container: the identity a later relative
+   scroll resolves against, and the reason the container no longer needs a
+   wrapper box to be named. *)
+let scroll_projects_its_attrs () =
+  let child = E.text "content" in
+  let node =
+    scroll_node_of "no scroll node for a container carrying attributes"
+      (render
+         (E.scroll
+            ~attrs:[ ("id", "reading-pane"); ("data-testid", "pane") ]
+            child))
+  in
+  Alcotest.(check (option string))
+    "the container is findable by the id the view wrote" (Some "reading-pane")
+    (attr "id" node);
+  Alcotest.(check (option string))
+    "and every other attribute travels with it" (Some "pane")
+    (attr "data-testid" node);
+  Alcotest.(check bool)
+    "the query the backend will use finds the container back" true
+    (Option.is_some
+       (find
+          (By_attr ("id", "reading-pane"))
+          (tree (render (E.scroll ~attrs:[ ("id", "reading-pane") ] child)))));
+  (* Attributes and a reveal on one container, which is the pairing the
+     ordering contract is written about: neither projection may displace the
+     other, and the derived reveal keys are prepended so a view that supplies
+     its own "reveal" key cannot shadow them. *)
+  let both =
+    scroll_node_of "no scroll node for a container declaring both"
+      (render
+         (E.scroll
+            ~attrs:[ ("id", "reading-pane"); ("reveal", "decoy") ]
+            ~reveal:(R.start "row-3") child))
+  in
+  Alcotest.(check (option string))
+    "the declared reveal wins the name over a caller-supplied one"
+    (Some "row-3") (attr "reveal" both);
+  Alcotest.(check (option string))
+    "its alignment travels with it" (Some "start") (attr "reveal-align" both);
+  Alcotest.(check (option string))
+    "and the application attribute is still readable" (Some "reading-pane")
+    (attr "id" both)
+
 let reveal_tests =
   [
     Alcotest.test_case "scroll_reveal_attrs" `Quick scroll_reveal_attrs;
     Alcotest.test_case "scroll_no_reveal_attrs" `Quick scroll_no_reveal_attrs;
     Alcotest.test_case "scroll_reveal_hostile_key" `Quick
       scroll_reveal_hostile_key;
+    Alcotest.test_case "scroll_projects_its_attrs" `Quick
+      scroll_projects_its_attrs;
   ]
 
 let () =

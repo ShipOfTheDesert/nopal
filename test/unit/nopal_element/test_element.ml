@@ -393,6 +393,109 @@ let test_scroll_without_reveal_unchanged () =
     | Element.Virtual_list _ ->
         false)
 
+(* The application attributes a scroll container carries, or [None] when the
+   value is not a container at all. Written once because four cases below read
+   the same field, and a match this wide inlined four times hides which arm each
+   case is actually about. *)
+let scroll_attrs el =
+  match el with
+  | Element.Scroll { attrs; _ } -> Some attrs
+  | Element.Empty
+  | Element.Text _
+  | Element.Box _
+  | Element.Row _
+  | Element.Column _
+  | Element.Button _
+  | Element.Input _
+  | Element.Image _
+  | Element.Checkbox _
+  | Element.Radio _
+  | Element.Select _
+  | Element.File_input _
+  | Element.Keyed _
+  | Element.Draw _
+  | Element.Virtual_list _ ->
+      None
+
+let test_scroll_carries_attrs () =
+  let el =
+    Element.scroll
+      ~attrs:[ ("id", "reading-pane"); ("data-testid", "pane") ]
+      (Element.text "inner")
+  in
+  Alcotest.(check (option (list (pair string string))))
+    "the attributes reach the container exactly as written and in order"
+    (Some [ ("id", "reading-pane"); ("data-testid", "pane") ])
+    (scroll_attrs el);
+  (* A container may declare attributes and a reveal at once; neither argument
+     may swallow the other. *)
+  let both =
+    Element.scroll
+      ~attrs:[ ("id", "reading-pane") ]
+      ~reveal:(Reveal.center "row-7") (Element.text "inner")
+  in
+  Alcotest.(check (option (list (pair string string))))
+    "attributes survive a container that also declares a reveal"
+    (Some [ ("id", "reading-pane") ])
+    (scroll_attrs both);
+  Alcotest.(check bool)
+    "and the reveal survives the attributes" true
+    (match both with
+    | Element.Scroll { reveal = Some r; _ } ->
+        Reveal.equal r (Reveal.center "row-7")
+    | Element.Scroll { reveal = None; _ }
+    | Element.Empty
+    | Element.Text _
+    | Element.Box _
+    | Element.Row _
+    | Element.Column _
+    | Element.Button _
+    | Element.Input _
+    | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
+    | Element.File_input _
+    | Element.Keyed _
+    | Element.Draw _
+    | Element.Virtual_list _ ->
+        false)
+
+let test_scroll_without_attrs_is_unchanged () =
+  Alcotest.(check (option (list (pair string string))))
+    "omitting the argument declares no attributes" (Some [])
+    (scroll_attrs (Element.scroll (Element.text "inner")));
+  (* Affirmative arm on the same builder and the same child. Without it the
+     emptiness above stays green against a builder that drops the argument. *)
+  Alcotest.(check (option (list (pair string string))))
+    "the same builder given the argument declares them"
+    (Some [ ("id", "reading-pane") ])
+    (scroll_attrs
+       (Element.scroll ~attrs:[ ("id", "reading-pane") ] (Element.text "inner")))
+
+let test_equal_distinguishes_scroll_attrs () =
+  let make attrs = Element.scroll ~attrs (Element.text "inner") in
+  Alcotest.(check bool)
+    "the same attributes, separately built, are equal" true
+    (Element.equal (make [ ("id", "a") ]) (make [ ("id", "a") ]));
+  Alcotest.(check bool)
+    "a different value is not equal" false
+    (Element.equal (make [ ("id", "a") ]) (make [ ("id", "b") ]));
+  Alcotest.(check bool)
+    "a different key is not equal" false
+    (Element.equal (make [ ("id", "a") ]) (make [ ("data-testid", "a") ]));
+  Alcotest.(check bool)
+    "an extra attribute is not equal" false
+    (Element.equal
+       (make [ ("id", "a") ])
+       (make [ ("id", "a"); ("data-testid", "p") ]));
+  Alcotest.(check bool)
+    "attributes are not equal to none" false
+    (Element.equal (make [ ("id", "a") ]) (make []));
+  Alcotest.(check bool)
+    "no attributes on either side is equal" true
+    (Element.equal (make []) (make []))
+
 let test_keyed_preserves_fields () =
   Alcotest.(check bool)
     "keyed preserves key" true
@@ -618,6 +721,43 @@ let test_map_scroll () =
     | Element.Select _
     | Element.File_input _
     | Element.Scroll _
+    | Element.Keyed _
+    | Element.Draw _
+    | Element.Virtual_list _ ->
+        false)
+
+let test_map_preserves_scroll_attrs () =
+  let el =
+    Element.scroll
+      ~attrs:[ ("id", "reading-pane"); ("data-testid", "pane") ]
+      (Element.button ~on_click:Click (Element.text "s"))
+  in
+  let mapped = Element.map (fun m -> Wrapped m) el in
+  Alcotest.(check (option (list (pair string string))))
+    "the attributes survive a message-type change"
+    (Some [ ("id", "reading-pane"); ("data-testid", "pane") ])
+    (scroll_attrs mapped);
+  (* The child is checked on the same value, so the attributes above cannot be
+     read off a tree that never reached the container arm at all. *)
+  Alcotest.(check bool)
+    "on the same value whose child was mapped" true
+    (match mapped with
+    | Element.Scroll
+        { child = Element.Button { on_click = Some (Wrapped Click); _ }; _ } ->
+        true
+    | Element.Scroll _
+    | Element.Empty
+    | Element.Text _
+    | Element.Box _
+    | Element.Row _
+    | Element.Column _
+    | Element.Button _
+    | Element.Input _
+    | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
+    | Element.File_input _
     | Element.Keyed _
     | Element.Draw _
     | Element.Virtual_list _ ->
@@ -1271,6 +1411,10 @@ let () =
           Alcotest.test_case "scroll_child" `Quick test_scroll_child;
           Alcotest.test_case "scroll_without_reveal_unchanged" `Quick
             test_scroll_without_reveal_unchanged;
+          Alcotest.test_case "scroll_carries_attrs" `Quick
+            test_scroll_carries_attrs;
+          Alcotest.test_case "scroll_without_attrs_is_unchanged" `Quick
+            test_scroll_without_attrs_is_unchanged;
           Alcotest.test_case "keyed_preserves_fields" `Quick
             test_keyed_preserves_fields;
           Alcotest.test_case "file_input carries accept capture multiple" `Quick
@@ -1292,6 +1436,8 @@ let () =
           Alcotest.test_case "map_scroll" `Quick test_map_scroll;
           Alcotest.test_case "scroll_reveal_roundtrip" `Quick
             test_scroll_reveal_roundtrip;
+          Alcotest.test_case "map_preserves_scroll_attrs" `Quick
+            test_map_preserves_scroll_attrs;
           Alcotest.test_case "map_keyed" `Quick test_map_keyed;
           Alcotest.test_case "map_empty_noop" `Quick test_map_empty_noop;
           Alcotest.test_case "map_text_noop" `Quick test_map_text_noop;
@@ -1326,6 +1472,8 @@ let () =
             test_equal_scroll_different_child;
           Alcotest.test_case "equal_distinguishes_reveal" `Quick
             test_equal_distinguishes_reveal;
+          Alcotest.test_case "equal_distinguishes_scroll_attrs" `Quick
+            test_equal_distinguishes_scroll_attrs;
           Alcotest.test_case "equal_keyed_distinct" `Quick
             test_equal_keyed_distinct;
           Alcotest.test_case "equal_keyed_different_fields" `Quick

@@ -30,7 +30,12 @@ val run_with_telemetry :
     {!Nopal_mvu.Cmd} effect thunks or from a serialiser — are instead reported
     as a [Failure] carrying their descriptions, after the same history dump.
     Either way the recorder's log is cleared on exit, so a subsequent run starts
-    clean. *)
+    clean.
+
+    The harness renders nothing, so a relative-scroll request an app issues
+    under it is inert and leaves no event behind. Assert on one structurally
+    instead, with {!Nopal_mvu.Cmd.extract_scroll_bys} over the command [update]
+    returned. *)
 
 (** {2 Assertion helpers}
 

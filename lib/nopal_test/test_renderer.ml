@@ -317,7 +317,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             children = [];
             interaction = Nopal_style.Interaction.default;
           }
-    | Scroll { style; reveal; child } ->
+    | Scroll { style; attrs; reveal; child } ->
         Element
           {
             tag = "scroll";
@@ -327,17 +327,21 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
                under which alignment. The key is carried exactly as the view
                wrote it — escaping belongs to whichever backend builds a query
                out of it, and a value escaped here would be escaped twice there
-               and resolve to nothing. A container with no request carries no
-               attributes at all, so every tree that renders today reads back
-               unchanged. *)
+               and resolve to nothing. The derived pair is prepended to the
+               view's own attributes so it wins lookup over a caller-supplied
+               key of the same name, the same shape [Input], [Checkbox],
+               [Radio], [Select] and [File_input] already use. A container that
+               declares neither carries no attributes at all, so every tree
+               that renders today reads back unchanged. *)
             attrs =
               (match reveal with
-              | None -> []
-              | Some { Nopal_element.Reveal.key; align } ->
-                  [
-                    ("reveal", key);
-                    ("reveal-align", Nopal_element.Reveal.align_token align);
-                  ]);
+                | None -> []
+                | Some { Nopal_element.Reveal.key; align } ->
+                    [
+                      ("reveal", key);
+                      ("reveal-align", Nopal_element.Reveal.align_token align);
+                    ])
+              @ attrs;
             children = [ go (0 :: rev_path) child ];
             interaction = Nopal_style.Interaction.default;
           }
