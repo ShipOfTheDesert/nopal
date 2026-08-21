@@ -35,7 +35,21 @@ type 'msg rendered
 
 val render : 'msg Nopal_element.Element.t -> 'msg rendered
 (** [render element] renders an element tree into an inspectable node tree with
-    event simulation support. The message list starts empty. *)
+    event simulation support. The message list starts empty.
+
+    A scroll container's [reveal] declaration is surfaced for inspection as the
+    derived attribute pairs ["reveal"] and ["reveal-align"], carried exactly as
+    the view wrote them. They are prepended to the view's own [attrs], so a
+    declaration wins lookup over a caller-supplied pair of the same name — the
+    same precedence the input, checkbox, radio, select and file-input arms
+    already use. A container that declares neither carries no attributes at all.
+
+    Nothing marks a pair as derived, so the precedence does not run the other
+    way: a container that supplies [("reveal", "decoy")] in [attrs] and declares
+    no [reveal] reads back {!attr} ["reveal"] as [Some "decoy"], which is the
+    caller's own attribute and not a declaration. A structural test asserting
+    that a container asked for a reveal should use a key no [attrs] pair on that
+    container spells. *)
 
 (** {1 Accessors} *)
 

@@ -133,6 +133,30 @@ from `npx playwright install chromium --dry-run`, then
 `curl -fL -C - --retry 8 -O <url>`, unzip into `~/.cache/ms-playwright/<browser>-<rev>/`,
 and `touch ~/.cache/ms-playwright/<browser>-<rev>/INSTALLATION_COMPLETE`.
 
+Deferring a browser case is allowed; leaving it unrecorded is not.
+**There is one current deferral.**
+
+#### Open deferral — a relative-scroll request naming a container the frame removed
+
+**Owner: whoever adds a kitchen-sink section whose scroll container comes and
+goes with the model, in the change that adds it.**
+
+`test/unit/nopal_web/dom_shim.js` resolves an id against every element
+`createElement` has produced and never prunes that registry, so a container the
+frame just removed still answers to its id and takes a real `scrollTop` write,
+where a browser answers `null` and the request evaporates. Pruning the registry
+is not the fix: renderer tests mount into a detached parent a browser would
+already answer `null` for, so pruning would change what every existing case in
+that suite means. The case cannot be expressed in the Alcotest suites at all and
+belongs to a Playwright one — and no current spec removes a container while a
+request for it is in flight.
+
+Nothing observable is lost today, because both branches are no-ops on screen;
+that is why no browser case was written rather than an oversight. The owner
+above writes it — remove the container in the same update that issues the
+request, assert the page does not move — at the moment a section makes the
+removal reachable.
+
 ### Desktop Development (Tauri)
 
 Tauri builds require two additional tools:
@@ -294,7 +318,8 @@ boundaries — not convention.
 **Package hierarchy (dependencies flow strictly downward):**
 
 ```
-nopal_mvu          ← no UI deps, no platform deps
+nopal_mvu          ← depends on element for the types Cmd/Sub/App carry,
+                     no platform deps
 nopal_element      ← depends on scene + style, no platform deps, no browser types
 nopal_style        ← no platform deps
 nopal_scene        ← depends on style, no platform deps (Color, Paint, Transform, Path, Scene)
@@ -512,6 +537,58 @@ just bench-compare  # compare against baseline
 A metric degrading by more than 20% blocks merge. Bundle size is tracked
 alongside runtime performance — avoid adding dependencies that inflate
 js_of_ocaml output without justification.
+
+Deferring a benchmark obligation is allowed; leaving it unrecorded is not.
+**There is one current deferral.**
+
+### Open deferral — the committed baseline is stale, so read it relatively
+
+**Owner: the developer preparing the next change to `nopal_runtime` or
+`nopal_web`, before claiming `bench-compare` green.**
+
+`bench/baseline.json` was last regenerated in PR #64, on a different machine.
+It has drifted far enough that an absolute reading against it is no longer a
+reliable gate: on current developer hardware every runtime metric comes in
+**15% to 63% faster** than the number committed beside it, while
+`bundle/main_bc_js` comes in about **6% larger**. A 20% degradation introduced
+by a real change disappears into that headroom on the runtime metrics, and
+absolute readings also swing hard between sessions on the same machine — one
+branch was measured at **473.4 / 483.9 / 462.9 ms** on `jsfb/create_10000` in
+one session and **313.3 / 316.5 / 322.7 ms** in another, against the same
+unchanged working tree. A 170 ms spread is wider than the 20% gate being read
+against it.
+
+**The reliable check is the branch against its own merge base, on one machine
+within one session,** so the machine is constant and the diff is the only
+variable:
+
+```bash
+just bench-compare                               # branch, idle machine
+git stash && just bench-compare && git stash pop # same machine, same session, at the merge base
+```
+
+That is a supplement to the rule above, not a relaxation of it: a metric
+degrading by more than 20% still blocks merge, and a base comparison is how you
+find out whether the degradation is yours.
+
+This procedure was run on **2026-08-20**, on the branch that added
+`Cmd.scroll_by` — the change whose measurements produced the spread quoted
+above. Both runs reported all 18 metrics within threshold. On
+`jsfb/create_10000`, against a committed baseline of 388.60 ms, the branch
+measured **316.30 ms** and its merge base **331.10 ms**: the branch is 14.80 ms
+(−4.5%) *faster* than the tree it was built on, and no metric moved against the
+branch by more than 4.2%. The over-the-gate session was therefore variance and
+not the change. The per-metric table is carried in that change's pull request
+description; the conclusion above is the part this file needs.
+
+`bench/baseline.json` is deliberately left untouched, and stays that way until
+someone regenerates it on purpose, as a change of its own with its own
+reasoning. Re-baselining absorbs whichever session happens to be current into
+the committed gate, destroys the evidence anyone would need to attribute the
+drift later, and silently raises the regression ceiling for every future
+change. Until then: record the red runs alongside the green ones rather than
+the run that suited you, never re-run until green, and never re-baseline to
+absorb an inflated number.
 
 ## Kitchen Sink
 

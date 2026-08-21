@@ -59,7 +59,11 @@ let test_cmd_is_none () =
     (Nopal_mvu.Cmd.is_none (Nopal_mvu.Cmd.after 10 1));
   Alcotest.(check bool)
     "focus is not none" false
-    (Nopal_mvu.Cmd.is_none (Nopal_mvu.Cmd.focus "id"))
+    (Nopal_mvu.Cmd.is_none (Nopal_mvu.Cmd.focus "id"));
+  Alcotest.(check bool)
+    "scroll_by is not none" false
+    (Nopal_mvu.Cmd.is_none
+       (Nopal_mvu.Cmd.scroll_by "id" (Nopal_element.Scroll_delta.viewports 0.5)))
 
 let test_cmd_map_transforms () =
   let results = ref [] in

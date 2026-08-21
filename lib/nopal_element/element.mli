@@ -353,9 +353,12 @@ val scroll :
     around it; an [id] is the spelling a relative-scroll request resolves
     against. The names and values are opaque application strings, never
     interpreted here, and the list is compared in order, so two containers
-    carrying the same pairs in a different order are not equal. Omitting the
-    argument carries none, and a container carrying none renders exactly as it
-    did before the argument existed. *)
+    carrying the same pairs in a different order are not equal. Do not put
+    [style] or [class] in it: both belong to the renderer, and a [style] pair
+    here overwrites the whole inline style the renderer wrote on the container —
+    including the overflow that makes it scroll — so the container silently
+    stops scrolling. Omitting the argument carries none, and a container
+    carrying none renders exactly as it did before the argument existed. *)
 
 val keyed : string -> 'msg t -> 'msg t
 (** [keyed key child] wraps [child] with a stable identity key.

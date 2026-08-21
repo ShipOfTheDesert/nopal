@@ -26,6 +26,37 @@ let schedule_after ms callback =
   let _id = Jv.call w "setTimeout" [| Jv.repr callback; Jv.of_int ms |] in
   ()
 
+(* Where a fault goes when the mount was given nowhere to send it. The runtime
+   keeps its own version of this for the faults it catches; this one is for the
+   faults the frame catches, which the runtime never sees, and it says so in the
+   prefix. Reporting somewhere is the floor: an exception escaping a drain would
+   otherwise reach the browser as an uncaught error the application cannot
+   observe at all. *)
+let default_on_error msg = prerr_endline ("[nopal_web] " ^ msg)
+
+(* Describe a fault caught at a frame boundary in the shape
+   {!Nopal_runtime.Runtime.Make}'s own guard uses — the stage that failed, the
+   exception, and its backtrace — so a sink shared with the runtime receives one
+   description and not two. The raw backtrace is taken by the caller on the
+   handler's first line and only rendered here, so a later [try] inside
+   [on_error] cannot clobber it. *)
+let report_fault on_error stage exn raw_bt =
+  on_error
+    (Printf.sprintf "%s: %s\n%s" stage (Printexc.to_string exn)
+       (Printexc.raw_backtrace_to_string raw_bt))
+
+(* Run one stage of a frame, reporting and swallowing any exception so the
+   stages after it still run. [Stdlib.Exit] is re-raised rather than reported:
+   [exit n] raises it under js_of_ocaml too, and the reconcile stage runs
+   application view code, so a handled exit must not be turned into a spurious
+   fault. *)
+let guard_stage on_error stage f =
+  try f () with
+  | Stdlib.Exit as exn -> raise exn
+  | exn ->
+      let raw_bt = Printexc.get_raw_backtrace () in
+      report_fault on_error stage exn raw_bt
+
 let parse_css_px raw =
   let or_else f o =
     match o with
@@ -77,9 +108,9 @@ let read_viewport safe_area =
   Nopal_element.Viewport.make ~width ~height ~safe_area ()
 
 let focus_element id =
-  let document = Jv.get Jv.global "document" in
-  let el = Jv.call document "getElementById" [| Jv.of_string id |] in
-  if not (Jv.is_none el) then ignore (Jv.call el "focus" [||])
+  match Brr.Document.find_el_by_id Brr.G.document (Jstr.v id) with
+  | None -> ()
+  | Some el -> ignore (Jv.call (Brr.El.to_jv el) "focus" [||])
 
 (* Drain queued [Cmd.focus] targets, focusing each in request order. The runtime
    interprets a command synchronously during dispatch, before the rAF loop
@@ -108,22 +139,30 @@ let drain_focus pending =
    Only the named container's own scroll offset is ever written. The id
    namespace is the document's, so the element reached may be something that is
    not a scroll container at all; that needs no special case, because an element
-   with nothing to scroll has no offset to move to. *)
+   with nothing to scroll has no offset to move to.
+
+   Two of the three measurements are integer-rounded by the platform
+   ([clientHeight] and [scrollHeight]) while the offset is fractional, so on
+   this backend "the container is already there" is decided to the nearest
+   pixel: where the true end of the range is fractional and the container sits
+   exactly on it, the rounded content height under-reports the maximum and
+   {!Nopal_element.Scroll_delta.offset_for} answers with a sub-pixel write
+   instead of leaving it alone. The pure contract is exact for the numbers it is
+   given; this is what the numbers cost. The reveal drain measures the same way.
+   *)
 let scroll_element_by id delta =
-  let document = Jv.get Jv.global "document" in
-  let el = Jv.call document "getElementById" [| Jv.of_string id |] in
-  if Jv.is_none el then ()
-  else
-    let container = Brr.El.of_jv el in
-    let scroll_offset = Brr.El.scroll_y container in
-    let viewport_height = Brr.El.inner_h container in
-    let content_height = Brr.El.scroll_h container in
-    match
-      Nopal_element.Scroll_delta.offset_for ~scroll_offset ~viewport_height
-        ~content_height delta
-    with
-    | None -> ()
-    | Some offset -> Jv.Float.set el "scrollTop" offset
+  match Brr.Document.find_el_by_id Brr.G.document (Jstr.v id) with
+  | None -> ()
+  | Some container -> (
+      let scroll_offset = Brr.El.scroll_y container in
+      let viewport_height = Brr.El.inner_h container in
+      let content_height = Brr.El.scroll_h container in
+      match
+        Nopal_element.Scroll_delta.offset_for ~scroll_offset ~viewport_height
+          ~content_height delta
+      with
+      | None -> ()
+      | Some offset -> Jv.Float.set (Brr.El.to_jv container) "scrollTop" offset)
 
 (* Drain queued [Cmd.scroll_by] requests, applying each in request order. A
    relative movement is not idempotent, so requests compose rather than
@@ -135,11 +174,18 @@ let scroll_element_by id delta =
    The loop is the empty-queue guard. Every measurement and every document
    lookup happens inside it, so a frame that requested nothing reaches no DOM
    read at all rather than reading first and discovering there was nothing to
-   do. *)
-let drain_scroll_by pending =
+   do.
+
+   A request whose measurement raises is reported through [on_error] and the
+   queue keeps draining. Stopping at it would strand every request behind it in
+   the queue, to be applied on the next frame against a layout one patch newer
+   — which is the one thing the drain's placement exists to prevent — and one
+   platform measurement failing says nothing about the next one. *)
+let drain_scroll_by ?(on_error = default_on_error) pending =
   while not (Queue.is_empty pending) do
     let id, delta = Queue.take pending in
-    scroll_element_by id delta
+    guard_stage on_error (Printf.sprintf "scroll drain [%s]" id) (fun () ->
+        scroll_element_by id delta)
   done
 
 (* The DOM keydown/keyup [event.key] string the subscription handler receives.
@@ -231,7 +277,7 @@ let web_interpret_atom (type msg) ~(dispatch : msg -> unit)
    [schedule_after] platform callbacks, so those never leak into the public API.
    The on/off distinction is the entry point's name and return type, never an
    optional argument (RFC 0110, Implementation Decision 2). *)
-let drive (type msg) ~(start : unit -> unit)
+let drive (type msg) ?(on_error = default_on_error) ~(start : unit -> unit)
     ~(set_viewport : Nopal_element.Viewport.t -> unit)
     ~(view_lwd : msg Nopal_element.Element.t Lwd.t) ~(dispatch : msg -> unit)
     ~(flush_scroll : unit -> unit) ~(flush_focus : unit -> unit)
@@ -302,25 +348,59 @@ let drive (type msg) ~(start : unit -> unit)
      tears it down when it leaves. The previous per-rAF-frame
      [update_keydown_prevent] re-extraction is gone — subscriptions only change
      on a dispatch, which already triggers a diff. *)
+  (* Every fault a frame catches, described the same way and sent to the same
+     place the runtime sends its own: {!report_fault} formats stage, exception
+     and backtrace exactly as the runtime's guard does, and [on_error] here is
+     the sink the mount was given — the one it also handed to the runtime. Only
+     the fallback differs, because the runtime cannot report through a sink it
+     was never given: with [?on_error] omitted the runtime keeps its own default
+     and a frame uses {!default_on_error}. A frame reports rather than
+     propagates: nothing above a rAF callback would catch the exception, so
+     propagating means an uncaught browser error that reaches neither
+     [on_error] nor telemetry.
+
+     What that choice costs is worth stating for the reconcile in particular,
+     because it is the stage that owns live state: a DOM patch that throws
+     part-way leaves the tree patched only as far as it got and its child
+     bookkeeping unassigned, so every frame after reconciles against that tree
+     rather than against the one the last render described, and keeps doing so
+     for as long as the application runs. That is deliberate — a frozen
+     application announces itself and an inconsistent one does not, which is
+     exactly why this stage reports instead of failing silently.
+     [test_mount_scroll_by.ml]'s "a throwing render pass is reported and the
+     loop continues" is this paragraph's standing defence. *)
   (raf_loop :=
      fun _ts ->
        match !lifecycle with
        | Torn_down -> ()
        | Mounted ->
-           if Lwd.is_damaged root then begin
-             let new_element = Lwd.quick_sample root in
-             Renderer.update ~dispatch handle new_element
-           end;
+           (* Ask for the next frame before doing any of this one's work. The
+              request cannot be served until this callback returns, so the loop
+              is unchanged in the ordinary case; what it buys is that an
+              exception escaping the reconcile or either drain costs one
+              frame's work instead of every frame after it. Nothing here runs
+              under the runtime's error guard, so without this the loop would
+              stop with nothing left to restart it. *)
+           raf_id := Jv.call w "requestAnimationFrame" [| Jv.repr !raf_loop |];
+           guard_stage on_error "render pass" (fun () ->
+               if Lwd.is_damaged root then begin
+                 let new_element = Lwd.quick_sample root in
+                 Renderer.update ~dispatch handle new_element
+               end);
            (* Both drains run after the DOM patch, and in this order. A frame
               applies the reveal the render pass collected first, then the
               relative-scroll requests the model issued, then the focus queue.
               Each measures the tree the patch produced: a request acted on
               before it would size itself against the previous frame's layout,
               and a focus for an element this frame created would find nothing
-              to focus. *)
-           flush_scroll ();
-           flush_focus ();
-           raf_id := Jv.call w "requestAnimationFrame" [| Jv.repr !raf_loop |]);
+              to focus.
+
+              Each stage is guarded on its own, so one failing cannot swallow
+              the work of the next: a focus batched with a relative scroll
+              still lands in this frame when the scroll stage throws, rather
+              than a frame late and after some later frame's reveal. *)
+           guard_stage on_error "scroll drain" flush_scroll;
+           guard_stage on_error "focus drain" flush_focus);
   (* Install the browser telemetry bridge over the driven runtime's handle
      (Layer 2). Only [mount_with_telemetry] supplies a handle; [mount] passes
      [None] and installs nothing. *)
@@ -359,12 +439,12 @@ let mount (type model msg) ?safe_area_source ?on_error
       ~schedule_after ?on_error ~interpret_atom:web_interpret_atom ()
   in
   let unmount =
-    drive
+    drive ?on_error
       ~start:(fun () -> R.start rt)
       ~set_viewport:(fun vp -> R.set_viewport rt vp)
       ~view_lwd:(R.view rt)
       ~dispatch:(fun msg -> R.dispatch rt msg)
-      ~flush_scroll:(fun () -> drain_scroll_by pending_scroll)
+      ~flush_scroll:(fun () -> drain_scroll_by ?on_error pending_scroll)
       ~flush_focus:(fun () -> drain_focus pending_focus)
       ~safe_area_source
       ~shutdown:(fun () -> R.shutdown rt)
@@ -388,12 +468,12 @@ let mount_with_telemetry (type model msg) ?safe_area_source ?on_error
       ?serialize_msg ?serialize_model ()
   in
   let unmount =
-    drive
+    drive ?on_error
       ~start:(fun () -> R.start rt)
       ~set_viewport:(fun vp -> R.set_viewport rt vp)
       ~view_lwd:(R.view rt)
       ~dispatch:(fun msg -> R.dispatch rt msg)
-      ~flush_scroll:(fun () -> drain_scroll_by pending_scroll)
+      ~flush_scroll:(fun () -> drain_scroll_by ?on_error pending_scroll)
       ~flush_focus:(fun () -> drain_focus pending_focus)
       ~safe_area_source
       ~shutdown:(fun () -> R.shutdown rt)

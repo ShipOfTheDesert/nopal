@@ -16,6 +16,7 @@ module Sub_subscriptions = Kitchen_sink_app.Sub_subscriptions
 module Sub_file_input = Kitchen_sink_app.Sub_file_input
 module Sub_receipt_flow = Kitchen_sink_app.Sub_receipt_flow
 module Sub_reveal_list = Kitchen_sink_app.Sub_reveal_list
+module Sub_scroll_pane = Kitchen_sink_app.Sub_scroll_pane
 
 (* Result-task chaining for the Tauri ops (RFC 0118, REQ-F5). See
    {!Kitchen_sink_app.Tauri_op} for the contract; instantiated here with the
@@ -437,6 +438,7 @@ let update model msg =
   | App.File_input_msg _
   | App.Receipt_flow_msg _
   | App.Reveal_list_msg _
+  | App.Scroll_pane_msg _
   | App.KeyboardHeightChanged _
   | App.Back_demo_push
   | App.Route_changed _
@@ -533,6 +535,13 @@ let serialize_msg : App.msg -> string = function
      so its message and model fragments cannot drift apart, and every fragment
      is ';'-terminated for the same reason the file-input ones are. *)
   | App.Reveal_list_msg rl_msg -> Sub_reveal_list.serialize_msg rl_msg
+  (* Relative scroll: the model holds no scroll offset, so the message is the
+     only thing telemetry can show about a movement, and an e2e spec waits on it
+     before reading the offset it caused off the page itself. The section owns
+     the wording so its message and model fragments cannot drift apart, and
+     every fragment is ';'-terminated for the same reason the file-input ones
+     are. *)
+  | App.Scroll_pane_msg sp_msg -> Sub_scroll_pane.serialize_msg sp_msg
   (* Mobile signals (RFC 0116): the keyboard-height readout (REQ-N2) and the
      back-demo route change the Tauri back-IPC e2e asserts on via the host
      [get_telemetry] mirror — [Route_changed] proves the hardware-back chain
@@ -732,10 +741,17 @@ let serialize_model (model : App.model) =
      [Sub_reveal_list.serialize_model] already terminates each [field=value]
      with ';' and quotes the key, so a key carrying punctuation cannot look like
      a delimiter. *)
+  (* The scroll pane's marker, its move count and its keyboard gate are part of
+     the asserted model surface. The move count is the only value that differs
+     between two identical presses, which is what a spec driving the same
+     interaction twice has to gate on: the message is the same string both
+     times. [Sub_scroll_pane.serialize_model] already terminates each
+     [field=value] with ';', so a count of 1 cannot prefix-alias a count of 12.
+  *)
   Printf.sprintf
     "{pings=%d; clicks=%d; input=%S; storage=%s; win_visible=%b; win_title=%S; \
      tauri_store=%s; back_route=%s; bottom_tabs={%s}; file_input={%s}; \
-     receipt_flow={%s}; reveal_list={%s}}"
+     receipt_flow={%s}; reveal_list={%s}; scroll_pane={%s}}"
     model.telemetry_pings model.button_clicks model.input_text storage
     model.tauri_is_visible model.tauri_window_title tauri_store
     (back_route_to_string model.back_route)
@@ -743,6 +759,7 @@ let serialize_model (model : App.model) =
     (Sub_file_input.serialize_model model.file_input)
     (Sub_receipt_flow.serialize_model model.receipt_flow)
     (Sub_reveal_list.serialize_model model.reveal_list)
+    (Sub_scroll_pane.serialize_model model.scroll_pane)
 
 (* The application owns telemetry policy: telemetry is on by default for the
    kitchen sink (it is the live E2E target), and disabled with [?telemetry=off]

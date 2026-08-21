@@ -23,6 +23,7 @@
   sub_file_input
   sub_receipt_flow
   sub_reveal_list
+  sub_scroll_pane
   tauri_op)
  (libraries
   nopal_element

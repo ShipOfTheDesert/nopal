@@ -6,7 +6,8 @@
 //
 //   - document.createElement, createTextNode, createComment
 //   - Element: appendChild, removeChild, replaceChild, insertBefore,
-//     setAttribute, getAttribute, style (Proxy-based), classList,
+//     setAttribute, getAttribute, style (Proxy-based) — see "Inline style and
+//     the `style` attribute" below for how the two meet, classList,
 //     addEventListener, removeEventListener, dispatchEvent
 //   - Element: querySelector / querySelectorAll over a single attribute
 //     selector, and the vertical scroll geometry (scrollTop, clientHeight,
@@ -78,7 +79,7 @@
 // renderer renames stops answering to its old id and starts answering to the
 // new one, exactly as a live document would.
 //
-// Two divergences from a browser, stated rather than relied on:
+// Three divergences from a browser, stated rather than relied on:
 //
 //   - The scan covers every element `createElement` has produced, not the
 //     document tree, because renderer tests mount into a detached parent that
@@ -92,25 +93,70 @@
 //     element created, given an id and then discarded still shadows a later one
 //     with the same id — within one test executable the registry is never
 //     pruned. Give each case its own ids rather than sharing one across cases.
+//   - For the same reason an element the renderer has REMOVED still answers to
+//     its id, where a browser answers `null` once the node leaves the document.
+//     A command naming a container the frame just removed therefore resolves to
+//     the stale detached node here and performs a real `scrollTop` write on it,
+//     rather than finding nothing. Both outcomes are no-ops on screen, so this
+//     costs no fidelity in what a test can observe — but it does mean the
+//     "target went away" branch cannot be expressed in this suite at all, and
+//     belongs to the browser suites. No Playwright spec covers it yet; it is
+//     recorded as an owned deferral, with the party and the moment, under
+//     "E2E tests" in CONTRIBUTING.md.
 //
 // ## Focus
 //
 // A registered focus target's `focus()` records the call and becomes
 // `activeElement`, and nothing else — those objects have no geometry to move.
 //
-// A real created element's `focus()` also does what a browser's does with no
-// options object: after becoming `activeElement` it is brought into view
-// inside its nearest scrolling ancestor, which is moved by the smallest amount
-// that shows it. "Nearest scrolling ancestor" is read off the inline
-// `overflow` property, the same way a browser reads it, so an ordinary
-// container between the element and a scroll container is stepped over rather
-// than treated as a viewport.
+// A real created element's `focus()` also moves a scroll offset, the way a
+// browser's does with no options object: after becoming `activeElement` it is
+// brought into view inside its nearest scrolling ancestor, which is moved by
+// the smallest amount that shows it. "Nearest scrolling ancestor" is read off
+// the inline `overflow` property, the same way a browser reads it, so an
+// ordinary container between the element and a scroll container is stepped
+// over rather than treated as a viewport.
+//
+// The equivalence stops at that ancestor, and the narrower claim is the one to
+// rely on: this shim scrolls the NEAREST scrolling ancestor only, where a
+// browser keeps walking outwards and scrolls every enclosing scrolling box up
+// to and including the document itself. So a test here pins the innermost
+// container's offset and nothing beyond it — a focus that also dragged an
+// outer container, or the page, is invisible to this shim. Cover that outer
+// movement in the browser suites, which can read `window.scrollY`.
 //
 // That second half is a platform default, not a convenience: a caller
 // suppresses it by passing `{ preventScroll: true }`, and nothing in this repo
 // passes any options at all. A shim whose `focus()` only logged would hide the
 // fact that focusing an off-screen element overwrites a scroll offset another
 // write just set.
+//
+// ## Inline style and the `style` attribute
+//
+// An element's inline style is reachable two ways, and in a browser they are
+// one thing seen from two sides: `style.setProperty` edits a declaration, and
+// the `style` attribute IS that declaration serialised. Writing the attribute
+// therefore REPLACES the whole declaration, discarding every property already
+// written through the style object.
+//
+// `setAttribute("style", …)` here routes into the style Proxy's `cssText`,
+// which does exactly that — clear, then parse the new value. This is a
+// platform default, not a convenience: the renderer writes a scroll
+// container's `overflow` through the style object and then applies the
+// application's `attrs`, so an application that puts a `style` pair in `attrs`
+// silently wipes that overflow and the container stops scrolling.
+// `Element.scroll`'s documentation says so; a shim that filed the attribute
+// away in the attribute map instead would let a renderer applying `attrs`
+// BEFORE the style pass go green against that documented consequence.
+// `removeAttribute("style")` empties the declaration for the same reason.
+//
+// One divergence, in the read direction only: `getAttribute("style")` answers
+// what `setAttribute` was given and `null` when it was never called, where a
+// browser serialises the live declaration and so reports the renderer's own
+// inline writes too. Nothing in this repo reads that attribute — the renderer
+// compares attribute lists as OCaml values, never by reading the DOM back — so
+// the two directions are not symmetric here and the write direction is the one
+// to rely on.
 //
 // ## Maintenance Checklist (run when upgrading Brr)
 //
@@ -127,7 +173,8 @@
 //    - `El.v`        -> document.createElement
 //    - `El.txt`      -> document.createTextNode
 //    - `El.append_children` / `El.set_children` -> appendChild, removeChild
-//    - `El.set_at`   -> setAttribute / removeAttribute
+//    - `El.set_at`   -> setAttribute / removeAttribute (a `style` name lands
+//                       in the style declaration, not only the attribute map)
 //    - `El.set_inline_style` -> style[prop] = value
 //    - `Ev.listen`   -> addEventListener
 //    - `Ev.unlisten`  -> removeEventListener
@@ -574,6 +621,11 @@
 
     el.setAttribute = function (name, value) {
       el._attributes[name] = String(value);
+      // The `style` attribute IS the element's inline style declaration, so a
+      // write to it replaces the declaration wholesale rather than sitting
+      // beside it. Routed through the Proxy's `cssText` for exactly that
+      // reason — see "Inline style and the `style` attribute" in the header.
+      if (name === "style") el.style.cssText = String(value);
       if (name === "value") el.value = String(value);
     };
     el.getAttribute = function (name) {
@@ -586,6 +638,9 @@
     };
     el.removeAttribute = function (name) {
       delete el._attributes[name];
+      // Removing the attribute empties the declaration it stood for, so a
+      // dropped `style` pair does not leave a phantom inline style behind.
+      if (name === "style") el.style.cssText = "";
     };
 
     // Vertical layout. `_layoutTop` is where a test put this element inside its

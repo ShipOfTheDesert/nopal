@@ -155,6 +155,26 @@ let test_none_on_non_finite () =
     non_finite_values
 
 (* ------------------------------------------------------------------ *)
+(* A product that overflows the float range                             *)
+(* ------------------------------------------------------------------ *)
+
+(* Every value here is finite, the delta included, and yet 1e306 visible heights
+   of 300 units each is 3e308 — past the largest float there is — so the target
+   overflows to an infinity before the clamp ever sees it. The request is still
+   answerable: the clamp lands it on an offset the container can take. This is
+   what makes checking each input in turn, rather than inferring finiteness from
+   the arithmetic, observable rather than merely asserted — a guard reading the
+   overflowed target would answer nothing to either arm below. Both directions,
+   so neither arm can be satisfied by an implementation that always clamps to
+   the same end. *)
+let test_overflowing_product_still_lands_in_range () =
+  Alcotest.check offset "a delta whose product overflows lands at the end"
+    (Some 700.0)
+    (on_standard ~scroll_offset:0.0 1e306);
+  Alcotest.check offset "the same magnitude back lands at the start" (Some 0.0)
+    (on_standard ~scroll_offset:700.0 (-1e306))
+
+(* ------------------------------------------------------------------ *)
 (* The sign convention                                                  *)
 (* ------------------------------------------------------------------ *)
 
@@ -316,6 +336,8 @@ let () =
           Alcotest.test_case "none_when_container_cannot_scroll" `Quick
             test_none_when_container_cannot_scroll;
           Alcotest.test_case "none_on_non_finite" `Quick test_none_on_non_finite;
+          Alcotest.test_case "overflowing_product_still_lands_in_range" `Quick
+            test_overflowing_product_still_lands_in_range;
           Alcotest.test_case "negative_delta_moves_back" `Quick
             test_negative_delta_moves_back;
         ]

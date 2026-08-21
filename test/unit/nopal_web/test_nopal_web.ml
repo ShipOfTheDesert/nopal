@@ -1459,6 +1459,48 @@ let test_scroll_renders_and_reconciles_attrs () =
     "with the value the last pass asked for" "other-pane"
     (get "id" |> Jv.to_string)
 
+(* [Element.scroll]'s [attrs] documentation tells applications not to put a
+   [style] pair in the list, and states the consequence: the pair overwrites the
+   whole inline style the renderer wrote on the container — including the
+   overflow that makes it scroll — so the container silently stops scrolling,
+   and every relative-scroll request against it becomes an unreported no-op.
+   That consequence follows from the renderer applying [attrs] after
+   [apply_style], an ordering nothing else in this suite pins. It is executed
+   here rather than reasoned about: a reorder of those two lines falsifies a
+   committed public doc, and this is what goes red when it does. *)
+let test_scroll_style_attr_overwrites_the_renderer_overflow () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let overflow_of handle =
+    Jv.Jstr.get (Jv.get (Nopal_web.Renderer.dom_node handle) "style") "overflow"
+    |> Jstr.to_string
+  in
+  (* The affirmative arm, on the same builder and the same fixture: a container
+     carrying no [style] pair keeps the renderer's overflow. Without it the
+     emptiness asserted below could equally mean the renderer never wrote an
+     overflow at all. *)
+  let well_behaved =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (scroll_carrying [ ("id", "well-behaved-pane") ])
+  in
+  Alcotest.(check string)
+    "a container carrying no style pair scrolls" "auto"
+    (overflow_of well_behaved);
+  let hostile =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (scroll_carrying [ ("id", "hostile-pane"); ("style", "color: red") ])
+  in
+  let hostile_style = Jv.get (Nopal_web.Renderer.dom_node hostile) "style" in
+  (* The pair's own declaration landed, so the container's inline style really
+     was replaced and the assertion below is reached. *)
+  Alcotest.(check string)
+    "the style pair becomes the container's inline style" "red"
+    (Jv.Jstr.get hostile_style "color" |> Jstr.to_string);
+  Alcotest.(check string)
+    "and it takes the renderer's overflow with it, so the container silently \
+     stops scrolling"
+    "" (overflow_of hostile)
+
 (* Button: unchanged attrs must not trigger setAttribute *)
 let test_reconcile_button_skips_unchanged_attrs () =
   let parent = fresh_parent () in
@@ -3808,6 +3850,8 @@ let () =
             test_reconcile_box_removes_stale_attrs;
           Alcotest.test_case "scroll renders and reconciles attrs" `Quick
             test_scroll_renders_and_reconciles_attrs;
+          Alcotest.test_case "scroll style attr overwrites renderer overflow"
+            `Quick test_scroll_style_attr_overwrites_the_renderer_overflow;
           Alcotest.test_case "reconcile button skips unchanged attrs" `Quick
             test_reconcile_button_skips_unchanged_attrs;
           Alcotest.test_case "reconcile input skips unchanged placeholder"

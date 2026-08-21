@@ -87,6 +87,34 @@ let test_extract_scroll_bys_recurses_into_batch () =
     (Cmd.extract_scroll_bys cmd)
 
 (* ------------------------------------------------------------------ *)
+(* The single-request extractors for the other one-shot commands        *)
+(* ------------------------------------------------------------------ *)
+
+(* [extract_after] and [extract_focus] each recognise one constructor and
+   answer [None] for every other, so a relative-scroll request must read as
+   neither. Both arms live inside an or-pattern that predates this feature and
+   so cannot be individually wrong today — the point of pinning them is that a
+   later split of either or-pattern has somewhere to go red.
+
+   Each absence is paired with an affirmative arm on the SAME fixture: the
+   request neither extractor saw is still there for [extract_scroll_bys] to
+   read back. Without it, a future change that stopped [Cmd.scroll_by] from
+   building a request at all would leave both [None]s green while pinning
+   nothing. *)
+let test_scroll_by_is_neither_an_after_nor_a_focus () =
+  let cmd : int Cmd.t = Cmd.scroll_by "pane" (Scroll_delta.viewports 0.5) in
+  Alcotest.(check bool)
+    "extract_after reads no delay out of a scroll_by" true
+    (Option.is_none (Cmd.extract_after cmd));
+  Alcotest.(check bool)
+    "extract_focus reads no focus target out of a scroll_by" true
+    (Option.is_none (Cmd.extract_focus cmd));
+  Alcotest.check requests
+    "the same fixture is still a request the scroll extractor reads"
+    [ ("pane", Scroll_delta.viewports 0.5) ]
+    (Cmd.extract_scroll_bys cmd)
+
+(* ------------------------------------------------------------------ *)
 (* The platform callback                                                *)
 (* ------------------------------------------------------------------ *)
 
@@ -127,6 +155,8 @@ let () =
             test_execute_ignores_scroll_by;
           Alcotest.test_case "extract recurses into batch" `Quick
             test_extract_scroll_bys_recurses_into_batch;
+          Alcotest.test_case "scroll_by is neither an after nor a focus" `Quick
+            test_scroll_by_is_neither_an_after_nor_a_focus;
           Alcotest.test_case "interpret routes to the callback" `Quick
             test_interpret_routes_to_the_callback;
         ] );

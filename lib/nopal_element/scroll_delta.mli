@@ -20,11 +20,14 @@ val viewports : float -> t
 val equal : t -> t -> bool
 (** [equal a b] is whether the two are the same request, compared over
     [Float.equal] so a request a fresh update rebuilt equals the one it
-    replaces. Exact by design, and not in tension with the comparators the type
-    withholds: it answers "is this the same request", never "did the container
-    move far enough". It exists for the structural suites, which have no other
-    way to read a value out of an abstract type; nothing that applies a request
-    uses it. *)
+    replaces. Exact by design in the tolerance sense — no epsilon is allowed —
+    but not discriminating: [Float.equal] is [compare x y = 0], so [-0.0] and
+    [0.0] answer [true] and so do two NaNs, and nothing here depends on either
+    distinction. Not in tension with the comparators the type withholds either:
+    it answers "is this the same request", never "did the container move far
+    enough". It exists for the structural suites, which have no other way to
+    read a value out of an abstract type; nothing that applies a request uses
+    it. *)
 
 val offset_for :
   scroll_offset:float ->
@@ -45,5 +48,12 @@ val offset_for :
     [None] has exactly two causes, and neither raises: the clamped offset is the
     one the container already holds, so writing it would change nothing; or one
     of the measurements — or the delta — is not finite, in which case no offset
-    is guessed. A container that cannot scroll therefore answers [None] to every
-    delta, and so does a container already at the end asked to move further. *)
+    is guessed. Note what the first cause compares — the clamped offset against
+    the offset the container currently holds, never the delta against zero. A
+    container holding an offset outside its own reachable range is therefore
+    pulled back into that range, so [Some] can be answered even for a delta of
+    zero, and even by a container that cannot scroll at all: that is the state a
+    container whose content shrank is left in, and the only way back out of it.
+    A container that cannot scroll {e and already holds a reachable offset}
+    answers [None] to every delta, and so does a container already at the end
+    asked to move further. *)

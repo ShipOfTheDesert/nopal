@@ -19,8 +19,8 @@ module Make (A : Nopal_mvu.App.S) : sig
       (unit -> unit, string) result) ->
     unit ->
     t
-  (** [create ?focus ?schedule_after ?on_error ()] builds a runtime for the app
-      [A].
+  (** [create ?focus ?scroll_by ?schedule_after ?on_error ()] builds a runtime
+      for the app [A].
 
       [focus id] is a platform-provided callback used to implement
       {!Nopal_mvu.Cmd.focus}. Defaults to a no-op. The web backend passes a
@@ -76,7 +76,7 @@ module Make (A : Nopal_mvu.App.S) : sig
     ?serialize_model:(A.model -> string) ->
     unit ->
     t * Telemetry.handle
-  (** [create_with_telemetry ?focus ?schedule_after ?serialize_msg
+  (** [create_with_telemetry ?focus ?scroll_by ?schedule_after ?serialize_msg
        ?serialize_model ()] builds a runtime that records every dispatched
       message, model transition, issued command, and subscription firing into an
       in-process log, and returns it alongside the {!Telemetry.handle} that

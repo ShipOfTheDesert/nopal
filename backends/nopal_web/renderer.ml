@@ -103,6 +103,11 @@ let apply_text_style el text_style =
 let apply_container_base_style el =
   Brr.El.set_inline_style (Jstr.v "display") (Jstr.v "flex") el
 
+(* Set every declared attribute on [el]. Shared by the create arms and by
+   [maybe_apply_attrs], which adds the removal half for reconciliation. *)
+let apply_attrs el attrs =
+  List.iter (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el) attrs
+
 (* Element.t has no Map constructor — the runtime resolves mapped subtrees
    before they reach the renderer. This match is exhaustive over all
    concrete element variants. *)
@@ -476,9 +481,7 @@ let rec create_live ~sheet ~reveals ~dispatch
       let base_id, interaction_id =
         apply_styles_for_element ~sheet el style interaction
       in
-      List.iter
-        (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
-        attrs;
+      apply_attrs el attrs;
       let live_children =
         List.map (create_and_append ~sheet ~reveals ~dispatch el) children
       in
@@ -504,9 +507,7 @@ let rec create_live ~sheet ~reveals ~dispatch
       (* Row always uses "row" — set after style application so the element
          type wins over any direction the style may carry. *)
       Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v "row") el;
-      List.iter
-        (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
-        attrs;
+      apply_attrs el attrs;
       let live_children =
         List.map (create_and_append ~sheet ~reveals ~dispatch el) children
       in
@@ -528,9 +529,7 @@ let rec create_live ~sheet ~reveals ~dispatch
       (* Column always uses "column" — set after style application so the
          element type wins over any direction the style may carry. *)
       Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v "column") el;
-      List.iter
-        (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
-        attrs;
+      apply_attrs el attrs;
       let live_children =
         List.map (create_and_append ~sheet ~reveals ~dispatch el) children
       in
@@ -548,9 +547,7 @@ let rec create_live ~sheet ~reveals ~dispatch
       let base_id, interaction_id =
         apply_styles_for_element ~sheet el style interaction
       in
-      List.iter
-        (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
-        attrs;
+      apply_attrs el attrs;
       let live_child = create_and_append ~sheet ~reveals ~dispatch el child in
       let listeners =
         wire_click ~dispatch el on_click
@@ -583,9 +580,7 @@ let rec create_live ~sheet ~reveals ~dispatch
       in
       Jv.set (Brr.El.to_jv el) "value" (Jv.of_string value);
       Brr.El.set_at (Jstr.v "placeholder") (Some (Jstr.v placeholder)) el;
-      List.iter
-        (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
-        attrs;
+      apply_attrs el attrs;
       let listeners =
         wire_input_events ~dispatch el on_change on_submit on_blur on_keydown
       in
@@ -599,9 +594,7 @@ let rec create_live ~sheet ~reveals ~dispatch
       let base_id, interaction_id =
         apply_styles_for_element ~sheet el style interaction
       in
-      List.iter
-        (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
-        attrs;
+      apply_attrs el attrs;
       let listeners =
         match (on_toggle, disabled) with
         | Some f, false ->
@@ -625,9 +618,7 @@ let rec create_live ~sheet ~reveals ~dispatch
       let base_id, interaction_id =
         apply_styles_for_element ~sheet el style interaction
       in
-      List.iter
-        (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
-        attrs;
+      apply_attrs el attrs;
       let listeners =
         match (on_select, disabled) with
         | Some msg, false ->
@@ -664,9 +655,7 @@ let rec create_live ~sheet ~reveals ~dispatch
       let base_id, interaction_id =
         apply_styles_for_element ~sheet el style interaction
       in
-      List.iter
-        (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
-        attrs;
+      apply_attrs el attrs;
       let listeners =
         match (on_change, disabled) with
         | Some f, false ->
@@ -691,9 +680,7 @@ let rec create_live ~sheet ~reveals ~dispatch
       let base_id, interaction_id =
         apply_styles_for_element ~sheet el style interaction
       in
-      List.iter
-        (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
-        attrs;
+      apply_attrs el attrs;
       let listeners = wire_file_change ~dispatch el on_change in
       Live_node
         { dom = el; element; children = []; listeners; base_id; interaction_id }
@@ -715,9 +702,7 @@ let rec create_live ~sheet ~reveals ~dispatch
       let el = Brr.El.v (Jstr.v "div") [] in
       Brr.El.set_inline_style (Jstr.v "overflow") (Jstr.v "auto") el;
       apply_style el style;
-      List.iter
-        (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
-        attrs;
+      apply_attrs el attrs;
       (* A container being created carried no declaration a moment ago, so
          [previous] is [None]. Collected before the child is built, so an outer
          container is queued ahead of any container nested inside it. *)
@@ -1120,9 +1105,7 @@ let maybe_apply_attrs el old_element new_element =
           Brr.El.set_at (Jstr.v k) None el)
       old_attrs;
     (* Set new/changed attrs *)
-    List.iter
-      (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el)
-      new_attrs)
+    apply_attrs el new_attrs)
 
 let style_of (el : 'msg Nopal_element.Element.t) =
   match el with

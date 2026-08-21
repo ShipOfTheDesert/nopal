@@ -11,7 +11,7 @@ Homepage: nopal.run
 Every concern is a separate opam package with strict one-way dependency flow:
 
 ```
-nopal_mvu       ← MVU core (Cmd, Sub, App, Task, Key_chord) — no UI or platform deps
+nopal_mvu       ← MVU core (Cmd, Sub, App, Task, Key_chord) — depends on nopal_element for the types Cmd/Sub/App carry (Scroll_delta.t, Viewport.t, Element.t); no platform deps
 nopal_element   ← Element.t DSL — no platform deps
 nopal_style     ← Typed layout/paint — no platform deps
 nopal_storage   ← Backend-agnostic async key-value storage contract (module type S, In_memory, With_codec) — no platform deps
@@ -139,8 +139,24 @@ Cmd.perform : (('msg -> unit) -> unit) -> 'msg Cmd.t  (* general effect — zero
 Cmd.task : 'msg Task.t -> 'msg Cmd.t                  (* async task effect *)
 Cmd.after : int -> 'msg -> 'msg Cmd.t         (* delay message by N ms *)
 Cmd.focus : string -> 'msg Cmd.t              (* request focus on element by id *)
+Cmd.scroll_by : string -> Nopal_element.Scroll_delta.t -> 'msg Cmd.t
+  (* Move the scroll container carrying that DOM id by a signed multiple of the
+     container's own visible height — the id is the one passed as an [attrs]
+     pair to Element.scroll. One-shot: acted on once and never replayed, so two
+     identical requests move the container twice and several in one batch
+     compose rather than overwrite. An id naming nothing, an id naming
+     something that cannot scroll, and a backend that renders no elements are
+     all the same no-op, and none of them is an error. Carries no message. *)
 Cmd.map : ('a -> 'b) -> 'a Cmd.t -> 'b Cmd.t  (* transform message type *)
 ```
+
+`Cmd.scroll_by` and `Element.scroll`'s `?reveal` both write one container's
+scroll offset, and a frame that carries both applies them in a fixed order:
+**reveal first, relative scroll second, focus last**. The imperative request
+wins over the derived one because the application issued it in that update.
+Focus is last and takes no `preventScroll`, so batching `Cmd.focus` on an
+off-screen target with a `Cmd.scroll_by` lands at focus's position, not the
+scroll's.
 
 ### Tasks (`Task.t`)
 
@@ -274,13 +290,25 @@ Element.file_input : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(str
 
 (* Media and scrolling *)
 Element.image  : ?style:Style.t -> src:string -> alt:string -> unit -> 'msg Element.t
-Element.scroll : ?style:Style.t -> ?reveal:Reveal.t -> 'msg Element.t -> 'msg Element.t
+Element.scroll : ?style:Style.t -> ?attrs:(string * string) list
+  -> ?reveal:Reveal.t -> 'msg Element.t -> 'msg Element.t
   (* [reveal] names a keyed descendant that must be brought into view, and the
      alignment it should come to rest under. It is a request, not an invariant:
      a backend acts on it when it changes and at no other time, so a reader who
      scrolls away from the named child keeps their position. Omitting it asks
      for nothing, and a container that asks for nothing behaves exactly as it
-     did before the argument existed. *)
+     did before the argument existed.
+
+     [attrs] are application attributes carried to the rendered container as
+     written — the container's own identity, so a platform request can name it
+     directly instead of reaching it through a wrapper. An [id] here is the
+     spelling Cmd.scroll_by resolves against. Names and values are opaque
+     application strings, never interpreted, and the list is compared in order,
+     so two containers carrying the same pairs in a different order are not
+     equal. Do not put [style] or [class] in it: both belong to the renderer,
+     and a [style] pair here overwrites the whole inline style the renderer
+     wrote on the container — the overflow that makes it scroll included — so
+     the container silently stops scrolling. *)
 
 (* Identity for list reconciliation, and for naming a scroll container's
    reveal target *)
@@ -325,6 +353,48 @@ end
      the offset the container already holds or that a measurement is not
      finite. A child taller than [viewport_height] falls back to showing its
      top edge under every alignment. *)
+
+(* Moving a scroll container by an amount relative to its own visible height —
+   pure, native-compiling, references nothing else in the package. The command
+   that carries one of these is Cmd.scroll_by. *)
+module Scroll_delta : sig
+  type t   (* abstract; ordering operators deliberately withheld *)
+  val viewports : float -> t
+  val equal : t -> t -> bool
+  val offset_for :
+    scroll_offset:float -> viewport_height:float -> content_height:float ->
+    t -> float option
+end
+  (* [viewports n] is a movement of [n] times the container's visible height,
+     positive toward the end and negative back toward the start. It accepts any
+     float, including a non-finite one: the rejection lives at [offset_for],
+     which answers [None], so nothing validates on the way in. The type is
+     abstract so a later pixel or line unit can arrive without changing the
+     command that carries it, and it withholds comparison operators because
+     exact float comparison on a geometry quantity is a latent bug.
+
+     [equal] is over [Float.equal] and answers "is this the same request",
+     never "did the container move far enough". Exact in the tolerance sense —
+     no epsilon — but not discriminating: [Float.equal] is [compare x y = 0], so
+     [-0.0] equals [0.0] and a NaN equals a NaN, and nothing depends on either
+     distinction. It exists for structural tests,
+     which have no other way to read a value out of the abstract type; nothing
+     that applies a request uses it.
+
+     [offset_for]'s three measurements share one origin, the top of the
+     container's scrollable content. The result is clamped to [0.] through
+     [Float.max 0. (content_height -. viewport_height)], so it is always an
+     offset the container can take. It is total, and [None] has exactly two
+     causes: the clamped offset is the one the container already holds, or one
+     of the measurements — or the delta — is not finite, in which case no
+     offset is guessed. The first cause compares the clamped offset against the
+     offset the container currently holds, never the delta against zero, so a
+     container holding an offset outside its reachable range is pulled back into
+     it — [Some] even for a delta of zero, and even where the container cannot
+     scroll. A container that cannot scroll and already holds a reachable offset
+     answers [None] to every delta, and so does a container at the end asked to
+     move further. The arithmetic is portable; taking the measurements is each
+     backend's own concern. *)
 
 (* 2D canvas drawing *)
 Element.draw : ?on_pointer_move:(pointer_event -> 'msg) -> ?on_click:(pointer_event -> 'msg)
@@ -2194,6 +2264,13 @@ Pure OCaml structural testing without a browser:
 ```ocaml
 (* Render and inspect *)
 Test_renderer.render   : 'msg Element.t -> 'msg rendered
+  (* A scroll container's [reveal] declaration is surfaced as the derived attr
+     pairs "reveal" and "reveal-align", prepended to the view's own attrs so a
+     declaration wins lookup over a caller-supplied pair of the same name.
+     Nothing marks a pair as derived, so the precedence does not run the other
+     way: a container supplying ("reveal", "decoy") in attrs and declaring no
+     reveal reads back attr "reveal" = Some "decoy", which is the caller's own
+     attribute and not a declaration. *)
 Test_renderer.tree     : 'msg rendered -> node
 Test_renderer.messages : 'msg rendered -> 'msg list
 
@@ -2500,12 +2577,20 @@ Runtime constructors (`Nopal_runtime.Runtime.Make(A)`):
 
 ```ocaml
 val create :
-  ?focus:(string -> unit) -> ?schedule_after:(int -> (unit -> unit) -> unit) ->
+  ?focus:(string -> unit) ->
+  ?scroll_by:(string -> Nopal_element.Scroll_delta.t -> unit) ->
+  ?schedule_after:(int -> (unit -> unit) -> unit) ->
   unit -> t
-(* Records nothing. Behaviour unchanged from the pre-telemetry runtime. *)
+(* Records nothing. Behaviour unchanged from the pre-telemetry runtime.
+   [scroll_by] is the platform callback implementing Cmd.scroll_by; like
+   [focus] it defaults to a no-op, so a backend that renders no elements leaves
+   the request inert rather than reporting it. The web backend passes a callback
+   that queues the request for the drain running after the frame's DOM patch. *)
 
 val create_with_telemetry :
-  ?focus:(string -> unit) -> ?schedule_after:(int -> (unit -> unit) -> unit) ->
+  ?focus:(string -> unit) ->
+  ?scroll_by:(string -> Nopal_element.Scroll_delta.t -> unit) ->
+  ?schedule_after:(int -> (unit -> unit) -> unit) ->
   ?serialize_msg:(A.msg -> string) ->        (* default: fun _ -> "<opaque>" *)
   ?serialize_model:(A.model -> string) ->    (* default: fun _ -> "<opaque>" *)
   unit -> t * Telemetry.handle
@@ -2518,7 +2603,7 @@ Constructor labels for the `Command`/`Subscription` events (stable strings the
 fragment assertions depend on):
 
 ```ocaml
-val Cmd.describe : 'msg Cmd.t -> string   (* "none" | "batch" | "perform" | "task" | "after" | "focus" *)
+val Cmd.describe : 'msg Cmd.t -> string   (* "none" | "batch" | "perform" | "task" | "after" | "focus" | "scroll_by" *)
 val Sub.describe : 'msg Sub.t -> string   (* "none" | "batch" | "every" | "on_keydown" | ... | "custom" *)
 ```
 
@@ -2574,8 +2659,9 @@ would let the same assertion spec run against web and Tauri) is tracked in
 
 ```
 lib/
-  nopal_mvu/         — Cmd, Sub, App, Task, Key_chord — zero UI deps
-  nopal_element/     — Element.t DSL + Virtual_list + Reveal — zero platform deps
+  nopal_mvu/         — Cmd, Sub, App, Task, Key_chord — depends on nopal_element
+                       for the types they carry; zero platform deps
+  nopal_element/     — Element.t DSL + Virtual_list + Reveal + Scroll_delta — zero platform deps
   nopal_style/       — Style.t, Text.t, Interaction.t, Cursor.t, Font, Color
                        (Color is the CSS-authoring colour type; distinct from
                        nopal_scene/'s float-RGBA Color)
@@ -2623,10 +2709,29 @@ examples/
                        alignment selector, a row whose key carries a quote and a
                        backslash, and a checkbox gating the arrow keys, which
                        prevent the browser default page-wide and so must not be
-                       live all the time). Each lives in its own sub_*.ml/.mli
-                       with its own structural suite; the receipt one is
-                       examples/kitchen_sink/sub_receipt_flow.ml and the reveal
-                       one examples/kitchen_sink/sub_reveal_list.ml
+                       live all the time); and "Relative scroll of a scroll
+                       container" (a fixed-height pane of paragraphs of unequal
+                       height that the model moves by half the pane's own
+                       visible height — Ctrl+D / Ctrl+U behind their own gating
+                       checkbox, since Ctrl+D is the browser's bookmark
+                       shortcut and the chords prevent the default; the pane
+                       carries a DOM id of its own, which is how a request
+                       names it, and it carries a reveal at the same time, so
+                       the waypoint control changes the reveal and issues a
+                       relative movement in one update; a third control moves
+                       the pane a whole viewport and focuses a field further
+                       down it in the same update, which is where the last
+                       stage becomes visible — focus is applied after the
+                       relative movement and takes no preventScroll, so the
+                       browser's own scroll-into-view decides where the pane
+                       rests; and the section is the visible form of the
+                       order all three writers are applied in). Each lives in
+                       its own sub_*.ml/.mli with its own structural suite;
+                       the receipt one is
+                       examples/kitchen_sink/sub_receipt_flow.ml, the reveal one
+                       examples/kitchen_sink/sub_reveal_list.ml and the
+                       relative-scroll one
+                       examples/kitchen_sink/sub_scroll_pane.ml
   dashboard/         — Charts showcase
 test/
   unit/              — Alcotest tests per package
