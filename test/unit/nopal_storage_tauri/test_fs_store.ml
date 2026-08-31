@@ -48,6 +48,7 @@ let () =
   let ios_shape = ref None in
   let bad_shape = ref None in
   let after_delete = ref None in
+  let delete_absent = ref None in
   let listed = ref None in
   let write_task = Store.set ~key:"grokkr.reviews.v1" ~value:stored in
   let read_task = Store.get "grokkr.reviews.v1" in
@@ -56,6 +57,9 @@ let () =
     let* _ = Store.delete "grokkr.reviews.v1" in
     Store.get "grokkr.reviews.v1"
   in
+  (* Deleting a key that was never written. Sequenced last, so by the time it
+     runs the store really is empty and the key really is absent. *)
+  let delete_absent_task = Store.delete "grokkr.never.written" in
   Nopal_mvu.Task.run write_task (fun _ ->
       Nopal_mvu.Task.run read_task (fun r ->
           roundtrip := Some r;
@@ -69,7 +73,9 @@ let () =
                   Nopal_mvu.Task.run keys_task (fun rk ->
                       listed := Some rk;
                       Nopal_mvu.Task.run delete_task (fun rd ->
-                          after_delete := Some rd))))));
+                          after_delete := Some rd;
+                          Nopal_mvu.Task.run delete_absent_task (fun ra ->
+                              delete_absent := Some ra)))))));
   flush_then_run (fun () ->
       Alcotest.run "nopal_storage_tauri"
         [
@@ -135,5 +141,31 @@ let () =
                       Alcotest.failf "expected Ok None, got error: %s"
                         (Nopal_storage.message e)
                   | None -> Alcotest.fail "delete task never resolved");
+              (* Absence is not an error here, and this pins that it is a
+                 deliberate contract rather than an accident of the
+                 implementation. [Make]'s [delete] guards on [List.mem] over
+                 [list_keys] and returns [Ok ()] when the key is not there, so a
+                 caller cannot use the result to learn whether anything was
+                 removed. That is the property to know about before writing a
+                 caller that wants to: it would need [keys] first.
+
+                 It also must not be an unresolved task. The decoder for a
+                 delete runs where [Task.guard] cannot catch a raise, so "no
+                 key" reaching the filesystem layer and raising would hang
+                 rather than report — which is why the [None] arm below says so
+                 specifically. *)
+              Alcotest.test_case "deleting an absent key reports Ok ()" `Quick
+                (fun () ->
+                  match !delete_absent with
+                  | Some (Ok ()) -> ()
+                  | Some (Error e) ->
+                      Alcotest.failf
+                        "expected Ok () for a key that was never written, got \
+                         error: %s"
+                        (Nopal_storage.message e)
+                  | None ->
+                      Alcotest.fail
+                        "delete-absent task never resolved — deleting a \
+                         missing key raised instead of reporting");
             ] );
         ])

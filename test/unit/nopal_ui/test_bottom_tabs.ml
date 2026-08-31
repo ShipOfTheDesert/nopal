@@ -205,6 +205,79 @@ let test_with_attrs_applied_to_root () =
     "root container carries custom attr" true
     (Option.is_some (find (By_attr ("data-testid", "custom-root")) (tree r)))
 
+(* --- Filling the container: the bar is at the bottom, not merely below --- *)
+
+(* The root is reached through the custom attr rather than by walking the tree,
+   so these assert about the element the caller actually mounts and not about a
+   position in a structure. *)
+let root_node r =
+  match find (By_attr ("data-testid", "fill-root")) (tree r) with
+  | None -> Alcotest.fail "no root node"
+  | Some node -> node
+
+let rooted ?panel_style () =
+  let config =
+    make_config ~tabs ~active:"a" ~safe_area_bottom:0
+    |> BT.with_attrs [ ("data-testid", "fill-root") ]
+  in
+  let config =
+    match panel_style with
+    | Some s -> BT.with_panel_style s config
+    | None -> config
+  in
+  render (BT.view config)
+
+let node_height node = Option.bind (style node) (fun s -> s.layout.height)
+
+let panel_flex_grow r =
+  match find (By_attr ("role", "tabpanel")) (tree r) with
+  | None -> Alcotest.fail "no tabpanel node"
+  | Some node -> Option.bind (style node) (fun s -> s.layout.flex_grow)
+
+let size_testable =
+  Alcotest.testable
+    (fun fmt (s : Style.size) ->
+      match s with
+      | Style.Fill -> Format.fprintf fmt "Fill"
+      | Style.Hug -> Format.fprintf fmt "Hug"
+      | Style.Fixed f -> Format.fprintf fmt "Fixed %g" f
+      | Style.Fraction f -> Format.fprintf fmt "Fraction %g" f)
+    ( = )
+
+let test_root_fills_container_height () =
+  let r = rooted () in
+  Alcotest.(check (option size_testable))
+    "root height is Fill" (Some Style.Fill)
+    (node_height (root_node r))
+
+let test_panel_grows_by_default () =
+  let r = rooted () in
+  Alcotest.(check (option (float 0.001)))
+    "panel grows into the leftover space" (Some 1.0) (panel_flex_grow r)
+
+(* The regression this pair exists for: a caller overriding the panel's paint
+   used to replace the whole style, which silently took the growth with it and
+   dropped the bar back under the content. *)
+let test_panel_grows_through_cosmetic_override () =
+  let r = rooted ~panel_style:(style_with_padding_top 7.0) () in
+  Alcotest.(check (option (float 0.001)))
+    "cosmetic override keeps the growth" (Some 1.0) (panel_flex_grow r);
+  match find (By_attr ("role", "tabpanel")) (tree r) with
+  | None -> Alcotest.fail "no tabpanel node"
+  | Some node ->
+      Alcotest.(check (option (float 0.001)))
+        "and keeps the override itself" (Some 7.0) (node_padding_top node)
+
+let test_explicit_flex_grow_is_honoured () =
+  let no_grow =
+    Style.default
+    |> Style.with_layout (fun l -> { l with flex_grow = Some 0.0 })
+  in
+  let r = rooted ~panel_style:no_grow () in
+  Alcotest.(check (option (float 0.001)))
+    "an explicit 0 opts out rather than being filled in" (Some 0.0)
+    (panel_flex_grow r)
+
 let () =
   Alcotest.run "nopal_ui_bottom_tabs"
     [
@@ -250,5 +323,16 @@ let () =
             `Quick test_with_active_tab_style_applied;
           Alcotest.test_case "with_attrs applied to root" `Quick
             test_with_attrs_applied_to_root;
+        ] );
+      ( "filling the container",
+        [
+          Alcotest.test_case "root height is Fill" `Quick
+            test_root_fills_container_height;
+          Alcotest.test_case "panel grows by default" `Quick
+            test_panel_grows_by_default;
+          Alcotest.test_case "growth survives a cosmetic panel override" `Quick
+            test_panel_grows_through_cosmetic_override;
+          Alcotest.test_case "explicit flex_grow is honoured" `Quick
+            test_explicit_flex_grow_is_honoured;
         ] );
     ]
