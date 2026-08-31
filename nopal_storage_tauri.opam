@@ -12,6 +12,7 @@ depends: [
   "alcotest" {>= "1.9.1" & with-test}
   "ocaml"
   "nopal_storage"
+  "nopal_fs_key"
   "nopal_mvu"
   "brr"
   "js_of_ocaml"

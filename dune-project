@@ -190,7 +190,8 @@
   ocaml
   nopal_element
   nopal_style
-  nopal_mvu))
+  nopal_mvu
+  nopal_runtime))
 
 (package
  (name nopal_charts)
@@ -231,7 +232,12 @@
   ocaml
   brr
   js_of_ocaml
+  nopal_element
+  nopal_mvu
+  nopal_platform
   nopal_runtime
+  nopal_storage
+  nopal_storage_tauri
   nopal_telemetry_wire))
 
 (package
@@ -301,6 +307,7 @@
     :with-test))
   ocaml
   nopal_storage
+  nopal_fs_key
   nopal_mvu
   brr
   js_of_ocaml))
@@ -329,6 +336,7 @@
   nopal_runtime
   nopal_element
   nopal_style
+  nopal_scene
   nopal_draw
   nopal_mvu
   nopal_platform
