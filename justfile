@@ -120,15 +120,30 @@ dev-tauri: tauri-prepare-dev
     miniserve --port 1420 --index index.html tauri/dist &
     SERVE_PID=$!
     # Launch Tauri dev window
-    cd tauri && npm exec tauri dev
+    cd tauri && npm exec -- tauri dev
 
 build-tauri:
-    cd tauri && npm exec tauri build
+    cd tauri && npm exec -- tauri build
 
 # Android (Tauri mobile). Both recipes fail fast with an exact remediation
 # command if ANDROID_HOME (the Android SDK location) is unset (REQ-F1). The
 # guard runs before the JS build so a missing toolchain costs nothing. See
 # CONTRIBUTING.md "Compiler targets by platform" for the full Android setup.
+#
+# `npm exec --` and not `npm exec`: npm parses any leading-dash argument after
+# the package name as its OWN flag and exits EUNKNOWNCONFIG before the binary is
+# reached. Measured on npm 12.0.2: `npm exec tauri --apk` prints "Unknown cli flag:
+# --apk", while `npm exec -- tauri --apk` and `npm exec tauri -- --apk` both
+# reach tauri, which then reports "unexpected argument '--apk' found". So
+# `build-android` below was broken for as long as it has carried `--apk --aab`.
+# Worse than an error in one case: if the swallowed flag is one npm knows, npm
+# acts on it and exits 0. `npm exec tauri android build --apk --aab --help`
+# prints npm exec's OWN usage and succeeds, building nothing.
+# The flagless invocations (`tauri dev`, `tauri build`, `tauri android dev`,
+# `tauri android init`) were never affected, and are normalised to the same form
+# only so that adding one flag later cannot silently break them. `npx` does NOT
+# share the defect (measured: `npx tauri --apk` reaches tauri), so the
+# playwright and tsx recipes further down are correct as written.
 
 # Guard: ANDROID_HOME must be set for any Tauri Android build.
 _require-android-home:
@@ -141,11 +156,11 @@ _require-native-bridge:
 
 # guard ANDROID_HOME + native bridge -> build JS (dev) -> `tauri android dev`
 dev-android: _require-android-home _require-native-bridge tauri-prepare-dev
-    cd tauri && npm exec tauri android dev
+    cd tauri && npm exec -- tauri android dev
 
 # guard ANDROID_HOME + native bridge -> build JS (release) -> `tauri android build` (.apk + .aab)
 build-android: _require-android-home _require-native-bridge tauri-prepare-build
-    cd tauri && npm exec tauri android build --apk --aab
+    cd tauri && npm exec -- tauri android build --apk --aab
 
 # Windowed by default; headless for CI: `just run-android pixel7_api34 true`.
 # Boot the emulator, build+install+launch the app — in one command.

@@ -51,7 +51,7 @@ check_bridge() {
       echo "project yet. Because init also clobbers the hand-written bridge, init first"
       echo "and then restore MainActivity.kt from version control (in this order):"
       echo
-      echo "    (cd tauri && npm exec tauri android init)"
+      echo "    (cd tauri && npm exec -- tauri android init)"
       echo "    git checkout -- $rel"
       echo
     } >&2
