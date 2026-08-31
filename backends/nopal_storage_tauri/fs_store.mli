@@ -23,7 +23,14 @@ val read_text :
   key:string -> (string, Nopal_storage.error) result Nopal_mvu.Task.t
 (** [read_text ~key] reads the file for [key]. The caller must confirm the file
     exists first (via {!list_keys}); reading an absent file resolves [Error _],
-    not [Ok]. *)
+    not [Ok].
+
+    [plugin:fs|read_text_file] answers with the file's bytes, not a string — an
+    [ArrayBuffer] on the custom-protocol and channel transports (Linux, Windows,
+    Android), a number array on macOS and iOS. Both are decoded as UTF-8 with
+    [TextDecoder], the symmetric partner of {!write_text}'s [TextEncoder]; a
+    value of neither shape resolves [Error (Backend_error _)] rather than
+    raising. *)
 
 val write_text :
   key:string ->

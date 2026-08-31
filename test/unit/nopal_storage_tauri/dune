@@ -1,0 +1,17 @@
+(test
+ (name test_fs_store)
+ (package nopal_storage_tauri)
+ (libraries
+  nopal_storage_tauri
+  nopal_storage
+  nopal_mvu
+  alcotest
+  brr
+  js_of_ocaml)
+ (modes js)
+ (js_of_ocaml
+  (javascript_files fs_shim.js)))
+
+; fs_shim.js stubs __TAURI_INTERNALS__ with the tauri-plugin-fs v2 wire
+; contract — notably that plugin:fs|read_text_file answers with the file's
+; BYTES, not a string — so the read path runs under Node without a Tauri host.
