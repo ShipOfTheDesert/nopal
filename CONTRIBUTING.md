@@ -600,10 +600,34 @@ A backend package that adds no element, style feature or interaction pattern —
 `nopal_http_web`, `nopal_blob_web`, `nopal_image_web` — does not trigger the
 rule by itself. It does still need a section before the capability can be said
 to work in a real browser, because the kitchen sink is what Playwright drives.
-Deferring that section is allowed; leaving it unrecorded is not. **There are no
-current deferrals.**
+Deferring that section is allowed; leaving it unrecorded is not. **There is one
+current deferral.**
 
-`nopal_image_web` was the last one. Its section is the kitchen sink's receipt
+#### Open deferral — `Platform_tauri.on_back_pressed`
+
+**Owner: whoever adds a router-less example (or a second Tauri example) to the
+repo, in the change that adds it.**
+
+`on_back_pressed` delivers the Android hardware back press as a msg, for an
+application that installs no `Router`. The kitchen sink cannot demonstrate that,
+because it *is* a routed application: it creates `back_router` and calls
+`enable_hardware_back`, and the two are independent listeners on one event, so a
+kitchen-sink subscription would demonstrate only the double-effect case the docs
+tell applications to avoid — not the router-less case the capability exists for.
+Showing it properly needs an example with no router, which the repo does not
+have.
+
+Nothing about the capability is unproven as a result: `test/unit/nopal_tauri/
+test_back_pressed.ml` drives the whole path a host emit takes — registration,
+delivery of a Rust unit (`null`) payload, no setup-time dispatch, unlisten, and
+that the press touches no `history` — against the same `tauri_shim.js` the other
+Tauri suites use. What no test in *this* repo covers is the Rust
+`app.emit` → webview hop for this event; `back.e2e.ts` covers that hop for
+`enable_hardware_back` and both functions listen for the same event, so the hop
+itself is exercised. The first downstream consumer (grokkr) exercises the rest on
+a real handset.
+
+`nopal_image_web` was the previous one. Its section is the kitchen sink's receipt
 flow, and `test/e2e/tests/kitchen-sink-receipt-flow.spec.ts` drives the real
 canvas pipeline through it — decode, downscale, re-encode, sharpness, and the
 multipart upload of the processed handle.

@@ -42,16 +42,48 @@ val safe_area_source :
     supplying this there would feed a broken value while also suppressing that
     fallback (feature 0121, FR-1). *)
 
+val on_back_pressed : 'msg -> 'msg Nopal_mvu.Sub.t
+(** [on_back_pressed msg] subscribes to the hardware back button, dispatching
+    [msg] on each press. Keyed ["nopal:back-pressed"], listening for the Rust
+    event of the same name: on Android the hardware button and the back swipe
+    gesture fire it through [MainActivity]'s [OnBackPressedCallback] and the
+    [notify_back_pressed] command, and [simulate_back_pressed] fires it on every
+    platform.
+
+    This is the capability an application {b without} a router needs, and it is
+    an alternative to {!enable_hardware_back} rather than a companion to it —
+    see that function for which to pick. It delivers the press straight to
+    [update] with no [window.history] round trip, so it does not depend on a
+    history entry existing.
+
+    No setup-time dispatch: a press is an event, not a signal, so unlike
+    {!on_safe_area_change} and {!on_keyboard_height_change} nothing is delivered
+    until the button is pressed. Desktop has no hardware back button, so there
+    the subscription fires only via [simulate_back_pressed]; in a browser
+    (outside a Tauri host) nothing emits the event and it never fires. *)
+
 val enable_hardware_back : unit -> unit
 (** Idempotently register a listener for the Rust [nopal:back-pressed] event. On
     Android the hardware back button fires it for real, wired through
     [MainActivity]'s [OnBackPressedCallback] into the [notify_back_pressed]
     command; the [simulate_back_pressed] debug IPC command fires the same event
     on every platform (the Tauri E2E's trigger). Each firing calls
-    [window.history.back()], producing a [popstate] the router's existing
-    [on_navigate] subscription consumes — no app code required (REQ-F3). Desktop
-    has no hardware back button, so the event fires there only via
-    [simulate_back_pressed]. *)
+    [window.history.back()] (REQ-F3). Desktop has no hardware back button, so
+    the event fires there only via [simulate_back_pressed].
+
+    {b Requires a router.} [window.history.back()] raises a [popstate] only when
+    there is a history entry to return to, which means only when the application
+    has pushed one — i.e. only when it drives navigation through
+    {!Nopal_platform.Router} (or calls {!push_state} itself). In an application
+    that pushes no history entry the press does nothing at all: no [popstate],
+    no [on_navigate], no message. Worse than nothing on Android, where
+    [OnBackPressedCallback] is registered with [true] and has already swallowed
+    the press, so the app does not background either. Such an application wants
+    {!on_back_pressed} instead.
+
+    The two are independent listeners on the same event and neither suppresses
+    the other: an application that calls this {i and} subscribes to
+    {!on_back_pressed} gets both effects from one press. Pick one. *)
 
 val parse_safe_area : string -> Nopal_element.Viewport.safe_area option
 (** Parse a ["top=<i>;right=<i>;bottom=<i>;left=<i>;"] safe-area payload into

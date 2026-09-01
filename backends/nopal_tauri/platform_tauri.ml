@@ -79,6 +79,22 @@ let safe_area_source set =
   set Nopal_element.Viewport.zero_insets;
   listen_safe_area set
 
+(* The router-less counterpart to [enable_hardware_back]: the press is delivered
+   as a msg rather than turned into [window.history.back()]. The two are
+   independent registrations on the same event and neither disables the other —
+   an application picks one (see both .mli entries). Built on
+   [Tauri_subscription] rather than the raw [Event.listen] so a subscription torn
+   down inside the async listen window still unlistens (REQ-F8);
+   [enable_hardware_back] can use the raw listener only because it registers once
+   for the process lifetime and never tears down.
+
+   The payload is discarded: the Rust command emits [app.emit (name, ())], so
+   there is nothing to decode, and [decode] answering [Some msg] unconditionally
+   is the whole of it. *)
+let on_back_pressed msg =
+  Tauri_subscription.make ~key:"nopal:back-pressed" ~event:"nopal:back-pressed"
+    ~decode:(fun (_ : Jv.t) -> Some msg)
+
 (* mutable: tracks whether the back-pressed listener is already registered, so
    enable_hardware_back stays idempotent across repeated calls (REQ-F3). *)
 let hardware_back_enabled = ref false
