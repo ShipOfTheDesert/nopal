@@ -2407,6 +2407,19 @@ val Window.center         : unit Nopal_mvu.Task.t
 (* Platform — navigation + storage capabilities for Tauri webview *)
 module Platform_tauri : Nopal_platform.Platform.S   (* storage = Nopal_storage_tauri.Make () *)
 
+(* Android hardware back button — pick ONE of these two, never both. They are
+   independent listeners on the same `nopal:back-pressed` event, so calling both
+   makes one press do both things. *)
+val Platform_tauri.enable_hardware_back : unit -> unit
+  (* ROUTED apps only: turns each press into window.history.back(). That raises a
+     popstate — and so reaches Router.on_navigate — only if the app pushed a
+     history entry. An app with no router pushes none, so the press does nothing
+     at all, and on Android OnBackPressedCallback(true) has already swallowed it,
+     so the app does not background either. *)
+val Platform_tauri.on_back_pressed : 'msg -> 'msg Nopal_mvu.Sub.t
+  (* ROUTER-LESS apps: dispatches msg on each press, no history round trip.
+     No setup-time dispatch — a press is an event, not a signal. *)
+
 (* Tray — system tray icon subscriptions + task bindings *)
 (* Requires tray-icon:default capability and trayIcon in tauri.conf.json *)
 val Tray.on_click       : 'msg -> 'msg Nopal_mvu.Sub.t

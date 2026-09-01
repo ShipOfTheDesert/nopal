@@ -70,3 +70,15 @@
  (modes js)
  (js_of_ocaml
   (javascript_files tauri_shim.js)))
+
+; A test binary of its own so that enable_hardware_back — whose listener is
+; registered for the process lifetime and cannot be removed — is never called
+; in the process that asserts a back press touches no history.
+
+(test
+ (name test_back_pressed)
+ (modules test_back_pressed)
+ (libraries nopal_tauri nopal_mvu alcotest)
+ (modes js)
+ (js_of_ocaml
+  (javascript_files tauri_shim.js)))
