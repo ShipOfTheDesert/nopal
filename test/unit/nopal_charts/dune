@@ -3,6 +3,7 @@
   test_padding
   test_hit_map
   test_axis
+  test_axis_svg
   test_tooltip
   test_legend
   test_sparkline
@@ -37,5 +38,6 @@
   nopal_draw
   nopal_element
   nopal_style
+  nopal_svg
   nopal_test
   alcotest))

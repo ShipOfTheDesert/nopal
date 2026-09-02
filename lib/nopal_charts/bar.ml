@@ -76,15 +76,17 @@ let scene ~data ~label ~value ~color ?x ~width ~height
       in
       let bar_scenes = List.rev scene_rects in
       let category_label_scenes = List.rev category_labels in
+      (* [Bar] draws its own X axis rather than calling [Axis.render_x], so the
+         chrome below is read off the same record every other axis reads. *)
+      let x_appearance = x_axis.appearance in
       (* X axis line only (labels rendered per-bar above) *)
       let x_axis_line =
         let ax_y = chart_y +. chart_height in
         [
           Nopal_draw.Scene.line
             ~stroke:
-              (Nopal_draw.Paint.stroke ~width:1.0
-                 (Nopal_draw.Paint.solid
-                    (Nopal_draw.Color.rgb ~r:0.2 ~g:0.2 ~b:0.2)))
+              (Nopal_draw.Paint.stroke ~width:x_appearance.line_width
+                 (Nopal_draw.Paint.solid x_appearance.line_color))
             ~x1:chart_x ~y1:ax_y ~x2:(chart_x +. chart_width) ~y2:ax_y ();
         ]
       in
@@ -93,8 +95,9 @@ let scene ~data ~label ~value ~color ?x ~width ~height
         | Some lbl ->
             let center_x = chart_x +. (chart_width /. 2.0) in
             [
-              Nopal_draw.Scene.text ~font_size:12.0 ~anchor:Middle ~baseline:Top
-                ~x:center_x
+              Nopal_draw.Scene.text ~font_size:x_appearance.axis_label_size
+                ~fill:(Nopal_draw.Paint.solid x_appearance.axis_label_color)
+                ~anchor:Middle ~baseline:Top ~x:center_x
                 ~y:(chart_y +. chart_height +. category_label_offset +. 16.0)
                 lbl;
             ]

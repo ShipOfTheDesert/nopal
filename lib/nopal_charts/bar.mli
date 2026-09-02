@@ -1,11 +1,17 @@
-(** Interactive bar chart. REQ-F1, REQ-F9, REQ-F10, REQ-F11, REQ-F12, REQ-F13,
-    REQ-F14.
+(** Interactive bar chart.
 
     Renders vertical bars from data with axes, hit testing, hover highlighting,
     and tooltip support. Empty data produces a blank chart. Zero-value bars have
     minimum visible height. Negative values render below baseline. When
     [domain_window] is provided with [x], data is clipped via [Viewport.clip]
-    with [buffer=0]. *)
+    with [buffer=0].
+
+    The X axis line and the X axis label are drawn here rather than by
+    [Axis.render_x], and are painted with [x_axis.appearance] — its
+    [line_color], [line_width] and [axis_label_color], [axis_label_size] — so a
+    themed axis reaches them as it reaches the Y axis. There are no X tick marks
+    and no X tick labels to paint: the per-bar category labels underneath the
+    axis are series chrome, not axis chrome, and are not configurable. *)
 
 val scene :
   data:'a list ->
