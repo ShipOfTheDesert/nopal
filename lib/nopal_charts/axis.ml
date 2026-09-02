@@ -1,11 +1,45 @@
 type tick = { value : float; label : string }
 
+type appearance = {
+  line_color : Nopal_draw.Color.t;
+  line_width : float;
+  tick_color : Nopal_draw.Color.t;
+  tick_length : float;
+  tick_label_color : Nopal_draw.Color.t;
+  tick_label_size : float;
+  axis_label_color : Nopal_draw.Color.t;
+  axis_label_size : float;
+}
+
+let default_appearance =
+  {
+    line_color = Nopal_draw.Color.rgb ~r:0.2 ~g:0.2 ~b:0.2;
+    line_width = 1.0;
+    tick_color = Nopal_draw.Color.rgb ~r:0.2 ~g:0.2 ~b:0.2;
+    tick_length = 6.0;
+    tick_label_color = Nopal_draw.Color.black;
+    tick_label_size = 11.0;
+    axis_label_color = Nopal_draw.Color.black;
+    axis_label_size = 12.0;
+  }
+
+let equal_appearance a b =
+  Nopal_draw.Color.equal a.line_color b.line_color
+  && Float.equal a.line_width b.line_width
+  && Nopal_draw.Color.equal a.tick_color b.tick_color
+  && Float.equal a.tick_length b.tick_length
+  && Nopal_draw.Color.equal a.tick_label_color b.tick_label_color
+  && Float.equal a.tick_label_size b.tick_label_size
+  && Nopal_draw.Color.equal a.axis_label_color b.axis_label_color
+  && Float.equal a.axis_label_size b.axis_label_size
+
 type config = {
   label : string option;
   min : float option;
   max : float option;
   tick_count : int;
   format_tick : float -> string;
+  appearance : appearance;
 }
 
 let default_config =
@@ -15,6 +49,7 @@ let default_config =
     max = None;
     tick_count = 5;
     format_tick = string_of_float;
+    appearance = default_appearance;
   }
 
 (** Compute a "nice" number for tick spacing. Rounds to 1, 2, or 5 * 10^n. *)
@@ -74,18 +109,28 @@ let compute_ticks config ~data_min ~data_max =
   in
   collect first_tick []
 
-let tick_size = 6.0
 let label_offset = 16.0
-
-let axis_stroke =
-  Nopal_draw.Paint.stroke ~width:1.0
-    (Nopal_draw.Paint.solid (Nopal_draw.Color.rgb ~r:0.2 ~g:0.2 ~b:0.2))
-
 let axis_label_offset = 32.0
 
+(** Build the axis-line and tick strokes shared by [render_x] and [render_y].
+    Both take their width from [line_width], which governs the axis line and the
+    ticks together. *)
+let strokes_of (appearance : appearance) =
+  let line_stroke =
+    Nopal_draw.Paint.stroke ~width:appearance.line_width
+      (Nopal_draw.Paint.solid appearance.line_color)
+  in
+  let tick_stroke =
+    Nopal_draw.Paint.stroke ~width:appearance.line_width
+      (Nopal_draw.Paint.solid appearance.tick_color)
+  in
+  (line_stroke, tick_stroke)
+
 let render_x config ~ticks ~scale ~chart_x ~chart_y ~chart_width =
+  let appearance = config.appearance in
+  let line_stroke, tick_stroke = strokes_of appearance in
   let axis_line =
-    Nopal_draw.Scene.line ~stroke:axis_stroke ~x1:chart_x ~y1:chart_y
+    Nopal_draw.Scene.line ~stroke:line_stroke ~x1:chart_x ~y1:chart_y
       ~x2:(chart_x +. chart_width) ~y2:chart_y ()
   in
   let tick_scenes =
@@ -93,12 +138,14 @@ let render_x config ~ticks ~scale ~chart_x ~chart_y ~chart_width =
       (fun (t : tick) ->
         let x = chart_x +. Nopal_draw.Scale.apply scale t.value in
         let tick_line =
-          Nopal_draw.Scene.line ~stroke:axis_stroke ~x1:x ~y1:chart_y ~x2:x
-            ~y2:(chart_y +. tick_size) ()
+          Nopal_draw.Scene.line ~stroke:tick_stroke ~x1:x ~y1:chart_y ~x2:x
+            ~y2:(chart_y +. appearance.tick_length)
+            ()
         in
         let tick_label =
-          Nopal_draw.Scene.text ~font_size:11.0 ~anchor:Middle ~baseline:Top ~x
-            ~y:(chart_y +. label_offset) t.label
+          Nopal_draw.Scene.text ~font_size:appearance.tick_label_size
+            ~fill:(Nopal_draw.Paint.solid appearance.tick_label_color)
+            ~anchor:Middle ~baseline:Top ~x ~y:(chart_y +. label_offset) t.label
         in
         [ tick_line; tick_label ])
       ticks
@@ -108,8 +155,9 @@ let render_x config ~ticks ~scale ~chart_x ~chart_y ~chart_width =
     | Some lbl ->
         let center_x = chart_x +. (chart_width /. 2.0) in
         [
-          Nopal_draw.Scene.text ~font_size:12.0 ~anchor:Middle ~baseline:Top
-            ~x:center_x
+          Nopal_draw.Scene.text ~font_size:appearance.axis_label_size
+            ~fill:(Nopal_draw.Paint.solid appearance.axis_label_color)
+            ~anchor:Middle ~baseline:Top ~x:center_x
             ~y:(chart_y +. axis_label_offset)
             lbl;
         ]
@@ -118,8 +166,10 @@ let render_x config ~ticks ~scale ~chart_x ~chart_y ~chart_width =
   (axis_line :: tick_scenes) @ label_scene
 
 let render_y config ~ticks ~scale ~chart_x ~chart_y ~chart_height =
+  let appearance = config.appearance in
+  let line_stroke, tick_stroke = strokes_of appearance in
   let axis_line =
-    Nopal_draw.Scene.line ~stroke:axis_stroke ~x1:chart_x ~y1:chart_y
+    Nopal_draw.Scene.line ~stroke:line_stroke ~x1:chart_x ~y1:chart_y
       ~x2:chart_x ~y2:(chart_y +. chart_height) ()
   in
   let tick_scenes =
@@ -127,12 +177,15 @@ let render_y config ~ticks ~scale ~chart_x ~chart_y ~chart_height =
       (fun (t : tick) ->
         let y = Nopal_draw.Scale.apply scale t.value in
         let tick_line =
-          Nopal_draw.Scene.line ~stroke:axis_stroke ~x1:(chart_x -. tick_size)
+          Nopal_draw.Scene.line ~stroke:tick_stroke
+            ~x1:(chart_x -. appearance.tick_length)
             ~y1:y ~x2:chart_x ~y2:y ()
         in
         let tick_label =
-          Nopal_draw.Scene.text ~font_size:11.0 ~anchor:End_anchor
-            ~baseline:Middle_baseline ~x:(chart_x -. label_offset) ~y t.label
+          Nopal_draw.Scene.text ~font_size:appearance.tick_label_size
+            ~fill:(Nopal_draw.Paint.solid appearance.tick_label_color)
+            ~anchor:End_anchor ~baseline:Middle_baseline
+            ~x:(chart_x -. label_offset) ~y t.label
         in
         [ tick_line; tick_label ])
       ticks
@@ -142,8 +195,9 @@ let render_y config ~ticks ~scale ~chart_x ~chart_y ~chart_height =
     | Some lbl ->
         let center_y = chart_y +. (chart_height /. 2.0) in
         [
-          Nopal_draw.Scene.text ~font_size:12.0 ~anchor:End_anchor
-            ~baseline:Middle_baseline
+          Nopal_draw.Scene.text ~font_size:appearance.axis_label_size
+            ~fill:(Nopal_draw.Paint.solid appearance.axis_label_color)
+            ~anchor:End_anchor ~baseline:Middle_baseline
             ~x:(chart_x -. axis_label_offset)
             ~y:center_y lbl;
         ]

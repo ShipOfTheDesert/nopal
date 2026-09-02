@@ -86,12 +86,16 @@ Each record carries a stable `D-n` id — unique across this file, assigned once
 and never reused, so a commit message or a PR description can cite it instead of
 restating it — and names an owner. The owner is **the change that will discharge
 it**, not a person: "whoever adds a router-less example to the repo, in the
-change that adds it", never "the team" or "later".
+change that adds it", never "the team" or "later". One kind of record names no
+owner: a decision not to cover whose reasoning does not expire has no change
+that would discharge it, so it says so in the owner's place and is challenged by
+disagreeing with its argument rather than by waiting for the change that would
+close it.
 
 Each record lives beside the rule it defers, so the next reader of that rule
-sees the exception: D-1 and D-2 under [E2E tests](#e2e-tests-playwright), D-3
-under [Performance](#performance), D-4 under [Kitchen Sink](#kitchen-sink), D-5
-under [VIII. Bug-Class Prevention](#viii-bug-class-prevention).
+sees the exception: D-1, D-2 and D-6 under [E2E tests](#e2e-tests-playwright),
+D-3 under [Performance](#performance), D-4 under [Kitchen Sink](#kitchen-sink),
+D-5 under [VIII. Bug-Class Prevention](#viii-bug-class-prevention).
 
 ## Running Tests
 
@@ -154,7 +158,8 @@ and `touch ~/.cache/ms-playwright/<browser>-<rev>/INSTALLATION_COMPLETE`.
 Deferring a browser case is allowed; leaving it unrecorded is not — see
 [Deferrals and decisions not to cover](#deferrals-and-decisions-not-to-cover)
 for the `D-n` scheme these records follow.
-**There is one current deferral (D-1) and one decision not to cover (D-2).**
+**There is one current deferral (D-1) and two decisions not to cover
+(D-2 and D-6).**
 
 #### Open deferral D-1 — a relative-scroll request naming a container the frame removed
 
@@ -225,6 +230,62 @@ also carries the same `Phase 3: replace with Appium-driven OS event` marker
 `simulate_back_pressed` does
 (`tauri/src-tauri/src/lib.rs:39`). No mechanical gate is waiting on it: `just
 check-e2e-wired` has nothing new to wire.
+
+#### Decision not to cover D-6 — no browser case asserts a chart's axis chrome
+
+**Owner: none, and that is the point.** Every other record here names the change
+that discharges it. This one names no change and no moment, because the reason
+not to write the case does not expire — a future kitchen-sink section or a
+future chart type would face exactly the argument below. Challenge it by
+disagreeing with the reasoning, not by waiting for the case.
+
+`Nopal_charts.Axis.config` carries an `appearance` record — the axis line's and
+the tick marks' colour and width, the tick length, and the colour and size of
+the tick labels and the axis label. `test/e2e/tests/kitchen-sink-charts.spec.ts`
+asserts none of it, and will not.
+
+Observed on 2026-09-01 by reading the sources rather than inferred: charts are
+`Element.draw` nodes, which `backends/nopal_web/renderer.ml:746` turns into a
+single `<canvas>`, and every axis line, tick and label is painted into that
+canvas's 2D context by `backends/nopal_web/canvas_renderer.ml`. None of them
+reaches a DOM node. So there is nothing for a DOM assertion to read, and the
+render-correctness carve-out this project reserves DOM assertions for has no
+target: the only browser-side assertion available at all is a pixel sample
+through `getImageData`.
+
+Such a sample would depend on the `devicePixelRatio` scale
+`Canvas_renderer.setup_hidpi` applies to the context
+(`backends/nopal_web/canvas_renderer.ml:7-20`), on the chart's padding
+arithmetic putting the axis where the test guessed, and on antialiasing at the
+sampled coordinate — it would fail for reasons unrelated to the thing it claims
+to check, and a flaky accessibility-adjacent test gets muted rather than fixed.
+It would also catch the defect actually worth catching — an appearance field
+never reaching the renderer — only when the sampled pixel happens to land on the
+axis line.
+
+The substitute is a pair of `Nopal_svg.render` byte comparisons in
+`test/unit/nopal_charts/test_axis_svg.ml`: one over a default config, whose
+expected string was captured before any renderer read an appearance field, and
+one over a config naming a value distinct from the default in all eight fields.
+Two fixtures and not one, because a default-only comparison proves nothing
+changed rather than proving anything is plumbed through.
+
+What that substitute does not reach, stated so the paragraph above cannot be
+read as more than it is: it pins the *scene* a chart produces, not the browser
+painting it. A defect in `canvas_renderer.ml`'s stroke or text handling — a
+width ignored, a fill dropped — leaves both fixtures green, and no test in this
+repo would catch it. That residue is accepted on the same grounds: the
+assertion that would cover it is the pixel sample ruled out above.
+
+The existing canvas presence and size assertions in
+`kitchen-sink-charts.spec.ts` are unchanged by all of this. They cover a
+different failure — a chart not rendering at all — but each of them locates its
+subject by a named `data-testid`, so none reads the themed-axis chart
+(`[data-testid="themed-axis-chart"]`). The only case that reaches it is the
+section-level `charts section renders`, plus the `beforeEach` wait for
+`[data-section='charts']`: the themed chart is a sibling of the others inside
+that section, so a configuration that crashed the view would take both down with
+it. Nothing asserts its canvas size, and nothing asserts its colours.
 
 ### Desktop Development (Tauri)
 
@@ -585,17 +646,22 @@ documentation change of its own and is not part of a feature.
 Two other committed sites keep such pointers and are deliberately left too.
 `llms.txt` cites the excluded tree six times (`feature 0122` at :2099, `RFC 0110`
 at :2452, `ADR 0108` at :2526, `REQ-N1` at :2612, `RFC 0077/0107` at :2652 and
-`docs/guides/telemetry-tauri.md` at :2653). Source comments carry 274
-`REQ-*`/`NFR-*`/`FR-*` tags across 90 `.ml`/`.mli` files, 18 of them under
+`docs/guides/telemetry-tauri.md` at :2653). Source comments carry 266
+`REQ-*`/`NFR-*`/`FR-*` tags across 88 `.ml`/`.mli` files, 18 of them under
 `backends/nopal_tauri/`. Two of those now read inconsistently against a file in
 their own package, observed on 2026-09-01: `backends/nopal_tauri/os.mli:24`
 still tags `NFR-1` on the desktop-zero-inset contract whose tag
 `backends/nopal_tauri/platform_tauri.mli` dropped in the same change that added
 this record, and `examples/kitchen_sink/main.ml:861-866` still tags
 `(REQ-F3, idempotent)`, `(REQ-F4)`, `(feature 0121, FR-1)` and `(NFR-1)` at the
-call site of `enable_hardware_back` and `safe_area_source`. Sweeping 274 tags is
+call site of `enable_hardware_back` and `safe_area_source`. Sweeping 266 tags is
 not a feature's work either; the inconsistency is recorded here so it is not
-rediscovered as a defect.
+rediscovered as a defect. Tags are stripped opportunistically from the files a
+change already touches — the change that added this record dropped
+`platform_tauri.mli`'s, and the one that added D-6 dropped the eight on
+`lib/nopal_charts/axis.mli` and `lib/nopal_charts/bar.mli`, leaving ten tagged
+`.mli` files in `lib/nopal_charts/` — so what is deferred here is the sweep, not
+the strip.
 
 `scripts/check-e2e-wired` is the one such site that was fixed rather than
 deferred. It printed its pointer to a person at the moment its gate failed,

@@ -2390,6 +2390,65 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     in
     let chart_w = 400.0 in
     let chart_h = 250.0 in
+    (* Themed axis chrome. Every field of both records is spelled out rather
+       than updated onto [Axis.default_appearance] / [Axis.default_config], so
+       the whole configuration is readable at the call site and no value is
+       inherited unseen. The eight appearance values are deliberately loud and
+       pairwise distinct: [line_color] and [tick_color] share a default, and
+       the defaults for [tick_label_size] and [axis_label_size] differ by one
+       (11. and 12.), which is why the themed values below are pulled far
+       apart — a field routed to its neighbour would still look plausible if
+       the values matched.
+       [Bar] draws its own X axis line and X axis label and reads them off
+       [x_axis.appearance]; the per-bar category labels underneath are not axis
+       chrome and keep the size [Bar] has always drawn them at. [Bar] computes
+       no X ticks, so the four tick fields are visible on the Y axis only. *)
+    let themed_axis_appearance =
+      {
+        Axis.line_color = Color.rgb ~r:0.80 ~g:0.10 ~b:0.10;
+        line_width = 3.0;
+        tick_color = Color.rgb ~r:0.00 ~g:0.55 ~b:0.55;
+        tick_length = 12.0;
+        tick_label_color = Color.rgb ~r:0.10 ~g:0.20 ~b:0.60;
+        tick_label_size = 15.0;
+        axis_label_color = Color.rgb ~r:0.50 ~g:0.00 ~b:0.50;
+        axis_label_size = 20.0;
+      }
+    in
+    let themed_x_axis =
+      {
+        Axis.label = Some "Month";
+        min = None;
+        max = None;
+        tick_count = 5;
+        format_tick = string_of_float;
+        appearance = themed_axis_appearance;
+      }
+    in
+    let themed_y_axis =
+      {
+        Axis.label = Some "Revenue";
+        min = None;
+        max = None;
+        tick_count = 5;
+        format_tick = string_of_float;
+        appearance = themed_axis_appearance;
+      }
+    in
+    (* [Padding.default] is sized for the default 12. axis label; at the themed
+       20. both axis labels fall outside a 400x250 canvas, so this section pays
+       for the loud values with explicit padding.
+       Bottom: [Bar] tops the X label at
+       [chart_y + chart_height + category_label_offset + 16.] = [250. - bottom
+       + 32.]; 20. of glyph must land above 250., so bottom >= 52. — 70. leaves
+       18. to spare and still clears the 11. category labels above it.
+       Left: [Axis.render_y] right-aligns the Y label at
+       [chart_x - axis_label_offset] = [left - 32.]; "Revenue" is ~80. wide at
+       20., so left >= 112. — 120. leaves 8. to spare and keeps [chart_width]
+       at 260. *)
+    let themed_padding =
+      { Padding.top = 40.0; right = 20.0; bottom = 70.0; left = 120.0 }
+    in
     let row_style =
       Style.default |> Style.with_layout (fun l -> { l with gap = Some 16.0 })
     in
@@ -2418,6 +2477,21 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                     Tooltip.text (Printf.sprintf "%s: %.0f" l v))
                   ~on_hover:(fun h -> ChartHovered h)
                   ~on_leave:ChartLeft ?hover:model.chart_hover ();
+              ];
+            (* Themed axis chrome — the same appearance record on both axes.
+               A bar chart is the chart type that draws its own X axis rather
+               than going through [Axis.render_x], so this one call site
+               exercises both routes. *)
+            Element.text "Bar chart (themed axis chrome):";
+            Element.box
+              ~attrs:[ ("data-testid", "themed-axis-chart") ]
+              [
+                Bar.view ~data:bar_data
+                  ~label:(fun (l, _) -> l)
+                  ~value:(fun (_, v) -> v)
+                  ~color:(fun _ -> cat.(5))
+                  ~width:chart_w ~height:chart_h ~padding:themed_padding
+                  ~x_axis:themed_x_axis ~y_axis:themed_y_axis ();
               ];
             (* Line chart — multi-series, cross-chart hover + tooltip *)
             Element.text "Line chart (multi-series, cross-chart hover):";

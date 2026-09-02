@@ -1648,6 +1648,100 @@ Sparkline.view : data:float list -> width:float -> height:float
 
 Chart hover state: `Hover.t = { index: int; series: int; cursor_x: float; cursor_y: float }`
 
+#### Axis Configuration
+
+`Axis.config` is the record the `?x_axis` / `?y_axis` arguments above carry.
+Paint and metrics live in a nested `appearance` record on it, so a caller
+reaches axis colours through the same argument as `label` and `tick_count`
+rather than a parallel one:
+
+```ocaml
+type Axis.appearance = {
+  line_color : Color.t;         (* axis line stroke; default rgb 0.2 0.2 0.2 *)
+  line_width : float;           (* width of the axis line AND of every tick
+                                   mark — there is no separate tick width;
+                                   default 1.0 *)
+  tick_color : Color.t;         (* tick mark stroke; default rgb 0.2 0.2 0.2 *)
+  tick_length : float;          (* tick length measured away from the plot
+                                   area — below the line on X, left of it on
+                                   Y; default 6.0. Ceiling 16.0: the offset
+                                   placing the tick labels is private and
+                                   fixed at 16.0, so a longer tick runs
+                                   through them. Not validated. *)
+  tick_label_color : Color.t;   (* per-tick value labels; default Color.black *)
+  tick_label_size : float;      (* default 11.0. Ceiling 16.0: the private
+                                   tick-label (16.0) and axis-label (32.0)
+                                   offsets leave a fixed 16.0 gap, so on an X
+                                   axis a larger size overlaps the axis
+                                   label. Not validated. *)
+  axis_label_color : Color.t;   (* the single caption drawn when config.label
+                                   is Some; default Color.black *)
+  axis_label_size : float;      (* default 12.0 *)
+}
+
+type Axis.config = {
+  label : string option;        (* Some => an axis caption is drawn *)
+  min : float option;           (* explicit domain override, else nice bounds *)
+  max : float option;
+  tick_count : int;             (* default 5 *)
+  format_tick : float -> string;(* default string_of_float *)
+  appearance : Axis.appearance; (* default Axis.default_appearance *)
+}
+
+Axis.default_appearance : Axis.appearance
+Axis.default_config     : Axis.config
+Axis.equal_appearance   : Axis.appearance -> Axis.appearance -> bool
+(* Structural equality; float fields compare with Float.equal. There is no
+   equal for config, because format_tick is a function. *)
+```
+
+The two label colours default to `Color.black` and not to the axis grey —
+that is the colour an unfilled text node paints. Omitting `?x_axis` / `?y_axis`
+entirely, or passing `Axis.default_config`, renders exactly as the charts did
+before appearance was configurable.
+
+Source compatibility is a separate matter from that behavioural one:
+`Axis.config` gained a **required** field, so any downstream full-literal
+construction or record pattern of `Axis.config` must add `appearance` to keep
+compiling — or switch to `{ Axis.default_config with ... }`, which is the
+recommended spelling and survives the next field addition.
+
+`Bar` draws its own X axis line and X axis caption instead of calling
+`Axis.render_x`, and reads both off `x_axis.appearance`, so a themed colour
+applies to a bar chart's X axis too. Its per-bar category labels are not axis
+chrome and are not configurable.
+
+```ocaml
+(* A themed axis. Spell out the eight-field appearance record in full — it is
+   pure paint, and { Axis.default_appearance with ... } inherits colours the
+   call site never states. Build config the other way, onto the defaults:
+   config is the record the framework extends, so a full literal there turns
+   the next added field into a compile error at your call site. Both sizes
+   below stay under the 16.0 ceilings noted above. *)
+let axis_appearance =
+  { Axis.line_color = Color.rgb ~r:0.8 ~g:0.1 ~b:0.1;
+    line_width = 3.0;
+    tick_color = Color.rgb ~r:0.0 ~g:0.55 ~b:0.55;
+    tick_length = 12.0;
+    tick_label_color = Color.rgb ~r:0.1 ~g:0.2 ~b:0.6;
+    tick_label_size = 15.0;
+    axis_label_color = Color.rgb ~r:0.5 ~g:0.0 ~b:0.5;
+    axis_label_size = 20.0 }
+
+(* Bar reads x_axis.appearance for the X axis line and caption it draws
+   itself, so pass both to theme the whole frame. *)
+let x_axis =
+  { Axis.default_config with
+    label = Some "Quarter"; appearance = axis_appearance }
+
+let y_axis =
+  { Axis.default_config with
+    label = Some "Revenue"; appearance = axis_appearance }
+
+let chart = Bar.view ~data ~label ~value ~color ~width:400.0 ~height:250.0
+              ~x_axis ~y_axis ()
+```
+
 #### Scene Functions
 
 Every chart module exposes a `scene` function that returns `Scene.t list` for
@@ -1835,6 +1929,9 @@ type 'msg Chart_pane.pane = {
 Chart_pane.pane : height_ratio:float -> ?y_axis:Axis.config
   -> (Domain_window.t -> width:float -> height:float -> 'msg Element.t)
   -> 'msg Chart_pane.pane
+(* NOTE: pane's y_axis is currently inert — the record stores it and nothing in
+   Chart_pane reads it, so it neither draws nor themes an axis. Configure the
+   axis on the chart the pane wraps instead. *)
 
 Chart_pane.view : panes:'msg Chart_pane.pane list -> domain_window:Domain_window.t
   -> width:float -> height:float
