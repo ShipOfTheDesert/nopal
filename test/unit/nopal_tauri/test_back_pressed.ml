@@ -94,17 +94,53 @@ let test_setup_dispatches_nothing () =
    it: subscribing alone must not produce the [window.history.back()] the other
    function exists to produce. An application that wants both effects calls both;
    one press then does both, which is why the two doc comments say to pick one.
-   [enable_hardware_back] is never called in this binary. *)
+   [enable_hardware_back] is never called in this binary.
+
+   The delivery assertion is load-bearing, not decoration: without it a
+   [deliver_back_pressed ()] that reaches no handler at all — event-name drift
+   between the two sides, a [Tauri_subscription] registration regression — reads
+   0 back for want of an event rather than for want of a [back ()], and the case
+   passes while pinning nothing. The affirmative arm below cannot see that mode,
+   because it never goes through the subscription. This line is where it is
+   closed. *)
 let test_press_does_not_touch_history () =
   reset ();
   history_back_calls := 0;
-  let _dispatched, cleanup = drive (Platform.on_back_pressed `Back) in
+  let dispatched, cleanup = drive (Platform.on_back_pressed `Back) in
   deliver_back_pressed ();
+  Alcotest.(check int)
+    "the press was in fact delivered" 1
+    (List.length (dispatched ()));
   Alcotest.(check int)
     "the subscription never calls history.back()" 0 !history_back_calls;
   cleanup ()
 
-(* Each subscription is its own race-free registration (RFC 0118 REQ-F8): one
+(* The affirmative arm for the case above. "the counter reads 0" is an assertion
+   of absence, and an absence assertion is vacuous unless something on the same
+   fixture proves the counter can reach 1: were the stand-in ever to stop being
+   installed, or to stop counting, the case above would stay green while pinning
+   nothing at all. So this one drives the stand-in through [Platform.back] — the
+   very function [enable_hardware_back]'s handler runs, so a regression in that
+   binding reddens here too — with no subscription in the picture, and reads 1
+   back. [enable_hardware_back] itself is deliberately not the route: its
+   listener is registered for the process lifetime, and this binary must never
+   register it.
+
+   Those two modes are all this closes. It does not close the third — that
+   [deliver_back_pressed ()] reaches no handler at all, so the case above reads
+   0 for want of an event rather than for want of a [back ()]. This case never
+   goes through the subscription, so it cannot see that; the case above closes it
+   itself, with its own "the press was in fact delivered" assertion.
+
+   Both cases set the counter to 0 themselves, so neither depends on running
+   before or after the other. *)
+let test_history_stand_in_counts_a_real_back_call () =
+  history_back_calls := 0;
+  Platform.back ();
+  Alcotest.(check int)
+    "Platform.back () reaches the counting stand-in" 1 !history_back_calls
+
+(* Each subscription is its own race-free registration: one
    [plugin:event|listen] at setup, one [plugin:event|unlisten] at cleanup, and a
    second cleanup is a no-op. This is what distinguishes the subscription from
    [enable_hardware_back]'s raw, unremovable [Event.listen]. *)
@@ -120,18 +156,22 @@ let test_subscription_registers_and_unlistens_once () =
   cleanup ();
   Alcotest.(check int) "cleanup unlistens exactly once" 1 (unlisten_count ())
 
-(* A second subscription is a second listener, so two subscribers both hear the
-   press rather than the later one replacing the earlier. *)
-let test_two_subscriptions_both_hear_the_press () =
+(* A claim about the seam, not about the runtime: two listeners registered on
+   the setup function both hear one press, rather than the later registration
+   replacing the earlier. [drive] calls [setup] by hand, so this never reaches
+   [Sub_manager] — which admits one subscription per key and would keep only the
+   first, the key being fixed. An application subscribes once and fans out in
+   [update]. *)
+let test_two_seam_listeners_both_hear_one_press () =
   reset ();
   let first, cleanup_first = drive (Platform.on_back_pressed `First) in
   let second, cleanup_second = drive (Platform.on_back_pressed `Second) in
   deliver_back_pressed ();
   Alcotest.(check int)
-    "the first subscriber heard the press" 1
+    "the first seam listener heard the press" 1
     (List.length (first ()));
   Alcotest.(check int)
-    "the second subscriber heard the press" 1
+    "the second seam listener heard the press" 1
     (List.length (second ()));
   cleanup_first ();
   cleanup_second ()
@@ -145,11 +185,13 @@ let () =
             test_press_dispatches_msg;
           Alcotest.test_case "setup dispatches nothing" `Quick
             test_setup_dispatches_nothing;
-          Alcotest.test_case "two subscriptions both hear the press" `Quick
-            test_two_subscriptions_both_hear_the_press;
+          Alcotest.test_case "two seam listeners both hear one press" `Quick
+            test_two_seam_listeners_both_hear_one_press;
         ] );
       ( "independence",
         [
+          Alcotest.test_case "the history stand-in counts a real back call"
+            `Quick test_history_stand_in_counts_a_real_back_call;
           Alcotest.test_case "a press does not call history.back()" `Quick
             test_press_does_not_touch_history;
         ] );

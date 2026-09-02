@@ -18,29 +18,30 @@ val on_safe_area_change :
 (** Subscription (built on [Sub.custom], key ["nopal:safe-area"]) delivering the
     current safe-area insets and re-delivering on change (e.g. orientation).
     Dispatches [Viewport.zero_insets] once at setup, then native values. On
-    desktop: fires exactly once with zero insets (REQ-F4, REQ-N1). Apps need
-    this only when they want the raw insets — viewport population is automatic
-    via {!safe_area_source}. *)
+    desktop: fires exactly once with zero insets. Apps need this only when they
+    want the raw insets — viewport population is automatic via
+    {!safe_area_source}. *)
 
 val on_keyboard_height_change : (int -> 'msg) -> 'msg Nopal_mvu.Sub.t
 (** Subscription (key ["nopal:keyboard-height"]) delivering soft-keyboard height
     in logical px: the height when shown, [0] when hidden. Dispatches [0] once
-    at setup. On desktop: fires exactly once with [0] (REQ-F5, REQ-N1). *)
+    at setup. On desktop: fires exactly once with [0]. *)
 
 val safe_area_source :
   (Nopal_element.Viewport.safe_area -> unit) -> unit -> unit
 (** Native viewport-population hook for [Nopal_web.mount] [~safe_area_source].
     [safe_area_source set] registers the native safe-area listener (dispatching
     [zero_insets] to [set] once at setup), and returns an unlisten cleanup. This
-    is the mechanism behind REQ-F4's "runtime populates [Viewport.safe_area]
-    automatically".
+    is the mechanism by which the runtime populates [Viewport.safe_area]
+    automatically.
 
     Supplied to [mount] on every Tauri host except iOS: the native bridge
-    delivers real insets on Android and a harmless zero inset on desktop
-    (NFR-1), so callers gate on [has_tauri () && not] {!Os.is_ios}. On iOS no
-    source must be passed — it falls back to the CSS [env()] safe-area insets;
-    supplying this there would feed a broken value while also suppressing that
-    fallback (feature 0121, FR-1). *)
+    delivers real insets on Android and a harmless zero inset on desktop, so
+    callers gate on a Tauri-host check — [__TAURI_INTERNALS__] present (not
+    undefined) on the JS global, as [examples/kitchen_sink/main.ml] spells it —
+    and on [not] {!Os.is_ios}. On iOS no source must be passed — it falls back
+    to the CSS [env()] safe-area insets; supplying this there would feed a
+    broken value while also suppressing that fallback. *)
 
 val on_back_pressed : 'msg -> 'msg Nopal_mvu.Sub.t
 (** [on_back_pressed msg] subscribes to the hardware back button, dispatching
@@ -56,11 +57,26 @@ val on_back_pressed : 'msg -> 'msg Nopal_mvu.Sub.t
     [update] with no [window.history] round trip, so it does not depend on a
     history entry existing.
 
+    The key is fixed, so an application subscribes at most once. The runtime's
+    subscription diff admits one subscription per key and is first-wins:
+    batching a second [on_back_pressed] does not register a second listener, it
+    reports a duplicate-key error and drops the loser. Where two parts of an
+    application need the press, subscribe once and fan the msg out in [update].
+
     No setup-time dispatch: a press is an event, not a signal, so unlike
     {!on_safe_area_change} and {!on_keyboard_height_change} nothing is delivered
     until the button is pressed. Desktop has no hardware back button, so there
-    the subscription fires only via [simulate_back_pressed]; in a browser
-    (outside a Tauri host) nothing emits the event and it never fires. *)
+    the subscription fires only via [simulate_back_pressed].
+
+    {b Tauri hosts only, and not a silent no-op off one.} Setup registers
+    through [__TAURI_INTERNALS__] and calls [transformCallback] on it, so
+    subscribing outside a Tauri host (a plain browser) throws at setup rather
+    than quietly never firing — [Nopal_web]'s interpretation of a [Sub.custom]
+    atom does not catch it. A shared application must gate the subscription on
+    the same Tauri-host check {!safe_area_source} describes:
+    [__TAURI_INTERNALS__] present (not undefined) on the JS global, as
+    [examples/kitchen_sink/main.ml] spells it. This is shared with the safe-area
+    and keyboard-height subscriptions, not particular to this one. *)
 
 val enable_hardware_back : unit -> unit
 (** Idempotently register a listener for the Rust [nopal:back-pressed] event. On
@@ -68,8 +84,8 @@ val enable_hardware_back : unit -> unit
     [MainActivity]'s [OnBackPressedCallback] into the [notify_back_pressed]
     command; the [simulate_back_pressed] debug IPC command fires the same event
     on every platform (the Tauri E2E's trigger). Each firing calls
-    [window.history.back()] (REQ-F3). Desktop has no hardware back button, so
-    the event fires there only via [simulate_back_pressed].
+    [window.history.back()]. Desktop has no hardware back button, so the event
+    fires there only via [simulate_back_pressed].
 
     {b Requires a router.} [window.history.back()] raises a [popstate] only when
     there is a history entry to return to, which means only when the application
