@@ -75,6 +75,24 @@ end
 > one environment won't auto-detect in the other — always create and use it from
 > the container.
 
+## Deferrals and decisions not to cover
+
+Deferring an obligation this document imposes — a browser case, a benchmark run,
+a kitchen-sink section — is allowed; leaving it unrecorded is not. Deciding not
+to cover something is allowed too, and has to be written as a decision rather
+than asserted in passing.
+
+Each record carries a stable `D-n` id — unique across this file, assigned once
+and never reused, so a commit message or a PR description can cite it instead of
+restating it — and names an owner. The owner is **the change that will discharge
+it**, not a person: "whoever adds a router-less example to the repo, in the
+change that adds it", never "the team" or "later".
+
+Each record lives beside the rule it defers, so the next reader of that rule
+sees the exception: D-1 and D-2 under [E2E tests](#e2e-tests-playwright), D-3
+under [Performance](#performance), D-4 under [Kitchen Sink](#kitchen-sink), D-5
+under [VIII. Bug-Class Prevention](#viii-bug-class-prevention).
+
 ## Running Tests
 
 ### All at once
@@ -133,10 +151,12 @@ from `npx playwright install chromium --dry-run`, then
 `curl -fL -C - --retry 8 -O <url>`, unzip into `~/.cache/ms-playwright/<browser>-<rev>/`,
 and `touch ~/.cache/ms-playwright/<browser>-<rev>/INSTALLATION_COMPLETE`.
 
-Deferring a browser case is allowed; leaving it unrecorded is not.
-**There is one current deferral.**
+Deferring a browser case is allowed; leaving it unrecorded is not — see
+[Deferrals and decisions not to cover](#deferrals-and-decisions-not-to-cover)
+for the `D-n` scheme these records follow.
+**There is one current deferral (D-1) and one decision not to cover (D-2).**
 
-#### Open deferral — a relative-scroll request naming a container the frame removed
+#### Open deferral D-1 — a relative-scroll request naming a container the frame removed
 
 **Owner: whoever adds a kitchen-sink section whose scroll container comes and
 goes with the model, in the change that adds it.**
@@ -156,6 +176,55 @@ that is why no browser case was written rather than an oversight. The owner
 above writes it — remove the container in the same update that issues the
 request, assert the page does not move — at the moment a section makes the
 removal reachable.
+
+#### Decision not to cover D-2 — no browser case exercises a subscription receiving the back press
+
+**Owner: whoever adds a router-less Tauri example to the repo — the same change
+that discharges D-4 — writes the case in that change.**
+
+`Platform_tauri.on_back_pressed` delivers the Android hardware back press as a
+msg. Nothing under `test/e2e/` asserts that a subscription receives it, and that
+is a decision, not an oversight. The only Tauri-hosted application `just
+e2e-tauri` drives is the kitchen sink, which creates `back_router` and calls
+`enable_hardware_back`. Subscribing it to `on_back_pressed` as well is cheap and
+is the wrong case: the two are independent listeners on one event and both
+`.mli` entries tell an application to pick one, so such a case would exercise
+the configuration the API documents as a mistake and stand in for the
+router-less one it is not. A faithful case needs an application with no router,
+which the repo does not have — the same missing example D-4 waits on.
+
+What is covered, observed on 2026-09-01 by reading the sources rather than
+inferred: `test/e2e/tauri/back.e2e.ts` invokes the `simulate_back_pressed`
+command over real IPC and asserts the resulting `Route_changed` through the
+telemetry mirror, and `tauri/src-tauri/src/lib.rs` emits the literal
+`nopal:back-pressed` from both that command and the Android `emit_back_pressed`,
+which `backends/nopal_tauri/platform_tauri.ml` listens for in both of its
+registrations. Delivery into a subscription — one listen, the Rust unit (`null`)
+payload, no setup-time dispatch, unlisten, and that the press touches no
+`history` — is covered by `test/unit/nopal_tauri/test_back_pressed.ml` against
+`tauri_shim.js`.
+
+What that leaves uncovered, stated so the sentence above cannot be read as more
+than it is: no test in this repo runs `on_back_pressed` inside a real webview.
+The hop being exercised is evidence about the event's transport, reaching the
+*other* listener; it says nothing about this subscription's registration against
+a real `plugin:event` implementation as opposed to the shim. A defect there
+would pass every gate here. The first downstream consumer (grokkr) exercises it
+on a handset.
+
+When the case is written it asserts the MVU telemetry log and not the DOM, as
+`back.e2e.ts`, `event.e2e.ts`, `store.e2e.ts`, `tray.e2e.ts` and `window.e2e.ts`
+do. That is the convention, not a universal: `mobile_signals.e2e.ts` asserts the
+DOM on purpose — it reads `[data-testid="safe-area-viz"]`, because a safe-area
+inset feeds the viewport rather than a message and so has no telemetry event to
+assert, which is the render-correctness case the project's E2E strategy reserves
+for DOM assertions; the spec's own header (`:13-20`) states that reasoning at
+the site. Observed on 2026-09-01 by reading the six specs: `getText` occurs
+exactly once across `test/e2e/tauri/`, at `mobile_signals.e2e.ts:75`. The case
+also carries the same `Phase 3: replace with Appium-driven OS event` marker
+`simulate_back_pressed` does
+(`tauri/src-tauri/src/lib.rs:39`). No mechanical gate is waiting on it: `just
+check-e2e-wired` has nothing new to wire.
 
 ### Desktop Development (Tauri)
 
@@ -489,6 +558,50 @@ A sixth, cross-cutting rule from the same audit: **an E2E spec that CI does not
 execute is a failing test** — every spec must be wired to a CI-run Playwright
 project, enforced by `just check-e2e-wired`.
 
+**There is one current decision not to cover (D-5)** — see [Deferrals and
+decisions not to cover](#deferrals-and-decisions-not-to-cover) for the `D-n`
+scheme.
+
+#### Decision not to cover D-5 — the catalogue pointers name a tree this repository does not ship
+
+**Owner: whoever next adds, removes or renumbers a bug-class rule in this
+section, in the change that does it.**
+
+`docs/` is listed in `.git/info/exclude` — `git check-ignore -v docs` names line
+12 of that file, and `git ls-files docs` returns nothing — so it is not in any
+clone. Every `docs/…` pointer in this repository is therefore dead for everyone
+who is not the author on the author's machine. This is the only place the
+project says so, and it is said here because this section is where an
+implementer is most likely to follow one.
+
+The six pointers above are left standing rather than rewritten:
+`docs/ANALYSIS.md` in this section's opening sentence, and
+`docs/bug-classes/0001` through `0005` on the five numbered rules. Each rule
+states its own guard, names a shipped reference implementation, and for four of
+the five names its `just lint-classes` class, so the pointer is decoration on a
+rule that is already actionable without it. Rewriting the five paragraphs is a
+documentation change of its own and is not part of a feature.
+
+Two other committed sites keep such pointers and are deliberately left too.
+`llms.txt` cites the excluded tree six times (`feature 0122` at :2099, `RFC 0110`
+at :2452, `ADR 0108` at :2526, `REQ-N1` at :2612, `RFC 0077/0107` at :2652 and
+`docs/guides/telemetry-tauri.md` at :2653). Source comments carry 274
+`REQ-*`/`NFR-*`/`FR-*` tags across 90 `.ml`/`.mli` files, 18 of them under
+`backends/nopal_tauri/`. Two of those now read inconsistently against a file in
+their own package, observed on 2026-09-01: `backends/nopal_tauri/os.mli:24`
+still tags `NFR-1` on the desktop-zero-inset contract whose tag
+`backends/nopal_tauri/platform_tauri.mli` dropped in the same change that added
+this record, and `examples/kitchen_sink/main.ml:861-866` still tags
+`(REQ-F3, idempotent)`, `(REQ-F4)`, `(feature 0121, FR-1)` and `(NFR-1)` at the
+call site of `enable_hardware_back` and `safe_area_source`. Sweeping 274 tags is
+not a feature's work either; the inconsistency is recorded here so it is not
+rediscovered as a defect.
+
+`scripts/check-e2e-wired` is the one such site that was fixed rather than
+deferred. It printed its pointer to a person at the moment its gate failed,
+which is the worst place for a reference that cannot be opened; it now states
+the rule and cites this section.
+
 ## Commit Style
 
 Conventional Commits: `type(scope): description`
@@ -538,10 +651,12 @@ A metric degrading by more than 20% blocks merge. Bundle size is tracked
 alongside runtime performance — avoid adding dependencies that inflate
 js_of_ocaml output without justification.
 
-Deferring a benchmark obligation is allowed; leaving it unrecorded is not.
-**There is one current deferral.**
+Deferring a benchmark obligation is allowed; leaving it unrecorded is not — see
+[Deferrals and decisions not to cover](#deferrals-and-decisions-not-to-cover)
+for the `D-n` scheme.
+**There is one current deferral (D-3).**
 
-### Open deferral — the committed baseline is stale, so read it relatively
+### Open deferral D-3 — the committed baseline is stale, so read it relatively
 
 **Owner: the developer preparing the next change to `nopal_runtime` or
 `nopal_web`, before claiming `bench-compare` green.**
@@ -600,13 +715,14 @@ A backend package that adds no element, style feature or interaction pattern —
 `nopal_http_web`, `nopal_blob_web`, `nopal_image_web` — does not trigger the
 rule by itself. It does still need a section before the capability can be said
 to work in a real browser, because the kitchen sink is what Playwright drives.
-Deferring that section is allowed; leaving it unrecorded is not. **There is one
-current deferral.**
+Deferring that section is allowed; leaving it unrecorded is not — see
+[Deferrals and decisions not to cover](#deferrals-and-decisions-not-to-cover)
+for the `D-n` scheme. **There is one current deferral (D-4).**
 
-#### Open deferral — `Platform_tauri.on_back_pressed`
+#### Open deferral D-4 — `Platform_tauri.on_back_pressed`
 
-**Owner: whoever adds a router-less example (or a second Tauri example) to the
-repo, in the change that adds it.**
+**Owner: whoever adds a router-less example to the repo, in the change that adds
+it.**
 
 `on_back_pressed` delivers the Android hardware back press as a msg, for an
 application that installs no `Router`. The kitchen sink cannot demonstrate that,
@@ -617,15 +733,14 @@ tell applications to avoid — not the router-less case the capability exists fo
 Showing it properly needs an example with no router, which the repo does not
 have.
 
-Nothing about the capability is unproven as a result: `test/unit/nopal_tauri/
+The missing section is not itself the coverage gap: `test/unit/nopal_tauri/
 test_back_pressed.ml` drives the whole path a host emit takes — registration,
 delivery of a Rust unit (`null`) payload, no setup-time dispatch, unlisten, and
 that the press touches no `history` — against the same `tauri_shim.js` the other
-Tauri suites use. What no test in *this* repo covers is the Rust
-`app.emit` → webview hop for this event; `back.e2e.ts` covers that hop for
-`enable_hardware_back` and both functions listen for the same event, so the hop
-itself is exercised. The first downstream consumer (grokkr) exercises the rest on
-a real handset.
+Tauri suites use. What no test in *this* repo covers is this subscription
+running inside a real webview. That gap is D-2, which records it as a decision
+not to cover, says what the existing Tauri spec does and does not reach, and
+names who writes the case.
 
 `nopal_image_web` was the previous one. Its section is the kitchen sink's receipt
 flow, and `test/e2e/tests/kitchen-sink-receipt-flow.spec.ts` drives the real

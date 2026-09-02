@@ -113,7 +113,7 @@ run_check() {
       echo "  remediation: add the spec to a testMatch in $PW_CONFIG (Playwright"
       echo "    suite) or a specs glob in $TAURI_CONFIG (Tauri suite), matching the"
       echo "    CI gate that must run it. An E2E file CI does not execute is a"
-      echo "    failing test (docs/ANALYSIS.md; feature 0120 FR-6)."
+      echo "    failing test. See CONTRIBUTING.md section VIII."
     } >&2
     found=1
   fi

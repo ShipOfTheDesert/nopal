@@ -52,8 +52,8 @@ let parse_keyboard_height payload = int_of_string_opt payload
 
 (* Register [event]'s native listener, parsing each delivered payload with
    [parse] and passing successes to [deliver]; returns a cleanup robust to the
-   async listen resolution via [Tauri_subscription]'s registration state machine
-   (REQ-F8). Shared by the safe-area subscription / mount hook and the
+   async listen resolution via [Tauri_subscription]'s registration state
+   machine. Shared by the safe-area subscription / mount hook and the
    keyboard-height subscription. *)
 let listen_signal event parse deliver =
   Tauri_subscription.listen_managed ~event (fun jv ->
@@ -84,9 +84,9 @@ let safe_area_source set =
    independent registrations on the same event and neither disables the other —
    an application picks one (see both .mli entries). Built on
    [Tauri_subscription] rather than the raw [Event.listen] so a subscription torn
-   down inside the async listen window still unlistens (REQ-F8);
-   [enable_hardware_back] can use the raw listener only because it registers once
-   for the process lifetime and never tears down.
+   down inside the async listen window still unlistens; [enable_hardware_back]
+   can use the raw listener only because it registers once for the process
+   lifetime and never tears down.
 
    The payload is discarded: the Rust command emits [app.emit (name, ())], so
    there is nothing to decode, and [decode] answering [Some msg] unconditionally
@@ -96,7 +96,7 @@ let on_back_pressed msg =
     ~decode:(fun (_ : Jv.t) -> Some msg)
 
 (* mutable: tracks whether the back-pressed listener is already registered, so
-   enable_hardware_back stays idempotent across repeated calls (REQ-F3). *)
+   enable_hardware_back stays idempotent across repeated calls. *)
 let hardware_back_enabled = ref false
 
 let enable_hardware_back () =
