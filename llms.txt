@@ -567,6 +567,8 @@ type Text.t = {
   italic         : bool option;
   color          : Color.t option;         (* Rgba | Hex | Named | Transparent *)
   whitespace     : whitespace option;      (* Collapse | Preserve *)
+  figure_spacing : figure_spacing option;  (* Tabular | Proportional | Normal_spacing *)
+  figure_style   : figure_style option;    (* Lining | Oldstyle | Normal_style *)
 }
 
 Text.color : Color.t -> Text.t -> Text.t
@@ -594,6 +596,33 @@ Text.whitespace : whitespace -> Text.t -> Text.t
    No_wrap must author both. Inert on a backend that lays text out from a scene
    rather than from an element, and there the polarity inverts: a shaper is
    handed the string as written, so Collapse is the side needing work. *)
+
+Text.figure_spacing : figure_spacing -> Text.t -> Text.t
+Text.figure_style   : figure_style -> Text.t -> Text.t
+(* The two numeric-figure axes: figure_spacing is the advance width numerals
+   take — Tabular gives every digit the same width so figures line up in a
+   column, Proportional gives each its natural width — and figure_style is the
+   form they take — Lining sits them on the baseline at a uniform height,
+   Oldstyle lets them ascend and descend like lowercase letters. Normal_spacing
+   and Normal_style are the explicit typeface defaults on their own axis and are
+   NOT the same as leaving the field unset: they emit, which is how a descendant
+   of an element that set the axis gets back out of it. Both fields unset emits
+   nothing at all. The web backend folds the pair into a single
+   font-variant-numeric declaration emitted at most once: each set, non-default
+   axis contributes one keyword, spacing before style (tabular-nums or
+   proportional-nums, then lining-nums or oldstyle-nums), and a set pair
+   contributing no keyword between them emits normal. The consequence is the
+   mirror of that, exactly as for whitespace and text_overflow: every value of
+   the property names both axes, so an unset figure_spacing stops inheriting as
+   soon as figure_style is set and an ancestor's value for the unset axis is
+   lost there — an author who wants both must author both. What the declaration
+   then draws is typeface-dependent, because it requests an OpenType feature
+   rather than describing geometry: a font that does not carry the requested
+   figure set ignores it silently, with no error, no fallback and no way to
+   detect it from OCaml, so a correct declaration that changes nothing on screen
+   is the expected outcome for such a font. Inert on a backend that draws text
+   from a scene rather than from an element; canvas text in particular is styled
+   through the CSS font shorthand, which has no such property. *)
 ```
 
 ### UI Components (`nopal_ui`)

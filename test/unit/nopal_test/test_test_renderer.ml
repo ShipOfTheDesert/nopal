@@ -687,6 +687,33 @@ let text_style_carries_whitespace () =
     "the wrapping axis beside it survives too" true
     (Option.equal T.equal_text_overflow ts'.text_overflow (Some T.No_wrap))
 
+(* Same composition again for the two numeric-figure axes. The renderer carries
+   a text style as one whole record, so nothing here is expected to change for
+   these fields to arrive; that is a claim about the renderer, and this case is
+   what would fail if a future pass rebuilt the record field by field and left
+   the two axes behind. Both axes are authored at once on purpose: a fixture
+   setting one of them cannot tell a renderer that drops the other from one that
+   carries it. The two builders are applied in style-then-spacing order, the
+   reverse of the order the encoder emits keywords in; that is an ordering
+   observation and nothing more. It is not coverage of a builder wired to the
+   wrong field: the two axes are distinct types sharing no constructor, so a
+   builder assigning the other one's field fails to compile against the
+   interface and cannot reach a case here at all. *)
+let text_style_carries_figures () =
+  let ts =
+    T.default |> T.figure_style T.Oldstyle |> T.figure_spacing T.Tabular
+  in
+  let r = render (E.styled_text ~text_style:ts "0123456789") in
+  let result = text_style (tree r) in
+  Alcotest.(check bool) "text_style returns Some" true (Option.is_some result);
+  let ts' = Option.get result in
+  Alcotest.(check bool)
+    "authored figure spacing survives the round-trip" true
+    (Option.equal T.equal_figure_spacing ts'.figure_spacing (Some T.Tabular));
+  Alcotest.(check bool)
+    "authored figure style survives the round-trip" true
+    (Option.equal T.equal_figure_style ts'.figure_style (Some T.Oldstyle))
+
 let text_content_still_works () =
   let ts = T.default |> T.font_size 14.0 in
   let r =
@@ -768,6 +795,8 @@ let text_style_tests =
       text_style_carries_colour;
     Alcotest.test_case "text_style_carries_whitespace" `Quick
       text_style_carries_whitespace;
+    Alcotest.test_case "text_style_carries_figures" `Quick
+      text_style_carries_figures;
     Alcotest.test_case "text_content_still_works" `Quick
       text_content_still_works;
     Alcotest.test_case "styled_text_reconciliation_changes_style" `Quick

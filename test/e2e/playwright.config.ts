@@ -46,9 +46,15 @@ export default defineConfig({
     },
   ],
   webServer: {
+    // The build/copy steps need the repo root, but `serve` is installed by
+    // `npm ci` into test/e2e/node_modules — a descendant of the root, so npx
+    // cannot resolve it from there and silently re-downloads it from the
+    // registry on every cold CI runner, inside this block's start timeout.
+    // The subshell scopes the cd so serve still runs from test/e2e.
     command:
-      "cd ../.. && opam exec -- dune build && cp examples/counter/index.html _build/default/examples/counter/ && cp examples/todomvc/index.html _build/default/examples/todomvc/ && cp examples/router_demo/index.html _build/default/examples/router_demo/ && cp examples/kitchen_sink/index.html _build/default/examples/kitchen_sink/ && cp examples/dashboard/index.html _build/default/examples/dashboard/ && cp examples/http_demo/index.html _build/default/examples/http_demo/ && npx serve -l 3000 _build/default/examples",
+      "(cd ../.. && opam exec -- dune build && cp examples/counter/index.html _build/default/examples/counter/ && cp examples/todomvc/index.html _build/default/examples/todomvc/ && cp examples/router_demo/index.html _build/default/examples/router_demo/ && cp examples/kitchen_sink/index.html _build/default/examples/kitchen_sink/ && cp examples/dashboard/index.html _build/default/examples/dashboard/ && cp examples/http_demo/index.html _build/default/examples/http_demo/) && npx serve -l 3000 ../../_build/default/examples",
     port: 3000,
+    timeout: 120_000,
     reuseExistingServer: !process.env.CI,
   },
 });

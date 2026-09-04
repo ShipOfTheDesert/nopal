@@ -15,7 +15,9 @@ let test_default_all_none () =
   Alcotest.(check (option reject)) "text_overflow" None t.text_overflow;
   Alcotest.(check (option reject)) "italic" None t.italic;
   Alcotest.(check (option reject)) "color" None t.color;
-  Alcotest.(check (option reject)) "whitespace" None t.whitespace
+  Alcotest.(check (option reject)) "whitespace" None t.whitespace;
+  Alcotest.(check (option reject)) "figure_spacing" None t.figure_spacing;
+  Alcotest.(check (option reject)) "figure_style" None t.figure_style
 
 (* --- Builders --- *)
 
@@ -91,6 +93,46 @@ let test_whitespace_builder_sets_only_its_field () =
   Alcotest.(check (option reject)) "text_overflow" None t.text_overflow;
   Alcotest.(check (option reject)) "text_transform" None t.text_transform;
   Alcotest.(check (option reject)) "color" None t.color;
+  Alcotest.(check (option reject)) "font_size" None t.font_size
+
+let test_figure_spacing_builder () =
+  let t = default |> italic true |> figure_spacing Tabular in
+  Alcotest.(check bool)
+    "figure_spacing set" true
+    (Option.equal equal_figure_spacing t.figure_spacing (Some Tabular));
+  (* A builder that ignored its argument would pass the arm above, so a second
+     value goes through the same builder. *)
+  let t2 = figure_spacing Proportional t in
+  Alcotest.(check bool)
+    "figure_spacing overwritten" true
+    (Option.equal equal_figure_spacing t2.figure_spacing (Some Proportional));
+  Alcotest.(check bool)
+    "typeface default is a value too" true
+    (Option.equal equal_figure_spacing
+       (figure_spacing Normal_spacing default).figure_spacing
+       (Some Normal_spacing));
+  Alcotest.(check bool) "italic preserved" true (t.italic = Some true);
+  Alcotest.(check (option reject)) "figure_style untouched" None t.figure_style;
+  Alcotest.(check (option reject)) "whitespace" None t.whitespace;
+  Alcotest.(check (option reject)) "font_size" None t.font_size
+
+let test_figure_style_builder () =
+  let t = default |> italic true |> figure_style Lining in
+  Alcotest.(check bool)
+    "figure_style set" true
+    (Option.equal equal_figure_style t.figure_style (Some Lining));
+  let t2 = figure_style Oldstyle t in
+  Alcotest.(check bool)
+    "figure_style overwritten" true
+    (Option.equal equal_figure_style t2.figure_style (Some Oldstyle));
+  Alcotest.(check bool)
+    "typeface default is a value too" true
+    (Option.equal equal_figure_style
+       (figure_style Normal_style default).figure_style (Some Normal_style));
+  Alcotest.(check bool) "italic preserved" true (t.italic = Some true);
+  Alcotest.(check (option reject))
+    "figure_spacing untouched" None t.figure_spacing;
+  Alcotest.(check (option reject)) "whitespace" None t.whitespace;
   Alcotest.(check (option reject)) "font_size" None t.font_size
 
 let test_builders_compose () =
@@ -249,6 +291,89 @@ let test_equal_distinguishes_whitespace () =
     "constructor reflexive" true
     (equal_whitespace Collapse Collapse)
 
+(* Each fixture is rebuilt on every call, so no assertion below can pass on
+   physical identity: the renderer's restyle gate compares whole records by
+   value, and a missing conjunct in [equal] shows up only against fresh ones. *)
+let test_equal_distinguishes_figures () =
+  let sp v = figure_spacing v default in
+  let st v = figure_style v default in
+  Alcotest.(check bool) "same spacing" true (equal (sp Tabular) (sp Tabular));
+  Alcotest.(check bool)
+    "different spacing" false
+    (equal (sp Tabular) (sp Proportional));
+  Alcotest.(check bool)
+    "spacing set vs unset" false
+    (equal (sp Tabular) default);
+  (* The explicit typeface default is a distinct value from an absent field: it
+     emits, so opting back into the font's own figures must register as a
+     change. *)
+  Alcotest.(check bool)
+    "spacing default vs unset" false
+    (equal (sp Normal_spacing) default);
+  Alcotest.(check bool) "same style" true (equal (st Lining) (st Lining));
+  Alcotest.(check bool)
+    "different style" false
+    (equal (st Lining) (st Oldstyle));
+  Alcotest.(check bool) "style set vs unset" false (equal (st Lining) default);
+  Alcotest.(check bool)
+    "style default vs unset" false
+    (equal (st Normal_style) default);
+  (* The two axes are independent: one set does not make a record equal to the
+     other set. *)
+  Alcotest.(check bool)
+    "spacing vs style" false
+    (equal (sp Tabular) (st Lining));
+  Alcotest.(check bool)
+    "both axes agree" true
+    (equal
+       (default |> figure_spacing Tabular |> figure_style Lining)
+       (default |> figure_spacing Tabular |> figure_style Lining));
+  Alcotest.(check bool)
+    "both axes, one differs" false
+    (equal
+       (default |> figure_spacing Tabular |> figure_style Lining)
+       (default |> figure_spacing Tabular |> figure_style Oldstyle))
+
+let test_equal_figure_spacing () =
+  Alcotest.(check bool)
+    "Tabular reflexive" true
+    (equal_figure_spacing Tabular Tabular);
+  Alcotest.(check bool)
+    "Proportional reflexive" true
+    (equal_figure_spacing Proportional Proportional);
+  Alcotest.(check bool)
+    "Normal_spacing reflexive" true
+    (equal_figure_spacing Normal_spacing Normal_spacing);
+  Alcotest.(check bool)
+    "Tabular vs Proportional" false
+    (equal_figure_spacing Tabular Proportional);
+  Alcotest.(check bool)
+    "Tabular vs Normal_spacing" false
+    (equal_figure_spacing Tabular Normal_spacing);
+  Alcotest.(check bool)
+    "Proportional vs Normal_spacing" false
+    (equal_figure_spacing Proportional Normal_spacing)
+
+let test_equal_figure_style () =
+  Alcotest.(check bool)
+    "Lining reflexive" true
+    (equal_figure_style Lining Lining);
+  Alcotest.(check bool)
+    "Oldstyle reflexive" true
+    (equal_figure_style Oldstyle Oldstyle);
+  Alcotest.(check bool)
+    "Normal_style reflexive" true
+    (equal_figure_style Normal_style Normal_style);
+  Alcotest.(check bool)
+    "Lining vs Oldstyle" false
+    (equal_figure_style Lining Oldstyle);
+  Alcotest.(check bool)
+    "Lining vs Normal_style" false
+    (equal_figure_style Lining Normal_style);
+  Alcotest.(check bool)
+    "Oldstyle vs Normal_style" false
+    (equal_figure_style Oldstyle Normal_style)
+
 (* --- Runner --- *)
 
 let () =
@@ -275,6 +400,10 @@ let () =
           Alcotest.test_case "color_sets" `Quick test_color_sets;
           Alcotest.test_case "whitespace_builder_sets_only_its_field" `Quick
             test_whitespace_builder_sets_only_its_field;
+          Alcotest.test_case "figure_spacing_builder" `Quick
+            test_figure_spacing_builder;
+          Alcotest.test_case "figure_style_builder" `Quick
+            test_figure_style_builder;
           Alcotest.test_case "builders_compose" `Quick test_builders_compose;
           Alcotest.test_case "builder_does_not_mutate_other_fields" `Quick
             test_builder_does_not_mutate_other_fields;
@@ -317,5 +446,10 @@ let () =
             test_equal_color_differs;
           Alcotest.test_case "equal_distinguishes_whitespace" `Quick
             test_equal_distinguishes_whitespace;
+          Alcotest.test_case "equal_distinguishes_figures" `Quick
+            test_equal_distinguishes_figures;
+          Alcotest.test_case "equal_figure_spacing" `Quick
+            test_equal_figure_spacing;
+          Alcotest.test_case "equal_figure_style" `Quick test_equal_figure_style;
         ] );
     ]

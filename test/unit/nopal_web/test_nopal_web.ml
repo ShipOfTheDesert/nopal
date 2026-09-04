@@ -1724,12 +1724,14 @@ let test_reconcile_removes_dropped_text_colour () =
     "dropped colour removed" ""
     (Jv.Jstr.get style_obj "color" |> Jstr.to_string)
 
-(* Every one of the twelve Text.t fields is named, so a thirteenth field is a
+(* Every one of the fourteen Text.t fields is named, so a fifteenth field is a
    compile error here rather than a silent inheritance from Text.default — and
    the all-unset fixture the drop case needs is spelled out rather than borrowed.
-   Built fresh on every call, so no assertion below can pass on physical
-   identity: the restyle guard compares by value. *)
-let text_style_with ~whitespace ~text_overflow =
+   The four axes a restyle case below varies are the parameters; every other
+   field is pinned unset, so each call site says out loud which axes it exercises
+   and which it does not. Built fresh on every call, so no assertion below can
+   pass on physical identity: the restyle guard compares by value. *)
+let text_style_with ~whitespace ~text_overflow ~figure_spacing ~figure_style =
   {
     Nopal_style.Text.font_family = None;
     font_size = None;
@@ -1743,6 +1745,8 @@ let text_style_with ~whitespace ~text_overflow =
     italic = None;
     color = None;
     whitespace;
+    figure_spacing;
+    figure_style;
   }
 
 (* Changing only the whitespace field must repaint the declaration it resolves
@@ -1755,7 +1759,10 @@ let test_reconcile_updates_whitespace () =
     Text
       {
         content = "    indented";
-        text_style = Some (text_style_with ~whitespace ~text_overflow:None);
+        text_style =
+          Some
+            (text_style_with ~whitespace ~text_overflow:None
+               ~figure_spacing:None ~figure_style:None);
       }
   in
   let handle =
@@ -1789,7 +1796,7 @@ let test_reconcile_updates_whitespace_on_overflow_change () =
         text_style =
           Some
             (text_style_with ~whitespace:(Some Nopal_style.Text.Preserve)
-               ~text_overflow);
+               ~text_overflow ~figure_spacing:None ~figure_style:None);
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent (mk None) in
@@ -1815,7 +1822,10 @@ let test_reconcile_removes_dropped_whitespace () =
     Text
       {
         content = "    indented";
-        text_style = Some (text_style_with ~whitespace ~text_overflow:None);
+        text_style =
+          Some
+            (text_style_with ~whitespace ~text_overflow:None
+               ~figure_spacing:None ~figure_style:None);
       }
   in
   let handle =
@@ -1831,6 +1841,96 @@ let test_reconcile_removes_dropped_whitespace () =
   Alcotest.(check string)
     "dropped declaration removed" ""
     (Jv.Jstr.get style_obj "white-space" |> Jstr.to_string)
+
+(* The restyle gate compares whole Text.t records, so a field left out of that
+   equality is a change that never repaints: the previous declaration stays on
+   the node and what is painted silently disagrees with the model. The gate is a
+   conjunction, and a transition that moves both figure axes at once would stay
+   green with either half of it missing — so the two axes move one at a time,
+   spacing first with the style axis held, then style with the spacing axis
+   held. Each arm reads the declaration back before the update that follows it,
+   so no expectation here can be met by a node that never carried the property.
+   Every value is non-empty, which also pins the clear-then-reapply order: a
+   clear running after the reapply would leave nothing painted. *)
+let test_restyle_on_figures_change () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let mk ~figure_spacing ~figure_style =
+    Text
+      {
+        content = "0123456789";
+        text_style =
+          Some
+            (text_style_with ~whitespace:None ~text_overflow:None
+               ~figure_spacing ~figure_style);
+      }
+  in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (mk ~figure_spacing:(Some Nopal_style.Text.Tabular)
+         ~figure_style:(Some Nopal_style.Text.Lining))
+  in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let style_obj = Jv.get node "style" in
+  let painted () =
+    Jv.Jstr.get style_obj "font-variant-numeric" |> Jstr.to_string
+  in
+  Alcotest.(check string)
+    "authored declaration painted before" "tabular-nums lining-nums"
+    (painted ());
+  Nopal_web.Renderer.update ~dispatch handle
+    (mk ~figure_spacing:(Some Nopal_style.Text.Proportional)
+       ~figure_style:(Some Nopal_style.Text.Lining));
+  Alcotest.(check string)
+    "a spacing-only change repaints the declaration"
+    "proportional-nums lining-nums" (painted ());
+  Nopal_web.Renderer.update ~dispatch handle
+    (mk ~figure_spacing:(Some Nopal_style.Text.Proportional)
+       ~figure_style:(Some Nopal_style.Text.Oldstyle));
+  Alcotest.(check string)
+    "a style-only change repaints the declaration"
+    "proportional-nums oldstyle-nums" (painted ())
+
+(* Dropping both figure axes must clear the declaration the previous render
+   emitted, rather than leaving the stale one painted. With both axes unset the
+   style resolves to nothing at all, so no reapply can overwrite the old value
+   and the clear of the previous properties is the only thing that can remove
+   it. The affirmative arm — reading the composed declaration back before the
+   reconcile — is what stops the absence assertion passing against a text node
+   that never carried the property. Observed: neutralising the blanking write in
+   the clear loop reddens this case on the stale "tabular-nums oldstyle-nums" it
+   leaves painted, together with the two sibling drop cases above. That pins the
+   clear as necessary, not where it sits; the clear-then-reapply order is pinned
+   by the repaint cases. *)
+let test_reconcile_removes_dropped_figures () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let mk ~figure_spacing ~figure_style =
+    Text
+      {
+        content = "0123456789";
+        text_style =
+          Some
+            (text_style_with ~whitespace:None ~text_overflow:None
+               ~figure_spacing ~figure_style);
+      }
+  in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (mk ~figure_spacing:(Some Nopal_style.Text.Tabular)
+         ~figure_style:(Some Nopal_style.Text.Oldstyle))
+  in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let style_obj = Jv.get node "style" in
+  let painted () =
+    Jv.Jstr.get style_obj "font-variant-numeric" |> Jstr.to_string
+  in
+  Alcotest.(check string)
+    "authored declaration painted before" "tabular-nums oldstyle-nums"
+    (painted ());
+  Nopal_web.Renderer.update ~dispatch handle
+    (mk ~figure_spacing:None ~figure_style:None);
+  Alcotest.(check string) "dropped declaration removed" "" (painted ())
 
 (* NFR-1: an identical re-render performs zero inline-style writes. The style is
    reconstructed each frame (physically distinct, structurally equal), as a real
@@ -3874,6 +3974,10 @@ let () =
             `Quick test_reconcile_updates_whitespace_on_overflow_change;
           Alcotest.test_case "reconcile removes dropped whitespace" `Quick
             test_reconcile_removes_dropped_whitespace;
+          Alcotest.test_case "restyle on figures change" `Quick
+            test_restyle_on_figures_change;
+          Alcotest.test_case "reconcile removes dropped figures" `Quick
+            test_reconcile_removes_dropped_figures;
           Alcotest.test_case "reconcile unchanged style no write" `Quick
             test_reconcile_unchanged_style_no_write;
         ] );

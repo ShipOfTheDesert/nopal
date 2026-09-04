@@ -5,6 +5,8 @@ type text_decoration = Underline | Line_through | Overline | No_decoration
 type text_transform = Uppercase | Lowercase | Capitalize | No_transform
 type text_overflow = Clip | Ellipsis | Wrap | No_wrap
 type whitespace = Collapse | Preserve
+type figure_spacing = Tabular | Proportional | Normal_spacing
+type figure_style = Lining | Oldstyle | Normal_style
 
 type t = {
   font_family : Font.family option;
@@ -19,6 +21,8 @@ type t = {
   italic : bool option;
   color : Color.t option;
   whitespace : whitespace option;
+  figure_spacing : figure_spacing option;
+  figure_style : figure_style option;
 }
 
 let default =
@@ -35,6 +39,8 @@ let default =
     italic = None;
     color = None;
     whitespace = None;
+    figure_spacing = None;
+    figure_style = None;
   }
 
 let font_family v t = { t with font_family = Some v }
@@ -49,6 +55,8 @@ let text_overflow v t = { t with text_overflow = Some v }
 let italic v t = { t with italic = Some v }
 let color v t = { t with color = Some v }
 let whitespace v t = { t with whitespace = Some v }
+let figure_spacing v t = { t with figure_spacing = Some v }
+let figure_style v t = { t with figure_style = Some v }
 
 let equal_line_height a b =
   match (a, b) with
@@ -101,6 +109,20 @@ let equal_whitespace a b =
   | Preserve, Preserve -> true
   | (Collapse | Preserve), _ -> false
 
+let equal_figure_spacing a b =
+  match (a, b) with
+  | Tabular, Tabular -> true
+  | Proportional, Proportional -> true
+  | Normal_spacing, Normal_spacing -> true
+  | (Tabular | Proportional | Normal_spacing), _ -> false
+
+let equal_figure_style a b =
+  match (a, b) with
+  | Lining, Lining -> true
+  | Oldstyle, Oldstyle -> true
+  | Normal_style, Normal_style -> true
+  | (Lining | Oldstyle | Normal_style), _ -> false
+
 let equal a b =
   Option.equal Font.equal_family a.font_family b.font_family
   && Option.equal Float.equal a.font_size b.font_size
@@ -114,3 +136,5 @@ let equal a b =
   && Option.equal Bool.equal a.italic b.italic
   && Option.equal Color.equal a.color b.color
   && Option.equal equal_whitespace a.whitespace b.whitespace
+  && Option.equal equal_figure_spacing a.figure_spacing b.figure_spacing
+  && Option.equal equal_figure_style a.figure_style b.figure_style

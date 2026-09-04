@@ -1,12 +1,14 @@
 (** Typed text/typography properties for Nopal elements.
 
     [Text.t] describes text presentation: font, size, weight, alignment,
-    decoration, color, overflow, whitespace. All fields are [option] — [None]
-    means the property is unset, letting the platform default or CSS inheritance
-    apply. [whitespace] is the one exception, and only when [text_overflow] is
-    also set: the two share a single platform declaration, so an unset
-    [whitespace] is overwritten rather than inherited there. See its own comment
-    below.
+    decoration, color, overflow, whitespace, figures. All fields are [option] —
+    [None] means the property is unset, letting the platform default or CSS
+    inheritance apply. The exceptions are the fields that share a platform
+    declaration with a sibling. [whitespace] is one, and only when
+    [text_overflow] is also set: the two resolve to a single declaration, so an
+    unset [whitespace] is overwritten rather than inherited there.
+    [figure_spacing] and [figure_style] are the other, on the same footing and
+    for the same reason. See their own comments below.
 
     Inheritance is a web-cascade property, not a Nopal one. A [Text.t] attached
     to a box reaches that box's descendants only where the target platform
@@ -22,7 +24,29 @@
     shaper is handed the string as written, so preserving the whitespace is its
     natural behaviour and [Collapse] is the side that has to be implemented. The
     DOM backend is the mirror image, because the document default collapses runs
-    of spaces and tabs. *)
+    of spaces and tabs.
+
+    [figure_spacing] and [figure_style] request an OpenType feature rather than
+    describing geometry, so what they produce depends on the rendering typeface.
+    A font that does not carry the requested figure set ignores the request
+    silently: there is no error, no fallback and no way to detect it from here,
+    and the text renders in the font's own figures. A correct declaration that
+    changes nothing on screen is therefore the expected outcome for such a font,
+    not a failure.
+
+    The two figure axes also resolve to one platform declaration whose every
+    value names both axes, so setting either one alone resets the other on that
+    element and an ancestor's value for the unset axis is lost there. An author
+    who wants both must author both. This is the same consequence [whitespace]
+    carries with [text_overflow], for the same reason.
+
+    Both figure axes are inert on any backend that lays text out from a scene
+    rather than from an element, for the reason [whitespace] is: such a path
+    receives geometry and glyph runs, never a [Text.t]. There is no inverted
+    polarity to describe here, unlike [whitespace] — canvas text is styled
+    through the CSS font shorthand, which carries no numeric-figure property,
+    and the canvas surface exposes no equivalent attribute, so figures drawn
+    that way take the typeface's own and nothing here can change them. *)
 
 type line_height = Lh_normal | Lh_multiplier of float | Lh_px of float
 type letter_spacing = Ls_normal | Ls_em of float
@@ -48,6 +72,19 @@ type text_overflow = Clip | Ellipsis | Wrap | No_wrap
     [Preserve] on it too. *)
 type whitespace = Collapse | Preserve
 
+(** Which advance width numerals take. [Tabular] gives every digit the same
+    width so figures line up in a column; [Proportional] gives each its natural
+    width. [Normal_spacing] asks for the typeface's own figures and is not the
+    same as leaving the field unset: it emits a declaration, so a descendant of
+    an element that set this axis can climb back out of it. *)
+type figure_spacing = Tabular | Proportional | Normal_spacing
+
+(** Which forms numerals take. [Lining] sits them on the baseline at a uniform
+    height; [Oldstyle] lets them ascend and descend like lowercase letters.
+    [Normal_style] is the explicit typeface default, on the same footing as
+    [Normal_spacing] and distinct from leaving the field unset. *)
+type figure_style = Lining | Oldstyle | Normal_style
+
 type t = {
   font_family : Font.family option;
   font_size : float option;
@@ -61,6 +98,8 @@ type t = {
   italic : bool option;
   color : Color.t option;
   whitespace : whitespace option;
+  figure_spacing : figure_spacing option;
+  figure_style : figure_style option;
 }
 
 (** {1 Defaults} *)
@@ -108,6 +147,16 @@ val whitespace : whitespace -> t -> t
     exactly as before; it does not mean [Collapse], which emits a declaration of
     its own. *)
 
+val figure_spacing : figure_spacing -> t -> t
+(** [figure_spacing fs t] sets [figure_spacing] to [Some fs]. Leaving it [None]
+    renders exactly as before; it does not mean [Normal_spacing], which emits a
+    declaration of its own. *)
+
+val figure_style : figure_style -> t -> t
+(** [figure_style fs t] sets [figure_style] to [Some fs]. Leaving it [None]
+    renders exactly as before; it does not mean [Normal_style], which emits a
+    declaration of its own. *)
+
 (** {1 Comparison} *)
 
 val equal : t -> t -> bool
@@ -122,3 +171,5 @@ val equal_text_decoration : text_decoration -> text_decoration -> bool
 val equal_text_transform : text_transform -> text_transform -> bool
 val equal_text_overflow : text_overflow -> text_overflow -> bool
 val equal_whitespace : whitespace -> whitespace -> bool
+val equal_figure_spacing : figure_spacing -> figure_spacing -> bool
+val equal_figure_style : figure_style -> figure_style -> bool
