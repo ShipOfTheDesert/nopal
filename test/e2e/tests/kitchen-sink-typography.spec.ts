@@ -149,6 +149,142 @@ test("typography section renders", async ({ page }) => {
     .locator('[data-testid="text-color-hex"]')
     .evaluate((el) => getComputedStyle(el).color);
   expect(hexContainerColor).toBe(containerColor);
+
+  // Numeric figures. Read off the span the axes are authored on, never off the
+  // anchor container: the container carries only the test hook, and this
+  // property inherits, so a declaration that landed there instead would cascade
+  // into the span and read identically at this line.
+  //
+  // A DOM assertion rather than an MVU telemetry one, for the reason the
+  // testing strategy carves out: these rows are a pure view derivation with no
+  // model state, so there is no event for telemetry to report and nothing it
+  // could assert.
+  //
+  // The computed declaration, never a measured width. What the two axes draw
+  // depends on whether the rendering face carries the requested figure set, and
+  // this example declares no font-family and ships no font, so a width
+  // assertion would encode which fonts the runner has installed rather than
+  // this framework's behaviour.
+  const computedFigures = async (testid: string) => {
+    const el = section.locator(`[data-testid="${testid}"] span`);
+    await expect(el).toBeVisible();
+    return el.evaluate((node) => getComputedStyle(node).fontVariantNumeric);
+  };
+
+  // One axis authored alone. The keyword the other axis would have contributed
+  // is absent, which is the rendered face of the reset these rows document: the
+  // single declaration names every axis it does not mention.
+  const tabularFigures = await computedFigures("figures-tabular");
+  expect(tabularFigures).toBe("tabular-nums");
+
+  const oldstyleFigures = await computedFigures("figures-oldstyle");
+  expect(oldstyleFigures).toBe("oldstyle-nums");
+
+  // Both axes on one element, and the row that carries the reason they are
+  // resolved together rather than one per field: two keywords survive here only
+  // because they are emitted as a single declaration. Had each axis emitted its
+  // own, the later one would have replaced the earlier and exactly one keyword
+  // would compute.
+  //
+  // The order below is the engine's, not the order this framework authors. The
+  // style layer writes spacing before style; Chromium normalises the pair to
+  // style before spacing, so an authored "tabular-nums lining-nums" computes as
+  // written here. Observed on this runner, not assumed. The authored order is
+  // pinned one layer down, in the style unit tests — do not "correct" this
+  // string back to it, it would simply fail.
+  //
+  // That string is a property of the engine, not of this framework, and this
+  // file is run against Chromium alone. Anyone adding this spec to a WebKit or
+  // Tauri project must re-observe the order there rather than carry this one
+  // over: a different engine normalising the pair the other way would fail
+  // here, and the failure would read as a framework defect when it is an
+  // engine difference. Only the composed row is exposed to this — every other
+  // assertion below reads a single keyword or "normal".
+  const composedFigures = await computedFigures("figures-tabular-lining");
+  expect(composedFigures).toBe("lining-nums tabular-nums");
+
+  // A row authoring neither axis is inert, and reports the property's initial
+  // value. What a computed read cannot see is the difference between emitting
+  // nothing and emitting a declaration that happens to say "normal" — both
+  // compute the same. That distinction is pinned in the style unit tests; this
+  // line pins that nothing reaches the browser which would change the numerals.
+  const unsetTestid = "figures-unset";
+  const unsetFigures = await computedFigures(unsetTestid);
+  expect(unsetFigures).toBe("normal");
+
+  // Stated as the inheritance relationship as well as the literal: the property
+  // inherits, and an unauthored row sits at whatever its ancestors leave it, so
+  // this also says that nothing above these rows declares the axes either.
+  const unsetContainerFigures = await section
+    .locator(`[data-testid="${unsetTestid}"]`)
+    .evaluate((el) => getComputedStyle(el).fontVariantNumeric);
+  expect(unsetFigures).toBe(unsetContainerFigures);
+
+  // Affirmative arm for the two assertions above, which are assertions of
+  // absence and would otherwise go vacuous. The unauthored row is built by the
+  // same helper as the three authored ones and differs from them in nothing but
+  // whether an axis was set, so "it is left at the initial value" is an
+  // observation only while an authored axis is not. Without this, a change that
+  // stopped every one of these rows from reaching the text-style path would
+  // leave the unset row's expectations green.
+  expect(unsetFigures).not.toBe(tabularFigures);
+  expect(unsetFigures).not.toBe(oldstyleFigures);
+  expect(unsetFigures).not.toBe(composedFigures);
+
+  // The axes are a property of the text, not of the box around it. Without this
+  // line the reads above would look the same on a page that declared them on
+  // the anchor container and let the cascade carry them into the span, so an
+  // authored row's container is checked to be left where the unauthored row's
+  // container is.
+  const tabularContainerFigures = await section
+    .locator('[data-testid="figures-tabular"]')
+    .evaluate((el) => getComputedStyle(el).fontVariantNumeric);
+  expect(tabularContainerFigures).toBe(unsetContainerFigures);
+
+  // Numeric figures under a container that declares one of the axes. This is
+  // the only place on the page where an explicit typeface default is
+  // observable at all: everywhere else it computes "normal", which is also
+  // what an unauthored row computes, so the two are one value to a computed
+  // read. Under an ancestor that asked for old-style forms they separate.
+  const declaringContainerFigures = await section
+    .locator('[data-testid="figures-oldstyle-container"]')
+    .evaluate((el) => getComputedStyle(el).fontVariantNumeric);
+  expect(declaringContainerFigures).toBe("oldstyle-nums");
+
+  // The row that authors neither axis, stated as the inheritance relationship
+  // and not only as the literal: it emits nothing, so what it computes is
+  // whatever the container left it.
+  const inheritedFigures = await computedFigures("figures-inherited");
+  expect(inheritedFigures).toBe(declaringContainerFigures);
+
+  // The row the explicit typeface default exists for. It sits under the same
+  // container as the row above and differs from it in one authored value, so
+  // "normal" here can only have come from a declaration this row emitted —
+  // emitting nothing would have left it at the inherited "oldstyle-nums", as
+  // its sibling shows. That is what makes the explicit default browser-
+  // observable rather than a unit-layer claim, and the inequality below is its
+  // affirmative arm: the two rows are built by the same helper from the same
+  // sample and reach different values.
+  const normalStyleFigures = await computedFigures("figures-normal-style");
+  expect(normalStyleFigures).toBe("normal");
+  expect(normalStyleFigures).not.toBe(inheritedFigures);
+
+  // The trap row: it authors the width axis only, and loses the container's
+  // form axis with it, because the single declaration names every axis it does
+  // not mention. The keyword the container contributed is absent here — this
+  // is that reset observed under an ancestor that really did declare it,
+  // rather than inferred from a row with no ancestor to lose.
+  const proportionalFigures = await computedFigures(
+    "figures-inherited-proportional",
+  );
+  expect(proportionalFigures).toBe("proportional-nums");
+  expect(proportionalFigures).not.toBe(inheritedFigures);
+
+  // And the reason the emit/no-emit distinction stays one layer down: with no
+  // ancestor declaring the axes, the explicit default and the unauthored row
+  // compute the same string. The style unit tests are where those two are told
+  // apart.
+  expect(unsetFigures).toBe(normalStyleFigures);
 });
 
 // Whitespace. A separate case because it is the only part of this section that

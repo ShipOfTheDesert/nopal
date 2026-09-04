@@ -45,6 +45,16 @@ let align_to_items a =
   | Stretch -> "stretch"
   | Space_between -> "space-between"
 
+let figure_spacing_to_keyword = function
+  | Nopal_style.Text.Tabular -> Some "tabular-nums"
+  | Nopal_style.Text.Proportional -> Some "proportional-nums"
+  | Nopal_style.Text.Normal_spacing -> None
+
+let figure_style_to_keyword = function
+  | Nopal_style.Text.Lining -> Some "lining-nums"
+  | Nopal_style.Text.Oldstyle -> Some "oldstyle-nums"
+  | Nopal_style.Text.Normal_style -> None
+
 let of_text (text : Nopal_style.Text.t) =
   let acc = [] in
   let add acc property value = { property; value } :: acc in
@@ -148,6 +158,31 @@ let of_text (text : Nopal_style.Text.t) =
     | ( Some Nopal_style.Text.Preserve,
         Some (Nopal_style.Text.No_wrap | Nopal_style.Text.Ellipsis) ) ->
         add acc "white-space" "pre"
+  in
+  (* One CSS property covers both numeric-figure axes: the advance width
+     numerals take (Text.figure_spacing) and the forms they take
+     (Text.figure_style). It is therefore resolved here, from the pair, and
+     emitted at most once — never from either field's own arm, where two
+     emissions would make the last one written the winner. Each set,
+     non-default axis contributes one keyword, spacing before style; a pair
+     contributing none still emits the reset, because an explicit typeface
+     default has to be able to override an inherited ancestor. Both axes unset
+     emits nothing, so an unstyled element is unaffected. *)
+  let acc =
+    match (text.figure_spacing, text.figure_style) with
+    | None, None -> acc
+    | spacing, style ->
+        let keywords =
+          List.filter_map Fun.id
+            [
+              Option.bind spacing figure_spacing_to_keyword;
+              Option.bind style figure_style_to_keyword;
+            ]
+        in
+        add acc "font-variant-numeric"
+          (match keywords with
+          | [] -> "normal"
+          | ks -> String.concat " " ks)
   in
   List.rev acc
 

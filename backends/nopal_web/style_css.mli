@@ -13,8 +13,8 @@ val of_text : Nopal_style.Text.t -> css_prop list
     which paints the glyphs; the box background is [of_style]'s concern.
     Ellipsis overflow emits [text-overflow:ellipsis] and [overflow:hidden].
 
-    [white-space] is the one property two fields feed, because CSS folds two
-    independent axes into it: whether runs of spaces and tabs collapse
+    [white-space] is the first of two properties two fields feed, because CSS
+    folds two independent axes into it: whether runs of spaces and tabs collapse
     ([Text.whitespace]) and whether a line breaks ([Text.text_overflow]'s [Wrap]
     and [No_wrap], with [Ellipsis] implying [No_wrap] and [Clip] implying
     neither). It is therefore resolved once from the pair and appears at most
@@ -32,7 +32,29 @@ val of_text : Nopal_style.Text.t -> css_prop list
     descendant that wants the ancestor's preservation and its own wrapping must
     author both. Second, [pre] and [pre-wrap] preserve line breaks as well as
     spaces and tabs, so [Preserve] also makes a newline in the content
-    significant. *)
+    significant.
+
+    [font-variant-numeric] is the second property two fields feed, for a
+    different reason: CSS folds several independent numeric axes into it, of
+    which two are expressed here — the advance width numerals take
+    ([Text.figure_spacing]) and the forms they take ([Text.figure_style]). It is
+    likewise resolved once from the pair and appears at most once in the result,
+    never emitted from either field's own arm. Both axes unset emits nothing at
+    all, so an unstyled element keeps the document default. Otherwise each set
+    axis that is not the typeface's own default contributes one keyword, spacing
+    before style — [tabular-nums] or [proportional-nums], then [lining-nums] or
+    [oldstyle-nums] — and a pair contributing no keyword between them emits
+    [normal]. [Some Normal_spacing] is not the same as [None]: it emits, so a
+    descendant can climb out of an ancestor that set the axis, and
+    [Some Normal_style] does the same on the other axis.
+
+    The consequence is the one [white-space] carries. Every value of this
+    property names both axes, so an unset [Text.figure_spacing] stops inheriting
+    as soon as [Text.figure_style] is set, and an ancestor's value for the unset
+    axis is lost on that element. An author who wants both must author both.
+    What the declaration then draws is typeface-dependent: a font that does not
+    carry the requested figure set ignores it silently, with no error and no
+    fallback, which is a property of the font rather than of this encoding. *)
 
 val of_style : Nopal_style.Style.t -> css_prop list
 (** [of_style style] returns the CSS properties for [style]. Only non-default

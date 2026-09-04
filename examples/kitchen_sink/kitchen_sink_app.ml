@@ -1130,6 +1130,88 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
       |> Style.with_layout (fun l -> { l with gap = Some 8.0 })
       |> Style.with_text (fun t -> t |> Text.whitespace Preserve)
     in
+    (* Container that declares one figure axis for its own subtree, the way the
+       preserving container above declares whitespace, and for the same reason:
+       the platform property inherits, so without an ancestor asking for
+       something a row asking for the typeface's own figures and a row asking
+       for nothing resolve identically, and nothing could tell an implemented
+       explicit default from a missing one. The form axis is the one declared
+       because it is the axis whose effect a default UI face is likelier to
+       carry, and declaring only one leaves the other axis free to be the one a
+       row resets it through.
+
+       What this group still does not put on the page: the width axis's own
+       explicit default. Authored alone it contributes no keyword, so it
+       resolves to the same reset the form default resolves to and would give
+       the page two rows a reader could not tell apart; authored beside
+       old-style forms it resolves to what the old-style row above already
+       shows. It stays pinned in the style tests, where the two are told apart
+       by which field was set rather than by what they resolve to. *)
+    let oldstyle_container_style =
+      Style.default
+      |> Style.with_layout (fun l -> { l with gap = Some 8.0 })
+      |> Style.with_text (fun t -> t |> Text.figure_style Oldstyle)
+    in
+    (* Numerals every figures row renders. Three lines of the same length, so
+       the digits stand in a column and the decimal points either line up or go
+       ragged; a single line of digits cannot show a column failing to line up,
+       which is the whole defect these rows exist for. Each line mixes narrow
+       and wide digits, because a column of 1s beside a column of 0s is where
+       the width axis is legible, and carries digits that descend in an
+       old-style face. One short literal on purpose: a formatter-inserted line
+       continuation swallows the blanks that follow it, and these lines are
+       read by their width. *)
+    let figures_sample = "1,118.03\n9,004.75\n6,281.90" in
+    (* Numeric-figures helper. Takes both axes as options so the row that
+       authors neither travels the same code path as the rows that do —
+       otherwise "this row is inert" could hold because the row never reached
+       the text-style path at all. The axes are independent: one says what
+       advance width numerals take, the other which forms they take. Both are
+       labelled, since they are the same shape (an option of a variant) and a
+       positional call site would leave a reader no way to tell which axis is
+       which. Every row renders the same numerals in the same container, so the
+       only difference between two rows is what each authored.
+
+       Two things a reader of the rendered page needs, and they are the same two
+       the style interface states. The axes resolve to one platform declaration
+       whose every value names both of them, so setting either one alone resets
+       the other on that element and an ancestor's value for the unset axis is
+       lost there — an author who wants both must author both, exactly as
+       whitespace carries with text_overflow. And what the declaration draws
+       depends on the rendering typeface: a font that does not carry the
+       requested figure set ignores the request silently, with no error and no
+       fallback, so two rows that look identical are that font having no such
+       set rather than a declaration that failed.
+
+       No font family is named here, unlike the whitespace rows above: a
+       monospace face already gives every digit one advance width, which would
+       hide the very axis these rows exist to show. The sample is preserved
+       rather than collapsed so its three numerals stand as a column; that axis
+       is authored identically on every row, so it is never what two rows differ
+       in. *)
+    let figures_item ~(figure_spacing : Text.figure_spacing option)
+        ~(figure_style : Text.figure_style option) (label : string) ~testid =
+      let text_style =
+        let base =
+          Text.default |> Text.font_size 1.0 |> Text.whitespace Preserve
+        in
+        let base =
+          match figure_spacing with
+          | Some spacing -> base |> Text.figure_spacing spacing
+          | None -> base
+        in
+        match figure_style with
+        | Some style -> base |> Text.figure_style style
+        | None -> base
+      in
+      Element.column
+        [
+          Element.text label;
+          Element.box
+            ~attrs:[ ("data-testid", testid) ]
+            [ Element.styled_text ~text_style figures_sample ];
+        ]
+    in
     Element.column ~style:section_style
       ~attrs:[ ("data-section", "typography") ]
       [
@@ -1328,6 +1410,68 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                   "No whitespace authored, no wrap — loses the container's \
                    preservation"
                   ~testid:"whitespace-inherited-nowrap";
+              ];
+            Element.text
+              "Numeric figures (whether these rows differ depends on the \
+               rendering typeface: identical columns mean the face carries no \
+               such figure set, not a declaration that failed):";
+            Element.column ~style:section_body_style
+              [
+                figures_item ~figure_spacing:None ~figure_style:None
+                  "Neither axis authored — the typeface's own figures"
+                  ~testid:"figures-unset";
+                figures_item ~figure_spacing:(Some Tabular) ~figure_style:None
+                  "Tabular alone — every digit takes one advance width, and \
+                   the form axis resets to the typeface's default"
+                  ~testid:"figures-tabular";
+                figures_item ~figure_spacing:None ~figure_style:(Some Oldstyle)
+                  "Old-style alone — the figures ascend and descend, and the \
+                   width axis resets to the typeface's default"
+                  ~testid:"figures-oldstyle";
+                figures_item ~figure_spacing:(Some Tabular)
+                  ~figure_style:(Some Lining)
+                  "Tabular with lining — one advance width per digit, on the \
+                   baseline at cap height, neither axis left to reset"
+                  ~testid:"figures-tabular-lining";
+              ];
+            Element.text
+              "Numeric figures inherited from a container, and overridden \
+               (same caveat: on a face carrying no old-style set these rows \
+               draw alike, which is the request being ignored rather than \
+               refused):";
+            Element.column ~style:oldstyle_container_style
+              ~attrs:[ ("data-testid", "figures-oldstyle-container") ]
+              [
+                figures_item ~figure_spacing:None ~figure_style:None
+                  "Nothing authored — inherits the container's old-style forms"
+                  ~testid:"figures-inherited";
+                (* The row the explicit typeface default exists for. Because the
+                   property inherits, a descendant of an element that asked for
+                   a figure set has no other way back to the font's own
+                   numerals: leaving the field unset means "inherit", which is
+                   the row above. It is also the row that separates the two
+                   defaults from unset — this one emits a declaration and the
+                   row above emits nothing, so the two resolve differently only
+                   under an ancestor that authored the axis, and identically
+                   everywhere else on the page. *)
+                figures_item ~figure_spacing:None
+                  ~figure_style:(Some Normal_style)
+                  "The typeface's own forms, asked for explicitly — climbs \
+                   back out of the inherited old-style"
+                  ~testid:"figures-normal-style";
+                (* The trap row, the figures counterpart of the whitespace one
+                   above. It authors only the width axis, inside a container
+                   that asks for old-style forms — and loses those forms anyway,
+                   because the two axes resolve to one declaration and every
+                   value of that declaration names both. An unset form axis is
+                   therefore not neutral once the width axis is set; the row
+                   above keeps the inherited forms only because nothing else is
+                   authored on it. *)
+                figures_item ~figure_spacing:(Some Proportional)
+                  ~figure_style:None
+                  "Proportional alone — each digit its natural width, and the \
+                   container's old-style is lost with it"
+                  ~testid:"figures-inherited-proportional";
               ];
           ];
       ]

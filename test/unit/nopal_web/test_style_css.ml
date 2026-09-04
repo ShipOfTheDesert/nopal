@@ -302,9 +302,9 @@ let test_interaction_rules_default_empty () =
 let text_props ts = of_text ts
 
 (* Every field is spelled out rather than taken from Nopal_style.Text.default:
-   the two axes under test are set explicitly on every row, and a field added to
-   Text.t later has to be named here instead of joining the sweep silently. *)
-let text_style_with ~whitespace ~text_overflow =
+   the four axes under test are set explicitly on every row, and a field added
+   to Text.t later has to be named here instead of joining the sweep silently. *)
+let text_style_with ~whitespace ~text_overflow ~figure_spacing ~figure_style =
   {
     Nopal_style.Text.font_family = None;
     font_size = None;
@@ -318,6 +318,8 @@ let text_style_with ~whitespace ~text_overflow =
     italic = None;
     color = None;
     whitespace;
+    figure_spacing;
+    figure_style;
   }
 
 let whitespace_row_label whitespace text_overflow =
@@ -573,8 +575,8 @@ let test_style_text_color () =
 (* of_style gates the whole text block behind [Text.equal … default], so a field
    reached through [Style.with_text] is only emitted if that gate registers the
    change. This is the path the kitchen sink's preserving container takes, and
-   the mechanism FR-6 exists for; without this case it is pinned only in a
-   browser. *)
+   the mechanism a preserved-whitespace container depends on; without this case
+   it is pinned only in a browser. *)
 let test_style_text_whitespace () =
   let style =
     Nopal_style.Style.default
@@ -585,11 +587,38 @@ let test_style_text_whitespace () =
   check_has_prop "flex-direction" "row" props;
   check_has_prop "white-space" "pre-wrap" props
 
+(* The same gate for the other pair of fields. [Style.with_text] is the
+   whole-container shape a consumer reaches for when a table's digits have to
+   line up, and it is the shape the kitchen sink's inheriting container is
+   written in; every other figures fixture in this file calls [of_text]
+   directly, which cannot reach this gate at all. Both axes are exercised
+   because a gate could register a change on one field and miss the other. *)
+let test_style_text_figures () =
+  let spacing_only =
+    Nopal_style.Style.default
+    |> with_layout (fun l -> { l with direction = Some Row_dir })
+    |> with_text (Nopal_style.Text.figure_spacing Nopal_style.Text.Tabular)
+  in
+  let spacing_props = of_style spacing_only in
+  (* The layout property comes from a fold this gate cannot suppress, so it
+     tells a gate that dropped the text block apart from a fixture that reached
+     of_style and produced nothing at all. *)
+  check_has_prop "flex-direction" "row" spacing_props;
+  check_has_prop "font-variant-numeric" "tabular-nums" spacing_props;
+  let style_only =
+    Nopal_style.Style.default
+    |> with_layout (fun l -> { l with direction = Some Row_dir })
+    |> with_text (Nopal_style.Text.figure_style Nopal_style.Text.Oldstyle)
+  in
+  let style_props = of_style style_only in
+  check_has_prop "flex-direction" "row" style_props;
+  check_has_prop "font-variant-numeric" "oldstyle-nums" style_props
+
 let test_of_text_preserve_alone_wraps () =
   let props =
     text_props
       (text_style_with ~whitespace:(Some Nopal_style.Text.Preserve)
-         ~text_overflow:None)
+         ~text_overflow:None ~figure_spacing:None ~figure_style:None)
   in
   (* Declaring the whitespace significant must not also take line breaking
      away: that stays with text_overflow. *)
@@ -614,7 +643,8 @@ let test_of_text_preserve_with_ellipsis () =
   let props =
     text_props
       (text_style_with ~whitespace:(Some Nopal_style.Text.Preserve)
-         ~text_overflow:(Some Nopal_style.Text.Ellipsis))
+         ~text_overflow:(Some Nopal_style.Text.Ellipsis) ~figure_spacing:None
+         ~figure_style:None)
   in
   check_has_prop "text-overflow" "ellipsis" props;
   check_has_prop "overflow" "hidden" props;
@@ -627,27 +657,34 @@ let test_of_text_collapse_is_expressible () =
   let collapse_alone =
     text_props
       (text_style_with ~whitespace:(Some Nopal_style.Text.Collapse)
-         ~text_overflow:None)
+         ~text_overflow:None ~figure_spacing:None ~figure_style:None)
   in
   check_has_prop "white-space" "normal" collapse_alone;
   Alcotest.(check int) "exactly one property" 1 (List.length collapse_alone);
   (* Collapse is not the same as leaving the field unset: an unset field emits
      nothing, which cannot override an inherited preserving ancestor. *)
   let unset =
-    text_props (text_style_with ~whitespace:None ~text_overflow:None)
+    text_props
+      (text_style_with ~whitespace:None ~text_overflow:None ~figure_spacing:None
+         ~figure_style:None)
   in
   check_no_prop "white-space" unset;
   let collapse_no_wrap =
     text_props
       (text_style_with ~whitespace:(Some Nopal_style.Text.Collapse)
-         ~text_overflow:(Some Nopal_style.Text.No_wrap))
+         ~text_overflow:(Some Nopal_style.Text.No_wrap) ~figure_spacing:None
+         ~figure_style:None)
   in
   check_has_prop "white-space" "nowrap" collapse_no_wrap
 
 let test_of_text_emits_whitespace_declaration_at_most_once () =
   List.iter
     (fun (whitespace, text_overflow, expected) ->
-      let props = text_props (text_style_with ~whitespace ~text_overflow) in
+      let props =
+        text_props
+          (text_style_with ~whitespace ~text_overflow ~figure_spacing:None
+             ~figure_style:None)
+      in
       let label = whitespace_row_label whitespace text_overflow in
       Alcotest.(check int)
         (label ^ " — white-space occurrences")
@@ -659,6 +696,201 @@ let test_of_text_emits_whitespace_declaration_at_most_once () =
       | None -> ()
       | Some value -> check_has_prop "white-space" value props)
     whitespace_resolution_table
+
+(* ── Numeric figure tests ── *)
+
+(* The two figure axes with no other text field set, so a declaration in the
+   result can only have come from the figure fold. Both axes are named at every
+   call site; nothing here is inherited from a default. *)
+let figures_only ~figure_spacing ~figure_style =
+  text_style_with ~whitespace:None ~text_overflow:None ~figure_spacing
+    ~figure_style
+
+let figures_row_label figure_spacing figure_style =
+  let sp =
+    match figure_spacing with
+    | None -> "figure_spacing=None"
+    | Some Nopal_style.Text.Tabular -> "figure_spacing=Tabular"
+    | Some Nopal_style.Text.Proportional -> "figure_spacing=Proportional"
+    | Some Nopal_style.Text.Normal_spacing -> "figure_spacing=Normal_spacing"
+  in
+  let st =
+    match figure_style with
+    | None -> "figure_style=None"
+    | Some Nopal_style.Text.Lining -> "figure_style=Lining"
+    | Some Nopal_style.Text.Oldstyle -> "figure_style=Oldstyle"
+    | Some Nopal_style.Text.Normal_style -> "figure_style=Normal_style"
+  in
+  sp ^ " " ^ st
+
+(* Every combination of the two axes and the one declaration each must produce.
+   Sixteen rows rather than one case per axis, so their join is pinned and not
+   just each axis on its own. The expected values are written from the stated
+   resolution rule — each set, non-default axis contributes one keyword, spacing
+   before style, and a pair contributing none still emits the reset while both
+   unset emits nothing — never read back off the emitter. *)
+let figures_resolution_table =
+  let open Nopal_style.Text in
+  [
+    (None, None, None);
+    (None, Some Lining, Some "lining-nums");
+    (None, Some Oldstyle, Some "oldstyle-nums");
+    (None, Some Normal_style, Some "normal");
+    (Some Tabular, None, Some "tabular-nums");
+    (Some Tabular, Some Lining, Some "tabular-nums lining-nums");
+    (Some Tabular, Some Oldstyle, Some "tabular-nums oldstyle-nums");
+    (Some Tabular, Some Normal_style, Some "tabular-nums");
+    (Some Proportional, None, Some "proportional-nums");
+    (Some Proportional, Some Lining, Some "proportional-nums lining-nums");
+    (Some Proportional, Some Oldstyle, Some "proportional-nums oldstyle-nums");
+    (Some Proportional, Some Normal_style, Some "proportional-nums");
+    (Some Normal_spacing, None, Some "normal");
+    (Some Normal_spacing, Some Lining, Some "lining-nums");
+    (Some Normal_spacing, Some Oldstyle, Some "oldstyle-nums");
+    (Some Normal_spacing, Some Normal_style, Some "normal");
+  ]
+
+let test_of_text_emits_each_figure_axis () =
+  let open Nopal_style.Text in
+  List.iter
+    (fun (figure_spacing, figure_style, expected) ->
+      let props = text_props (figures_only ~figure_spacing ~figure_style) in
+      check_has_prop "font-variant-numeric" expected props;
+      (* One axis set must reach its own keyword and nothing else: a resolution
+         that read the neighbouring field would still produce a declaration. *)
+      Alcotest.(check int)
+        (figures_row_label figure_spacing figure_style ^ " — one property")
+        1 (List.length props))
+    [
+      (Some Tabular, None, "tabular-nums");
+      (Some Proportional, None, "proportional-nums");
+      (None, Some Lining, "lining-nums");
+      (None, Some Oldstyle, "oldstyle-nums");
+    ]
+
+let test_of_text_composes_both_figure_axes () =
+  let open Nopal_style.Text in
+  let both =
+    text_props
+      (figures_only ~figure_spacing:(Some Tabular) ~figure_style:(Some Oldstyle))
+  in
+  (* The whole declaration, not a substring and not a membership check: the
+     keyword order is pinned by nothing else, and no single-axis case can pin
+     it. A fold that emitted style before spacing passes every other case. *)
+  check_has_prop "font-variant-numeric" "tabular-nums oldstyle-nums" both;
+  Alcotest.(check int)
+    "one figures declaration" 1
+    (count_prop "font-variant-numeric" both);
+  let other_pair =
+    text_props
+      (figures_only ~figure_spacing:(Some Proportional)
+         ~figure_style:(Some Lining))
+  in
+  check_has_prop "font-variant-numeric" "proportional-nums lining-nums"
+    other_pair;
+  (* Written through the public builders because this is the shape a consumer
+     writes, and the only place the builders and the emit site meet. The record
+     they start from is all-unset, which test_text_none_fields_no_css pins. *)
+  let built =
+    Nopal_style.Text.default
+    |> Nopal_style.Text.figure_spacing Tabular
+    |> Nopal_style.Text.figure_style Lining
+  in
+  check_has_prop "font-variant-numeric" "tabular-nums lining-nums"
+    (text_props built)
+
+let test_of_text_emits_figures_at_most_once () =
+  List.iter
+    (fun (figure_spacing, figure_style, expected) ->
+      let props = text_props (figures_only ~figure_spacing ~figure_style) in
+      let label = figures_row_label figure_spacing figure_style in
+      Alcotest.(check int)
+        (label ^ " — font-variant-numeric occurrences")
+        (match expected with
+        | None -> 0
+        | Some _ -> 1)
+        (count_prop "font-variant-numeric" props);
+      match expected with
+      | None -> ()
+      | Some value -> check_has_prop "font-variant-numeric" value props)
+    figures_resolution_table
+
+let test_of_text_figures_default_emits_reset () =
+  let open Nopal_style.Text in
+  (* The property inherits, so an element under one that set an axis has no
+     other way back to the typeface's own figures. The explicit default is that
+     way back, and it only works if it emits. *)
+  let spacing_default =
+    text_props
+      (figures_only ~figure_spacing:(Some Normal_spacing) ~figure_style:None)
+  in
+  check_has_prop "font-variant-numeric" "normal" spacing_default;
+  let style_default =
+    text_props
+      (figures_only ~figure_spacing:None ~figure_style:(Some Normal_style))
+  in
+  check_has_prop "font-variant-numeric" "normal" style_default;
+  let both_default =
+    text_props
+      (figures_only ~figure_spacing:(Some Normal_spacing)
+         ~figure_style:(Some Normal_style))
+  in
+  check_has_prop "font-variant-numeric" "normal" both_default;
+  Alcotest.(check int)
+    "one declaration when both axes are the default" 1
+    (count_prop "font-variant-numeric" both_default);
+  (* A defaulted axis contributes no keyword of its own and must not suppress
+     its sibling's. *)
+  let default_with_sibling =
+    text_props
+      (figures_only ~figure_spacing:(Some Normal_spacing)
+         ~figure_style:(Some Lining))
+  in
+  check_has_prop "font-variant-numeric" "lining-nums" default_with_sibling;
+  (* Distinct from leaving the axis unset, which emits nothing at all and so
+     cannot override an inherited ancestor. *)
+  check_no_prop "font-variant-numeric"
+    (text_props (figures_only ~figure_spacing:None ~figure_style:None))
+
+let test_of_text_unset_figures_emits_nothing () =
+  let unset =
+    text_props (figures_only ~figure_spacing:None ~figure_style:None)
+  in
+  check_no_prop "font-variant-numeric" unset;
+  Alcotest.(check int) "no properties at all" 0 (List.length unset);
+  (* Affirmative arm on the same fixture: the absence above passes just as well
+     if the fold is never reached at all, so the fixture has to be shown able to
+     produce the property. *)
+  let set =
+    text_props
+      (figures_only ~figure_spacing:(Some Nopal_style.Text.Tabular)
+         ~figure_style:None)
+  in
+  check_has_prop "font-variant-numeric" "tabular-nums" set
+
+let test_of_text_whitespace_unaffected () =
+  let open Nopal_style.Text in
+  (* The two folds share of_text and nothing else. A set figure axis must leave
+     the whitespace pair resolving exactly as it did, and must not add a
+     white-space of its own. *)
+  let both =
+    text_props
+      (text_style_with ~whitespace:(Some Preserve) ~text_overflow:(Some No_wrap)
+         ~figure_spacing:(Some Tabular) ~figure_style:(Some Oldstyle))
+  in
+  check_has_prop "white-space" "pre" both;
+  Alcotest.(check int)
+    "one white-space declaration" 1
+    (count_prop "white-space" both);
+  check_has_prop "font-variant-numeric" "tabular-nums oldstyle-nums" both;
+  Alcotest.(check int)
+    "one figures declaration" 1
+    (count_prop "font-variant-numeric" both);
+  (* And the other direction: with both whitespace axes unset, a set figure axis
+     leaves white-space unemitted, exactly as before these fields existed. *)
+  check_no_prop "white-space"
+    (text_props
+       (figures_only ~figure_spacing:(Some Tabular) ~figure_style:None))
 
 let test_interaction_rules_focused_only () =
   let interaction =
@@ -968,6 +1200,8 @@ let () =
             test_style_text_color;
           Alcotest.test_case "whitespace through style text" `Quick
             test_style_text_whitespace;
+          Alcotest.test_case "figures through style text" `Quick
+            test_style_text_figures;
           Alcotest.test_case "preserve alone wraps" `Quick
             test_of_text_preserve_alone_wraps;
           Alcotest.test_case "preserve with no wrap" `Quick
@@ -978,6 +1212,18 @@ let () =
             test_of_text_collapse_is_expressible;
           Alcotest.test_case "whitespace declaration at most once" `Quick
             test_of_text_emits_whitespace_declaration_at_most_once;
+          Alcotest.test_case "emits each figure axis" `Quick
+            test_of_text_emits_each_figure_axis;
+          Alcotest.test_case "composes both figure axes" `Quick
+            test_of_text_composes_both_figure_axes;
+          Alcotest.test_case "figures declaration at most once" `Quick
+            test_of_text_emits_figures_at_most_once;
+          Alcotest.test_case "figures default emits reset" `Quick
+            test_of_text_figures_default_emits_reset;
+          Alcotest.test_case "unset figures emit nothing" `Quick
+            test_of_text_unset_figures_emits_nothing;
+          Alcotest.test_case "whitespace unaffected by figures" `Quick
+            test_of_text_whitespace_unaffected;
         ] );
       ( "base_class_rule",
         [
