@@ -307,8 +307,17 @@ let of_style (style : t) =
         acc
         |> opt "box-shadow"
              (fun s ->
-               Printf.sprintf "%gpx %gpx %gpx %s" s.x s.y s.blur
-                 (color_to_css s.color))
+               (* The fourth length is omitted at zero, matching border-radius
+                  above and keeping every shadow that names no spread on the
+                  exact three-length declaration it emitted before spread
+                  existed. An omitted spread and a zero one paint identically,
+                  so nothing is lost by the omission. *)
+               if Float.equal s.spread 0. then
+                 Printf.sprintf "%gpx %gpx %gpx %s" s.x s.y s.blur
+                   (color_to_css s.color)
+               else
+                 Printf.sprintf "%gpx %gpx %gpx %gpx %s" s.x s.y s.blur s.spread
+                   (color_to_css s.color))
              paint.shadow
       in
       let acc =

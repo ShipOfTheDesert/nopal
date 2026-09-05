@@ -44,7 +44,14 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                 radius = 10.0;
               };
           shadow =
-            Some { x = 0.0; y = 1.0; blur = 6.0; color = Style.rgba 0 0 0 0.04 };
+            Some
+              {
+                x = 0.0;
+                y = 1.0;
+                blur = 6.0;
+                spread = 0.0;
+                color = Style.rgba 0 0 0 0.04;
+              };
         })
 
   let section_body_style =
@@ -1584,7 +1591,13 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                 };
             shadow =
               Some
-                { x = 0.0; y = 1.0; blur = 3.0; color = Style.rgba 0 0 0 0.2 };
+                {
+                  x = 0.0;
+                  y = 1.0;
+                  blur = 3.0;
+                  spread = 0.0;
+                  color = Style.rgba 0 0 0 0.2;
+                };
           })
     in
     let disabled_style =
@@ -2040,6 +2053,48 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                 }));
       }
     in
+    (* The same focus affordance built from a shadow spread instead of a wider
+       border. A border participates in layout, so growing it on focus nudges
+       everything after it; a shadow is painted only, so this control keeps its
+       exact geometry. Zero offset and zero blur are what make the shadow read
+       as a ring rather than a drop shadow. *)
+    let spread_ring_input_style =
+      Style.default
+      |> Style.with_layout (fun l -> l |> Style.padding 6.0 8.0 6.0 8.0)
+      |> Style.with_paint (fun p ->
+          {
+            p with
+            border =
+              Some
+                {
+                  width = 1.0;
+                  style = Solid;
+                  color = border_light;
+                  radius = 4.0;
+                };
+          })
+    in
+    let spread_ring_interaction =
+      {
+        Interaction.default with
+        focused =
+          Some
+            (Style.default
+            |> Style.with_paint (fun p ->
+                {
+                  p with
+                  shadow =
+                    Some
+                      {
+                        x = 0.0;
+                        y = 0.0;
+                        blur = 0.0;
+                        spread = 3.0;
+                        color = Style.rgba 74 144 217 0.6;
+                      };
+                }));
+      }
+    in
     let card_style =
       Style.default
       |> Style.with_layout (fun l ->
@@ -2074,6 +2129,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                         x = 0.0;
                         y = 2.0;
                         blur = 8.0;
+                        spread = 0.0;
                         color = Style.rgba 0 0 0 0.12;
                       };
                 }));
@@ -2101,7 +2157,15 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
             Element.input ~style:focus_input_style
               ~interaction:focus_interaction
               ~attrs:[ ("data-testid", "focus-input") ]
-              ~placeholder:"Click to focus" "";
+              ~placeholder:"Tab to focus" "";
+          ];
+        Element.text "Input with spread focus ring (border stays 1px):";
+        Element.row ~style:row_style
+          [
+            Element.input ~style:spread_ring_input_style
+              ~interaction:spread_ring_interaction
+              ~attrs:[ ("data-testid", "spread-ring-input") ]
+              ~placeholder:"Focus to see the ring" "";
           ];
         Element.text "Clickable box card with hover highlight:";
         Element.box ~style:card_style ~interaction:card_hover_interaction

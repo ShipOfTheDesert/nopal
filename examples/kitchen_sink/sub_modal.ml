@@ -116,7 +116,14 @@ let dialog_style =
               radius = 10.0;
             };
         shadow =
-          Some { x = 0.0; y = 4.0; blur = 20.0; color = Style.rgba 0 0 0 0.15 };
+          Some
+            {
+              x = 0.0;
+              y = 4.0;
+              blur = 20.0;
+              spread = 0.0;
+              color = Style.rgba 0 0 0 0.15;
+            };
       })
 
 let input_style =

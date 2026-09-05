@@ -259,6 +259,7 @@ let test_default_shadow_values () =
   Alcotest.(check (float 0.001)) "x is 0." 0. default_shadow.x;
   Alcotest.(check (float 0.001)) "y is 0." 0. default_shadow.y;
   Alcotest.(check (float 0.001)) "blur is 0." 0. default_shadow.blur;
+  Alcotest.(check (float 0.001)) "spread is 0." 0. default_shadow.spread;
   match default_shadow.color with
   | Transparent -> ()
   | Rgba _
@@ -400,6 +401,29 @@ let test_equal_paint_same () =
   let p1 = { default_paint with opacity = 0.7 } in
   let p2 = { default_paint with opacity = 0.7 } in
   Alcotest.(check bool) "same paint" true (equal_paint p1 p2)
+
+(* A fresh record on every call. [equal_paint] gates the web renderer's
+   restyle path, which rebuilds its input each frame, so sharing one value
+   between the two sides would let a physical-equality implementation pass.
+   Every field is named rather than inherited from [default_paint]: opacity,
+   border and overflow are all compared by [equal_paint], and a default that
+   drifts would silently change what this case asserts. *)
+let paint_with_spread spread =
+  {
+    background = Some (named "white");
+    border = None;
+    opacity = 1.0;
+    shadow = Some { x = 0.; y = 0.; blur = 0.; spread; color = rgba 0 0 0 0.5 };
+    overflow = Visible;
+  }
+
+let test_equal_paint_distinguishes_spread () =
+  Alcotest.(check bool)
+    "spread-only difference is unequal" false
+    (equal_paint (paint_with_spread 0.) (paint_with_spread 3.));
+  Alcotest.(check bool)
+    "equal non-zero spreads are equal" true
+    (equal_paint (paint_with_spread 3.) (paint_with_spread 3.))
 
 (* --- Text integration tests --- *)
 
@@ -693,6 +717,8 @@ let () =
             test_equal_color_different_variants;
           Alcotest.test_case "equal_layout_same" `Quick test_equal_layout_same;
           Alcotest.test_case "equal_paint_same" `Quick test_equal_paint_same;
+          Alcotest.test_case "equal_paint_distinguishes_spread" `Quick
+            test_equal_paint_distinguishes_spread;
         ] );
       ( "Optional layout fields",
         [

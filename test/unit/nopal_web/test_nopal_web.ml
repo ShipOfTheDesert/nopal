@@ -1932,6 +1932,77 @@ let test_reconcile_removes_dropped_figures () =
     (mk ~figure_spacing:None ~figure_style:None);
   Alcotest.(check string) "dropped declaration removed" "" (painted ())
 
+(* The restyle gate compares whole Style.t records, so a shadow field left out of
+   that equality is a change that never repaints: the previous declaration stays
+   on the node and the ring the model asks for is never drawn. Spread is the
+   field a ring varies, and it is the one the compiler cannot police, because
+   shadow equality is hand written rather than derived. Four transitions, each
+   moving spread and nothing else: zero to non-zero, which also crosses the
+   emitter's omission guard and takes the declaration from three lengths to four,
+   then non-zero to non-zero in each direction, where the length count is already
+   settled and only the fourth value moves, then non-zero back to zero, the one
+   direction that shortens the declaration and so the one where a stale fourth
+   length could survive. Each arm reads the painted declaration back before the
+   update that follows it, so no expectation here can be met by a node that never
+   carried the property, and every value is non-empty, which also pins the
+   clear-then-reapply order. The element is rebuilt on every frame, as a real
+   view function rebuilds it, so nothing here can pass on physical identity. *)
+let test_restyle_on_spread_change () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let mk spread =
+    Box
+      {
+        style =
+          with_paint
+            (fun p ->
+              {
+                p with
+                shadow =
+                  Some
+                    {
+                      x = 0.;
+                      y = 0.;
+                      blur = 0.;
+                      spread;
+                      color = rgba 0 0 0 0.5;
+                    };
+              })
+            default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        children = [];
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent (mk 0.) in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let style_obj = Jv.get node "style" in
+  let painted () = Jv.Jstr.get style_obj "box-shadow" |> Jstr.to_string in
+  Alcotest.(check string)
+    "authored declaration painted before" "0px 0px 0px rgba(0,0,0,0.5)"
+    (painted ());
+  Nopal_web.Renderer.update ~dispatch handle (mk 3.);
+  Alcotest.(check string)
+    "a spread-only change repaints the declaration"
+    "0px 0px 0px 3px rgba(0,0,0,0.5)" (painted ());
+  Nopal_web.Renderer.update ~dispatch handle (mk 6.);
+  Alcotest.(check string)
+    "a change between two non-zero spreads repaints too"
+    "0px 0px 0px 6px rgba(0,0,0,0.5)" (painted ());
+  Nopal_web.Renderer.update ~dispatch handle (mk 3.);
+  Alcotest.(check string)
+    "a decrease between two non-zero spreads repaints too"
+    "0px 0px 0px 3px rgba(0,0,0,0.5)" (painted ());
+  Nopal_web.Renderer.update ~dispatch handle (mk 0.);
+  Alcotest.(check string)
+    "a return to zero shortens the declaration back to three lengths"
+    "0px 0px 0px rgba(0,0,0,0.5)" (painted ())
+
 (* NFR-1: an identical re-render performs zero inline-style writes. The style is
    reconstructed each frame (physically distinct, structurally equal), as a real
    view function would, so this fails unless the guard uses structural equality. *)
@@ -3978,6 +4049,8 @@ let () =
             test_restyle_on_figures_change;
           Alcotest.test_case "reconcile removes dropped figures" `Quick
             test_reconcile_removes_dropped_figures;
+          Alcotest.test_case "restyle on spread change" `Quick
+            test_restyle_on_spread_change;
           Alcotest.test_case "reconcile unchanged style no write" `Quick
             test_reconcile_unchanged_style_no_write;
         ] );

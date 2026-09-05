@@ -17,7 +17,14 @@ type border = {
   radius : float;
 }
 
-type shadow = { x : float; y : float; blur : float; color : color }
+type shadow = {
+  x : float;
+  y : float;
+  blur : float;
+  spread : float;
+  color : color;
+}
+
 type overflow = Visible | Hidden
 type position = Pos_static | Pos_relative | Pos_absolute | Pos_fixed
 
@@ -55,7 +62,8 @@ type t = { layout : layout; paint : paint; text : Text.t }
 let default_border =
   { width = 0.; style = No_border; color = Transparent; radius = 0. }
 
-let default_shadow = { x = 0.; y = 0.; blur = 0.; color = Transparent }
+let default_shadow =
+  { x = 0.; y = 0.; blur = 0.; spread = 0.; color = Transparent }
 
 let default_layout =
   {
@@ -135,6 +143,7 @@ let equal_shadow a b =
   Float.equal a.x b.x
   && Float.equal a.y b.y
   && Float.equal a.blur b.blur
+  && Float.equal a.spread b.spread
   && equal_color a.color b.color
 
 let equal_size a b =

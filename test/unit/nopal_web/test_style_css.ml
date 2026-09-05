@@ -140,12 +140,61 @@ let test_shadow_produces_box_shadow () =
       (fun p ->
         {
           p with
-          shadow = Some { x = 2.; y = 4.; blur = 6.; color = rgba 0 0 0 0.5 };
+          shadow =
+            Some
+              { x = 2.; y = 4.; blur = 6.; spread = 0.; color = rgba 0 0 0 0.5 };
         })
       default
   in
   let props = of_style style in
   check_has_prop "box-shadow" "2px 4px 6px rgba(0,0,0,0.5)" props
+
+(* The CSS grammar reads the lengths positionally, so a spread written in any
+   slot but the fourth is silently a different declaration: put third, it becomes
+   the blur and the authored blur becomes the spread. The whole value is asserted
+   as one string rather than by substring presence, because a substring match
+   goes green on a declaration carrying the right token in the wrong slot. *)
+let test_shadow_spread_emits_fourth_length () =
+  let style =
+    with_paint
+      (fun p ->
+        {
+          p with
+          shadow =
+            Some
+              { x = 2.; y = 4.; blur = 6.; spread = 8.; color = rgba 0 0 0 0.5 };
+        })
+      default
+  in
+  let props = of_style style in
+  check_has_prop "box-shadow" "2px 4px 6px 8px rgba(0,0,0,0.5)" props
+
+(* The focus-ring shape, which is the whole reason spread exists: no offset, no
+   blur, a ring of uniform thickness around the border box. One builder serves
+   every spread the cases below read, so a result there is caused by the value
+   passed in rather than by a fixture that differs in some other field. *)
+let ring spread =
+  with_paint
+    (fun p ->
+      {
+        p with
+        shadow =
+          Some { x = 0.; y = 0.; blur = 0.; spread; color = rgba 0 0 0 0.5 };
+      })
+    default
+
+(* The contracting direction, which style_css.mli promises is emitted rather
+   than clamped or dropped. It is the arm the sign handling can break on its
+   own, so the whole declaration is asserted: a spread that lost its sign is
+   still four lengths in grammar order and would pass any weaker check. *)
+let test_shadow_negative_spread_emits_fourth_length () =
+  check_has_prop "box-shadow" "0px 0px 0px -2px rgba(0,0,0,0.5)"
+    (of_style (ring (-2.)))
+
+let test_shadow_zero_spread_omits_fourth_length () =
+  check_has_prop "box-shadow" "0px 0px 0px 3px rgba(0,0,0,0.5)"
+    (of_style (ring 3.));
+  check_has_prop "box-shadow" "0px 0px 0px rgba(0,0,0,0.5)" (of_style (ring 0.))
 
 (* 13 *)
 let test_gap_produces_css () =
@@ -1114,6 +1163,12 @@ let () =
             test_overflow_hidden_produces_css;
           Alcotest.test_case "shadow produces box-shadow" `Quick
             test_shadow_produces_box_shadow;
+          Alcotest.test_case "shadow spread emits fourth length" `Quick
+            test_shadow_spread_emits_fourth_length;
+          Alcotest.test_case "shadow negative spread emits fourth length" `Quick
+            test_shadow_negative_spread_emits_fourth_length;
+          Alcotest.test_case "shadow zero spread omits fourth length" `Quick
+            test_shadow_zero_spread_omits_fourth_length;
           Alcotest.test_case "gap produces css" `Quick test_gap_produces_css;
           Alcotest.test_case "flex grow produces css" `Quick
             test_flex_grow_produces_css;

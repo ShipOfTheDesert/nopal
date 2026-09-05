@@ -37,7 +37,14 @@ let card_style =
               radius = 10.0;
             };
         shadow =
-          Some { x = 0.0; y = 1.0; blur = 6.0; color = Style.rgba 0 0 0 0.04 };
+          Some
+            {
+              x = 0.0;
+              y = 1.0;
+              blur = 6.0;
+              spread = 0.0;
+              color = Style.rgba 0 0 0 0.04;
+            };
       })
 
 let row_style =

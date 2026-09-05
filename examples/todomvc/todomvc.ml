@@ -196,7 +196,14 @@ let card_style =
           Some
             { width = 1.0; style = Solid; color = border_color; radius = 10.0 };
         shadow =
-          Some { x = 0.0; y = 2.0; blur = 12.0; color = Style.rgba 0 0 0 0.06 };
+          Some
+            {
+              x = 0.0;
+              y = 2.0;
+              blur = 12.0;
+              spread = 0.0;
+              color = Style.rgba 0 0 0 0.06;
+            };
       })
 
 (* Title *)
@@ -244,6 +251,7 @@ let input_interaction =
                 x = 0.0;
                 y = 0.0;
                 blur = 6.0;
+                spread = 0.0;
                 color = Style.rgba 74 144 217 0.15;
               };
         })
@@ -373,7 +381,13 @@ let edit_input_style =
           Some { width = 2.0; style = Solid; color = accent; radius = 6.0 };
         shadow =
           Some
-            { x = 0.0; y = 0.0; blur = 6.0; color = Style.rgba 74 144 217 0.15 };
+            {
+              x = 0.0;
+              y = 0.0;
+              blur = 6.0;
+              spread = 0.0;
+              color = Style.rgba 74 144 217 0.15;
+            };
       })
   |> Style.with_text (fun t -> t |> Text.font_size 1.0)
 
