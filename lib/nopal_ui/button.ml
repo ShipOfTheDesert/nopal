@@ -52,7 +52,14 @@ let default_style_for variant =
                   radius = 6.0;
                 };
             shadow =
-              Some { x = 0.0; y = 1.0; blur = 3.0; color = S.rgba 0 0 0 0.2 };
+              Some
+                {
+                  x = 0.0;
+                  y = 1.0;
+                  blur = 3.0;
+                  spread = 0.0;
+                  color = S.rgba 0 0 0 0.2;
+                };
           })
   | Secondary ->
       base_style
@@ -84,7 +91,14 @@ let default_style_for variant =
                   radius = 6.0;
                 };
             shadow =
-              Some { x = 0.0; y = 1.0; blur = 3.0; color = S.rgba 0 0 0 0.2 };
+              Some
+                {
+                  x = 0.0;
+                  y = 1.0;
+                  blur = 3.0;
+                  spread = 0.0;
+                  color = S.rgba 0 0 0 0.2;
+                };
           })
   | Ghost ->
       base_style

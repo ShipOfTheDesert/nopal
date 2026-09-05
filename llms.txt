@@ -523,6 +523,27 @@ type color = Color.t = Rgba of { r : int; g : int; b : int; a : float }
 type border_style = Solid | Dashed | Dotted | No_border
 type border = { width : float; style : border_style; color : color; radius : float }
 
+(* Shadow and the paint block *)
+type overflow = Visible | Hidden
+type shadow = { x : float; y : float; blur : float; spread : float; color : color }
+
+type paint = {
+  background : color option; border : border option; opacity : float;
+  shadow : shadow option; overflow : overflow;
+}
+(* Style.default_shadow is zero offset, zero blur, zero spread, transparent.
+   Style.default_paint is no background, no border, opacity 1.0, no shadow,
+   Visible overflow — a default paint emits no CSS at all.
+
+   shadow.spread grows the shadow outward on every side of the border box by
+   that many pixels before the blur is applied; a negative spread contracts it.
+   A shadow is painted and never laid out, so the focus-ring idiom
+   { x = 0.; y = 0.; blur = 0.; spread = 3.; color = ... } placed in
+   Interaction.focused draws a 3px ring around the control without moving it or
+   anything after it — which a wider border on focus does not. A zero spread
+   emits the same three-length declaration it emitted before spread was
+   expressible, so existing shadows are unaffected. *)
+
 (* Building styles *)
 Style.default                                            (* sensible defaults *)
 Style.with_layout : (layout -> layout) -> Style.t -> Style.t
@@ -546,6 +567,10 @@ type Interaction.t = {
   pressed : Style.t option;
   focused : Style.t option;
 }
+(* The web backend emits these as .class:hover, .class:active and
+   .class:focus-visible — focused is :focus-visible, not :focus, so a mouse
+   click focuses the element without showing the style, by design. Rule order
+   encodes precedence: hover, then focused, then pressed. *)
 ```
 
 ### Typography (`nopal_style`)

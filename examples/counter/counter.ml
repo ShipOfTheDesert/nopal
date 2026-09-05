@@ -49,7 +49,14 @@ let card_style =
           Some
             { width = 1.0; style = Solid; color = border_color; radius = 12.0 };
         shadow =
-          Some { x = 0.0; y = 2.0; blur = 12.0; color = Style.rgba 0 0 0 0.06 };
+          Some
+            {
+              x = 0.0;
+              y = 2.0;
+              blur = 12.0;
+              spread = 0.0;
+              color = Style.rgba 0 0 0 0.06;
+            };
       })
 
 let title_text =

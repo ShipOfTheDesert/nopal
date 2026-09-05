@@ -30,7 +30,16 @@ type border = {
   radius : float;
 }
 
-type shadow = { x : float; y : float; blur : float; color : color }
+type shadow = {
+  x : float;
+  y : float;
+  blur : float;
+  spread : float;
+  color : color;
+}
+(** [spread] is a length in pixels applied before the blur: positive grows the
+    shadow's box on every side, negative contracts it. *)
+
 type overflow = Visible | Hidden
 type position = Pos_static | Pos_relative | Pos_absolute | Pos_fixed
 
@@ -75,7 +84,7 @@ val default_border : border
 (** Zero-width, no-border-style, transparent, zero-radius. *)
 
 val default_shadow : shadow
-(** Zero offset, zero blur, transparent. *)
+(** Zero offset, zero blur, zero spread, transparent. *)
 
 val default_layout : layout
 (** All fields [None]. *)
