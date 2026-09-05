@@ -219,6 +219,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     receipt_flow : Sub_receipt_flow.model;
     reveal_list : Sub_reveal_list.model;
     scroll_pane : Sub_scroll_pane.model;
+    focus_reveal : Sub_focus_reveal.model;
     keyboard_height : int;  (** soft-keyboard height in logical px (REQ-N2) *)
     back_route : back_route;  (** current route of the back-navigation demo *)
   }
@@ -258,6 +259,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | Receipt_flow_msg of Sub_receipt_flow.msg
     | Reveal_list_msg of Sub_reveal_list.msg
     | Scroll_pane_msg of Sub_scroll_pane.msg
+    | Focus_reveal_msg of Sub_focus_reveal.msg
     | KeyboardHeightChanged of int  (** native soft-keyboard height (REQ-F5) *)
     | Back_demo_push  (** push the back-demo one step deep (to [Back_detail]) *)
     | Route_changed of back_route  (** popstate-driven route update (REQ-F3) *)
@@ -389,6 +391,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     let receipt_flow, receipt_flow_cmd = Sub_receipt_flow.init () in
     let reveal_list, reveal_list_cmd = Sub_reveal_list.init () in
     let scroll_pane, scroll_pane_cmd = Sub_scroll_pane.init () in
+    let focus_reveal, focus_reveal_cmd = Sub_focus_reveal.init () in
     ( {
         button_clicks = 0;
         input_text = "";
@@ -457,6 +460,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         receipt_flow;
         reveal_list;
         scroll_pane;
+        focus_reveal;
         keyboard_height = 0;
         back_route = Back_home;
       },
@@ -480,6 +484,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           Nopal_mvu.Cmd.map (fun m -> Receipt_flow_msg m) receipt_flow_cmd;
           Nopal_mvu.Cmd.map (fun m -> Reveal_list_msg m) reveal_list_cmd;
           Nopal_mvu.Cmd.map (fun m -> Scroll_pane_msg m) scroll_pane_cmd;
+          Nopal_mvu.Cmd.map (fun m -> Focus_reveal_msg m) focus_reveal_cmd;
           (* Re-read the persisted demo value so a reload dispatches a
              [StorageRestored] message — the E2E persistence proof (REQ-F3). *)
           Nopal_mvu.Cmd.task
@@ -655,6 +660,12 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         in
         ( { model with scroll_pane },
           Nopal_mvu.Cmd.map (fun m -> Scroll_pane_msg m) sp_cmd )
+    | Focus_reveal_msg fr_msg ->
+        let focus_reveal, fr_cmd =
+          Sub_focus_reveal.update model.focus_reveal fr_msg
+        in
+        ( { model with focus_reveal },
+          Nopal_mvu.Cmd.map (fun m -> Focus_reveal_msg m) fr_cmd )
     | DrawPointerMove (x, y) ->
         ({ model with draw_pointer = Some (x, y) }, Nopal_mvu.Cmd.none)
     | DrawPointerLeave ->
@@ -4015,6 +4026,19 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                  (fun m -> Scroll_pane_msg m)
                  (Sub_scroll_pane.view vp model.scroll_pane);
              ];
+           (* The other direction of focus. The focus and keyboard section
+              above asks the platform to move focus and hears nothing back;
+              this one hears where focus went and renders from it, and the
+              container's edges cover everything inside it so reaching the
+              control in the revealed note is not a departure. *)
+           view_section
+             ~attrs:[ ("data-testid", "focus-reveal-section") ]
+             "Focus-revealed note"
+             [
+               Element.map
+                 (fun m -> Focus_reveal_msg m)
+                 (Sub_focus_reveal.view vp model.focus_reveal);
+             ];
            view_section
              ~attrs:[ ("data-testid", "navigation-bar-section") ]
              "Navigation Bar"
@@ -4122,4 +4146,5 @@ module Sub_file_input = Sub_file_input
 module Sub_receipt_flow = Sub_receipt_flow
 module Sub_reveal_list = Sub_reveal_list
 module Sub_scroll_pane = Sub_scroll_pane
+module Sub_focus_reveal = Sub_focus_reveal
 module Tauri_op = Tauri_op

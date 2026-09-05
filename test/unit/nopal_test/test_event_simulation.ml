@@ -1,7 +1,15 @@
 open Nopal_test.Test_renderer
 module E = Nopal_element.Element
 
-type msg = Click | DblClick | Blur | KeyDown of string | Toggled of bool
+type msg =
+  | Click
+  | DblClick
+  | Blur
+  | Focus
+  | BoxFocus
+  | BoxBlur
+  | KeyDown of string
+  | Toggled of bool
 [@@warning "-37"]
 
 let error_testable = Test_util.error_testable
@@ -13,6 +21,9 @@ let msg_testable =
       | Click -> Format.fprintf fmt "Click"
       | DblClick -> Format.fprintf fmt "DblClick"
       | Blur -> Format.fprintf fmt "Blur"
+      | Focus -> Format.fprintf fmt "Focus"
+      | BoxFocus -> Format.fprintf fmt "BoxFocus"
+      | BoxBlur -> Format.fprintf fmt "BoxBlur"
       | KeyDown s -> Format.fprintf fmt "KeyDown %S" s
       | Toggled b -> Format.fprintf fmt "Toggled %b" b)
     ( = )
@@ -49,6 +60,62 @@ let test_blur_no_handler_returns_error () =
     (Error (No_handler { tag = "input"; event = "blur" }))
     result;
   Alcotest.(check int) "no messages" 0 (List.length (messages r))
+
+let test_input_focus_simulation () =
+  let r = render (E.input ~on_focus:Focus "val") in
+  let result = focus (By_tag "input") r in
+  Alcotest.(check (result unit error_testable)) "focus succeeds" (Ok ()) result;
+  Alcotest.(check (list msg_testable))
+    "focus message dispatched" [ Focus ] (messages r)
+
+let test_box_focus_simulation () =
+  let r = render (E.box ~on_focus:BoxFocus [ E.text "panel" ]) in
+  let result = box_focus (By_tag "box") r in
+  Alcotest.(check (result unit error_testable))
+    "box_focus succeeds" (Ok ()) result;
+  Alcotest.(check (list msg_testable))
+    "box focus message dispatched" [ BoxFocus ] (messages r)
+
+let test_box_blur_simulation () =
+  let r = render (E.box ~on_blur:BoxBlur [ E.text "panel" ]) in
+  let result = box_blur (By_tag "box") r in
+  Alcotest.(check (result unit error_testable))
+    "box_blur succeeds" (Ok ()) result;
+  Alcotest.(check (list msg_testable))
+    "box blur message dispatched" [ BoxBlur ] (messages r)
+
+(* The fixture carries the sibling edge, so the absence below is caused by
+   [on_focus] being unset and not by the box failing to register a handler
+   entry at all; [box_blur] on the same fixture is the affirmative arm that
+   proves it. A [box_focus] copy-pasted from [box_blur] reads [on_blur] here
+   and dispatches, which is the defect this case exists to catch. *)
+let test_box_focus_no_handler () =
+  let r = render (E.box ~on_blur:BoxBlur [ E.text "panel" ]) in
+  let result = box_focus (By_tag "box") r in
+  Alcotest.(check (result unit error_testable))
+    "box_focus returns No_handler with the focus tag"
+    (Error (No_handler { tag = "box"; event = "focus" }))
+    result;
+  Alcotest.(check int) "no messages" 0 (List.length (messages r));
+  let affirmative = box_blur (By_tag "box") r in
+  Alcotest.(check (result unit error_testable))
+    "same fixture is registered and its blur edge fires" (Ok ()) affirmative;
+  Alcotest.(check (list msg_testable))
+    "box blur message dispatched" [ BoxBlur ] (messages r)
+
+let test_box_blur_no_handler () =
+  let r = render (E.box ~on_focus:BoxFocus [ E.text "panel" ]) in
+  let result = box_blur (By_tag "box") r in
+  Alcotest.(check (result unit error_testable))
+    "box_blur returns No_handler with the blur tag"
+    (Error (No_handler { tag = "box"; event = "blur" }))
+    result;
+  Alcotest.(check int) "no messages" 0 (List.length (messages r));
+  let affirmative = box_focus (By_tag "box") r in
+  Alcotest.(check (result unit error_testable))
+    "same fixture is registered and its focus edge fires" (Ok ()) affirmative;
+  Alcotest.(check (list msg_testable))
+    "box focus message dispatched" [ BoxFocus ] (messages r)
 
 let test_keydown_dispatches_message () =
   let handler key = Some (KeyDown key) in
@@ -132,6 +199,25 @@ let () =
             test_blur_dispatches_message;
           Alcotest.test_case "no_handler_returns_error" `Quick
             test_blur_no_handler_returns_error;
+        ] );
+      ( "focus",
+        [
+          Alcotest.test_case "input_dispatches_message" `Quick
+            test_input_focus_simulation;
+        ] );
+      ( "box_focus",
+        [
+          Alcotest.test_case "dispatches_message" `Quick
+            test_box_focus_simulation;
+          Alcotest.test_case "no_handler_returns_error" `Quick
+            test_box_focus_no_handler;
+        ] );
+      ( "box_blur",
+        [
+          Alcotest.test_case "dispatches_message" `Quick
+            test_box_blur_simulation;
+          Alcotest.test_case "no_handler_returns_error" `Quick
+            test_box_blur_no_handler;
         ] );
       ( "keydown",
         [

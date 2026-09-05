@@ -5,7 +5,7 @@
 // and the renderer actually call:
 //
 //   - document.createElement, createTextNode, createComment
-//   - Element: appendChild, removeChild, replaceChild, insertBefore,
+//   - Element: appendChild, removeChild, replaceChild, insertBefore, contains,
 //     setAttribute, getAttribute, style (Proxy-based) — see "Inline style and
 //     the `style` attribute" below for how the two meet, classList,
 //     addEventListener, removeEventListener, dispatchEvent
@@ -515,6 +515,22 @@
           parent.childNodes.splice(idx + 1 + i, 0, a);
         }
       }
+    };
+
+    // Node.contains, self-inclusive: true when `other` is this node or a
+    // descendant of it, false for anything else including null. The renderer's
+    // focus wiring asks the platform this question about the other end of a
+    // focus transition, and answering it from the parent chain is the whole of
+    // what the real method does. Modelled here rather than stubbed, because a
+    // shim that always answered false would let a renderer with no containment
+    // guard pass while reporting every move inside a container as a departure.
+    node.contains = function (other) {
+      let n = other;
+      while (n) {
+        if (n === node) return true;
+        n = n.parentNode;
+      }
+      return false;
     };
 
     node.addEventListener = function (type, fn, _opts) {

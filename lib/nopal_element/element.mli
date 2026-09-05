@@ -69,6 +69,9 @@ type 'msg t =
       interaction : Nopal_style.Interaction.t;
       attrs : (string * string) list;
       children : 'msg t list;
+      focusable : bool;
+      on_focus : 'msg option;
+      on_blur : 'msg option;
       on_pointer_move : (pointer_event -> 'msg) option;
       on_pointer_leave : 'msg option;
       on_pointer_down : (pointer_event -> 'msg) option;
@@ -103,6 +106,7 @@ type 'msg t =
       placeholder : string;
       on_change : (string -> 'msg) option;
       on_submit : 'msg option;
+      on_focus : 'msg option;
       on_blur : 'msg option;
       on_keydown : (string -> 'msg option) option;
     }
@@ -193,6 +197,9 @@ val box :
   ?style:Nopal_style.Style.t ->
   ?interaction:Nopal_style.Interaction.t ->
   ?attrs:(string * string) list ->
+  ?focusable:bool ->
+  ?on_focus:'msg ->
+  ?on_blur:'msg ->
   ?on_pointer_move:(pointer_event -> 'msg) ->
   ?on_pointer_leave:'msg ->
   ?on_pointer_down:(pointer_event -> 'msg) ->
@@ -205,7 +212,29 @@ val box :
     [attrs] carries key-value metadata (e.g. [data-*] attributes, ARIA labels)
     that web backends render as HTML attributes. Non-web backends may ignore
     attributes that have no native equivalent. Prefer [attrs] for test selectors
-    and accessibility hints, not for styling or behavior. *)
+    and accessibility hints, not for styling or behavior.
+
+    [focusable] places the container in the platform's natural keyboard
+    traversal order. It is spelled as a capability rather than as an attribute
+    because tab order is behaviour, and because the web spelling of it is a
+    detail a native backend has no way to honour; each backend decides how a
+    focusable container is reached. It defaults to not focusable, and a
+    container that is not focusable can still report focus arriving on a
+    focusable descendant.
+
+    [on_focus] and [on_blur] are scoped to the whole subtree, not to the
+    container alone. [on_focus] is dispatched when focus arrives at the
+    container or at any element inside it from somewhere outside it, and
+    [on_blur] when focus leaves the container and everything inside it. Focus
+    moving between two elements that are both within the container — including
+    between the container itself and one of its own descendants — is neither an
+    arrival nor a departure and dispatches nothing, so a panel revealed on
+    [on_focus] survives the user reaching a control inside it.
+
+    The consequence of that scoping is that nested containers overlap: focus
+    landing inside the inner one is an arrival for the inner container and for
+    every focusable-subtree container enclosing it, each of which dispatches its
+    own [on_focus]. *)
 
 val row :
   ?style:Nopal_style.Style.t ->
@@ -240,15 +269,18 @@ val input :
   ?placeholder:string ->
   ?on_change:(string -> 'msg) ->
   ?on_submit:'msg ->
+  ?on_focus:'msg ->
   ?on_blur:'msg ->
   ?on_keydown:(string -> 'msg option) ->
   string ->
   'msg t
-(** A text input. The positional argument is the current value. [on_keydown]
-    receives the key name exactly as the platform reports it, with no ["Ctrl+"]
-    or ["Shift+"] prefix added for the modifiers held during the event — unlike
-    the window-level key subscriptions, whose strings fold those modifiers into
-    the key name. *)
+(** A text input. The positional argument is the current value. [on_focus] is
+    dispatched when the input takes focus and [on_blur] when it loses it; an
+    input holds no children, so neither edge has a subtree to account for.
+    [on_keydown] receives the key name exactly as the platform reports it, with
+    no ["Ctrl+"] or ["Shift+"] prefix added for the modifiers held during the
+    event — unlike the window-level key subscriptions, whose strings fold those
+    modifiers into the key name. *)
 
 val checkbox :
   ?style:Nopal_style.Style.t ->

@@ -15,6 +15,7 @@ type 'msg handler_entry = {
   on_dblclick : 'msg option;
   on_change : (string -> 'msg) option;
   on_submit : 'msg option;
+  on_focus : 'msg option;
   on_blur : 'msg option;
   on_keydown : (string -> 'msg option) option;
   on_toggle : (bool -> 'msg) option;
@@ -33,6 +34,8 @@ type 'msg draw_handler_entry = {
 
 type 'msg box_handler_entry = {
   box_path : int list;
+  on_focus : 'msg option;
+  on_blur : 'msg option;
   on_pointer_move : (Nopal_element.Element.pointer_event -> 'msg) option;
   on_pointer_leave : 'msg option;
   on_pointer_down : (Nopal_element.Element.pointer_event -> 'msg) option;
@@ -64,6 +67,9 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
           interaction;
           attrs;
           children;
+          focusable;
+          on_focus;
+          on_blur;
           on_pointer_move;
           on_pointer_leave;
           on_pointer_down;
@@ -71,7 +77,9 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
           on_wheel;
         } ->
         let has_handler =
-          Option.is_some on_pointer_move
+          Option.is_some on_focus
+          || Option.is_some on_blur
+          || Option.is_some on_pointer_move
           || Option.is_some on_pointer_leave
           || Option.is_some on_pointer_down
           || Option.is_some on_pointer_up
@@ -81,6 +89,8 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
           box_handlers :=
             {
               box_path = List.rev rev_path;
+              on_focus;
+              on_blur;
               on_pointer_move;
               on_pointer_leave;
               on_pointer_down;
@@ -92,7 +102,24 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
           {
             tag = "box";
             style;
-            attrs;
+            (* A container's focusability is surfaced for inspection, so a
+               structural test can read back that a view asked for a tab stop.
+               The DSL says only that the container is focusable; how a platform
+               spells a tab stop is that platform's business, so the derived
+               pair carries the DSL's own word and no backend's attribute name.
+               The pair is prepended to the view's own attributes so it wins
+               lookup over a caller-supplied key of the same name, the same
+               shape [Scroll]'s [reveal] and the input arms already use. A
+               container that is not focusable carries no pair at all, so every
+               tree that rendered before this arm reads back unchanged. Only the
+               flag is surfaced: this renderer fires the selected node's own
+               handler and models no propagation, so the subtree scoping of a
+               container's focus edges is not observable here at all. *)
+            attrs =
+              (match focusable with
+                | true -> [ ("focusable", "true") ]
+                | false -> [])
+              @ attrs;
             children = go_children rev_path children;
             interaction;
           }
@@ -122,6 +149,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             on_dblclick;
             on_change = None;
             on_submit = None;
+            on_focus = None;
             on_blur = None;
             on_keydown = None;
             on_toggle = None;
@@ -145,6 +173,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
           placeholder;
           on_change;
           on_submit;
+          on_focus;
           on_blur;
           on_keydown;
         } ->
@@ -155,6 +184,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             on_dblclick = None;
             on_change;
             on_submit;
+            on_focus;
             on_blur;
             on_keydown;
             on_toggle = None;
@@ -178,6 +208,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
               on_dblclick = None;
               on_change = None;
               on_submit = None;
+              on_focus = None;
               on_blur = None;
               on_keydown = None;
               on_toggle;
@@ -206,6 +237,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
               on_dblclick = None;
               on_change = None;
               on_submit = None;
+              on_focus = None;
               on_blur = None;
               on_keydown = None;
               on_toggle = None;
@@ -236,6 +268,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
               on_dblclick = None;
               on_change;
               on_submit = None;
+              on_focus = None;
               on_blur = None;
               on_keydown = None;
               on_toggle = None;
@@ -279,6 +312,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             on_dblclick = None;
             on_change = None;
             on_submit = None;
+            on_focus = None;
             on_blur = None;
             on_keydown = None;
             on_toggle = None;
@@ -415,6 +449,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
               on_dblclick = None;
               on_change = None;
               on_submit = None;
+              on_focus = None;
               on_blur = None;
               on_keydown = None;
               on_toggle = None;
@@ -811,6 +846,21 @@ let dblclick sel r =
       r.msgs := msg :: !(r.msgs);
       Ok ()
 
+let focus sel r =
+  let* path, found =
+    resolve_path sel r.tree |> Option.to_result ~none:(Not_found sel)
+  in
+  let tag = tag_of_node found in
+  let* handler =
+    find_handler_by_path path r.handlers
+    |> Option.to_result ~none:(No_handler { tag; event = "focus" })
+  in
+  match handler.on_focus with
+  | None -> Error (No_handler { tag; event = "focus" })
+  | Some msg ->
+      r.msgs := msg :: !(r.msgs);
+      Ok ()
+
 let blur sel r =
   let* path, found =
     resolve_path sel r.tree |> Option.to_result ~none:(Not_found sel)
@@ -947,6 +997,36 @@ let draw_wheel sel ~delta_y ~x ~y r =
 
 let find_box_handler_by_path path box_handlers =
   List.find_opt (fun h -> h.box_path = path) box_handlers
+
+let box_focus sel r =
+  let* path, found =
+    resolve_path sel r.tree |> Option.to_result ~none:(Not_found sel)
+  in
+  let tag = tag_of_node found in
+  let* handler =
+    find_box_handler_by_path path r.box_handlers
+    |> Option.to_result ~none:(No_handler { tag; event = "focus" })
+  in
+  match handler.on_focus with
+  | None -> Error (No_handler { tag; event = "focus" })
+  | Some msg ->
+      r.msgs := msg :: !(r.msgs);
+      Ok ()
+
+let box_blur sel r =
+  let* path, found =
+    resolve_path sel r.tree |> Option.to_result ~none:(Not_found sel)
+  in
+  let tag = tag_of_node found in
+  let* handler =
+    find_box_handler_by_path path r.box_handlers
+    |> Option.to_result ~none:(No_handler { tag; event = "blur" })
+  in
+  match handler.on_blur with
+  | None -> Error (No_handler { tag; event = "blur" })
+  | Some msg ->
+      r.msgs := msg :: !(r.msgs);
+      Ok ()
 
 let box_pointer_move sel ~x ~y r =
   let* path, found =

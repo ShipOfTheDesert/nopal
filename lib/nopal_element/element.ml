@@ -25,6 +25,9 @@ type 'msg t =
       interaction : Nopal_style.Interaction.t;
       attrs : (string * string) list;
       children : 'msg t list;
+      focusable : bool;
+      on_focus : 'msg option;
+      on_blur : 'msg option;
       on_pointer_move : (pointer_event -> 'msg) option;
       on_pointer_leave : 'msg option;
       on_pointer_down : (pointer_event -> 'msg) option;
@@ -59,6 +62,7 @@ type 'msg t =
       placeholder : string;
       on_change : (string -> 'msg) option;
       on_submit : 'msg option;
+      on_focus : 'msg option;
       on_blur : 'msg option;
       on_keydown : (string -> 'msg option) option;
     }
@@ -137,14 +141,17 @@ let styled_text ~text_style s =
 
 let box ?(style = Nopal_style.Style.empty)
     ?(interaction = Nopal_style.Interaction.default) ?(attrs = [])
-    ?on_pointer_move ?on_pointer_leave ?on_pointer_down ?on_pointer_up ?on_wheel
-    children =
+    ?(focusable = false) ?on_focus ?on_blur ?on_pointer_move ?on_pointer_leave
+    ?on_pointer_down ?on_pointer_up ?on_wheel children =
   Box
     {
       style;
       interaction;
       attrs;
       children;
+      focusable;
+      on_focus;
+      on_blur;
       on_pointer_move;
       on_pointer_leave;
       on_pointer_down;
@@ -167,7 +174,8 @@ let button ?(style = Nopal_style.Style.empty)
 
 let input ?(style = Nopal_style.Style.empty)
     ?(interaction = Nopal_style.Interaction.default) ?(attrs = [])
-    ?(placeholder = "") ?on_change ?on_submit ?on_blur ?on_keydown value =
+    ?(placeholder = "") ?on_change ?on_submit ?on_focus ?on_blur ?on_keydown
+    value =
   Input
     {
       style;
@@ -177,6 +185,7 @@ let input ?(style = Nopal_style.Style.empty)
       placeholder;
       on_change;
       on_submit;
+      on_focus;
       on_blur;
       on_keydown;
     }
@@ -258,6 +267,9 @@ let rec map f = function
         interaction;
         attrs;
         children;
+        focusable;
+        on_focus;
+        on_blur;
         on_pointer_move;
         on_pointer_leave;
         on_pointer_down;
@@ -270,6 +282,9 @@ let rec map f = function
           interaction;
           attrs;
           children = List.map (map f) children;
+          focusable;
+          on_focus = Option.map f on_focus;
+          on_blur = Option.map f on_blur;
           on_pointer_move = Option.map (fun g pe -> f (g pe)) on_pointer_move;
           on_pointer_leave = Option.map f on_pointer_leave;
           on_pointer_down = Option.map (fun g pe -> f (g pe)) on_pointer_down;
@@ -299,6 +314,7 @@ let rec map f = function
         placeholder;
         on_change;
         on_submit;
+        on_focus;
         on_blur;
         on_keydown;
       } ->
@@ -311,6 +327,7 @@ let rec map f = function
           placeholder;
           on_change = Option.map (fun g s -> f (g s)) on_change;
           on_submit = Option.map f on_submit;
+          on_focus = Option.map f on_focus;
           on_blur = Option.map f on_blur;
           on_keydown = Option.map (fun g s -> Option.map f (g s)) on_keydown;
         }
@@ -446,12 +463,22 @@ let equal_capture c1 c2 =
 
 (* Equality strategy for handler and message fields:
    Both function-typed handlers (on_click, on_toggle, on_change, ...) and plain
-   'msg payloads (on_submit, on_blur, on_select, ...) are compared by physical
-   equality ( == ). A 'msg payload may itself carry a closure, and structural
-   ( = ) raises Invalid_argument the moment it recurses into one, so equal must
-   avoid polymorphic compare on 'msg to stay total. Nullary variant
+   'msg payloads (on_submit, on_focus, on_blur, on_select, ...) are compared by
+   physical equality ( == ). A 'msg payload may itself carry a closure, and
+   structural ( = ) raises Invalid_argument the moment it recurses into one, so
+   equal must avoid polymorphic compare on 'msg to stay total. Nullary variant
    constructors — the common msg shape — are immediates and compare correctly
-   under ( == ). *)
+   under ( == ).
+
+   Every such field of a variant must appear as a conjunct in that variant's
+   arm below, including the Box and Input focus edges. The compiler cannot flag
+   a conjunct that is missing: the arm still typechecks, still returns a bool,
+   and reports two elements equal when they differ. equal is the public
+   structural-equality predicate for t, so an omission is silent: two elements
+   that differ only in the omitted field are reported equal, and any consumer
+   that reconciles against that result would keep a listener the view has
+   already replaced. Adding a handler or message field to a variant means
+   adding its conjunct here in the same change. *)
 let rec equal a b =
   match (a, b) with
   | Empty, Empty -> true
@@ -464,6 +491,9 @@ let rec equal a b =
           interaction = i1;
           attrs = a1;
           children = c1;
+          focusable = f1;
+          on_focus = of1;
+          on_blur = ob1;
           on_pointer_move = pm1;
           on_pointer_leave = pl1;
           on_pointer_down = pd1;
@@ -476,6 +506,9 @@ let rec equal a b =
           interaction = i2;
           attrs = a2;
           children = c2;
+          focusable = f2;
+          on_focus = of2;
+          on_blur = ob2;
           on_pointer_move = pm2;
           on_pointer_leave = pl2;
           on_pointer_down = pd2;
@@ -486,6 +519,9 @@ let rec equal a b =
       && Nopal_style.Interaction.equal i1 i2
       && equal_attrs a1 a2
       && equal_children c1 c2
+      && Bool.equal f1 f2
+      && Option.equal ( == ) of1 of2
+      && Option.equal ( == ) ob1 ob2
       && Option.equal ( == ) pm1 pm2
       && Option.equal ( == ) pl1 pl2
       && Option.equal ( == ) pd1 pd2
@@ -532,6 +568,7 @@ let rec equal a b =
           placeholder = p1;
           on_change = oc1;
           on_submit = os1;
+          on_focus = ofo1;
           on_blur = ob1;
           on_keydown = ok1;
         },
@@ -544,6 +581,7 @@ let rec equal a b =
           placeholder = p2;
           on_change = oc2;
           on_submit = os2;
+          on_focus = ofo2;
           on_blur = ob2;
           on_keydown = ok2;
         } ) ->
@@ -554,6 +592,7 @@ let rec equal a b =
       && String.equal p1 p2
       && Option.equal ( == ) oc1 oc2
       && Option.equal ( == ) os1 os2
+      && Option.equal ( == ) ofo1 ofo2
       && Option.equal ( == ) ob1 ob2
       && Option.equal ( == ) ok1 ok2
   | ( Image { style = s1; src = src1; alt = alt1 },

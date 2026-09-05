@@ -1,7 +1,18 @@
 open Nopal_element.Element
 open Nopal_style.Style
 
-type msg = Click | Change of string | Submit | Toggled of bool | Selected
+type msg =
+  | Click
+  | Change of string
+  | Submit
+  | Toggled of bool
+  | Selected
+  | Focused
+  | Blurred
+  | Input_focused
+  | Refocused
+  | Reblurred
+  | Input_refocused
 
 let fresh_dispatch () =
   let msgs = ref [] in
@@ -47,6 +58,9 @@ let test_box_creates_div () =
         interaction = Nopal_style.Interaction.default;
         attrs = [];
         children = [ Text { content = "a"; text_style = None } ];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -134,6 +148,7 @@ let test_input_creates_input () =
         placeholder = "type here";
         on_change = None;
         on_submit = None;
+        on_focus = None;
         on_blur = None;
         on_keydown = None;
       }
@@ -237,6 +252,7 @@ let test_input_change_dispatches () =
         placeholder = "";
         on_change = Some (fun s -> Change s);
         on_submit = None;
+        on_focus = None;
         on_blur = None;
         on_keydown = None;
       }
@@ -266,6 +282,7 @@ let test_input_submit_dispatches_on_enter () =
         placeholder = "";
         on_change = None;
         on_submit = Some Submit;
+        on_focus = None;
         on_blur = None;
         on_keydown = None;
       }
@@ -297,6 +314,7 @@ let test_input_submit_ignores_non_enter () =
         placeholder = "";
         on_change = None;
         on_submit = Some Submit;
+        on_focus = None;
         on_blur = None;
         on_keydown = None;
       }
@@ -310,6 +328,348 @@ let test_input_submit_ignores_non_enter () =
   in
   ignore (Jv.call node "dispatchEvent" [| ev |]);
   Alcotest.(check int) "no dispatch" 0 (List.length !msgs)
+
+(* A box carrying both focus edges. Every field is spelled out: the fixture is
+   the subject of these tests, so nothing about it is left to a default. *)
+let focus_box ~focusable ~on_focus ~on_blur ~children =
+  Box
+    {
+      style = default;
+      interaction = Nopal_style.Interaction.default;
+      attrs = [];
+      children;
+      focusable;
+      on_focus;
+      on_blur;
+      on_pointer_move = None;
+      on_pointer_leave = None;
+      on_pointer_down = None;
+      on_pointer_up = None;
+      on_wheel = None;
+    }
+
+(* The DOM shim does not bubble, so every focus event in this file is dispatched
+   at the box node itself. That is what proves the listener is wired; the
+   subtree delivery a browser performs is pinned in the browser. *)
+let focus_ev ?related name =
+  let opts =
+    match related with
+    | None -> [| ("bubbles", Jv.of_bool true) |]
+    | Some node -> [| ("bubbles", Jv.of_bool true); ("relatedTarget", node) |]
+  in
+  Jv.new' (Jv.get Jv.global "Event") [| Jv.of_string name; Jv.obj opts |]
+
+let test_box_focus_dispatches () =
+  let parent = fresh_parent () in
+  let dispatch, msgs = fresh_dispatch () in
+  let outside = fresh_parent () in
+  let el =
+    focus_box ~focusable:true ~on_focus:(Some Focused) ~on_blur:None
+      ~children:[ Text { content = "a"; text_style = None } ]
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let ev = focus_ev ~related:(Brr.El.to_jv outside) "focusin" in
+  ignore (Jv.call node "dispatchEvent" [| ev |]);
+  Alcotest.(check int) "one dispatch" 1 (List.length !msgs);
+  match !msgs with
+  | [ Focused ] -> ()
+  | _ -> Alcotest.fail "expected Focused message"
+
+let test_box_blur_dispatches () =
+  let parent = fresh_parent () in
+  let dispatch, msgs = fresh_dispatch () in
+  let el =
+    focus_box ~focusable:true ~on_focus:None ~on_blur:(Some Blurred)
+      ~children:[ Text { content = "a"; text_style = None } ]
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
+  let node = Nopal_web.Renderer.dom_node handle in
+  (* No related target: focus left to nowhere, which is a real departure. *)
+  let ev = focus_ev "focusout" in
+  ignore (Jv.call node "dispatchEvent" [| ev |]);
+  Alcotest.(check int) "one dispatch" 1 (List.length !msgs);
+  match !msgs with
+  | [ Blurred ] -> ()
+  | _ -> Alcotest.fail "expected Blurred message"
+
+(* An arrival whose other end is already inside the box is a move within it,
+   not an arrival at it. Without the containment guard this dispatches, and a
+   panel revealed on the arrival edge would be revealed a second time. *)
+let test_box_focus_ignores_internal_move () =
+  let parent = fresh_parent () in
+  let dispatch, msgs = fresh_dispatch () in
+  let el =
+    focus_box ~focusable:true ~on_focus:(Some Focused) ~on_blur:None
+      ~children:[ Text { content = "a"; text_style = None } ]
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let child = Jv.get node "firstChild" in
+  let ev = focus_ev ~related:child "focusin" in
+  ignore (Jv.call node "dispatchEvent" [| ev |]);
+  Alcotest.(check int)
+    "no dispatch for a move inside the box" 0 (List.length !msgs)
+
+(* A departure whose other end is still inside the box is a move within it,
+   not a departure from it. Without the containment guard this dispatches, and
+   a panel revealed on the arrival edge would vanish the moment the user
+   reached a control inside it. *)
+let test_box_blur_ignores_internal_move () =
+  let parent = fresh_parent () in
+  let dispatch, msgs = fresh_dispatch () in
+  let el =
+    focus_box ~focusable:true ~on_focus:None ~on_blur:(Some Blurred)
+      ~children:[ Text { content = "a"; text_style = None } ]
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let child = Jv.get node "firstChild" in
+  let ev = focus_ev ~related:child "focusout" in
+  ignore (Jv.call node "dispatchEvent" [| ev |]);
+  Alcotest.(check int)
+    "no dispatch for a move inside the box" 0 (List.length !msgs)
+
+(* [contains] is self-inclusive in the platform, so a move between the box and
+   one of its own descendants is answered by the same test. *)
+let test_box_blur_ignores_move_to_own_descendant () =
+  let parent = fresh_parent () in
+  let dispatch, msgs = fresh_dispatch () in
+  let el =
+    focus_box ~focusable:true ~on_focus:None ~on_blur:(Some Blurred)
+      ~children:[ Text { content = "a"; text_style = None } ]
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let ev = focus_ev ~related:node "focusout" in
+  ignore (Jv.call node "dispatchEvent" [| ev |]);
+  Alcotest.(check int)
+    "no dispatch when the box is the other end" 0 (List.length !msgs)
+
+let tab_order_of node =
+  let at = Jv.call node "getAttribute" [| Jv.of_string "tabindex" |] in
+  if Jv.is_none at then None else Some (Jv.to_string at)
+
+let test_box_focusable_attribute () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let focusable_handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (focus_box ~focusable:true ~on_focus:None ~on_blur:None ~children:[])
+  in
+  Alcotest.(check (option string))
+    "focusable box is in the tab order" (Some "0")
+    (tab_order_of (Nopal_web.Renderer.dom_node focusable_handle));
+  let plain_handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (focus_box ~focusable:false ~on_focus:None ~on_blur:None ~children:[])
+  in
+  Alcotest.(check (option string))
+    "a box that is not focusable carries no tab order" None
+    (tab_order_of (Nopal_web.Renderer.dom_node plain_handle))
+
+(* An input carrying only the focus edge. Every field is spelled out for the
+   same reason [focus_box] spells its own: the fixture is the subject. *)
+let focus_input ~on_focus =
+  Input
+    {
+      style = default;
+      interaction = Nopal_style.Interaction.default;
+      attrs = [];
+      value = "";
+      placeholder = "";
+      on_change = None;
+      on_submit = None;
+      on_focus;
+      on_blur = None;
+      on_keydown = None;
+    }
+
+(* Each of these renders one element and reconciles against a second,
+   independently constructed one carrying a different message: sharing a single
+   value would let a physical-equality short-circuit anywhere on the path pass a
+   reconcile arm that never rewires. The assertion is on the message that
+   arrives, not on the listener count, because a stale listener is exactly as
+   populated as a fresh one. *)
+let test_box_focus_rewires_on_message_change () =
+  let parent = fresh_parent () in
+  let dispatch, msgs = fresh_dispatch () in
+  let outside = fresh_parent () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (focus_box ~focusable:true ~on_focus:(Some Focused) ~on_blur:None
+         ~children:[])
+  in
+  Nopal_web.Renderer.update ~dispatch handle
+    (focus_box ~focusable:true ~on_focus:(Some Refocused) ~on_blur:None
+       ~children:[]);
+  let node = Nopal_web.Renderer.dom_node handle in
+  let ev = focus_ev ~related:(Brr.El.to_jv outside) "focusin" in
+  ignore (Jv.call node "dispatchEvent" [| ev |]);
+  Alcotest.(check int) "exactly one dispatch" 1 (List.length !msgs);
+  match !msgs with
+  | [ Refocused ] -> ()
+  | _ -> Alcotest.fail "expected the message from the second render"
+
+(* The two rewire lines are independent: a copy-paste that rewires focus twice
+   leaves blur stale and the focus test above stays green. *)
+let test_box_blur_rewires_on_message_change () =
+  let parent = fresh_parent () in
+  let dispatch, msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (focus_box ~focusable:true ~on_focus:None ~on_blur:(Some Blurred)
+         ~children:[])
+  in
+  Nopal_web.Renderer.update ~dispatch handle
+    (focus_box ~focusable:true ~on_focus:None ~on_blur:(Some Reblurred)
+       ~children:[]);
+  let node = Nopal_web.Renderer.dom_node handle in
+  let ev = focus_ev "focusout" in
+  ignore (Jv.call node "dispatchEvent" [| ev |]);
+  Alcotest.(check int) "exactly one dispatch" 1 (List.length !msgs);
+  match !msgs with
+  | [ Reblurred ] -> ()
+  | _ -> Alcotest.fail "expected the message from the second render"
+
+(* The same property at the other rewire call site. [Input] reaches
+   [wire_input_events] through a separate arm, so the box tests say nothing
+   about it. *)
+let test_input_focus_rewires () =
+  let parent = fresh_parent () in
+  let dispatch, msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (focus_input ~on_focus:(Some Input_focused))
+  in
+  Nopal_web.Renderer.update ~dispatch handle
+    (focus_input ~on_focus:(Some Input_refocused));
+  let node = Nopal_web.Renderer.dom_node handle in
+  let ev = Jv.new' (Jv.get Jv.global "Event") [| Jv.of_string "focus" |] in
+  ignore (Jv.call node "dispatchEvent" [| ev |]);
+  Alcotest.(check int) "exactly one dispatch" 1 (List.length !msgs);
+  match !msgs with
+  | [ Input_refocused ] -> ()
+  | _ -> Alcotest.fail "expected the message from the second render"
+
+(* Across a reconcile: a box that becomes focusable joins the tab order and a
+   box that stops being focusable leaves it. *)
+let test_box_focusable_reconciles () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (focus_box ~focusable:false ~on_focus:None ~on_blur:None ~children:[])
+  in
+  let node = Nopal_web.Renderer.dom_node handle in
+  Alcotest.(check (option string))
+    "not focusable to begin with" None (tab_order_of node);
+  Nopal_web.Renderer.update ~dispatch handle
+    (focus_box ~focusable:true ~on_focus:None ~on_blur:None ~children:[]);
+  Alcotest.(check (option string))
+    "becoming focusable joins the tab order" (Some "0") (tab_order_of node);
+  Nopal_web.Renderer.update ~dispatch handle
+    (focus_box ~focusable:false ~on_focus:None ~on_blur:None ~children:[]);
+  Alcotest.(check (option string))
+    "ceasing to be focusable leaves the tab order" None (tab_order_of node)
+
+(* The typed field asserts focusability but never denies it: withdrawing it must
+   restore whatever the application declared for itself, not wipe the attribute.
+   Without this, an application that spells its own tab order and also sets the
+   flag loses the tab order permanently the first time the flag falls. *)
+let test_box_focusable_withdrawal_restores_declared_tab_order () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let declared ~focusable =
+    Box
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [ ("tabindex", "-1") ];
+        children = [];
+        focusable;
+        on_focus = None;
+        on_blur = None;
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
+      }
+  in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent (declared ~focusable:true)
+  in
+  let node = Nopal_web.Renderer.dom_node handle in
+  Alcotest.(check (option string))
+    "the typed field wins while it is set" (Some "0") (tab_order_of node);
+  Nopal_web.Renderer.update ~dispatch handle (declared ~focusable:false);
+  Alcotest.(check (option string))
+    "the declared tab order survives the withdrawal" (Some "-1")
+    (tab_order_of node)
+
+(* The tab-order attribute the typed field emits is written after the declared
+   attributes, so the field wins for as long as it is set. Only a declared tab
+   order that CHANGES under a box that stays focusable can tell the two
+   orderings apart: with the flag applied first and the declared attributes
+   second, the newly declared value would be left on the node instead. *)
+let test_box_focusable_outlasts_a_changing_declared_tab_order () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let declared ~tab_order =
+    Box
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [ ("tabindex", tab_order) ];
+        children = [];
+        focusable = true;
+        on_focus = None;
+        on_blur = None;
+        on_pointer_move = None;
+        on_pointer_leave = None;
+        on_pointer_down = None;
+        on_pointer_up = None;
+        on_wheel = None;
+      }
+  in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent (declared ~tab_order:"-1")
+  in
+  let node = Nopal_web.Renderer.dom_node handle in
+  Alcotest.(check (option string))
+    "the typed field wins at create" (Some "0") (tab_order_of node);
+  Nopal_web.Renderer.update ~dispatch handle (declared ~tab_order:"-2");
+  Alcotest.(check (option string))
+    "the typed field still wins once the declared tab order changes" (Some "0")
+    (tab_order_of node)
+
+let test_input_focus_dispatches () =
+  let parent = fresh_parent () in
+  let dispatch, msgs = fresh_dispatch () in
+  let el =
+    Input
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        value = "";
+        placeholder = "";
+        on_change = None;
+        on_submit = None;
+        on_focus = Some Input_focused;
+        on_blur = None;
+        on_keydown = None;
+      }
+  in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let ev = Jv.new' (Jv.get Jv.global "Event") [| Jv.of_string "focus" |] in
+  ignore (Jv.call node "dispatchEvent" [| ev |]);
+  Alcotest.(check int) "one dispatch" 1 (List.length !msgs);
+  match !msgs with
+  | [ Input_focused ] -> ()
+  | _ -> Alcotest.fail "expected Input_focused message"
 
 (* 32 *)
 let test_style_applied_as_inline () =
@@ -327,6 +687,9 @@ let test_style_applied_as_inline () =
         interaction = Nopal_style.Interaction.default;
         attrs = [];
         children = [];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -367,6 +730,9 @@ let test_reconcile_same_variant_reuses_node () =
         interaction = Nopal_style.Interaction.default;
         attrs = [];
         children = [ Text { content = "a"; text_style = None } ];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -383,6 +749,9 @@ let test_reconcile_same_variant_reuses_node () =
         interaction = Nopal_style.Interaction.default;
         attrs = [];
         children = [ Text { content = "b"; text_style = None } ];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -430,6 +799,9 @@ let test_reconcile_children_append () =
         interaction = Nopal_style.Interaction.default;
         attrs = [];
         children = [ Text { content = "a"; text_style = None } ];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -452,6 +824,9 @@ let test_reconcile_children_append () =
             Text { content = "a"; text_style = None };
             Text { content = "b"; text_style = None };
           ];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -478,6 +853,9 @@ let test_reconcile_children_remove () =
             Text { content = "a"; text_style = None };
             Text { content = "b"; text_style = None };
           ];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -496,6 +874,9 @@ let test_reconcile_children_remove () =
         interaction = Nopal_style.Interaction.default;
         attrs = [];
         children = [ Text { content = "a"; text_style = None } ];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -522,6 +903,9 @@ let test_reconcile_children_reuse_by_position () =
             Text { content = "a"; text_style = None };
             Text { content = "b"; text_style = None };
           ];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -545,6 +929,9 @@ let test_reconcile_children_reuse_by_position () =
             Text { content = "c"; text_style = None };
             Text { content = "d"; text_style = None };
           ];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -580,6 +967,9 @@ let test_keyed_reorder_reuses_nodes () =
             Keyed
               { key = "b"; child = Text { content = "B"; text_style = None } };
           ];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -606,6 +996,9 @@ let test_keyed_reorder_reuses_nodes () =
             Keyed
               { key = "a"; child = Text { content = "A"; text_style = None } };
           ];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -636,6 +1029,9 @@ let test_keyed_add_new_key () =
             Keyed
               { key = "a"; child = Text { content = "A"; text_style = None } };
           ];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -660,6 +1056,9 @@ let test_keyed_add_new_key () =
             Keyed
               { key = "b"; child = Text { content = "B"; text_style = None } };
           ];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -695,6 +1094,9 @@ let test_keyed_remove_key () =
             Keyed
               { key = "b"; child = Text { content = "B"; text_style = None } };
           ];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -717,6 +1119,9 @@ let test_keyed_remove_key () =
             Keyed
               { key = "a"; child = Text { content = "A"; text_style = None } };
           ];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -757,6 +1162,7 @@ let test_keyed_stable_node_identity () =
                       placeholder = "";
                       on_change = None;
                       on_submit = None;
+                      on_focus = None;
                       on_blur = None;
                       on_keydown = None;
                     };
@@ -764,6 +1170,9 @@ let test_keyed_stable_node_identity () =
             Keyed
               { key = "y"; child = Text { content = "Y"; text_style = None } };
           ];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -799,11 +1208,15 @@ let test_keyed_stable_node_identity () =
                       placeholder = "";
                       on_change = None;
                       on_submit = None;
+                      on_focus = None;
                       on_blur = None;
                       on_keydown = None;
                     };
               };
           ];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -833,6 +1246,9 @@ let keyed_text_box keys =
                   Text { content = String.uppercase_ascii k; text_style = None };
               })
           keys;
+      focusable = false;
+      on_focus = None;
+      on_blur = None;
       on_pointer_move = None;
       on_pointer_leave = None;
       on_pointer_down = None;
@@ -991,6 +1407,9 @@ let test_keyed_into_keyed_removes_old_nonkeyed () =
                 child = Text { content = "old"; text_style = None };
               };
           ];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -1016,6 +1435,9 @@ let test_keyed_into_keyed_removes_old_nonkeyed () =
                 child = Text { content = "new"; text_style = None };
               };
           ];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -1053,6 +1475,9 @@ let keyed_one key child =
       interaction = Nopal_style.Interaction.default;
       attrs = [];
       children = [ Keyed { key; child } ];
+      focusable = false;
+      on_focus = None;
+      on_blur = None;
       on_pointer_move = None;
       on_pointer_leave = None;
       on_pointer_down = None;
@@ -1067,6 +1492,9 @@ let inner_box =
       interaction = Nopal_style.Interaction.default;
       attrs = [];
       children = [];
+      focusable = false;
+      on_focus = None;
+      on_blur = None;
       on_pointer_move = None;
       on_pointer_leave = None;
       on_pointer_down = None;
@@ -1286,6 +1714,9 @@ let test_reconcile_box_skips_unchanged_attrs () =
         interaction = Nopal_style.Interaction.default;
         attrs = [ ("data-id", "x") ];
         children = [];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -1303,6 +1734,9 @@ let test_reconcile_box_skips_unchanged_attrs () =
         interaction = Nopal_style.Interaction.default;
         attrs = [ ("data-id", "x") ];
         children = [];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -1324,6 +1758,9 @@ let test_reconcile_box_updates_changed_attrs () =
         interaction = Nopal_style.Interaction.default;
         attrs = [ ("data-id", "x") ];
         children = [];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -1341,6 +1778,9 @@ let test_reconcile_box_updates_changed_attrs () =
         interaction = Nopal_style.Interaction.default;
         attrs = [ ("data-id", "y") ];
         children = [];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -1366,6 +1806,9 @@ let test_reconcile_box_removes_stale_attrs () =
         interaction = Nopal_style.Interaction.default;
         attrs = [ ("data-id", "x"); ("data-extra", "y") ];
         children = [];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -1388,6 +1831,9 @@ let test_reconcile_box_removes_stale_attrs () =
         interaction = Nopal_style.Interaction.default;
         attrs = [ ("data-id", "x") ];
         children = [];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -1547,6 +1993,7 @@ let test_reconcile_input_skips_unchanged_placeholder () =
         placeholder = "type here";
         on_change = None;
         on_submit = None;
+        on_focus = None;
         on_blur = None;
         on_keydown = None;
       }
@@ -1564,6 +2011,7 @@ let test_reconcile_input_skips_unchanged_placeholder () =
         placeholder = "type here";
         on_change = None;
         on_submit = None;
+        on_focus = None;
         on_blur = None;
         on_keydown = None;
       }
@@ -1586,6 +2034,7 @@ let test_reconcile_input_updates_changed_placeholder () =
         placeholder = "old";
         on_change = None;
         on_submit = None;
+        on_focus = None;
         on_blur = None;
         on_keydown = None;
       }
@@ -1603,6 +2052,7 @@ let test_reconcile_input_updates_changed_placeholder () =
         placeholder = "new";
         on_change = None;
         on_submit = None;
+        on_focus = None;
         on_blur = None;
         on_keydown = None;
       }
@@ -1634,6 +2084,7 @@ let test_reconcile_input_skips_unchanged_value () =
         placeholder = "";
         on_change = None;
         on_submit = None;
+        on_focus = None;
         on_blur = None;
         on_keydown = None;
       }
@@ -1660,6 +2111,7 @@ let test_reconcile_input_updates_changed_value () =
         placeholder = "";
         on_change = None;
         on_submit = None;
+        on_focus = None;
         on_blur = None;
         on_keydown = None;
       }
@@ -1972,6 +2424,9 @@ let test_restyle_on_spread_change () =
         interaction = Nopal_style.Interaction.default;
         attrs = [];
         children = [];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -2040,6 +2495,7 @@ let test_reconcile_input_skips_unchanged_attrs () =
         placeholder = "";
         on_change = None;
         on_submit = None;
+        on_focus = None;
         on_blur = None;
         on_keydown = None;
       }
@@ -2057,6 +2513,7 @@ let test_reconcile_input_skips_unchanged_attrs () =
         placeholder = "";
         on_change = None;
         on_submit = None;
+        on_focus = None;
         on_blur = None;
         on_keydown = None;
       }
@@ -2148,6 +2605,9 @@ let test_recursive_unlisten_on_remove () =
                 child = Text { content = "inner"; text_style = None };
               };
           ];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -2209,6 +2669,9 @@ let test_reconcile_interaction_inject_on_change () =
         interaction = Nopal_style.Interaction.default;
         attrs = [];
         children = [];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -2226,6 +2689,9 @@ let test_reconcile_interaction_inject_on_change () =
         interaction = hover_interaction;
         attrs = [];
         children = [];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -2250,6 +2716,9 @@ let test_reconcile_interaction_remove_on_change () =
         interaction = hover_interaction;
         attrs = [];
         children = [];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -2267,6 +2736,9 @@ let test_reconcile_interaction_remove_on_change () =
         interaction = Nopal_style.Interaction.default;
         attrs = [];
         children = [];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -2288,6 +2760,9 @@ let test_reconcile_interaction_replace_on_change () =
         interaction = hover_interaction;
         attrs = [];
         children = [];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -2305,6 +2780,9 @@ let test_reconcile_interaction_replace_on_change () =
         interaction = hover_pressed_interaction;
         attrs = [];
         children = [];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -2328,6 +2806,9 @@ let test_reconcile_interaction_skips_unchanged () =
         interaction = hover_interaction;
         attrs = [];
         children = [];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -2345,6 +2826,9 @@ let test_reconcile_interaction_skips_unchanged () =
         interaction = hover_interaction;
         attrs = [];
         children = [];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -2407,6 +2891,9 @@ let interactive_box ~style ~interaction =
       interaction;
       attrs = [];
       children = [];
+      focusable = false;
+      on_focus = None;
+      on_blur = None;
       on_pointer_move = None;
       on_pointer_leave = None;
       on_pointer_down = None;
@@ -2523,6 +3010,9 @@ let test_box_direction_defaults_column_when_none () =
         interaction = Nopal_style.Interaction.default;
         attrs = [];
         children = [];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -2549,6 +3039,9 @@ let test_box_direction_overrides_when_some () =
         interaction = Nopal_style.Interaction.default;
         attrs = [];
         children = [];
+        focusable = false;
+        on_focus = None;
+        on_blur = None;
         on_pointer_move = None;
         on_pointer_leave = None;
         on_pointer_down = None;
@@ -3790,6 +4283,9 @@ let boxes_pane ~id ~reveal ~rows =
                             interaction = Nopal_style.Interaction.default;
                             attrs = [ ("id", id ^ "-row-" ^ string_of_int i) ];
                             children = [];
+                            focusable = false;
+                            on_focus = None;
+                            on_blur = None;
                             on_pointer_move = None;
                             on_pointer_leave = None;
                             on_pointer_down = None;
@@ -3985,6 +4481,32 @@ let () =
             test_input_submit_dispatches_on_enter;
           Alcotest.test_case "input submit ignores non-enter" `Quick
             test_input_submit_ignores_non_enter;
+          Alcotest.test_case "box focus dispatches" `Quick
+            test_box_focus_dispatches;
+          Alcotest.test_case "box blur dispatches" `Quick
+            test_box_blur_dispatches;
+          Alcotest.test_case "box focus ignores internal move" `Quick
+            test_box_focus_ignores_internal_move;
+          Alcotest.test_case "box blur ignores internal move" `Quick
+            test_box_blur_ignores_internal_move;
+          Alcotest.test_case "box blur ignores move to own descendant" `Quick
+            test_box_blur_ignores_move_to_own_descendant;
+          Alcotest.test_case "box focusable attribute" `Quick
+            test_box_focusable_attribute;
+          Alcotest.test_case "input focus dispatches" `Quick
+            test_input_focus_dispatches;
+          Alcotest.test_case "box focus rewires on message change" `Quick
+            test_box_focus_rewires_on_message_change;
+          Alcotest.test_case "box blur rewires on message change" `Quick
+            test_box_blur_rewires_on_message_change;
+          Alcotest.test_case "input focus rewires on message change" `Quick
+            test_input_focus_rewires;
+          Alcotest.test_case "box focusable reconciles" `Quick
+            test_box_focusable_reconciles;
+          Alcotest.test_case "focusable withdrawal restores declared tab order"
+            `Quick test_box_focusable_withdrawal_restores_declared_tab_order;
+          Alcotest.test_case "focusable outlasts a changing declared tab order"
+            `Quick test_box_focusable_outlasts_a_changing_declared_tab_order;
         ] );
       ( "style application",
         [

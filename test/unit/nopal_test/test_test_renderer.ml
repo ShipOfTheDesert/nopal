@@ -1138,6 +1138,49 @@ let reveal_tests =
       scroll_projects_its_attrs;
   ]
 
+(* Focusability projection — a box's declaration that it wants to be a tab stop
+   is inspectable on its node, by the same route a scroll container's reveal
+   request takes. Only the flag is projected: this renderer fires the selected
+   node's own handler and models no propagation, so the subtree scoping of a
+   box's focus edges is not observable here and nothing below may be read as
+   evidence of it. *)
+
+let box_node_of label r =
+  match find (By_tag "box") (tree r) with
+  | Some (Element _ as node) -> node
+  | Some (Empty | Text _)
+  | None ->
+      Alcotest.fail label
+
+let box_focusable_attr () =
+  let children = [ E.text "content" ] in
+  let plain =
+    box_node_of "no box node without the flag" (render (E.box children))
+  in
+  let focusable =
+    box_node_of "no box node with the flag"
+      (render (E.box ~focusable:true ~attrs:[ ("id", "palette") ] children))
+  in
+  (match plain with
+  | Element { attrs; _ } ->
+      Alcotest.(check (list (pair string string)))
+        "a box that is not focusable carries no attributes at all" [] attrs
+  | Empty
+  | Text _ ->
+      Alcotest.fail "the box node is not an element");
+  (* The affirmative arm, on the same children and the same builder: the
+     emptiness above is caused by the absent declaration, not by the fixture
+     failing to reach the box arm at all. *)
+  Alcotest.(check (option string))
+    "the same box declaring the flag reads back as focusable" (Some "true")
+    (attr "focusable" focusable);
+  Alcotest.(check (option string))
+    "and the application attribute beside it is still readable" (Some "palette")
+    (attr "id" focusable)
+
+let focusable_tests =
+  [ Alcotest.test_case "box_focusable_attr" `Quick box_focusable_attr ]
+
 let () =
   Alcotest.run "Test_renderer"
     [
@@ -1150,4 +1193,5 @@ let () =
       ("virtual_list", virtual_list_tests);
       ("file_input", file_input_tests);
       ("reveal", reveal_tests);
+      ("focusable", focusable_tests);
     ]

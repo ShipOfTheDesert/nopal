@@ -139,6 +139,9 @@ Cmd.perform : (('msg -> unit) -> unit) -> 'msg Cmd.t  (* general effect — zero
 Cmd.task : 'msg Task.t -> 'msg Cmd.t                  (* async task effect *)
 Cmd.after : int -> 'msg -> 'msg Cmd.t         (* delay message by N ms *)
 Cmd.focus : string -> 'msg Cmd.t              (* request focus on element by id *)
+  (* Outbound only, and it carries no message. The inbound direction — a model
+     learning that focus arrived or left — is Element.box's ~on_focus/~on_blur
+     and Element.input's ~on_focus. *)
 Cmd.scroll_by : string -> Nopal_element.Scroll_delta.t -> 'msg Cmd.t
   (* Move the scroll container carrying that DOM id by a signed multiple of the
      container's own visible height — the id is the one passed as an [attrs]
@@ -241,14 +244,30 @@ Element.empty                                                    (* renders noth
 Element.text : string -> 'msg Element.t                          (* plain text *)
 Element.styled_text : text_style:Text.t -> string -> 'msg Element.t
 
-(* Layout containers — Box supports pointer + wheel events for pan/zoom *)
+(* Layout containers — Box supports pointer + wheel events for pan/zoom, and focus
+   edges covering its whole subtree *)
 type pointer_event = { x : float; y : float; client_x : float; client_y : float }
 type wheel_event = { delta_y : float; x : float; y : float }
 
 Element.box    : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
+  -> ?focusable:bool -> ?on_focus:'msg -> ?on_blur:'msg
   -> ?on_pointer_move:(pointer_event -> 'msg) -> ?on_pointer_leave:'msg
   -> ?on_pointer_down:(pointer_event -> 'msg) -> ?on_pointer_up:(pointer_event -> 'msg)
   -> ?on_wheel:(wheel_event -> 'msg) -> 'msg Element.t list -> 'msg Element.t
+  (* [focusable] places the container in the platform's own keyboard traversal
+     order, so an application never spells a raw tab-order attribute for it; each
+     backend decides how a focusable container is reached. It defaults to off, and
+     a container that is not focusable still reports focus arriving on a focusable
+     descendant.
+     [on_focus] and [on_blur] are scoped to the whole subtree, not to the container
+     alone. Focus arriving from outside the container — on the container itself or
+     on anything inside it — is an arrival, and only focus leaving the container
+     and everything inside it is a departure. A move between two elements that are
+     both inside the container dispatches nothing, so a panel revealed on
+     [on_focus] survives the user reaching a control inside that panel. Nested
+     containers therefore overlap: focus landing inside the inner one is an
+     arrival for it and for every enclosing container too, each dispatching its
+     own message. *)
 Element.row    : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list -> 'msg Element.t list -> 'msg Element.t
 Element.column : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list -> 'msg Element.t list -> 'msg Element.t
 
@@ -257,7 +276,11 @@ Element.button : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string 
   -> ?on_click:'msg -> ?on_dblclick:'msg -> 'msg Element.t -> 'msg Element.t
 Element.input : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
   -> ?placeholder:string -> ?on_change:(string -> 'msg) -> ?on_submit:'msg
-  -> ?on_blur:'msg -> ?on_keydown:(string -> 'msg option) -> string -> 'msg Element.t
+  -> ?on_focus:'msg -> ?on_blur:'msg -> ?on_keydown:(string -> 'msg option) -> string
+  -> 'msg Element.t
+  (* [on_focus] fires when the input takes focus and [on_blur] when it loses it.
+     An input holds no children, so neither edge has a subtree to account for —
+     unlike the same-named arguments on Element.box. *)
 Element.checkbox : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
   -> ?disabled:bool -> ?on_toggle:(bool -> 'msg) -> bool -> 'msg Element.t
 Element.radio : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
@@ -2421,7 +2444,12 @@ Test_renderer.render   : 'msg Element.t -> 'msg rendered
      Nothing marks a pair as derived, so the precedence does not run the other
      way: a container supplying ("reveal", "decoy") in attrs and declaring no
      reveal reads back attr "reveal" = Some "decoy", which is the caller's own
-     attribute and not a declaration. *)
+     attribute and not a declaration.
+     A box's [focusable] declaration is surfaced the same way, as the derived
+     attr "focusable" = "true"; a box that is not focusable carries no such pair
+     and reads back None. Only the flag is surfaced — this renderer models no
+     propagation, so the subtree scoping of a box's focus edges is not
+     observable here. *)
 Test_renderer.tree     : 'msg rendered -> node
 Test_renderer.messages : 'msg rendered -> 'msg list
 
@@ -2442,6 +2470,18 @@ Test_renderer.select_files : selector -> Element.file_info list -> 'msg rendered
      still fires, with an empty list. *)
 Test_renderer.submit       : selector -> 'msg rendered -> (unit, error) result
 Test_renderer.dblclick     : selector -> 'msg rendered -> (unit, error) result
+Test_renderer.focus        : selector -> 'msg rendered -> (unit, error) result
+Test_renderer.blur         : selector -> 'msg rendered -> (unit, error) result
+  (* These two resolve against an input's focus edges. The box equivalents are
+     box_focus/box_blur below and are distinct functions. *)
+Test_renderer.box_focus    : selector -> 'msg rendered -> (unit, error) result
+Test_renderer.box_blur     : selector -> 'msg rendered -> (unit, error) result
+  (* Each fires the selected node's own handler and models no propagation. A real
+     backend scopes a box's focus edges to its whole subtree, so focus landing on
+     a descendant reaches the enclosing box and a move between two descendants of
+     one box is not a leave; none of that is reproduced here. A structural test
+     pins which message a box dispatches, never which node's focus caused it, and
+     cannot stand in for a browser-level test of the subtree behaviour. *)
 Test_renderer.pointer_move : selector -> x:float -> y:float -> 'msg rendered -> (unit, error) result
 Test_renderer.pointer_leave : selector -> 'msg rendered -> (unit, error) result
 Test_renderer.pointer_down : selector -> x:float -> y:float -> 'msg rendered -> (unit, error) result
@@ -2889,13 +2929,27 @@ examples/
                        relative movement and takes no preventScroll, so the
                        browser's own scroll-into-view decides where the pane
                        rests; and the section is the visible form of the
-                       order all three writers are applied in). Each lives in
+                       order all three writers are applied in); and
+                       "Focus-revealed note" (a focusable container that shows a
+                       note while focus is anywhere inside it and hides it once
+                       focus has left the whole container — the
+                       keyboard-accessible tooltip, where the model and not a
+                       style rule decides what is on screen. The note carries a
+                       control of its own, so tabbing from the container into
+                       the note is on screen as the case that must fire no edge
+                       at all; a reset control sits immediately before the
+                       container in tab order, giving a keyboard-driven test a
+                       fixed place to start from instead of counting tab stops
+                       from the top of the page; and the reveal has exactly one
+                       writer — the two focus edges — so the reset deliberately
+                       leaves it alone). Each lives in
                        its own sub_*.ml/.mli with its own structural suite;
                        the receipt one is
                        examples/kitchen_sink/sub_receipt_flow.ml, the reveal one
-                       examples/kitchen_sink/sub_reveal_list.ml and the
+                       examples/kitchen_sink/sub_reveal_list.ml, the
                        relative-scroll one
-                       examples/kitchen_sink/sub_scroll_pane.ml
+                       examples/kitchen_sink/sub_scroll_pane.ml and the
+                       focus one examples/kitchen_sink/sub_focus_reveal.ml
   dashboard/         — Charts showcase
 test/
   unit/              — Alcotest tests per package
