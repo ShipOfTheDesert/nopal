@@ -49,7 +49,20 @@ val render : 'msg Nopal_element.Element.t -> 'msg rendered
     no [reveal] reads back {!attr} ["reveal"] as [Some "decoy"], which is the
     caller's own attribute and not a declaration. A structural test asserting
     that a container asked for a reveal should use a key no [attrs] pair on that
-    container spells. *)
+    container spells.
+
+    A box's [focusable] declaration is surfaced the same way, as the derived
+    attribute ["focusable"] carrying the value ["true"]. It names the DSL's own
+    concept rather than any platform's tab-order attribute, since how a tab stop
+    is spelled is the backend's business. A box that is not focusable carries no
+    such pair, so {!attr} ["focusable"] reads back [None] and every box that
+    rendered before this attribute existed is unchanged. The precedence and the
+    decoy caveat above apply here unaltered.
+
+    Only the flag is surfaced. This renderer fires the selected node's own
+    handler and models no event propagation, so the subtree scoping of a
+    container's focus edges is not observable here and no assertion in this
+    renderer may be read as evidence of it. *)
 
 (** {1 Accessors} *)
 
@@ -161,6 +174,12 @@ val dblclick : selector -> 'msg rendered -> (unit, error) result
     Returns [Error (Not_found selector)] if no element matches,
     [Error (No_handler ...)] if the element has no dblclick handler. *)
 
+val focus : selector -> 'msg rendered -> (unit, error) result
+(** [focus selector rendered] finds the first element matching [selector],
+    invokes its [on_focus] handler, and appends the resulting message. Returns
+    [Error (Not_found selector)] if no element matches, [Error (No_handler ...)]
+    if the element has no focus handler. *)
+
 val blur : selector -> 'msg rendered -> (unit, error) result
 (** [blur selector rendered] finds the first element matching [selector],
     invokes its [on_blur] handler, and appends the resulting message. Returns
@@ -219,6 +238,34 @@ val draw_wheel :
 (** [draw_wheel selector ~delta_y ~x ~y rendered] finds the first canvas element
     matching [selector], invokes its [on_wheel] handler with the given delta and
     coordinates, and appends the resulting message. *)
+
+(** {2 Box focus events} *)
+
+val box_focus : selector -> 'msg rendered -> (unit, error) result
+(** [box_focus selector rendered] finds the first box element matching
+    [selector], invokes its [on_focus] handler, and appends the resulting
+    message. Returns [Error (Not_found selector)] if no element matches,
+    [Error (No_handler ...)] if the element has no focus handler.
+
+    This simulator fires the selected node's own handler and models no
+    propagation. A real backend scopes a box's focus edges to its whole subtree,
+    so focus landing on a descendant reaches the enclosing box and a move
+    between two descendants of one box is not a leave; none of that is
+    reproduced here. A structural test therefore pins which message a box
+    dispatches, never which node's focus caused it, and cannot stand in for the
+    browser-level test of the subtree behaviour. *)
+
+val box_blur : selector -> 'msg rendered -> (unit, error) result
+(** [box_blur selector rendered] finds the first box element matching
+    [selector], invokes its [on_blur] handler, and appends the resulting
+    message. Returns [Error (Not_found selector)] if no element matches,
+    [Error (No_handler ...)] if the element has no blur handler.
+
+    Like [box_focus], this fires the selected node's own handler and models no
+    propagation; the subtree scoping a backend provides is not observable here.
+
+    [blur] above is a distinct function resolving against an input, not a box.
+*)
 
 (** {2 Box pointer/wheel events} *)
 

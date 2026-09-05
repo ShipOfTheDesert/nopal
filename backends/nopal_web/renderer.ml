@@ -197,7 +197,8 @@ let wire_dblclick ~dispatch el on_dblclick =
       in
       [ listener ]
 
-let wire_input_events ~dispatch el on_change on_submit on_blur on_keydown =
+let wire_input_events ~dispatch el ~on_change ~on_submit ~on_focus ~on_blur
+    ~on_keydown =
   let change_l =
     match on_change with
     | None -> []
@@ -229,6 +230,16 @@ let wire_input_events ~dispatch el on_change on_submit on_blur on_keydown =
             (Brr.El.as_target el);
         ]
   in
+  let focus_l =
+    match on_focus with
+    | None -> []
+    | Some msg ->
+        [
+          Brr.Ev.listen Brr.Ev.focus
+            (fun _ev -> dispatch msg)
+            (Brr.El.as_target el);
+        ]
+  in
   let blur_l =
     match on_blur with
     | None -> []
@@ -253,7 +264,7 @@ let wire_input_events ~dispatch el on_change on_submit on_blur on_keydown =
             (Brr.El.as_target el);
         ]
   in
-  change_l @ submit_l @ blur_l @ keydown_l
+  change_l @ submit_l @ focus_l @ blur_l @ keydown_l
 
 (* Set-or-remove, so create and reconciliation share one definition of the
    rendered picker configuration. Every arm answers for the absent case as well
@@ -434,6 +445,74 @@ let wire_box_pointer_events ~dispatch el on_pointer_move on_pointer_leave
   wire_pointer_events ~dispatch el ?on_pointer_move ?on_pointer_leave
     ?on_pointer_down ?on_pointer_up ?on_wheel ()
 
+(* A container's focus edges cover everything inside it, so the listeners take
+   the bubbling pair rather than the element-scoped one: [focus] and [blur] do
+   not bubble and reach a container only when the container is itself the focus
+   target, which would leave a descendant taking focus unreported.
+
+   Bubbling alone is not enough. Focus moving between two nodes inside the same
+   container raises [focusout] on that container as well, so listening for it
+   unguarded would report a departure the moment the user reached a control
+   within the container — and hide whatever the arrival revealed. Each event
+   names the other end of the transition, and the edge is real only when that
+   other end lies outside the container. [contains] is self-inclusive, so a move
+   between the container and one of its own descendants needs no separate case,
+   and a transition with no other end reports none, which is a genuine arrival
+   or departure. *)
+let crosses_focus_boundary el ev =
+  match Brr.Ev.Focus.related_target (Brr.Ev.as_type ev) with
+  | None -> true
+  | Some other ->
+      not
+        (Jv.to_bool
+           (Jv.call (Brr.El.to_jv el) "contains"
+              [| Brr.Ev.target_to_jv other |]))
+
+let wire_box_focus_events ~dispatch el ~on_focus ~on_blur =
+  let focus_l =
+    match on_focus with
+    | None -> []
+    | Some msg ->
+        [
+          Brr.Ev.listen Brr.Ev.focusin
+            (fun ev ->
+              match crosses_focus_boundary el ev with
+              | true -> dispatch msg
+              | false -> ())
+            (Brr.El.as_target el);
+        ]
+  in
+  let blur_l =
+    match on_blur with
+    | None -> []
+    | Some msg ->
+        [
+          Brr.Ev.listen Brr.Ev.focusout
+            (fun ev ->
+              match crosses_focus_boundary el ev with
+              | true -> dispatch msg
+              | false -> ())
+            (Brr.El.as_target el);
+        ]
+  in
+  focus_l @ blur_l
+
+(* DOM attribute carrying a container's tab order. Single-sourced so
+   [apply_focusable] and [reconcile_focusable] always name the same attribute,
+   including the one place that reads it back out of the declared attributes. *)
+let tab_order_attr = "tabindex"
+
+(* The DSL says only that a container is focusable; the tab-order attribute is
+   this backend's spelling of that, so an application never writes it. Emitted
+   after the declared attributes, so the typed field wins when both are given,
+   and only when the flag is set: a container that is not focusable renders the
+   markup it rendered before the flag existed, including a tab order the
+   application spelled for itself. *)
+let apply_focusable el focusable =
+  match focusable with
+  | true -> Brr.El.set_at (Jstr.v tab_order_attr) (Some (Jstr.v "0")) el
+  | false -> ()
+
 (* JS expando property carrying a keyed child's key on its comment node. Comment
    nodes (used for [Empty]) can't hold a data-key attribute, so the key
    round-trips through this property instead. Single-sourced so the create-time
@@ -458,6 +537,9 @@ let rec create_live ~sheet ~reveals ~dispatch
         interaction;
         attrs;
         children;
+        focusable;
+        on_focus;
+        on_blur;
         on_pointer_move;
         on_pointer_leave;
         on_pointer_down;
@@ -482,12 +564,14 @@ let rec create_live ~sheet ~reveals ~dispatch
         apply_styles_for_element ~sheet el style interaction
       in
       apply_attrs el attrs;
+      apply_focusable el focusable;
       let live_children =
         List.map (create_and_append ~sheet ~reveals ~dispatch el) children
       in
       let listeners =
         wire_box_pointer_events ~dispatch el on_pointer_move on_pointer_leave
           on_pointer_down on_pointer_up on_wheel
+        @ wire_box_focus_events ~dispatch el ~on_focus ~on_blur
       in
       Live_node
         {
@@ -571,6 +655,7 @@ let rec create_live ~sheet ~reveals ~dispatch
         placeholder;
         on_change;
         on_submit;
+        on_focus;
         on_blur;
         on_keydown;
       } ->
@@ -582,7 +667,8 @@ let rec create_live ~sheet ~reveals ~dispatch
       Brr.El.set_at (Jstr.v "placeholder") (Some (Jstr.v placeholder)) el;
       apply_attrs el attrs;
       let listeners =
-        wire_input_events ~dispatch el on_change on_submit on_blur on_keydown
+        wire_input_events ~dispatch el ~on_change ~on_submit ~on_focus ~on_blur
+          ~on_keydown
       in
       Live_node
         { dom = el; element; children = []; listeners; base_id; interaction_id }
@@ -1107,6 +1193,48 @@ let maybe_apply_attrs el old_element new_element =
     (* Set new/changed attrs *)
     apply_attrs el new_attrs)
 
+(* [Box] is the only variant carrying focusability, and for every other variant
+   the answer is not a default but the truth: it carries none. *)
+let focusable_of (el : 'msg Nopal_element.Element.t) =
+  match el with
+  | Box { focusable; _ } -> focusable
+  | Empty
+  | Text _
+  | Row _
+  | Column _
+  | Button _
+  | Input _
+  | Checkbox _
+  | Radio _
+  | Select _
+  | File_input _
+  | Image _
+  | Scroll _
+  | Keyed _
+  | Draw _
+  | Virtual_list _ ->
+      false
+
+(* The typed field asserts a tab order and never denies one — see
+   [apply_focusable]. Reconciliation keeps that asymmetry: the attribute is
+   removed only when the flag actually falls, never merely because it reads
+   false, and even then what replaces it is whatever the declared attributes say
+   rather than nothing. An application that spells its own [tabindex] through
+   [~attrs] therefore keeps it across every transition of the flag.
+
+   Run after [maybe_apply_attrs], mirroring the create arm's ordering, so the
+   typed field wins for as long as it is set. *)
+let reconcile_focusable el ~declared_attrs ~old_focusable ~new_focusable =
+  match (old_focusable, new_focusable) with
+  | false, false -> ()
+  | false, true
+  | true, true ->
+      apply_focusable el new_focusable
+  | true, false ->
+      Brr.El.set_at (Jstr.v tab_order_attr)
+        (Option.map Jstr.v (List.assoc_opt tab_order_attr declared_attrs))
+        el
+
 let style_of (el : 'msg Nopal_element.Element.t) =
   match el with
   | Box { style; _ }
@@ -1197,12 +1325,19 @@ let rec reconcile_keyed_children ~sheet ~reveals ~dispatch parent_el
             (key, live))
       new_pairs
   in
-  (* Remove old nodes that are no longer present *)
+  (* Remove old nodes that are no longer present.
+
+     The listeners come off before the node leaves the tree, here and at every
+     other removal site. Removing a focused node synthesises a blur/focusout in
+     WebKit and Gecko, so a focus listener still attached at that instant would
+     turn a teardown into a dispatch re-entering the update loop from inside
+     the reconcile pass. Unlistening a node that is still attached is well
+     defined, so the order costs nothing. *)
   Hashtbl.iter
     (fun _key old_live ->
       let old_jv = jv_of_live old_live in
-      ignore (Jv.call parent_jv "removeChild" [| old_jv |]);
-      unlisten_tree ~sheet old_live)
+      unlisten_tree ~sheet old_live;
+      ignore (Jv.call parent_jv "removeChild" [| old_jv |]))
     old_map;
   (* Reorder by moving only out-of-place nodes. Walk right-to-left tracking
      [next] — the node that must follow the current one — and insert the
@@ -1259,8 +1394,8 @@ and reconcile_children ~sheet ~reveals ~dispatch parent_el old_children
                    now — otherwise the orphaned non-keyed node and its handlers
                    leak forever on a non-keyed-to-keyed transition (FR-1). *)
                 let old_jv = jv_of_live old_live in
-                ignore (Jv.call parent_jv "removeChild" [| old_jv |]);
                 unlisten_tree ~sheet old_live;
+                ignore (Jv.call parent_jv "removeChild" [| old_jv |]);
                 None)
           old_children
       in
@@ -1277,8 +1412,8 @@ and reconcile_children ~sheet ~reveals ~dispatch parent_el old_children
             go [] rest_new (live :: acc)
         | old_live :: rest_old, [] ->
             let old_jv = jv_of_live old_live in
-            ignore (Jv.call (Brr.El.to_jv parent_el) "removeChild" [| old_jv |]);
             unlisten_tree ~sheet old_live;
+            ignore (Jv.call (Brr.El.to_jv parent_el) "removeChild" [| old_jv |]);
             go rest_old [] acc
         | old_live :: rest_old, new_el :: rest_new ->
             let updated =
@@ -1332,9 +1467,9 @@ and reconcile_live ~sheet ~reveals ~dispatch parent_el (old_live : 'msg live)
       let new_live = create_live ~sheet ~reveals ~dispatch new_element in
       let old_jv = jv_of_live old_live in
       let new_jv = jv_of_live new_live in
+      unlisten_tree ~sheet old_live;
       ignore
         (Jv.call (Brr.El.to_jv parent_el) "replaceChild" [| new_jv; old_jv |]);
-      unlisten_tree ~sheet old_live;
       new_live
 
 and maybe_reconcile_styles ~sheet (old_n : 'msg live_node)
@@ -1460,7 +1595,11 @@ and reconcile_node ~sheet ~reveals ~dispatch (old_n : 'msg live_node)
   | Box
       {
         style;
+        attrs;
         children;
+        focusable;
+        on_focus;
+        on_blur;
         on_pointer_move;
         on_pointer_leave;
         on_pointer_down;
@@ -1469,6 +1608,9 @@ and reconcile_node ~sheet ~reveals ~dispatch (old_n : 'msg live_node)
         _;
       } ->
       maybe_apply_attrs el old_n.element new_el;
+      reconcile_focusable el ~declared_attrs:attrs
+        ~old_focusable:(focusable_of old_n.element)
+        ~new_focusable:focusable;
       (* Keep inline flex-direction in sync with the style's direction. *)
       let dir =
         match style.layout.direction with
@@ -1481,7 +1623,8 @@ and reconcile_node ~sheet ~reveals ~dispatch (old_n : 'msg live_node)
       unlisten_all old_n.listeners;
       old_n.listeners <-
         wire_box_pointer_events ~dispatch el on_pointer_move on_pointer_leave
-          on_pointer_down on_pointer_up on_wheel;
+          on_pointer_down on_pointer_up on_wheel
+        @ wire_box_focus_events ~dispatch el ~on_focus ~on_blur;
       old_n.children <-
         reconcile_children ~sheet ~reveals ~dispatch el old_n.children children
   | Row { children; _ } ->
@@ -1504,8 +1647,17 @@ and reconcile_node ~sheet ~reveals ~dispatch (old_n : 'msg live_node)
         @ wire_dblclick ~dispatch el on_dblclick;
       old_n.children <-
         reconcile_children ~sheet ~reveals ~dispatch el old_n.children [ child ]
-  | Input { value; placeholder; on_change; on_submit; on_blur; on_keydown; _ }
-    ->
+  | Input
+      {
+        value;
+        placeholder;
+        on_change;
+        on_submit;
+        on_focus;
+        on_blur;
+        on_keydown;
+        _;
+      } ->
       (* Controlled input: reflect the model, but only write when the DOM value
          actually differs. A redundant write collapses the caret/selection and
          resets IME composition; with the global keydown subscription turning
@@ -1537,7 +1689,8 @@ and reconcile_node ~sheet ~reveals ~dispatch (old_n : 'msg live_node)
       maybe_apply_attrs el old_n.element new_el;
       unlisten_all old_n.listeners;
       old_n.listeners <-
-        wire_input_events ~dispatch el on_change on_submit on_blur on_keydown
+        wire_input_events ~dispatch el ~on_change ~on_submit ~on_focus ~on_blur
+          ~on_keydown
   | Image { src; alt; _ } -> (
       match old_n.element with
       | Image { src = old_src; alt = old_alt; _ } ->

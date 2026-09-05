@@ -1,6 +1,7 @@
 open Nopal_element
 
-type msg = Click | DblClick | Blur | KeyDown of string [@@warning "-37"]
+type msg = Click | DblClick | Focus | Blur | KeyDown of string
+[@@warning "-37"]
 
 let test_button_dblclick_some () =
   Alcotest.(check bool)
@@ -56,7 +57,7 @@ let test_input_keydown_some () =
     | Element.Input { on_keydown = Some f; _ } -> (
         match f "Escape" with
         | Some (KeyDown "Escape") -> true
-        | Some (Click | DblClick | Blur | KeyDown _)
+        | Some (Click | DblClick | Focus | Blur | KeyDown _)
         | None ->
             false)
     | Element.Empty
@@ -77,7 +78,93 @@ let test_input_keydown_some () =
     | Element.Virtual_list _ ->
         false)
 
+let test_box_focus_handlers_some () =
+  Alcotest.(check bool)
+    "box carries focusable, on_focus and on_blur" true
+    (match
+       Element.box ~focusable:true ~on_focus:Focus ~on_blur:Blur
+         [ Element.text "panel" ]
+     with
+    | Element.Box
+        { focusable = true; on_focus = Some Focus; on_blur = Some Blur; _ } ->
+        true
+    | Element.Empty
+    | Element.Text _
+    | Element.Box _
+    | Element.Row _
+    | Element.Column _
+    | Element.Button _
+    | Element.Input _
+    | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
+    | Element.File_input _
+    | Element.Scroll _
+    | Element.Keyed _
+    | Element.Draw _
+    | Element.Virtual_list _ ->
+        false)
+
+let test_input_focus_some () =
+  Alcotest.(check bool)
+    "input carries on_focus alongside its existing on_blur" true
+    (match Element.input ~on_focus:Focus ~on_blur:Blur "val" with
+    | Element.Input { on_focus = Some Focus; on_blur = Some Blur; _ } -> true
+    | Element.Empty
+    | Element.Text _
+    | Element.Box _
+    | Element.Row _
+    | Element.Column _
+    | Element.Button _
+    | Element.Input _
+    | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
+    | Element.File_input _
+    | Element.Scroll _
+    | Element.Keyed _
+    | Element.Draw _
+    | Element.Virtual_list _ ->
+        false)
+
 type wrapper = Wrapped of msg
+
+let test_map_preserves_box_focus () =
+  let el =
+    Element.box ~focusable:true ~on_focus:Focus ~on_blur:Blur
+      [ Element.text "panel" ]
+  in
+  let mapped = Element.map (fun m -> Wrapped m) el in
+  Alcotest.(check bool)
+    "map transforms both box focus edges" true
+    (match mapped with
+    | Element.Box
+        {
+          focusable = true;
+          on_focus = Some (Wrapped Focus);
+          on_blur = Some (Wrapped Blur);
+          _;
+        } ->
+        true
+    | Element.Empty
+    | Element.Text _
+    | Element.Box _
+    | Element.Row _
+    | Element.Column _
+    | Element.Button _
+    | Element.Input _
+    | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
+    | Element.File_input _
+    | Element.Scroll _
+    | Element.Keyed _
+    | Element.Draw _
+    | Element.Virtual_list _ ->
+        false)
 
 let test_map_preserves_dblclick () =
   let el = Element.button ~on_dblclick:DblClick (Element.text "ok") in
@@ -139,7 +226,7 @@ let test_map_preserves_keydown () =
     | Element.Input { on_keydown = Some f; _ } -> (
         match f "Enter" with
         | Some (Wrapped (KeyDown "Enter")) -> true
-        | Some (Wrapped (Click | DblClick | Blur | KeyDown _))
+        | Some (Wrapped (Click | DblClick | Focus | Blur | KeyDown _))
         | None ->
             false)
     | Element.Empty
@@ -180,7 +267,7 @@ let test_map_rewrites_file_input_handler () =
     | Element.File_input { on_change = Some f; _ } -> (
         match f selection with
         | Wrapped (KeyDown "receipt.png") -> true
-        | Wrapped (Click | DblClick | Blur | KeyDown _) -> false)
+        | Wrapped (Click | DblClick | Focus | Blur | KeyDown _) -> false)
     | Element.Empty
     | Element.Text _
     | Element.Box _
@@ -249,9 +336,15 @@ let () =
       ( "button_events",
         [ Alcotest.test_case "dblclick_some" `Quick test_button_dblclick_some ]
       );
+      ( "box_events",
+        [
+          Alcotest.test_case "box_focus_handlers_some" `Quick
+            test_box_focus_handlers_some;
+        ] );
       ( "input_events",
         [
           Alcotest.test_case "blur_some" `Quick test_input_blur_some;
+          Alcotest.test_case "focus_some" `Quick test_input_focus_some;
           Alcotest.test_case "keydown_some" `Quick test_input_keydown_some;
         ] );
       ( "map_events",
@@ -259,6 +352,8 @@ let () =
           Alcotest.test_case "map_preserves_dblclick" `Quick
             test_map_preserves_dblclick;
           Alcotest.test_case "map_preserves_blur" `Quick test_map_preserves_blur;
+          Alcotest.test_case "map_preserves_box_focus" `Quick
+            test_map_preserves_box_focus;
           Alcotest.test_case "map_preserves_keydown" `Quick
             test_map_preserves_keydown;
           Alcotest.test_case "map rewrites file_input handler" `Quick

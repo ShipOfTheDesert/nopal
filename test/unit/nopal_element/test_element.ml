@@ -198,6 +198,7 @@ let test_input_defaults () =
           placeholder = "";
           on_change = None;
           on_submit = None;
+          on_focus = None;
           on_blur = None;
           on_keydown = None;
           _;
@@ -495,6 +496,40 @@ let test_equal_distinguishes_scroll_attrs () =
   Alcotest.(check bool)
     "no attributes on either side is equal" true
     (Element.equal (make []) (make []))
+
+(* [equal] is the public structural-equality predicate for [Element.t]. The
+   compiler cannot flag a conjunct missing from the Box arm, and a missing one
+   is silent: two boxes whose focus edges differ are reported equal, so a
+   consumer that reconciles against the result would keep a stale listener.
+   The affirmative arms below are what stop this going vacuous if a future
+   change stops the fixture reaching the Box arm at all. *)
+let test_equal_distinguishes_box_focus () =
+  let make ?(focusable = false) ?on_focus ?on_blur () =
+    Element.box ~focusable ?on_focus ?on_blur [ Element.text "panel" ]
+  in
+  Alcotest.(check bool)
+    "the same focus edges, separately built, are equal" true
+    (Element.equal
+       (make ~focusable:true ~on_focus:Click ~on_blur:Submit ())
+       (make ~focusable:true ~on_focus:Click ~on_blur:Submit ()));
+  Alcotest.(check bool)
+    "a different on_focus message is not equal" false
+    (Element.equal (make ~on_focus:Click ()) (make ~on_focus:Submit ()));
+  Alcotest.(check bool)
+    "an on_focus that appears is not equal to none" false
+    (Element.equal (make ()) (make ~on_focus:Click ()));
+  Alcotest.(check bool)
+    "a different on_blur message is not equal" false
+    (Element.equal (make ~on_blur:Click ()) (make ~on_blur:Submit ()));
+  Alcotest.(check bool)
+    "an on_blur that appears is not equal to none" false
+    (Element.equal (make ()) (make ~on_blur:Click ()));
+  Alcotest.(check bool)
+    "becoming focusable is not equal" false
+    (Element.equal (make ()) (make ~focusable:true ()));
+  Alcotest.(check bool)
+    "two boxes with no focus edges at all are equal" true
+    (Element.equal (make ()) (make ()))
 
 let test_keyed_preserves_fields () =
   Alcotest.(check bool)
@@ -1474,6 +1509,8 @@ let () =
             test_equal_distinguishes_reveal;
           Alcotest.test_case "equal_distinguishes_scroll_attrs" `Quick
             test_equal_distinguishes_scroll_attrs;
+          Alcotest.test_case "equal_distinguishes_box_focus" `Quick
+            test_equal_distinguishes_box_focus;
           Alcotest.test_case "equal_keyed_distinct" `Quick
             test_equal_keyed_distinct;
           Alcotest.test_case "equal_keyed_different_fields" `Quick

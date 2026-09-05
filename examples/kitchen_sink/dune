@@ -21,6 +21,7 @@
   sub_modal
   sub_subscriptions
   sub_file_input
+  sub_focus_reveal
   sub_receipt_flow
   sub_reveal_list
   sub_scroll_pane

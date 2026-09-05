@@ -17,6 +17,7 @@ module Sub_file_input = Kitchen_sink_app.Sub_file_input
 module Sub_receipt_flow = Kitchen_sink_app.Sub_receipt_flow
 module Sub_reveal_list = Kitchen_sink_app.Sub_reveal_list
 module Sub_scroll_pane = Kitchen_sink_app.Sub_scroll_pane
+module Sub_focus_reveal = Kitchen_sink_app.Sub_focus_reveal
 
 (* Result-task chaining for the Tauri ops (RFC 0118, REQ-F5). See
    {!Kitchen_sink_app.Tauri_op} for the contract; instantiated here with the
@@ -439,6 +440,7 @@ let update model msg =
   | App.Receipt_flow_msg _
   | App.Reveal_list_msg _
   | App.Scroll_pane_msg _
+  | App.Focus_reveal_msg _
   | App.KeyboardHeightChanged _
   | App.Back_demo_push
   | App.Route_changed _
@@ -542,6 +544,13 @@ let serialize_msg : App.msg -> string = function
      every fragment is ';'-terminated for the same reason the file-input ones
      are. *)
   | App.Scroll_pane_msg sp_msg -> Sub_scroll_pane.serialize_msg sp_msg
+  (* Focus-revealed note: the two edge messages are the only record that the
+     platform reported focus arriving or leaving, and they are what separates
+     "no edge fired" from "a departure and an arrival fired", which the note
+     being on screen cannot. The section owns the wording so its message and
+     model fragments cannot drift apart, and every fragment is ';'-terminated
+     for the same reason the file-input ones are. *)
+  | App.Focus_reveal_msg fr_msg -> Sub_focus_reveal.serialize_msg fr_msg
   (* Mobile signals (RFC 0116): the keyboard-height readout (REQ-N2) and the
      back-demo route change the Tauri back-IPC e2e asserts on via the host
      [get_telemetry] mirror — [Route_changed] proves the hardware-back chain
@@ -748,10 +757,16 @@ let serialize_model (model : App.model) =
      times. [Sub_scroll_pane.serialize_model] already terminates each
      [field=value] with ';', so a count of 1 cannot prefix-alias a count of 12.
   *)
+  (* The focus-revealed note's reveal state, edge count and acknowledgement are
+     part of the asserted model surface. The edge count is what a spec gates on
+     when it has to show that tabbing deeper into the container reported
+     nothing at all: the reveal flag reads the same either way.
+     [Sub_focus_reveal.serialize_model] already terminates each [field=value]
+     with ';', so an edge count of 1 cannot prefix-alias a count of 12. *)
   Printf.sprintf
     "{pings=%d; clicks=%d; input=%S; storage=%s; win_visible=%b; win_title=%S; \
      tauri_store=%s; back_route=%s; bottom_tabs={%s}; file_input={%s}; \
-     receipt_flow={%s}; reveal_list={%s}; scroll_pane={%s}}"
+     receipt_flow={%s}; reveal_list={%s}; scroll_pane={%s}; focus_reveal={%s}}"
     model.telemetry_pings model.button_clicks model.input_text storage
     model.tauri_is_visible model.tauri_window_title tauri_store
     (back_route_to_string model.back_route)
@@ -760,6 +775,7 @@ let serialize_model (model : App.model) =
     (Sub_receipt_flow.serialize_model model.receipt_flow)
     (Sub_reveal_list.serialize_model model.reveal_list)
     (Sub_scroll_pane.serialize_model model.scroll_pane)
+    (Sub_focus_reveal.serialize_model model.focus_reveal)
 
 (* The application owns telemetry policy: telemetry is on by default for the
    kitchen sink (it is the live E2E target), and disabled with [?telemetry=off]

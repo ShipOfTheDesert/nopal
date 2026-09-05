@@ -179,6 +179,7 @@ let msg_pp fmt msg =
   | Receipt_flow_msg _ -> Format.fprintf fmt "Receipt_flow_msg _"
   | Reveal_list_msg _ -> Format.fprintf fmt "Reveal_list_msg _"
   | Scroll_pane_msg _ -> Format.fprintf fmt "Scroll_pane_msg _"
+  | Focus_reveal_msg _ -> Format.fprintf fmt "Focus_reveal_msg _"
   | KeyboardHeightChanged _ -> Format.fprintf fmt "KeyboardHeightChanged _"
   | Back_demo_push -> Format.fprintf fmt "Back_demo_push"
   | Route_changed _ -> Format.fprintf fmt "Route_changed _"

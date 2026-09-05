@@ -132,3 +132,7 @@
 (test
  (name test_scroll_pane_section)
  (libraries kitchen_sink_app nopal_test nopal_element nopal_mvu alcotest))
+
+(test
+ (name test_focus_reveal_section)
+ (libraries kitchen_sink_app nopal_test nopal_element alcotest))
