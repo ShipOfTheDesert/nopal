@@ -829,16 +829,23 @@ let () =
   Nopal_image.Processing.register_backend
     { Nopal_image.Processing.process = Nopal_image_web.process };
   (* The browser object URLs the receipt section displays a stored photo with,
-     and the release that stops one pinning its bytes. Registered here for the
-     same two reasons the pipeline above is: this is the one file that may name
-     a platform type, and both commands read the registered backend when they
-     are built, so a registration running after the first selection would send
-     that photo to the unregistered-backend failure instead. *)
+     the release that stops one pinning its bytes, and the release of the stored
+     photo itself. Registered here for the same two reasons the pipeline above
+     is: this is the one file that may name a platform type, and all three
+     commands read the registered backend when they are built, so a registration
+     running after the first selection would send that photo to the
+     unregistered-backend failure instead. The release seam has no such failure
+     to report - an unregistered one is inert - which is why it is the one that
+     most needs registering here: the section would go on releasing handles into
+     nothing and retain every photograph the user took, and nothing outside
+     this section would say so. *)
   Nopal_image.Preview.register_backend
     {
       Nopal_image.Preview.url = Nopal_image_web.preview_url;
       revoke = Nopal_image_web.revoke_preview_url;
     };
+  Nopal_image.Retention.register_backend
+    { Nopal_image.Retention.release = Nopal_image_web.release };
   let open Brr in
   let target =
     match Document.find_el_by_id G.document (Jstr.v "app") with

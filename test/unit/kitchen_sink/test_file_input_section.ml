@@ -2,6 +2,7 @@ open Nopal_test.Test_renderer
 module Sub = Kitchen_sink_app__Sub_file_input
 module Harness = Nopal_test.Telemetry_test
 module E = Nopal_element.Element
+module Retention = Nopal_image.Retention
 
 let app_module =
   (module Sub : Nopal_mvu.App.S
@@ -22,6 +23,14 @@ let receipt =
   E.file_info ~blob_id:"blob-1" ~name:"receipt-sample.txt" ~size:13
     ~mime:"text/plain" ~last_modified:1_700_000_000_000.
 
+(* A second selection, so a case about a replaced photo can name the handle that
+   went and the handle that stayed rather than counting releases. Every field
+   differs from the first, which is what lets the readout say which of the two
+   the section is describing. *)
+let other_receipt =
+  E.file_info ~blob_id:"blob-2" ~name:"receipt-replacement.txt" ~size:21
+    ~mime:"text/plain" ~last_modified:1_700_000_500_000.
+
 let pp_selector fmt sel =
   match sel with
   | By_tag t -> Format.fprintf fmt "By_tag %S" t
@@ -41,6 +50,36 @@ let error_testable =
 
 let model0 () = fst (Sub.init ())
 
+(* Handles the release seam was asked to let go of, newest first while it is
+   being built. A ledger of handles rather than a count of calls: a transition
+   that released the handle it is still holding and one that released the handle
+   it replaced are the same number, and which handle went is the whole claim. *)
+let released_handles : string list ref = ref []
+
+(* Every field written out. The seam has one, and it records rather than frees:
+   the section is native-compiled and cannot name a browser store, so a stub
+   parked here is the only place a release is observable at this layer at all. *)
+let retention_backend =
+  {
+    Retention.release =
+      (fun ~blob_id -> released_handles := blob_id :: !released_handles);
+  }
+
+(* The ledger in the order the releases happened. *)
+let released () = List.rev !released_handles
+
+(* Installs the stub for the duration of [f] and restores the default
+   afterwards, so a failing assertion cannot leak it into the next case. The
+   ledger is reset on the way IN, because a case reads what was released after
+   the exchange it was released during has closed. *)
+let with_retention_backend f =
+  released_handles := [];
+  Fun.protect
+    ~finally:(fun () -> Retention.register_backend Retention.default_backend)
+    (fun () ->
+      Retention.register_backend retention_backend;
+      f ())
+
 (* Renders [model], simulates a selection of [files] against the picker, and
    folds the dispatched message back through [update] — the full
    selection -> model -> view loop the section exists to demonstrate. *)
@@ -51,6 +90,26 @@ let select files model =
     (select_files picker files r);
   match messages r with
   | [ m ] -> fst (Sub.update model m)
+  | [] -> Alcotest.fail "selection dispatched no message"
+  | _ :: _ :: _ -> Alcotest.fail "selection dispatched more than one message"
+
+(* [select] drops the command the transition returned, and a release is all
+   command and no message: it dispatches nothing, so a fold that follows only
+   messages cannot see one. This form executes the command instead, and fails if
+   anything it holds dispatches - which is the seam's own promise, asserted here
+   rather than assumed. *)
+let select_executing files model =
+  let r = render (Sub.view vp model) in
+  Alcotest.(check (result unit error_testable))
+    "selection simulated" (Ok ())
+    (select_files picker files r);
+  match messages r with
+  | [ m ] ->
+      let next, cmd = Sub.update model m in
+      Nopal_mvu.Cmd.execute
+        (fun _msg -> Alcotest.fail "a selection's command dispatched a message")
+        cmd;
+      next
   | [] -> Alcotest.fail "selection dispatched no message"
   | _ :: _ :: _ -> Alcotest.fail "selection dispatched more than one message"
 
@@ -92,6 +151,59 @@ let test_clears_on_empty_selection () =
   Alcotest.(check string)
     "readout falls back to the empty state" "No file selected"
     (readout_text cleared)
+
+(* A stored image stays held until something releases it - no runtime, no unmount
+   and no collector does it - so a picker that replaces a selection without
+   releasing what it replaced retains every file the user has ever picked for the
+   rest of the session. This section is the second picker on the page, and the
+   handle it hands to the upload is the same kind of handle the receipt section
+   releases.
+
+   The exact list is the claim rather than a count: a transition that released
+   the handle it has just been given would satisfy any count written instead,
+   and would free the bytes the upload button is about to send. *)
+let test_replacing_the_selection_releases_the_handle_it_held () =
+  let final =
+    with_retention_backend (fun () ->
+        let selected = select_executing [ receipt ] (model0 ()) in
+        (* The affirmative arm on the same fixture: a section still holding the
+           file it was given has released nothing, so what the list below holds
+           is what the replacement let go of rather than every handle the
+           section has ever named. *)
+        Alcotest.(check bool)
+          "the first file is the section's before it is replaced" true
+          (shows selected ~sub:"receipt-sample.txt");
+        Alcotest.(check (list string))
+          "and nothing has been released up to that point" [] (released ());
+        select_executing [ other_receipt ] selected)
+  in
+  Alcotest.(check bool)
+    "the replacement is what the readout ends up describing" true
+    (shows final ~sub:"receipt-replacement.txt");
+  Alcotest.(check (list string))
+    "the superseded handle is released and the replacement's own is not"
+    [ receipt.E.blob_id ] (released ())
+
+(* The picker emptied reaches the same arm and owes the same release: the file is
+   gone from the readout, so the entry behind it is going to be held by nothing
+   for the rest of the session. *)
+let test_clearing_the_picker_releases_the_handle_it_held () =
+  let final =
+    with_retention_backend (fun () ->
+        let selected = select_executing [ receipt ] (model0 ()) in
+        Alcotest.(check bool)
+          "the file is the section's before the picker empties" true
+          (shows selected ~sub:"receipt-sample.txt");
+        Alcotest.(check (list string))
+          "and nothing has been released up to that point" [] (released ());
+        select_executing [] selected)
+  in
+  Alcotest.(check string)
+    "the readout falls back to the empty state" "No file selected"
+    (readout_text final);
+  Alcotest.(check (list string))
+    "and the handle it was holding is released" [ receipt.E.blob_id ]
+    (released ())
 
 (* The browser spec reads the selection out of the serialized model by
    substring, so every field has to be bounded by its trailing ';' — otherwise
@@ -335,6 +447,11 @@ let () =
             test_lists_selected_file_metadata;
           Alcotest.test_case "clears on empty selection" `Quick
             test_clears_on_empty_selection;
+          Alcotest.test_case
+            "replacing the selection releases the handle it held" `Quick
+            test_replacing_the_selection_releases_the_handle_it_held;
+          Alcotest.test_case "clearing the picker releases the handle it held"
+            `Quick test_clearing_the_picker_releases_the_handle_it_held;
         ] );
       ( "upload",
         [

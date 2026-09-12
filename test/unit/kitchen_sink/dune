@@ -99,6 +99,7 @@
   nopal_test
   nopal_element
   nopal_http
+  nopal_image
   nopal_mvu
   test_util
   alcotest))

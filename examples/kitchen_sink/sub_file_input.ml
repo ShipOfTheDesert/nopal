@@ -1,4 +1,5 @@
 open Nopal_element
+module Retention = Nopal_image.Retention
 
 type upload_state =
   | Not_uploaded
@@ -45,12 +46,44 @@ let post_upload parts =
   Nopal_http.post ~body:(Nopal_http.Multipart parts) upload_url (fun outcome ->
       Upload_result outcome)
 
+(* Every stored image the section is holding: one per file the picker handed
+   over. *)
+let held_handles model =
+  List.map (fun (f : Element.file_info) -> f.Element.blob_id) model.selection
+
+(* Everything named here, released. A stored image stays held until something
+   releases it - no runtime, no unmount and no collector does it - so a picker
+   that replaces a selection without this retains every file the user has ever
+   chosen for the rest of the session. *)
+let release_handles handles =
+  Nopal_mvu.Cmd.batch
+    (List.map (fun blob_id -> Retention.release ~blob_id) handles)
+
 let init () = ({ selection = []; upload = Not_uploaded }, Nopal_mvu.Cmd.none)
 
 let update model msg =
   match msg with
   | Selected selection ->
-      ({ selection; upload = Not_uploaded }, Nopal_mvu.Cmd.none)
+      (* The handles the previous selection was holding are let go of here: the
+         readout has stopped describing those files, no upload the section can
+         still offer names them, and the entries behind them would otherwise be
+         held by nothing for the rest of the session. An emptied picker arrives
+         in this same arm with nothing selected, so it releases everything and
+         keeps nothing.
+
+         The handles just picked are taken out of the set rather than trusted to
+         be absent from it: a selection is issued a distinct handle every time
+         and no handle is ever reused, but that promise is made in another
+         package, and if it were broken this arm would free the bytes the upload
+         button is about to send. *)
+      let picked =
+        List.map (fun (f : Element.file_info) -> f.Element.blob_id) selection
+      in
+      ( { selection; upload = Not_uploaded },
+        release_handles
+          (List.filter
+             (fun handle -> not (List.exists (String.equal handle) picked))
+             (held_handles model)) )
   | Upload_clicked -> (
       match model.selection with
       | [] -> (model, Nopal_mvu.Cmd.none)

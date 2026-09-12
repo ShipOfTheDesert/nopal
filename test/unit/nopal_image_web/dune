@@ -110,3 +110,26 @@
  (modes js)
  (js_of_ocaml
   (javascript_files image_pipeline_shim.js)))
+
+; The release seam touches no canvas — it frees an entry the blob store already
+; holds — so this stanza needs neither image_pipeline_shim.js nor the shim
+; helpers that drain it. It takes image_web_test_helpers only for the store
+; fixtures: a handle is always something the store issued, so even the handle
+; that resolves to nothing is obtained and then released rather than written as
+; a literal. It runs under Node using the global URL and Blob constructors Brr
+; builds on.
+
+(test
+ (name test_retention_seam)
+ (package nopal_image_web)
+ (modules test_retention_seam)
+ (libraries
+  nopal_image_web
+  nopal_image
+  nopal_mvu
+  nopal_blob_web
+  image_web_test_helpers
+  alcotest
+  brr)
+ (modes js)
+ (js_of_ocaml))

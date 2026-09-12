@@ -1,7 +1,9 @@
 (** Browser canvas image pipeline for Nopal applications.
 
-    Decodes a stored image, downscales it natively, re-encodes it back into the
-    browser blob store and scores its sharpness. Application code uses
+    Decodes a stored image, scores its sharpness, downscales it natively and
+    re-encodes it back into the browser blob store. It also mints and revokes
+    the object URLs an application displays a stored image from, and releases a
+    store entry the application is finished with. Application code uses
     [nopal_image] types; this package is wired in at the mounting layer. *)
 
 module Dimensions = Nopal_image_web_internal.Dimensions
@@ -20,9 +22,9 @@ val process :
   (Nopal_image.Processing.result_info, Nopal_image.Processing.error) result
   Nopal_mvu.Task.t
 (** [process ~blob_id ~config] decodes the stored image held under [blob_id],
-    draws it down to the long edge [config] asks for, encodes it in the format
-    [config] names, registers the encoded bytes under a fresh blob-store handle,
-    and scores the sharpness of a second, smaller draw of the same image.
+    scores the sharpness of a separate, smaller draw of the same image, draws it
+    down to the long edge [config] asks for, encodes it in the format [config]
+    names, and registers the encoded bytes under a fresh blob-store handle.
 
     The handle that was processed keeps its own entry, and the encoded bytes are
     never copied into the OCaml heap: what comes back is the new handle, the
@@ -77,3 +79,27 @@ val revoke_preview_url : url:string -> unit
 
     Releasing a URL releases the URL only: the store entry it was minted from
     stays registered and can mint again. *)
+
+val release : blob_id:string -> unit
+(** [release ~blob_id] releases the store entry holding the image [blob_id]
+    names, after which that handle resolves to nothing and nothing further can
+    be minted or processed from it.
+
+    Idempotent, and a no-op on a handle this store never issued or has already
+    released, so a caller releasing whatever it happens to hold needs no
+    bookkeeping to avoid a double release. Releasing reports no outcome at all,
+    here as in the store beneath it.
+
+    Releasing an entry is not revoking a URL, and neither performs the other. A
+    URL minted from an entry keeps the image's bytes resident after the entry is
+    released, and only [revoke_preview_url] frees them; releasing the entry
+    leaves any URL already minted from it displaying the image. An application
+    finished with a photograph it was displaying asks for both.
+
+    This is the browser implementation of the seam application code calls, and
+    it is wired in at the mounting layer, once, before any command is built:
+
+    {[
+      Nopal_image.Retention.register_backend
+        { Nopal_image.Retention.release = Nopal_image_web.release }
+    ]} *)

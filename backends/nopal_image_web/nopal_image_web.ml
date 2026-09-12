@@ -151,8 +151,19 @@ let measure ~bitmap ~src_width ~src_height ~metric_edge =
   in
   Ok (Sharpness.score buffer)
 
-(* Everything after the image has been decoded: the upload downscale, the
-   encode, the store, and the sharpness pass.
+(* Everything after the image has been decoded: the sharpness pass, the upload
+   downscale, the encode and the store.
+
+   The sharpness pass runs first, before anything is produced and long before
+   anything is stored. Its inputs are the decoded image and the metric edge, all
+   known at the decode, so the order between it and the encode is free - and
+   taking it first is what leaves no step below the store that can fail. The
+   blob's own byte length and the two canvas dimension reads are taken before the
+   store is asked, so nothing at all stands between the store and the delivery:
+   no failure can strand a stored entry nobody holds a handle to, and a pass that
+   cannot be scored stores nothing. The consequence a caller sees: a pass that
+   would fail both its score and its encode reports the score, because the
+   encoder was never asked.
 
    Split out of [process] because in a browser it runs on a later turn of the
    event loop, outside the guard [process] installs, so it carries guards of
@@ -171,57 +182,76 @@ let process_bitmap ~config ~bitmap ~finish =
       let upload_width, upload_height =
         Dimensions.fit ~src_width ~src_height ~max_edge:(Config.max_edge config)
       in
-      run_stage ~finish ~stage:(Painting Upload) (fun () ->
-          match
-            painted_canvas ~pass:Upload ~bitmap ~width:upload_width
-              ~height:upload_height
-          with
-          | Error err -> finish (Error err)
-          | Ok (upload_canvas, _upload_context) ->
-              run_stage ~finish ~stage:Encoding (fun () ->
-                  Canvas_ffi.encode upload_canvas
-                    ~mime:(Config.format_to_mime (Config.format config))
-                    ~quality:(Config.quality config)
-                    (fun encoded ->
-                      (* The encoder calls back on a later turn of the event
-                         loop, so this whole continuation - both of its arms -
-                         is a region of its own. *)
-                      run_stage ~finish ~stage:Encoding (fun () ->
-                          match encoded with
-                          | Error message ->
-                              finish (Error (Processing.Encode_failed message))
-                          | Ok encoded -> (
-                              (* The processed handle comes from the store,
-                                 which is the only thing that issues one, and
-                                 the encoded bytes stay on the JavaScript side
-                                 behind it. The handle that was processed keeps
-                                 its own entry. *)
-                              let stored =
-                                Nopal_blob_web.Blob_store.store encoded
-                              in
-                              match
-                                measure ~bitmap ~src_width ~src_height
-                                  ~metric_edge:(Config.metric_edge config)
-                              with
-                              | Error err -> finish (Error err)
-                              | Ok sharpness ->
-                                  (* Every reported number is measured off what
-                                     was produced: the canvas the encoder ran on
-                                     and the blob it produced, never the sizes
-                                     the configuration asked for. *)
+      match
+        measure ~bitmap ~src_width ~src_height
+          ~metric_edge:(Config.metric_edge config)
+      with
+      | Error err -> finish (Error err)
+      | Ok sharpness ->
+          run_stage ~finish ~stage:(Painting Upload) (fun () ->
+              match
+                painted_canvas ~pass:Upload ~bitmap ~width:upload_width
+                  ~height:upload_height
+              with
+              | Error err -> finish (Error err)
+              | Ok (upload_canvas, _upload_context) ->
+                  run_stage ~finish ~stage:Encoding (fun () ->
+                      Canvas_ffi.encode upload_canvas
+                        ~mime:(Config.format_to_mime (Config.format config))
+                        ~quality:(Config.quality config)
+                        (fun encoded ->
+                          (* The encoder calls back on a later turn of the event
+                             loop, so this whole continuation - both of its arms
+                             - is a region of its own. *)
+                          run_stage ~finish ~stage:Encoding (fun () ->
+                              match encoded with
+                              | Error message ->
+                                  finish
+                                    (Error (Processing.Encode_failed message))
+                              | Ok encoded ->
+                                  (* The three sizes are measured off what was
+                                     produced - the canvas the encoder ran on and
+                                     the blob it produced - never off the sizes
+                                     the configuration asked for. The score is
+                                     the exception and is measured off the
+                                     decoded image at the configured metric
+                                     edge, before any encoding, so it describes
+                                     the photograph rather than the artefact.
+
+                                     They are read before the store is asked so
+                                     that nothing at all stands between the
+                                     handle being issued and it being delivered.
+                                     None of the three can fail today, but that
+                                     is an argument about three functions; taking
+                                     them first makes it a property of the
+                                     shape. *)
+                                  let width =
+                                    Canvas_ffi.canvas_width upload_canvas
+                                  and height =
+                                    Canvas_ffi.canvas_height upload_canvas
+                                  and byte_size =
+                                    Brr.Blob.byte_length encoded
+                                  in
+                                  (* The processed handle comes from the store,
+                                     which is the only thing that issues one,
+                                     and the encoded bytes stay on the
+                                     JavaScript side behind it. The handle that
+                                     was processed keeps its own entry. Nothing
+                                     remains between this point and the delivery,
+                                     which is why storing here strands
+                                     nothing. *)
+                                  let stored =
+                                    Nopal_blob_web.Blob_store.store encoded
+                                  in
                                   finish
                                     (Ok
                                        {
                                          Processing.blob_id = stored;
-                                         width =
-                                           Canvas_ffi.canvas_width upload_canvas;
-                                         height =
-                                           Canvas_ffi.canvas_height
-                                             upload_canvas;
-                                         byte_size =
-                                           Brr.Blob.byte_length encoded;
+                                         width;
+                                         height;
+                                         byte_size;
                                          sharpness;
-                                       })))))))
+                                       }))))))
 
 (* The store is asked twice on purpose. [object_url] answers [None] both for a
    handle it holds nothing under and for an environment that minted no URL, and
@@ -281,6 +311,18 @@ let preview_url ~blob_id =
    store answers an environment with no revocation capability by doing nothing.
    So there is no outcome to report and nothing to guard. *)
 let revoke_preview_url ~url = Nopal_blob_web.Blob_store.revoke_url url
+
+(* Releasing an entry cannot fail either, and for the same reason the store
+   beneath it cannot: a handle it never issued, or one it has already released,
+   is an absence there rather than an error. So there is nothing to report and
+   nothing to guard.
+
+   It reaches [remove] and nothing else. Revoking a URL minted from the entry is
+   a separate operation with a separate owner - a view decides when it has
+   stopped displaying an image, which is not when the application decides it has
+   stopped keeping one - and doing both here would free the bytes out from under
+   a view still showing them. *)
+let release ~blob_id = Nopal_blob_web.Blob_store.remove blob_id
 
 let process ~blob_id ~config =
   (* [guard_once] rather than [guard]: the handle lookup below delivers

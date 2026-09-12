@@ -11,3 +11,4 @@ module Sharpness = Sharpness
 module Config = Config
 module Processing = Processing
 module Preview = Preview
+module Retention = Retention
