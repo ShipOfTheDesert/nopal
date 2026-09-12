@@ -4,7 +4,8 @@
     rear-camera preferring single-file picker hands over a stored handle, the
     registered image backend turns it into an upload-ready one, and the section
     reads out what came back — the stored dimensions, the encoded byte length,
-    and the focus score measured over the processed pixels.
+    and the focus score measured over a second, smaller draw of the same image,
+    scaled down to the configured metric edge before any encoding.
 
     The capture parameters are named here rather than taken from the library
     preset, so the metric edge that makes two scores comparable is visible
@@ -156,6 +157,11 @@ type msg =
     }  (** A processing pass finished. *)
   | Reshoot_clicked
       (** The user rejected the measured photo and wants to take another. *)
+  | Discard_clicked
+      (** The user is finished with the measured photo and wants what was stored
+          for it let go. Distinct from [Reshoot_clicked], which also lets the
+          photo go but is a request for another one: this asks for nothing
+          further and then shows that the entries really are gone. *)
   | Note_changed of string  (** The user edited the note. *)
   | Accept_clicked  (** The user kept the measured photo and is sending it. *)
   | Upload_finished of Nopal_http.outcome  (** An upload request answered. *)
@@ -207,8 +213,9 @@ val update : model -> msg -> model * msg Nopal_mvu.Cmd.t
     that is no longer on screen and is not written over the one that is. Every
     reply, including one from a server that refused the receipt, lands in a
     state the section renders, so no outcome leaves it reporting a request that
-    is still out. The request carries a deadline for the case where no reply
-    comes at all, which is the one such state a reply cannot end.
+    is still out. It also lets go of both stored images, on the grounds set out
+    below. The request carries a deadline for the case where no reply comes at
+    all, which is the one such state a reply cannot end.
 
     A pass that succeeded also asks the registered preview backend for a
     displayable URL naming each of the two photos - the one that was picked and
@@ -240,7 +247,42 @@ val update : model -> msg -> model * msg Nopal_mvu.Cmd.t
     pinned until the user found the picker again. A URL that arrives for a
     request the section has moved off is released as it arrives for the same
     reason: nothing is going to show it, and holding it would pin its photo for
-    the rest of the session. *)
+    the rest of the session. A stored image is held the same way and by nothing
+    else either, and releasing one is not revoking a URL minted from it: a
+    revoked URL leaves its entry registered, able to mint again, so an arm that
+    revokes and does not release still retains the photograph. Every arm that
+    lets go of a photograph therefore owes both, and the arms owe different
+    sets. Replacing the selection, re-shooting and clearing the picker let go of
+    the picked photo and the encode measured from it. A second pass answering
+    for a photo still picked lets go of the encode alone, whether it succeeded
+    or failed, since the picker still names the photo that encode was made from.
+    A pass answering for a photo the section has moved off is released as it
+    answers, for the reason a URL arriving too late is: it stored the encode it
+    produced before it answered, and nothing here is ever going to hold it. A
+    settled upload lets go of both, and it is the exit an accepted receipt has:
+    the bytes that were going have gone, the readouts left behind are read off
+    the model rather than the store, and no settled upload offers a control that
+    would send the same receipt again - so a photo still held once the reply has
+    landed is held for the rest of the session. The two pictures stay on screen
+    while that happens, since a URL keeps the picture it names alive for as long
+    as the URL is live; and the handles stay named beside the readout describing
+    them, so a photo picked afterwards asks for the same release a second time,
+    which the seam documents as a no-op.
+
+    [Discard_clicked] ends where a re-shoot ends and owes the same two releases,
+    and it is a separate arm because it asks for nothing further: a re-shoot is
+    a request for another photo, this is a user finished with the one they have.
+    What it does that no other arm does is show that the entries are gone rather
+    than merely forgotten. Releasing an entry and dropping the handle naming it
+    are different acts and only one of them frees anything, so the arm asks the
+    preview seam for a URL naming each of the two entries it has just released -
+    the same two, so what is asked after is exactly what was let go. A
+    registered entry mints one and a released entry cannot, so the pair the
+    request opens can only ever end in the failed arm, and where it ends is
+    readable in {!serialize_model}. The releases go ahead of the requests in the
+    batch, as they do wherever a pair is replaced, and here that order is the
+    claim rather than hygiene: asked first, the entries would still be
+    registered and would mint. *)
 
 val view : Nopal_element.Viewport.t -> model -> msg Nopal_element.Element.t
 (** Renders a labelled picker - the label is on screen as well as in the
@@ -248,20 +290,22 @@ val view : Nopal_element.Viewport.t -> model -> msg Nopal_element.Element.t
     field, the readout of what the processing pass produced, and, once a photo
     has been measured, the one way forward the focus score earns it: keeping the
     photo when the score reaches this section's own threshold and taking another
-    when it does not. That threshold is calibration for this demo alone and the
-    section says so on screen, because the image library defines no notion of a
-    good enough score and offers none. A second readout says how the upload of
-    an accepted photo went, so a refusal or a failure is visible on screen and
-    not only in the telemetry.
+    when it does not. Beside it, on both sides of the threshold, a control that
+    lets the photo go and asks for nothing in its place, which is where a reader
+    sees what releasing a stored image does and what it leaves behind. That
+    threshold is calibration for this demo alone and the section says so on
+    screen, because the image library defines no notion of a good enough score
+    and offers none. A second readout says how the upload of an accepted photo
+    went, so a refusal or a failure is visible on screen and not only in the
+    telemetry.
 
-    Between the readout and those two controls sit the two photographs
-    themselves: the receipt as it was taken beside the receipt as it will be
-    uploaded, each under a heading naming which of the two it is and each
-    carrying its own description for a reader who cannot see it. They are what a
-    person decides on, so they are shown before the control that acts on the
-    decision. Both are drawn to one width with their heights left to follow, so
-    a preview keeps the proportions the pass produced rather than the
-    proportions of a box.
+    Between the readout and those controls sit the two photographs themselves:
+    the receipt as it was taken beside the receipt as it will be uploaded, each
+    under a heading naming which of the two it is and each carrying its own
+    description for a reader who cannot see it. They are what a person decides
+    on, so they are shown before the control that acts on the decision. Both are
+    drawn to one width with their heights left to follow, so a preview keeps the
+    proportions the pass produced rather than the proportions of a box.
 
     Under each photograph is the length of the picture that half shows, and
     under the processed one what that came to as a share of the picked file, so

@@ -4,6 +4,7 @@ module E = Nopal_element.Element
 module Config = Nopal_image.Config
 module Preview = Nopal_image.Preview
 module Processing = Nopal_image.Processing
+module Retention = Nopal_image.Retention
 
 let vp = Nopal_element.Viewport.desktop
 let picker = By_attr ("data-field", "receipt-photo")
@@ -11,6 +12,7 @@ let metadata = By_attr ("data-testid", "receipt-flow-metadata")
 let verdict = By_attr ("data-testid", "receipt-flow-verdict")
 let accept = By_attr ("data-field", "receipt-accept")
 let reshoot = By_attr ("data-field", "receipt-reshoot")
+let discard = By_attr ("data-field", "receipt-discard")
 let note = By_attr ("data-field", "receipt-note")
 let upload_readout = By_attr ("data-testid", "receipt-flow-upload")
 let preview_pair = By_attr ("data-testid", "receipt-flow-previews")
@@ -169,11 +171,19 @@ let http_backend ~requests ~outcome =
             park (fun () -> resolve outcome)));
   }
 
-(* What the preview stub was asked to do, in the order it was asked. One ordered
-   ledger rather than two lists, because what a caller replacing one picture with
+(* What the preview stub was asked to do, in the order it was asked, and what the
+   release stub was asked to let go of, in the same ledger. One ordered ledger
+   rather than separate lists, because what a caller replacing one picture with
    another owes is that the release happens BEFORE the request that replaces it -
-   and an order is not recoverable from two membership lists. *)
-type preview_event = Requested of string | Revoked of string
+   and an order is not recoverable from two membership lists. Entry releases are
+   recorded here for exactly that reason: the discard asks for a URL naming each
+   entry it has just released, and "the entries went first" is a claim about the
+   order of two different seams' calls, which no pair of per-seam lists can
+   state. *)
+type preview_event =
+  | Requested of string
+  | Revoked of string
+  | Released_entry of string
 
 (* The preview deliveries park on a queue of their own rather than the one
    above. A single queue drained to quiescence answers these inside the same
@@ -270,6 +280,7 @@ let rec requested_handles events =
   | [] -> []
   | Requested blob_id :: rest -> blob_id :: requested_handles rest
   | Revoked _ :: rest -> requested_handles rest
+  | Released_entry _ :: rest -> requested_handles rest
 
 let preview_requests () = requested_handles (List.rev !preview_events)
 
@@ -278,6 +289,7 @@ let rec revoked_of events =
   | [] -> []
   | Revoked url :: rest -> url :: revoked_of rest
   | Requested _ :: rest -> revoked_of rest
+  | Released_entry _ :: rest -> revoked_of rest
 
 let revoked_urls () = revoked_of (List.rev !preview_events)
 
@@ -293,13 +305,15 @@ let rec distinct values =
       :: distinct
            (List.filter (fun other -> not (String.equal other value)) rest)
 
-(* The whole ledger in the order the calls happened, requests and releases in one
-   list. What a section replacing one picture with another owes is that the
-   release happens BEFORE the request that replaces it, and that is a claim about
-   order which two membership lists cannot make. *)
+(* The whole ledger in the order the calls happened - URLs asked for, URLs
+   released, and entries released - in one list. What a section replacing one
+   picture with another owes is that the release happens BEFORE the request that
+   replaces it, and that is a claim about order which separate membership lists
+   cannot make. *)
 let ledger_entry = function
   | Requested blob_id -> "requested:" ^ blob_id
   | Revoked url -> "revoked:" ^ url
+  | Released_entry blob_id -> "released:" ^ blob_id
 
 let preview_ledger () = List.map ledger_entry (List.rev !preview_events)
 
@@ -319,6 +333,58 @@ let with_preview_backend f =
       Preview.register_backend Preview.default_backend)
     (fun () ->
       Preview.register_backend preview_backend;
+      f ())
+
+(* Handles the release seam was asked to let go of, newest first while it is
+   being built. A ledger of handles rather than a count of calls: a transition
+   that released the handle it is still holding and one that released the handle
+   it let go of are the same number, and which handle went is the whole claim.
+   It is also what makes a handle released twice readable, which a membership
+   check would hide. *)
+let released_handles : string list ref = ref []
+
+(* Every field written out. The seam has one, and it records rather than frees:
+   the section is native-compiled and cannot name a browser store, so a stub
+   parked here is the only place a release is observable at this layer at all.
+
+   Each release is written to two ledgers, which is one recorder answering two
+   different questions. [released_handles] answers WHICH entries a transition let
+   go of, and every release case is asserted against it. The preview ledger
+   answers WHEN, against the URL requests and revocations interleaved with them:
+   the discard's whole claim is that the entries go before it asks after them,
+   and an order across two seams cannot be read off two separate lists. This
+   stays a recorder either way - it frees nothing and the preview stub does not
+   consult it - so a case that needs a released entry to refuse a URL still
+   scripts that refusal by hand. *)
+let retention_backend =
+  {
+    Retention.release =
+      (fun ~blob_id ->
+        released_handles := blob_id :: !released_handles;
+        preview_events := Released_entry blob_id :: !preview_events);
+  }
+
+(* The ledger in the order the releases happened. *)
+let released () = List.rev !released_handles
+
+(* Forgets what has been released so far. A case that has to drive the section
+   through one transition in order to reach the one it is about would otherwise
+   assert what both of them released, and removing the release on a single
+   transition would then redden several cases rather than the one that covers
+   it. *)
+let forget_releases () = released_handles := []
+
+(* Installs the stub for the duration of [f] and restores the default
+   afterwards, so a failing assertion cannot leak it into the next case. The
+   ledger is reset on the way IN, for the reason the preview one is: a case
+   reads what was released after the exchange it was released during has
+   closed. *)
+let with_retention_backend f =
+  released_handles := [];
+  Fun.protect
+    ~finally:(fun () -> Retention.register_backend Retention.default_backend)
+    (fun () ->
+      Retention.register_backend retention_backend;
       f ())
 
 let single_message rendered =
@@ -633,6 +699,14 @@ let test_threshold_verdict_below () =
     "the re-shoot control is offered" true (present reshoot below);
   Alcotest.(check bool)
     "the accept control is not offered" false (present accept below);
+  (* The discard is offered on this side of the threshold as well as the other,
+     which is the whole of its contract: it sits outside the verdict's choice
+     because a user is allowed to be finished with a photo whichever way it was
+     judged. Moving it inside the accept arm would leave every other assertion
+     in this suite identical, so the claim is asserted on both sides. *)
+  Alcotest.(check bool)
+    "the discard control is offered beside the re-shoot" true
+    (present discard below);
   Alcotest.(check bool)
     "the verdict says which side of the threshold the photo fell" true
     (Test_util.string_contains (verdict_text below) ~sub:"Re-shoot");
@@ -664,9 +738,27 @@ let test_threshold_verdict_above () =
     "the accept control is offered" true (present accept above);
   Alcotest.(check bool)
     "the re-shoot control is not offered" false (present reshoot above);
+  (* The other side of the two-sided claim asserted in the case above. *)
+  Alcotest.(check bool)
+    "the discard control is offered beside the accept" true
+    (present discard above);
   Alcotest.(check bool)
     "the verdict still names the threshold as demo calibration" true
-    (Test_util.string_contains (verdict_text above) ~sub:"demo calibration")
+    (Test_util.string_contains (verdict_text above) ~sub:"demo calibration");
+  (* And the stage on which it must not appear, so "on both sides of the
+     threshold" is not read as "everywhere": once the receipt is on its way
+     there is nothing left for a user to let go of, and a discard offered here
+     would release the bytes of an upload still going. The two assertions above
+     are its affirmative arm - the same fixture, one click earlier, does offer
+     the control - so this absence belongs to the stage rather than to a
+     selector that matches nothing. *)
+  let uploading = click_and_update accept above in
+  Alcotest.(check bool)
+    "accepting puts the upload in flight" true
+    (Test_util.string_contains (serialized uploading) ~sub:"upload=uploading;");
+  Alcotest.(check bool)
+    "a receipt already on its way offers no discard" false
+    (present discard uploading)
 
 (* A score landing exactly on the threshold. Neither case above sits on the
    line, so which side it falls on is a claim this section makes that nothing
@@ -2239,6 +2331,450 @@ let test_original_byte_size_fragment () =
     "and a section that has let the photo go stops reporting its length" false
     (Test_util.string_contains (serialized cleared) ~sub:"original_byte_size=")
 
+(* The section driven with the release stub installed for the whole of it. The
+   preview stub goes in as well: a pass that succeeded asks for two URLs, and a
+   section with no preview backend registered would take the pair through its
+   failure arm rather than the arm a photo on screen goes through, which is not
+   the state any of these transitions starts from. Returns the model the whole
+   exchange left behind; the ledger is read afterwards, since the fixtures reset
+   it on the way in rather than out. *)
+let store_session ~image f =
+  let current, send = driver (model0 ()) in
+  with_retention_backend (fun () ->
+      with_preview_backend (fun () ->
+          with_image_backend image (fun () -> f ~current ~send)));
+  !current
+
+(* Every case below compares the ledger as an ordered list rather than as a set.
+   The order is only the order the transition reads its handles in and is not
+   itself the claim; what an ordered comparison catches and a membership check
+   does not is a handle released twice, which would let a case counting releases
+   read as one where the release happened at all. *)
+
+(* A stored image stays held until something releases it - no runtime, no
+   unmount and no collector does it - and revoking the URL that displays it is a
+   different act that leaves its entry registered. So a section that rejects a
+   photo owes a release for the picked photo AND for the encode measured from
+   it, on top of the two URL revocations it already performs. *)
+let test_reshoot_releases_the_previous_handles () =
+  let final =
+    store_session
+      ~image:
+        (image_backend ~calls:(ref [])
+           ~outcome:(Ok (processed_info ~sharpness:under_threshold)))
+      (fun ~current ~send ->
+        take_a_photo ~current ~send;
+        (* The affirmative arm on the same fixture: a section still showing the
+           photo has released nothing, so what the list below holds is what the
+           re-shoot let go of rather than a stub recording every handle the
+           section has ever named. *)
+        Alcotest.(check bool)
+          "the section is holding a measured photo before it rejects one" true
+          (showing_a_pair !current);
+        Alcotest.(check (list string))
+          "and has released nothing while that photo is still its to show" []
+          (released ());
+        send (click_message reshoot !current))
+  in
+  Alcotest.(check bool)
+    "the re-shoot returns the section to its untouched stage" true
+    (Test_util.string_contains
+       (Sub.serialize_model final)
+       ~sub:"processing=idle;");
+  Alcotest.(check (list string))
+    "and releases the rejected photo and the encode measured from it"
+    [ receipt.E.blob_id; processed_handle ]
+    (released ())
+
+(* The picker emptied reaches the same place a re-shoot does and owes the same
+   pair of releases. It is its own arm in [update], so a release written on one
+   of the two says nothing about the other. *)
+let test_clearing_the_picker_releases_the_handles_it_held () =
+  let final =
+    store_session
+      ~image:
+        (image_backend ~calls:(ref [])
+           ~outcome:(Ok (processed_info ~sharpness:under_threshold)))
+      (fun ~current ~send ->
+        take_a_photo ~current ~send;
+        Alcotest.(check bool)
+          "the section is holding a measured photo before the picker empties"
+          true (showing_a_pair !current);
+        Alcotest.(check (list string))
+          "and has released nothing up to that point" [] (released ());
+        send (clear_message !current))
+  in
+  Alcotest.(check bool)
+    "clearing the picker returns the section to its untouched stage" true
+    (Test_util.string_contains
+       (Sub.serialize_model final)
+       ~sub:"processing=idle;");
+  Alcotest.(check (list string))
+    "and releases the cleared photo and the encode measured from it"
+    [ receipt.E.blob_id; processed_handle ]
+    (released ())
+
+(* A photo replaced by another. The picked handle the section lets go of here is
+   superseded rather than discarded, which is what makes the exact list the
+   claim: a transition that released the photo it had just picked, or the encode
+   the replacement is about to produce, would satisfy every count that could be
+   written instead. *)
+let test_reselecting_releases_the_superseded_selection () =
+  let final =
+    store_session
+      ~image:
+        (handle_keyed_image_backend
+           [
+             (receipt.E.blob_id, Ok (processed_info ~sharpness:under_threshold));
+             ( other_receipt.E.blob_id,
+               Ok (replacement_info ~sharpness:under_threshold) );
+           ])
+      (fun ~current ~send ->
+        send (select_message [ receipt ] !current);
+        answer_pass_for ~blob_id:receipt.E.blob_id;
+        drain_previews ();
+        Alcotest.(check bool)
+          "the first photo is the section's to show before it is replaced" true
+          (showing_a_pair !current);
+        Alcotest.(check (list string))
+          "and nothing has been released up to that point" [] (released ());
+        send (select_message [ other_receipt ] !current);
+        answer_pass_for ~blob_id:other_receipt.E.blob_id;
+        drain_previews ())
+  in
+  Alcotest.(check bool)
+    "the replacement is what the section ends up describing" true
+    (Test_util.string_contains (Sub.serialize_model final) ~sub:"width=1440;");
+  Alcotest.(check (list string))
+    "the superseded photo and its encode are released, and the replacement's \
+     own handles are not"
+    [ receipt.E.blob_id; processed_handle ]
+    (released ())
+
+(* Two passes started for the one picked photo, both of which the section
+   records. It is the only arm that replaces a measured encode without the
+   picker changing, and the picked photo is still the section's throughout, so
+   what is owed here is one release and not two.
+
+   Driving the picker twice with ONE handle is how this suite starts a second
+   pass for a photo that stays picked, and it is the one fixture here the store
+   contract says the platform cannot produce: a selection is issued a distinct
+   handle every time and no handle is ever reused. The arm is reachable no other
+   way - a pass is started only by a selection, and a second pass naming the
+   handle already picked needs that handle selected twice - so the fixture is
+   kept and the section is written not to depend on the contract being kept: the
+   selection arm filters the handle it is picking out of the set it releases,
+   rather than reasoning that the handle cannot be in it. The assertion below
+   that the second selection releases nothing is what holds that filter in
+   place, and it is why this case forgets no part of its ledger: with the filter
+   there, nothing at all is released before the transition this case is about.
+*)
+let test_a_second_pass_releases_the_encode_it_replaces () =
+  let final =
+    store_session
+      ~image:
+        (sequenced_image_backend
+           [
+             Ok (processed_info ~sharpness:under_threshold);
+             Ok (replacement_info ~sharpness:under_threshold);
+           ])
+      (fun ~current ~send ->
+        send (select_message [ receipt ] !current);
+        send (select_message [ receipt ] !current);
+        Alcotest.(check (list string))
+          "the second selection releases nothing: the only handle the section \
+           held is the one the pass it starts is for"
+          [] (released ());
+        answer_pass_for ~blob_id:receipt.E.blob_id;
+        drain_previews ();
+        Alcotest.(check bool)
+          "the first pass leaves a measured photo on screen" true
+          (showing_a_pair !current);
+        answer_pass_for ~blob_id:receipt.E.blob_id;
+        drain_previews ())
+  in
+  Alcotest.(check bool)
+    "the second pass is what the section ends up describing" true
+    (Test_util.string_contains (Sub.serialize_model final) ~sub:"width=1440;");
+  Alcotest.(check (list string))
+    "the encode the first pass produced is released and the picked photo is not"
+    [ processed_handle ] (released ())
+
+(* The same two passes with the second one failing. The measurement goes and the
+   picked photo stays, so the encode the first pass produced is the one thing
+   the section stops holding - and this arm is its last exit, since a failed
+   stage offers no re-shoot control. The fixture repeats one handle for the
+   reason the case above does, and holds the same filter in place with the same
+   assertion. *)
+let test_a_failing_second_pass_releases_the_encode_it_discards () =
+  let final =
+    store_session
+      ~image:
+        (sequenced_image_backend
+           [
+             Ok (processed_info ~sharpness:under_threshold);
+             Error (Processing.Decode_failed "not a JPEG");
+           ])
+      (fun ~current ~send ->
+        send (select_message [ receipt ] !current);
+        send (select_message [ receipt ] !current);
+        Alcotest.(check (list string))
+          "the second selection releases nothing: the only handle the section \
+           held is the one the pass it starts is for"
+          [] (released ());
+        answer_pass_for ~blob_id:receipt.E.blob_id;
+        drain_previews ();
+        Alcotest.(check bool)
+          "the first pass leaves a measured photo on screen" true
+          (showing_a_pair !current);
+        answer_pass_for ~blob_id:receipt.E.blob_id;
+        drain_previews ())
+  in
+  Alcotest.(check bool)
+    "the failing second pass is reported as the failure it is" true
+    (Test_util.string_contains
+       (Sub.serialize_model final)
+       ~sub:"processing=failed:decode_failed;");
+  Alcotest.(check (list string))
+    "and the encode it replaced is released while the picked photo is not"
+    [ processed_handle ] (released ())
+
+(* A pass answering for a photo the section has moved off. It stored the encode
+   it produced before it answered, and the section is never going to hold it, so
+   the entry is released rather than dropped - the treatment a URL minted for a
+   pair the section has moved off already gets, one level down. Without it a
+   re-shoot loop against a slow backend retains one encode per abandoned pass
+   for the rest of the session, and nothing on screen says so. *)
+let test_a_discarded_pass_releases_the_encode_it_stored () =
+  let final =
+    store_session
+      ~image:
+        (handle_keyed_image_backend
+           [
+             (receipt.E.blob_id, Ok (processed_info ~sharpness:under_threshold));
+             ( other_receipt.E.blob_id,
+               Ok (replacement_info ~sharpness:under_threshold) );
+           ])
+      (fun ~current ~send ->
+        send (select_message [ receipt ] !current);
+        send (select_message [ other_receipt ] !current);
+        answer_pass_for ~blob_id:other_receipt.E.blob_id;
+        drain_previews ();
+        Alcotest.(check bool)
+          "the replacement's own pass has landed before the late one answers"
+          true
+          (Test_util.string_contains
+             (Sub.serialize_model !current)
+             ~sub:"width=1440;");
+        forget_releases ();
+        answer_pass_for ~blob_id:receipt.E.blob_id;
+        drain_previews ())
+  in
+  let fragments = Sub.serialize_model final in
+  Alcotest.(check bool)
+    "the late pass is still not recorded against the photo that replaced it"
+    true
+    (Test_util.string_contains fragments ~sub:"width=1440;");
+  Alcotest.(check bool)
+    "nor is the photo it measured put on screen" false
+    (Test_util.string_contains fragments ~sub:"width=1024;");
+  Alcotest.(check (list string))
+    "and the encode it stored before it answered is released rather than \
+     dropped"
+    [ processed_handle ] (released ())
+
+(* The same discarded pass reached by the other route: the picker was emptied
+   while the pass was still out, so the section is holding no photo for the
+   result to be recorded against at all. It is a separate arm of [update] from
+   the one above - that one has a photo and finds the pass names a different
+   one - and an encode released on one of the two says nothing about the other.
+*)
+let test_a_pass_answering_after_a_clear_releases_the_encode_it_stored () =
+  let final =
+    store_session
+      ~image:
+        (image_backend ~calls:(ref [])
+           ~outcome:(Ok (processed_info ~sharpness:under_threshold)))
+      (fun ~current ~send ->
+        send (select_message [ receipt ] !current);
+        send (clear_message !current);
+        Alcotest.(check bool)
+          "the pass is still out when the picker is emptied" false
+          (pass_answered !current);
+        (* What the clear released belongs to the case that covers the clear. *)
+        forget_releases ();
+        drain ();
+        drain_previews ())
+  in
+  let fragments = Sub.serialize_model final in
+  Alcotest.(check bool)
+    "the discarded pass leaves the emptied section where it was" true
+    (Test_util.string_contains fragments ~sub:"processing=idle;");
+  Alcotest.(check bool)
+    "and does not put the photo it measured back on screen" false
+    (Test_util.string_contains fragments ~sub:"width=1024;");
+  Alcotest.(check (list string))
+    "while the encode it stored before it answered is released rather than \
+     dropped"
+    [ processed_handle ] (released ())
+
+(* The control the section offers a user who is finished with the photo and
+   wants what was stored for it let go. It is not the re-shoot by another name:
+   a re-shoot asks for a replacement, while this asks for nothing further, and
+   the two are separate arms of [update], so a release written on one says
+   nothing about the other. Both entries go - the photo that was picked and the
+   encode measured from it - because the section is holding both and neither is
+   released by anything else. *)
+let test_discard_releases_both_handles () =
+  let final =
+    store_session
+      ~image:
+        (image_backend ~calls:(ref [])
+           ~outcome:(Ok (processed_info ~sharpness:over_threshold)))
+      (fun ~current ~send ->
+        take_a_photo ~current ~send;
+        (* The affirmative arm on the same fixture: a section still showing the
+           photo has released nothing, so the list below is what the discard let
+           go of rather than a stub recording every handle the section has ever
+           named. The photo is on the keep side of the threshold, so the control
+           is offered for a photo the user could have sent. *)
+        Alcotest.(check bool)
+          "the section is holding a measured photo before it discards one" true
+          (showing_a_pair !current);
+        Alcotest.(check (list string))
+          "and has released nothing while that photo is still its to show" []
+          (released ());
+        send (click_message discard !current);
+        drain_previews ())
+  in
+  Alcotest.(check bool)
+    "the discard returns the section to its untouched stage" true
+    (Test_util.string_contains
+       (Sub.serialize_model final)
+       ~sub:"processing=idle;");
+  Alcotest.(check (list string))
+    "and releases the picked photo and the encode measured from it"
+    [ receipt.E.blob_id; processed_handle ]
+    (released ())
+
+(* Releasing an entry and forgetting a handle are not the same act, and only one
+   of them is what this section exists to demonstrate. So the discard asks the
+   preview seam for a URL naming each entry it has just let go, and reports what
+   comes back in the vocabulary it already states for a pair it cannot show. A
+   discard that asked after nothing, or after the wrong handles, would leave the
+   fragment below absent.
+
+   The claim this case does NOT make is that a released entry really answers
+   with an absence: this suite is native and the stub is what answers here, so
+   the platform half is pinned where the platform is - the store seam's own
+   suite, which releases through the browser store and then fails to mint from
+   it, and the browser spec that drives this same discard for real. The two
+   scripted refusals stand in for that answer and are keyed by handle, so a
+   discard naming anything else still mints a URL and this case still reddens.
+
+   The pair being on screen beforehand is the affirmative arm: both handles
+   minted a URL a moment earlier on this same fixture, so the absence below
+   belongs to the entries the discard let go of rather than to a fixture that
+   never stored anything. *)
+let test_preview_of_a_discarded_handle_reports_absence () =
+  let final =
+    store_session
+      ~image:
+        (image_backend ~calls:(ref [])
+           ~outcome:(Ok (processed_info ~sharpness:over_threshold)))
+      (fun ~current ~send ->
+        take_a_photo ~current ~send;
+        Alcotest.(check bool)
+          "both entries minted a URL while the section was still holding them"
+          true (showing_a_pair !current);
+        preview_failures :=
+          [
+            (receipt.E.blob_id, Preview.Blob_not_found receipt.E.blob_id);
+            (processed_handle, Preview.Blob_not_found processed_handle);
+          ];
+        send (click_message discard !current);
+        drain_previews ())
+  in
+  let fragments = Sub.serialize_model final in
+  Alcotest.(check bool)
+    "the section asks after the entries it let go and reports the absence" true
+    (Test_util.string_contains fragments ~sub:"previews=failed:blob_not_found;");
+  Alcotest.(check bool)
+    "so the pair it had been showing is not reported as showable" false
+    (Test_util.string_contains fragments ~sub:"previews=ready;");
+  (* And the order, which is the claim rather than hygiene: asked first, the two
+     entries would still be registered and would mint, and the absence above
+     would be reporting the stub's script instead of the release. The whole
+     ledger is compared as one ordered list across both seams, so a discard that
+     released after it asked, or that asked without releasing, reddens here -
+     which the refusals above, being scripted by handle, cannot do on their
+     own. *)
+  Alcotest.(check (list string))
+    "the entries are released before either is asked after"
+    [
+      "requested:" ^ receipt.E.blob_id;
+      "requested:" ^ processed_handle;
+      "revoked:" ^ stub_url ~blob_id:receipt.E.blob_id ~mint:1;
+      "revoked:" ^ stub_url ~blob_id:processed_handle ~mint:2;
+      "released:" ^ receipt.E.blob_id;
+      "released:" ^ processed_handle;
+      "requested:" ^ receipt.E.blob_id;
+      "requested:" ^ processed_handle;
+    ]
+    (preview_ledger ())
+
+(* The end of the happy path, which is the one exit that used to keep both
+   entries for the rest of the session: the receipt is sent, the discard control
+   goes with the verdict, and no settled upload offers anything that would send
+   the same receipt again - so nothing downstream is ever going to ask the store
+   for either handle. The affirmative arm is on the same fixture one step
+   earlier: while the request is out, the section is still holding both, because
+   the bytes are still going.
+
+   The pair stays on screen afterwards, which is not a contradiction: a URL pins
+   its picture for as long as the URL is live, so the entries can go while the
+   two pictures the user is looking at stay. That assertion is here because it is
+   the one way this release could have broken the section rather than tidied it.
+*)
+let test_a_finished_upload_releases_both_handles () =
+  let requests = ref [] in
+  let final =
+    store_session
+      ~image:
+        (image_backend ~calls:(ref [])
+           ~outcome:(Ok (processed_info ~sharpness:over_threshold)))
+      (fun ~current ~send ->
+        with_http_backend
+          (http_backend ~requests ~outcome:(upload_reply 201))
+          (fun () ->
+            take_a_photo ~current ~send;
+            Alcotest.(check bool)
+              "the section is holding a measured photo before it sends one" true
+              (showing_a_pair !current);
+            send (click_message accept !current);
+            Alcotest.(check bool)
+              "the upload is reported in flight" true
+              (Test_util.string_contains
+                 (Sub.serialize_model !current)
+                 ~sub:"upload=uploading;");
+            Alcotest.(check (list string))
+              "and nothing is released while the bytes are still on their way"
+              [] (released ());
+            drain ()))
+  in
+  let fragments = Sub.serialize_model final in
+  Alcotest.(check bool)
+    "the reply is what the section ends up reporting" true
+    (Test_util.string_contains fragments ~sub:"upload=ok:201;");
+  Alcotest.(check bool)
+    "the pair is still on screen, since a URL pins its picture after the entry \
+     behind it goes"
+    true (showing_a_pair final);
+  Alcotest.(check (list string))
+    "while both entries behind the sent receipt are released"
+    [ receipt.E.blob_id; processed_handle ]
+    (released ())
+
 let () =
   Alcotest.run "kitchen_sink_receipt_flow_section"
     [
@@ -2350,6 +2886,34 @@ let () =
             test_preview_pair_rendered_with_alt_and_testids;
           Alcotest.test_case "the pair stacks where there is room for one"
             `Quick test_preview_pair_stacks_on_compact_viewport;
+        ] );
+      ( "releases",
+        [
+          Alcotest.test_case "a re-shoot releases the handles it was holding"
+            `Quick test_reshoot_releases_the_previous_handles;
+          Alcotest.test_case "clearing the picker releases the handles it held"
+            `Quick test_clearing_the_picker_releases_the_handles_it_held;
+          Alcotest.test_case "re-selecting releases the superseded selection"
+            `Quick test_reselecting_releases_the_superseded_selection;
+          Alcotest.test_case "a second pass releases the encode it replaces"
+            `Quick test_a_second_pass_releases_the_encode_it_replaces;
+          Alcotest.test_case
+            "a failing second pass releases the encode it discards" `Quick
+            test_a_failing_second_pass_releases_the_encode_it_discards;
+          Alcotest.test_case "a discarded pass releases the encode it stored"
+            `Quick test_a_discarded_pass_releases_the_encode_it_stored;
+          Alcotest.test_case
+            "a pass answering after a clear releases the encode it stored"
+            `Quick
+            test_a_pass_answering_after_a_clear_releases_the_encode_it_stored;
+          Alcotest.test_case "a discard releases both handles it was holding"
+            `Quick test_discard_releases_both_handles;
+          Alcotest.test_case
+            "a preview of a discarded handle reports the absence" `Quick
+            test_preview_of_a_discarded_handle_reports_absence;
+          Alcotest.test_case
+            "a finished upload releases the handles it was holding" `Quick
+            test_a_finished_upload_releases_both_handles;
         ] );
       ( "payload",
         [

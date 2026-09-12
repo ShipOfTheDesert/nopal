@@ -187,6 +187,74 @@ let test_bitmap_released_on_failure () =
     "a decode that never produced an image frees nothing" ("decode", 0)
     (blamed_and_released "decode")
 
+(* A pass that cannot be scored stores nothing.
+
+   The store exposes no enumeration, so "nothing was stored" is asserted through
+   the encode: the store only ever issues a handle for encoded bytes, so no
+   encode means no bytes and therefore no handle. The clean arm on the same
+   fixture is what keeps the empty expectation from going vacuous - an empty
+   list is also what a fixture that had stopped reaching the encoder for some
+   unrelated reason would produce, and that failure would read as coverage.
+
+   [starve_context_for_width] rather than [inject_failure "context"]: the
+   pipeline allocates two canvases, and a switch starving both reaches whichever
+   runs first, which is not the pass this case is about. 100 is the metric
+   canvas under this fixture. *)
+let test_score_failure_encodes_nothing () =
+  let config = fixture_config () in
+  reset ();
+  set_source ~width:1000 ~height:750;
+  starve_context_for_width 100;
+  let err = failure_of (run_pipeline ~blob_id:(stored_source ()) ~config) in
+  Alcotest.(check string)
+    "a starved metric canvas blames the canvas" "canvas" (stage_of_error err);
+  Alcotest.(check bool)
+    "the failure is the sharpness pass's own" true
+    (Test_util.string_contains (detail_of_error err) ~sub:"sharpness");
+  Alcotest.(check (list string))
+    "an unscoreable pass encodes nothing, so it stores nothing" []
+    (encode_mimes ());
+  reset ();
+  set_source ~width:1000 ~height:750;
+  let clean = processed (run_pipeline ~blob_id:(stored_source ()) ~config) in
+  Alcotest.(check (list string))
+    "the same fixture does encode when the score succeeds" [ "image/webp" ]
+    (encode_mimes ());
+  Alcotest.(check bool)
+    "and the handle it issued resolves" true
+    (Brr.Blob.byte_length (blob_under clean.Processing.blob_id) > 0)
+
+(* When the score and the encode would both fail, the reported failure is the
+   score's, because that is the stage which actually ran: the encoder is never
+   asked at all.
+
+   The second arm is what makes this a statement about precedence rather than
+   about a dead switch. With only the encoder failing, the same fixture blames
+   the encode - so the injection is live, and the first arm's answer comes from
+   the ordering rather than from an injection that did nothing. *)
+let test_score_failure_is_reported_over_encode_failure () =
+  let config = fixture_config () in
+  reset ();
+  set_source ~width:1000 ~height:750;
+  starve_context_for_width 100;
+  inject_failure "encode";
+  let both = failure_of (run_pipeline ~blob_id:(stored_source ()) ~config) in
+  Alcotest.(check string)
+    "the score's failure is reported, not the encoder's" "canvas"
+    (stage_of_error both);
+  Alcotest.(check bool)
+    "and it names the pass that produced it" true
+    (Test_util.string_contains (detail_of_error both) ~sub:"sharpness");
+  reset ();
+  set_source ~width:1000 ~height:750;
+  inject_failure "encode";
+  let encode_only =
+    failure_of (run_pipeline ~blob_id:(stored_source ()) ~config)
+  in
+  Alcotest.(check string)
+    "the same encoder injection blames the encode on its own" "encode"
+    (stage_of_error encode_only)
+
 exception Dispatch_refused
 
 (* Starts the pipeline with a delivery that raises, drains the deferred stages,
@@ -277,6 +345,10 @@ let tests =
       `Quick test_error_mapper_classifies_by_stage;
     Alcotest.test_case "the decoded image is freed on a failing path" `Quick
       test_bitmap_released_on_failure;
+    Alcotest.test_case "a pass that cannot be scored stores nothing" `Quick
+      test_score_failure_encodes_nothing;
+    Alcotest.test_case "the score's failure outranks the encoder's" `Quick
+      test_score_failure_is_reported_over_encode_failure;
     Alcotest.test_case "the outcome is delivered once when delivery raises"
       `Quick test_resolves_once_when_dispatch_raises;
     Alcotest.test_case

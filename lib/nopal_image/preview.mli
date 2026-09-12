@@ -14,10 +14,32 @@
     picture with another releases the URL it replaces first, or every picture it
     has ever shown is retained for the life of the session.
 
-    This is the third seam built in this shape: a backend record, a registration
-    function, and command builders that read the registration. A fourth consumer
-    of the shape is the point at which lifting a shared registry pays for
-    itself; a third is not, so the duplication here is deliberate. *)
+    Four seams are now built in this shape: a backend record, a registration
+    function, and command builders that read the registration. This paragraph
+    used to name the fourth consumer as the point at which lifting a shared
+    registry would pay for itself. The fourth arrived, the lift was evaluated
+    against it, and it was declined.
+
+    What repeats across the four is not a near-identical block. The four backend
+    records share nothing but the name: [{ process }], [{ url; revoke }],
+    [{ release }] and [{ send }] have no field, no arity and no result type in
+    common, so what four sites hold identically is a [ref] and a one-line setter
+    read at four unrelated types - two lines whose only differing content is the
+    type they stand at. The shape has diverged exactly where a lift would have
+    to bind it, and that is the ground.
+
+    Two lesser ones sit under it. The eight lines across the four have no shared
+    home: three of them sit in this package and one does not, so a shared
+    registry needs a package of its own or a widening of what [Nopal_mvu] is
+    for. And each registration function is documented with prose about its own
+    seam, which a shared one cannot carry - a property of the shape that only
+    became visible on the attempt to write the fourth.
+
+    The count is spent, and no further one re-opens this. What would: a seam
+    whose registration needs behaviour rather than storage, or a third package
+    acquiring one of these seams. That the seams span two packages is not itself
+    a reason - they already did when there were three, so the count was set
+    without weighing it. *)
 
 (** What went wrong while asking for a displayable URL. Each constructor names
     the reason and carries a description of the specific failure. *)

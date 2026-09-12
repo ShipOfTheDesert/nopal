@@ -35,11 +35,17 @@ type result_info = {
           length, which is a different quantity from the raw RGBA length
           [Buffer.byte_size] reports for the same picture. *)
   sharpness : float;
-      (** focus score measured over the processed pixels, on the scale
-          [Sharpness.score] defines *)
+      (** focus score measured over a second, smaller draw of the same image,
+          scaled down to [Config.metric_edge] before any encoding, on the scale
+          [Sharpness.score] defines. A rejection threshold calibrated against
+          this score therefore moves with [Config.metric_edge], which changes
+          what was measured, and not with [Config.quality], which changes only
+          the stored bytes. *)
 }
-(** What a completed processing pass produced. Every field describes the image
-    that was actually stored, never the parameters that were asked for. *)
+(** What a completed processing pass produced. Every field but [sharpness]
+    describes the image that was actually stored, never the parameters that were
+    asked for; [sharpness] is taken before anything is stored and describes the
+    photograph rather than the artefact. *)
 
 type backend = {
   process :

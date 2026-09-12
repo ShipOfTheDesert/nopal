@@ -62,7 +62,7 @@ let test_registered_backend_runs_the_browser_pipeline () =
   in
   Alcotest.(check (list string))
     "the command ran the browser pipeline's stages in order"
-    [ "decode"; "draw"; "encode"; "draw"; "pixels"; "release" ]
+    [ "decode"; "draw"; "pixels"; "draw"; "encode"; "release" ]
     (calls ());
   Alcotest.(check int)
     "the command's result reports the size the upload canvas was drawn at" 900
@@ -97,10 +97,15 @@ let test_restoring_the_default_unregisters_the_backend () =
   set_source ~width:1000 ~height:750;
   let config = fixture_config () in
   let source_id = stored_source () in
-  ignore
-    (with_browser_backend (fun () ->
-         single ~context:"the registered browser backend"
-           (dispatched ~blob_id:source_id ~config)));
+  let while_registered =
+    processed
+      (with_browser_backend (fun () ->
+           single ~context:"the registered browser backend"
+             (dispatched ~blob_id:source_id ~config)))
+  in
+  Alcotest.(check bool)
+    "the browser backend did answer while it was registered" true
+    (String.length while_registered.Processing.blob_id > 0);
   reset ();
   set_source ~width:1000 ~height:750;
   let outcome =

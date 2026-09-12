@@ -1,6 +1,7 @@
 open Nopal_test.Test_renderer
 module E = Nopal_element.Element
 module Processing = Nopal_image.Processing
+module Retention = Nopal_image.Retention
 
 (* A capture flow small enough to read in one screen and complete enough to reach
    the upload: pick a photo, process it on device, branch on how sharp it came
@@ -60,20 +61,78 @@ let processed_part handle =
              (Nopal_image.Config.format (capture_config ())));
     }
 
+(* The photo the picker handed over, while the flow is still holding it. *)
+let picked_handle model =
+  match model.selected with
+  | Some file -> [ file.E.blob_id ]
+  | None -> []
+
+(* The encode the last pass produced, while the flow is still holding it. A pass
+   still running has produced none, a pass that failed stored nothing, and a
+   photo sent back for another shot released its encode as the score was
+   rejected. The upload stages keep theirs deliberately: a request on its way is
+   reading exactly those bytes, so they are not among what a selection change
+   frees. *)
+let held_encode model =
+  match model.stage with
+  | Ready info -> [ info.Processing.blob_id ]
+  | Idle
+  | Measuring
+  | Retake _
+  | Failed _
+  | Sending _
+  | Sent _
+  | Send_failed _ ->
+      []
+
+(* Both stored images the flow is holding at this moment. *)
+let held_handles model = picked_handle model @ held_encode model
+
+(* Everything named here, released. A stored image stays held until something
+   releases it - no runtime, no unmount and no collector does it - so a flow that
+   lets one go without this retains every photo the user has taken for the rest
+   of the session. *)
+let release_handles handles =
+  Nopal_mvu.Cmd.batch
+    (List.map (fun blob_id -> Retention.release ~blob_id) handles)
+
 let update model msg =
   match msg with
-  | Selected [] -> ({ selected = None; stage = Idle }, Nopal_mvu.Cmd.none)
+  | Selected [] ->
+      (* The picker emptied. The photo it was holding and the encode measured
+         from it are what it stops describing, so they are released here rather
+         than dropped. *)
+      ({ selected = None; stage = Idle }, release_handles (held_handles model))
   | Selected (file :: _) ->
+      (* A photo replaced by another. What the flow was holding goes as the
+         replacement arrives, minus the handle just picked: a selection is issued
+         a distinct handle every time and no handle is ever reused, but that
+         promise is made in another package, and if it were broken this arm would
+         free the bytes the pass it is starting is about to read. *)
       ( { selected = Some file; stage = Measuring },
-        Processing.process ~blob_id:file.E.blob_id ~config:(capture_config ())
-          (fun result -> Processed result) )
+        Nopal_mvu.Cmd.batch
+          [
+            release_handles
+              (List.filter
+                 (fun handle -> not (String.equal handle file.E.blob_id))
+                 (held_handles model));
+            Processing.process ~blob_id:file.E.blob_id
+              ~config:(capture_config ()) (fun result -> Processed result);
+          ] )
   | Processed (Ok info) ->
-      let stage =
+      (* The pass stored its encode before it answered, and the retake branch is
+         the one exit that never offers to send that encode: the flow is holding
+         bytes it has already decided not to use. They are released as the score
+         is rejected rather than left for a replacement that may never be
+         picked. The photo itself stays picked, so it is not released here. *)
+      let stage, released =
         match Float.compare info.Processing.sharpness sharp_enough >= 0 with
-        | true -> Ready info
-        | false -> Retake info.Processing.sharpness
+        | true -> (Ready info, Nopal_mvu.Cmd.none)
+        | false ->
+            ( Retake info.Processing.sharpness,
+              release_handles [ info.Processing.blob_id ] )
       in
-      ({ model with stage }, Nopal_mvu.Cmd.none)
+      ({ model with stage }, released)
   | Processed (Error error) ->
       ({ model with stage = Failed error }, Nopal_mvu.Cmd.none)
   | Accept_clicked -> (
@@ -179,7 +238,18 @@ let camera_photo =
   E.file_info ~blob_id:"blob-camera-1" ~name:"IMG_0042.jpg" ~size:3_145_728
     ~mime:"image/jpeg" ~last_modified:1_700_000_000_000.
 
+(* A second photo, so a case about a replaced selection can name the handle that
+   went and the handles that stayed rather than counting releases. *)
+let other_photo =
+  E.file_info ~blob_id:"blob-camera-2" ~name:"IMG_0043.jpg" ~size:2_097_152
+    ~mime:"image/jpeg" ~last_modified:1_700_000_500_000.
+
 let processed_handle = "blob-processed-9f2"
+
+(* The encode a pass over [other_photo] produces. Distinct from the first pass's,
+   so a transition that released the encode it had just produced is visible in
+   the ledger rather than hidden behind a shared handle. *)
+let replacement_handle = "blob-processed-c47"
 
 (* Every field stated; the dimensions and byte size are unrelated to any config
    value, so a result echoed from the parameters would be visible. *)
@@ -189,6 +259,15 @@ let processed_info ~sharpness =
     width = 1024;
     height = 768;
     byte_size = 214_007;
+    sharpness;
+  }
+
+let replacement_info ~sharpness =
+  {
+    Processing.blob_id = replacement_handle;
+    width = 1440;
+    height = 1080;
+    byte_size = 301_442;
     sharpness;
   }
 
@@ -217,6 +296,68 @@ let image_backend ~calls ~outcome =
         calls := (blob_id, config) :: !calls;
         Nopal_mvu.Task.return outcome);
   }
+
+(* A backend that answers per picked handle rather than per call, so a case
+   driving two selections gets the outcome belonging to each rather than to the
+   order they happened to arrive in. A handle nothing was scripted for fails the
+   case instead of being answered, which is what keeps a flow that processed the
+   wrong photo from passing. *)
+let keyed_image_backend outcomes =
+  {
+    Processing.process =
+      (fun ~blob_id ~config:_ ->
+        match List.assoc_opt blob_id outcomes with
+        | Some outcome -> Nopal_mvu.Task.return outcome
+        | None ->
+            Alcotest.failf
+              "the flow processed a handle no outcome was scripted for: %s"
+              blob_id);
+  }
+
+(* Handles the release seam was asked to let go of, newest first while it is
+   being built. A ledger of handles rather than a count of calls: a flow that
+   released the handle it is still holding and one that released the handle it
+   replaced are the same number, and which handle went is the whole claim. *)
+let released_handles : string list ref = ref []
+
+(* Every field written out. The seam has one, and it records rather than frees:
+   this flow is native-compiled and cannot name a browser store, so a stub parked
+   here is the only place a release is observable at all. *)
+let retention_backend =
+  {
+    Retention.release =
+      (fun ~blob_id -> released_handles := blob_id :: !released_handles);
+  }
+
+(* The ledger in the order the releases happened. *)
+let released () = List.rev !released_handles
+
+(* Installs the stub for the duration of [f] and restores the default
+   afterwards, so a failing assertion cannot leak it into the next case. The
+   ledger is reset on the way IN, because a case reads what was released after
+   the exchange it was released during has closed. *)
+let with_retention_backend f =
+  released_handles := [];
+  Fun.protect
+    ~finally:(fun () -> Retention.register_backend Retention.default_backend)
+    (fun () ->
+      Retention.register_backend retention_backend;
+      f ())
+
+(* The flow driven the way the runtime drives it: every command a step returns is
+   executed and whatever it dispatches is folded straight back in. [at] renders a
+   trace and discards its commands, and [advance] keeps only the last one, so
+   neither can see a release - a release is all command and no message. Returns
+   the cell holding the current model alongside the send function, so a case can
+   assert what the flow was holding before the transition it is about. *)
+let driver () =
+  let model = ref (fst (init ())) in
+  let rec send msg =
+    let next, cmd = update !model msg in
+    model := next;
+    Nopal_mvu.Cmd.execute send cmd
+  in
+  (model, send)
 
 let http_backend ~requests ~outcome =
   {
@@ -401,6 +542,110 @@ let test_accept_uploads_processed_handle () =
   Alcotest.(check string)
     "the reply reaches the model" "Sent" (stage_name model.stage)
 
+(* A stored image stays held until something releases it - no runtime, no unmount
+   and no collector does it - so a flow that stops holding one without releasing
+   it retains every photo the user has taken for the life of the session. This is
+   the shape a consuming application copies, so each transition that lets go of a
+   photo here releases what it let go of.
+
+   The exact list is the claim rather than a count: a transition that released the
+   handle it is still holding would satisfy any count written instead, and would
+   free bytes the flow is about to read. *)
+let test_clearing_the_picker_releases_the_handles_it_held () =
+  let current, send = driver () in
+  with_retention_backend (fun () ->
+      with_image_backend
+        (image_backend ~calls:(ref [])
+           ~outcome:(Ok (processed_info ~sharpness:41.5)))
+        (fun () ->
+          send (Selected [ camera_photo ]);
+          (* The affirmative arm on the same fixture: a flow still holding the
+             photo it measured has released nothing, so the list below is what
+             the empty selection let go of rather than every handle the flow has
+             ever named. *)
+          Alcotest.(check string)
+            "the flow is holding a measured photo before the picker empties"
+            "Ready"
+            (stage_name !current.stage);
+          Alcotest.(check (list string))
+            "and has released nothing while that photo is still its to send" []
+            (released ());
+          send (Selected [])));
+  Alcotest.(check string)
+    "clearing the picker returns the flow to its untouched stage" "Idle"
+    (stage_name !current.stage);
+  Alcotest.(check (list string))
+    "and releases the cleared photo and the encode measured from it"
+    [ camera_photo.E.blob_id; processed_handle ]
+    (released ())
+
+(* A photo replaced by another. The handles let go of here are superseded rather
+   than discarded, which is what makes the exact list the claim: a transition
+   that released the photo it had just picked, or the encode the replacement is
+   about to produce, would satisfy every count that could be written instead. *)
+let test_replacing_the_selection_releases_the_superseded_handles () =
+  let current, send = driver () in
+  with_retention_backend (fun () ->
+      with_image_backend
+        (keyed_image_backend
+           [
+             (camera_photo.E.blob_id, Ok (processed_info ~sharpness:41.5));
+             (other_photo.E.blob_id, Ok (replacement_info ~sharpness:41.5));
+           ])
+        (fun () ->
+          send (Selected [ camera_photo ]);
+          Alcotest.(check string)
+            "the first photo is measured before it is replaced" "Ready"
+            (stage_name !current.stage);
+          Alcotest.(check (list string))
+            "and nothing has been released up to that point" [] (released ());
+          send (Selected [ other_photo ])));
+  Alcotest.(check string)
+    "the replacement is what the flow ends up describing" "IMG_0043.jpg"
+    (selected_name !current);
+  Alcotest.(check (list string))
+    "the superseded photo and its encode are released, and the replacement's \
+     own handles are not"
+    [ camera_photo.E.blob_id; processed_handle ]
+    (released ())
+
+(* A photo sent back for another shot. The pass stored an encode before it
+   answered and the retake branch is the one exit that never offers to send it,
+   so the entry is released as the score is rejected rather than waiting for a
+   replacement that may never be picked. The photo itself stays picked - the flow
+   still names it in its readout - so what is owed here is one release and not
+   two. *)
+let test_a_retake_releases_the_encode_it_discards () =
+  let sharp_current, sharp_send = driver () in
+  with_retention_backend (fun () ->
+      with_image_backend
+        (image_backend ~calls:(ref [])
+           ~outcome:(Ok (processed_info ~sharpness:41.5)))
+        (fun () -> sharp_send (Selected [ camera_photo ])));
+  (* The affirmative arm: the same pass over the same photo, scored on the other
+     side of the threshold, releases nothing at all - so the release below
+     belongs to the retake branch rather than to having processed a photo. *)
+  Alcotest.(check string)
+    "a sharp enough photo is ready to upload" "Ready"
+    (stage_name !sharp_current.stage);
+  Alcotest.(check (list string))
+    "and a pass whose encode the flow is going to send releases nothing" []
+    (released ());
+  let current, send = driver () in
+  with_retention_backend (fun () ->
+      with_image_backend
+        (image_backend ~calls:(ref [])
+           ~outcome:(Ok (processed_info ~sharpness:3.5)))
+        (fun () -> send (Selected [ camera_photo ])));
+  Alcotest.(check string)
+    "a blurry photo is sent back for another shot" "Retake"
+    (stage_name !current.stage);
+  Alcotest.(check string)
+    "with the photo still picked" "IMG_0042.jpg" (selected_name !current);
+  Alcotest.(check (list string))
+    "and the encode it will never send released, the picked photo left alone"
+    [ processed_handle ] (released ())
+
 let () =
   Alcotest.run "Nopal_image"
     [
@@ -410,5 +655,15 @@ let () =
             test_flow_branches_on_sharpness;
           Alcotest.test_case "accept uploads the processed handle" `Quick
             test_accept_uploads_processed_handle;
+        ] );
+      ( "Release discipline",
+        [
+          Alcotest.test_case "clearing the picker releases the handles it held"
+            `Quick test_clearing_the_picker_releases_the_handles_it_held;
+          Alcotest.test_case
+            "replacing the selection releases the superseded handles" `Quick
+            test_replacing_the_selection_releases_the_superseded_handles;
+          Alcotest.test_case "a retake releases the encode it discards" `Quick
+            test_a_retake_releases_the_encode_it_discards;
         ] );
     ]

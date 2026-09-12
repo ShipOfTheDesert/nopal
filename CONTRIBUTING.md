@@ -95,7 +95,7 @@ close it.
 Each record lives beside the rule it defers, so the next reader of that rule
 sees the exception: D-1, D-2 and D-6 under [E2E tests](#e2e-tests-playwright),
 D-3 under [Performance](#performance), D-4 under [Kitchen Sink](#kitchen-sink),
-D-5 under [VIII. Bug-Class Prevention](#viii-bug-class-prevention).
+D-5 and D-7 under [VIII. Bug-Class Prevention](#viii-bug-class-prevention).
 
 ## Running Tests
 
@@ -455,7 +455,7 @@ nopal_style        ← no platform deps
 nopal_scene        ← depends on style, no platform deps (Color, Paint, Transform, Path, Scene)
 nopal_draw         ← depends on scene + style (Scale + higher-level Path algorithms)
 nopal_http         ← depends on mvu, no platform deps
-nopal_image        ← depends on mvu, no platform deps (Buffer, Luma, Sharpness, Config, Processing, Preview)
+nopal_image        ← depends on mvu, no platform deps (Buffer, Luma, Sharpness, Config, Processing, Preview, Retention)
 nopal_router       ← no platform deps
 nopal_runtime      ← depends on mvu + element + lwd
 nopal_web          ← depends on runtime + brr + js_of_ocaml
@@ -463,8 +463,8 @@ nopal_blob_web     ← depends on brr + js_of_ocaml (session-local blob handle r
                      + displayable object URLs)
 nopal_http_web     ← depends on nopal_http + nopal_blob_web + brr + js_of_ocaml
 nopal_image_web    ← depends on nopal_image + nopal_mvu + nopal_blob_web + brr + js_of_ocaml
-                     (public module is the two seams — Processing and Preview;
-                      bindings live in the nopal_image_web.internal sub-library)
+                     (public module is the three seams — Processing, Preview and
+                      Retention; bindings live in the nopal_image_web.internal sub-library)
 nopal_test         ← depends on element + style + mvu + runtime (must build on native OCaml)
 ```
 
@@ -619,9 +619,9 @@ A sixth, cross-cutting rule from the same audit: **an E2E spec that CI does not
 execute is a failing test** — every spec must be wired to a CI-run Playwright
 project, enforced by `just check-e2e-wired`.
 
-**There is one current decision not to cover (D-5)** — see [Deferrals and
-decisions not to cover](#deferrals-and-decisions-not-to-cover) for the `D-n`
-scheme.
+**There is one current decision not to cover (D-5) and one open deferral
+(D-7)** — see [Deferrals and decisions not to cover](#deferrals-and-decisions-not-to-cover)
+for the `D-n` scheme.
 
 #### Decision not to cover D-5 — the catalogue pointers name a tree this repository does not ship
 
@@ -667,6 +667,34 @@ the strip.
 deferred. It printed its pointer to a person at the moment its gate failed,
 which is the worst place for a reference that cannot be opened; it now states
 the rule and cites this section.
+
+#### Open deferral D-7 — a settled upload in the reference capture flow keeps the encode it sent
+
+**Owner: whoever next changes the upload stages of the reference capture flow in
+`test/unit/examples/test_image_processing_flow.ml`, in the change that does it.**
+
+That flow is the canonical minimal capture app — picker, `Processing` pass,
+upload — and a consumer copies it. It releases the handles it stops holding at
+three of its four transitions (cleared picker, replaced selection, retake), added
+with the release seam `Nopal_image.Retention` on 2026-09-11. The fourth is not
+done: when an upload settles, the `Sending info` payload is dropped, so the
+encode it sent becomes unreachable from the model and stays resident for the rest
+of the page session — a stranded handle of the same kind the seam exists to
+remove, differing only in that it is a reference example rather than a library.
+
+It is deferred rather than fixed because the fix is not local. `Send_finished`'s
+arms currently match no stage at all, so releasing there means matching all eight
+stages exhaustively — the catch-all `_` this document forbids is not an option —
+and that changes behaviour for a reply arriving after the flow has moved on,
+which the flow has no case for today. That is a behaviour change with its own
+design question, not a line added beside three others, and it was kept out of the
+change that added the other three deliberately.
+
+The pattern to copy already exists: the kitchen-sink receipt section covers the
+same transition with `test_a_finished_upload_releases_both_handles` in
+`test/unit/kitchen_sink/test_receipt_flow_section.ml`, including the reason it is
+safe to release there (the section hides its discard control while an upload is
+in flight, so the bytes in flight are never the bytes released).
 
 ## Commit Style
 
@@ -810,7 +838,7 @@ names who writes the case.
 
 `nopal_image_web` was the previous one. Its section is the kitchen sink's receipt
 flow, and `test/e2e/tests/kitchen-sink-receipt-flow.spec.ts` drives the real
-canvas pipeline through it — decode, downscale, re-encode, sharpness, and the
+canvas pipeline through it — decode, sharpness, downscale, re-encode, and the
 multipart upload of the processed handle.
 
 That section now also renders the photograph it picked and the photograph it

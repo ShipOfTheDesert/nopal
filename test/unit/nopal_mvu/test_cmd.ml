@@ -161,6 +161,35 @@ let test_cmd_batch_deep_nesting () =
   Nopal_mvu.Cmd.execute dispatch cmd;
   Alcotest.(check (list int)) "deep nesting executes" [ 1 ] !results
 
+(* The order of a batch's children is a promise [cmd.mli] makes rather than an
+   accident of the interpreter: a caller may place an effect ahead of another one
+   that must not happen first - a resource released before something asks after
+   it again - and has no other way to express the dependency. The nesting is part
+   of the claim, since flattening a nested batch must not reorder what it
+   flattens, and both interpreters are asserted because a caller reaches one of
+   them through the runtime and the other through a test. *)
+let test_cmd_batch_interprets_children_in_list_order () =
+  let seen = ref [] in
+  let step n = Nopal_mvu.Cmd.perform (fun _dispatch -> seen := n :: !seen) in
+  let cmd =
+    Nopal_mvu.Cmd.batch
+      [ step 1; Nopal_mvu.Cmd.batch [ step 2; step 3 ]; step 4 ]
+  in
+  Nopal_mvu.Cmd.execute (fun (_ : int) -> ()) cmd;
+  Alcotest.(check (list int))
+    "execute interprets a batch's children in list order" [ 1; 2; 3; 4 ]
+    (List.rev !seen);
+  seen := [];
+  Nopal_mvu.Cmd.interpret
+    ~focus:(fun _id -> ())
+    ~scroll_by:(fun _id _delta -> ())
+    ~dispatch:(fun (_ : int) -> ())
+    ~schedule_after:(fun _ms _msg -> ())
+    cmd;
+  Alcotest.(check (list int))
+    "interpret interprets a batch's children in list order" [ 1; 2; 3; 4 ]
+    (List.rev !seen)
+
 let test_cmd_map_transforms_task () =
   let results = ref [] in
   let dispatch msg = results := msg :: !results in
@@ -194,6 +223,8 @@ let () =
           Alcotest.test_case "map none" `Quick test_cmd_map_none;
           Alcotest.test_case "batch deep nesting" `Quick
             test_cmd_batch_deep_nesting;
+          Alcotest.test_case "batch interprets children in list order" `Quick
+            test_cmd_batch_interprets_children_in_list_order;
           Alcotest.test_case "interpret single pass" `Quick
             test_cmd_interpret_single_pass;
           Alcotest.test_case "map transforms task" `Quick

@@ -49,6 +49,11 @@ const ACCEPT = `${SECTION} [data-field="receipt-accept"]`;
 // label, so it is neither scanned nor clicked by anything that only ever drives
 // the sharp fixture.
 const RESHOOT = `${SECTION} [data-field="receipt-reshoot"]`;
+// The third control on the verdict row, rendered on both sides of the threshold
+// for any measured photo the section is still holding. It lets the photo go
+// without asking for another, which is what makes it the one control on the
+// page from which a release is observable.
+const DISCARD = `${SECTION} [data-field="receipt-discard"]`;
 // The before/after pair, and each half of it. `Element.image` carries no
 // per-element attributes, so the section hangs the anchor on the wrapper around
 // each picture and the `<img>` is selected through it. Rendered only once both
@@ -108,14 +113,25 @@ const SETTLE = 20000;
 // `storage.spec.ts`, which pays the same headless warm-up twice.
 //
 // Raised from four with the preview tests. The longest `SETTLE`-bounded chain
-// is still four — the axe-with-previews test waits on the message, the model
+// was four then — the axe-with-previews test waits on the message, the model
 // and each of the two images — but those tests put work inside the same budget
 // that the old figure did not account for: an axe scan of a section that now
 // carries two decoded photographs, and, in the re-selection loop, three
 // complete decode/scale/encode passes rather than one. The extra `SETTLE` is
 // headroom for that, so a slow box still fails on the wait it is in rather than
 // on the enclosing test timeout.
-const CHAINED_WAITS = 5;
+//
+// Raised again with the release tests, which is where the longest chain now is.
+// The discard test waits on the ready model, on each half of the pair being
+// visible, on the discard message, on the refusal model and on the readout —
+// six. The residency test waits on the message, the ready model, the decoded
+// pair, the upload message, the pair again and the fresh decode of each of the
+// two URLs — seven. Each of those is bounded by `SETTLE` on its own, so the
+// ceiling has to cover them in series even though a passing run resolves every
+// one of them in well under a second. This figure is that ceiling and not a
+// budget a green run approaches: its only job is to leave a failure reporting
+// the wait it happened in rather than the test timeout.
+const CHAINED_WAITS = 8;
 const TEST_TIMEOUT = CHAINED_WAITS * SETTLE + 30000;
 
 // This section's own record inside the kitchen sink's single serialized model.
@@ -246,6 +262,40 @@ async function waitForDecodedPair(
       "the preview pair left the page between the decode gate and the read"
     );
   return { original: pair.original, processed: pair.processed };
+}
+
+// Whether the bytes a `blob:` URL names can still be decoded, asked by loading
+// the URL fresh into an `Image` this page never mounted.
+//
+// The difference from reading the `<img>` already on screen is the whole
+// instrument. An element that decoded once keeps its picture: revoking its URL,
+// or freeing the bytes behind it, leaves `naturalWidth` exactly where it was, so
+// a probe of the mounted element stays green under precisely the defect this is
+// asked about. A fresh load has to resolve the URL again, so what it answers
+// about is the bytes and not a decode that already happened. The probe itself is
+// `waitForDecodedPair`'s — `naturalWidth > 0`, for the reason argued there — run
+// against an element no section owns.
+//
+// Measured rather than assumed. With the settled-upload transition mutated to
+// revoke the two URLs as well as release the two entries, the mounted halves
+// still reported their decoded sizes and still carried the same `src`s — every
+// assertion in the case below passed — and the two fresh loads here were the only
+// thing that went red. Re-run that mutation before weakening this probe.
+async function decodesFromScratch(page: Page, url: string): Promise<boolean> {
+  return await page.evaluate(
+    ([src, budget]: [string, number]) =>
+      new Promise<boolean>((resolve) => {
+        const probe = new Image();
+        probe.onload = () => resolve(probe.naturalWidth > 0);
+        probe.onerror = () => resolve(false);
+        // A URL naming nothing fails fast in Chromium, but an unbounded probe
+        // would hang the test rather than report, so it is bounded here as every
+        // other wait in this file is. A second resolve is a no-op.
+        setTimeout(() => resolve(false), budget);
+        probe.src = src;
+      }),
+    [url, SETTLE] as [string, number]
+  );
 }
 
 // One integer field out of a serialized record. Anchored on both sides — a field
@@ -844,6 +894,152 @@ test("the pair reports the payload it saved", async ({ page }) => {
   await telemetry.attachHistory(test.info());
 });
 
+test("discarding releases the entries behind the photo", async ({ page }) => {
+  const telemetry = new NopalTelemetry(page);
+
+  await page.locator(PICKER).setInputFiles(SHARP);
+
+  // The affirmative arm, and the reason this test can say anything at all about
+  // release. Both halves of the pair are on screen, which means the browser
+  // store minted an object URL for each of the two entries — so both were
+  // registered a moment before the discard, and the refusal below cannot be a
+  // handle that never named anything.
+  await telemetry.waitForModel("previews=ready;", SETTLE);
+
+  // The same arm in the DOM, and the exact inverse of the two count-zero
+  // assertions at the end of this test. Those two are satisfied by a pair that
+  // was never on screen — by a renamed test id, for one — so on their own they
+  // cannot fail for the reason they are written for. These two say the pair was
+  // there to be taken away, observed rather than inferred from a model
+  // fragment.
+  await expect(page.locator(ORIGINAL_IMG)).toBeVisible({ timeout: SETTLE });
+  await expect(page.locator(PROCESSED_IMG)).toBeVisible({ timeout: SETTLE });
+
+  // Anchored on the control's own `data-field` and on the message it dispatches,
+  // never on a count of actions since load: the page mounts every kitchen-sink
+  // section at once and nothing here may depend on where the focus ring happens
+  // to be. Finding the control is part of the contract, as it is for ACCEPT and
+  // RESHOOT — it is rendered only while a measured photo is still the section's
+  // to decide about.
+  await page.locator(DISCARD).click();
+  await telemetry.waitForMessage("ReceiptDiscardClicked;", SETTLE);
+
+  // The claim. The section asks the platform for an object URL naming each of
+  // the two entries it has just released, and the platform cannot mint one:
+  // releasing removed the entry, so the lookup a URL is minted from finds
+  // nothing. Nothing in the unit suites can produce this — they answer from a
+  // stub — and nothing in the DOM can show it either, since a section holding no
+  // pair renders no picture. It is why this case exists in a browser.
+  //
+  // The `previews=` prefix is load-bearing: `blob_not_found` is spelled the same
+  // in the `processing=` vocabulary, so a bare tag would not say which state
+  // machine reached it. The trailing ';' bounds the match on the right.
+  await telemetry.waitForModel("previews=failed:blob_not_found;", SETTLE);
+  await telemetry.assertRecordContains(
+    RECORD,
+    "previews=failed:blob_not_found;"
+  );
+
+  // And it is a discard rather than a failure to process: the pass succeeded and
+  // the section is now holding nothing, so the refusal above is the state of two
+  // entries that are gone rather than of a pass that fell over.
+  //
+  // Read out of ONE model state rather than asserted as a second fragment. Every
+  // model helper here answers from the whole recorded history —
+  // `assertRecordContains` scans the `after` of every transition, and
+  // `waitForModel` polls the same log — and this section serialises
+  // `processing=idle;` from page load onward, before a photo has ever been
+  // picked, so either of them would be satisfied by a state recorded before this
+  // test interacted with anything. What no earlier state can satisfy is the
+  // conjunction: the state carrying the preview refusal is the same state whose
+  // processing stage is idle. `latestRecord` reads the most recent one, which
+  // after the wait above is the post-discard model.
+  const record = await latestRecord(telemetry, RECORD);
+  expect(record).toContain("processing=idle;");
+  expect(record).toContain("previews=failed:blob_not_found;");
+
+  // Render correctness, and no more than that: the readout a person sees agrees
+  // with the model, and the pair a person was looking at is off the screen
+  // rather than left showing URLs whose entries have been freed. The two counts
+  // are paired with the visibility assertions before the click, which are what
+  // makes a zero here mean "taken away" rather than "never rendered"; the
+  // detector for the release itself is the refusal fragment above, not these.
+  await expect(page.locator(METADATA)).toContainText("No receipt selected", {
+    timeout: SETTLE,
+  });
+  await expect(page.locator(ORIGINAL_IMG)).toHaveCount(0);
+  await expect(page.locator(PROCESSED_IMG)).toHaveCount(0);
+
+  // No `events()` here, as in the accept test: `latestRecord` already drained,
+  // and the snapshot it left is the whole log since page load. A second drain
+  // would advance the cursor past it and attach the empty slice recorded since.
+  await telemetry.attachHistory(test.info());
+});
+
+test("a released entry leaves the picture minted from it on screen", async ({
+  page,
+}) => {
+  const telemetry = new NopalTelemetry(page);
+
+  // The reply is written here rather than left to the server, as in the accept
+  // test above: nothing in the repo serves this endpoint.
+  await page.route(UPLOAD_URL, async (route) => {
+    await route.fulfill({
+      status: 201,
+      contentType: "text/plain",
+      body: "stored",
+    });
+  });
+
+  await page.locator(PICKER).setInputFiles(SHARP);
+  await telemetry.waitForMessage("ReceiptProcessed:ok;", SETTLE);
+  await telemetry.waitForModel("previews=ready;", SETTLE);
+
+  // The two URLs, and the browser decoding both of them while the entries behind
+  // them are still registered: the affirmative arm for everything below, all of
+  // which is about what survives the release.
+  const before = await waitForDecodedPair(page, []);
+
+  // The settled upload is what releases the two entries here, and it is the one
+  // transition in the section that releases them while leaving the pair it minted
+  // on screen — a discard and a re-shoot revoke the URLs in the same breath,
+  // which is why neither of those cases can ask this question.
+  await page.locator(ACCEPT).click();
+  await telemetry.waitForMessage("ReceiptUploadFinished:ok:201;", SETTLE);
+
+  // That the release ran is carried by the transition rather than observed here:
+  // the seam dispatches nothing — `Retention.release` is a `Cmd.perform` whose
+  // backend call answers with unit — so no telemetry anywhere can name it, and
+  // which transition owes which releases is pinned structurally by
+  // `test_a_finished_upload_releases_both_handles`. What this case adds is that
+  // the pictures outlive it. The reading is not raced: the backend release is
+  // synchronous, so it has run inside the same task that recorded the transition,
+  // and nothing here can observe that transition before the next task.
+  await telemetry.assertRecordContains(RECORD, "upload=ok:201;");
+
+  // The lifetime claim `Nopal_image_web.release` states: releasing an entry is
+  // not revoking a URL minted from it, and a URL keeps the image's bytes resident
+  // after its entry is gone. Still the same two URLs first — nothing re-minted
+  // them, which a pair re-requested after the upload would have done and which
+  // would leave the decode below describing new entries rather than released
+  // ones.
+  const after = await waitForDecodedPair(page, []);
+  expect(after.original.src).toBe(before.original.src);
+  expect(after.processed.src).toBe(before.processed.src);
+
+  // And the residency itself, which nothing in OCaml can see. The seam's unit
+  // case pins that no `revokeObjectURL` call was made, which is necessary and not
+  // sufficient: a call that was not made says nothing about bytes, and this is
+  // the one place in the repository that asks the decoder instead. Loaded fresh
+  // rather than read off the mounted `<img>`, for the reason argued at
+  // `decodesFromScratch`.
+  expect(await decodesFromScratch(page, after.original.src)).toBe(true);
+  expect(await decodesFromScratch(page, after.processed.src)).toBe(true);
+
+  await telemetry.events();
+  await telemetry.attachHistory(test.info());
+});
+
 test("receipt section has no axe violations", async ({ page }, testInfo) => {
   // The idle section: the picker has no `<label for>` of its own, so its
   // accessible name comes from the call-site `aria-label`, and axe's `label`
@@ -860,11 +1056,14 @@ test("receipt section has no axe violations", async ({ page }, testInfo) => {
   // this section renders.
   await assertNoAxeViolations(page, testInfo, SECTION);
 
-  // The re-shoot side of the verdict. The scan above reaches only one of the two
-  // controls the section can offer, and they are different elements with
-  // different labels, so a re-shoot control that named itself badly would never
-  // have been scanned at all. Gated on the comparison fragment rather than on
-  // `ReceiptProcessed:ok;`, which the sharp photo above has already recorded.
+  // The re-shoot side of the verdict. Of the three controls the section can
+  // offer, the scan above reaches two — accept, and the discard beside it, which
+  // is offered on both sides of the threshold and is therefore in this scan as
+  // well. The one it cannot reach is re-shoot: a different element with a
+  // different label, offered only on the other side of the threshold, so a
+  // re-shoot control that named itself badly would never have been scanned at
+  // all. Gated on the comparison fragment rather than on `ReceiptProcessed:ok;`,
+  // which the sharp photo above has already recorded.
   await page.locator(PICKER).setInputFiles(BLURRED);
   await telemetry.waitForModel(COMPARISON, SETTLE);
 

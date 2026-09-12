@@ -4,6 +4,7 @@ module TextInput = Nopal_ui.TextInput
 module Config = Nopal_image.Config
 module Preview = Nopal_image.Preview
 module Processing = Nopal_image.Processing
+module Retention = Nopal_image.Retention
 
 type upload =
   | Not_started
@@ -81,6 +82,7 @@ type msg =
       result : (Processing.result_info, Processing.error) result;
     }
   | Reshoot_clicked
+  | Discard_clicked
   | Note_changed of string
   | Accept_clicked
   | Upload_finished of Nopal_http.outcome
@@ -107,6 +109,7 @@ let verdict_anchor = "receipt-flow-verdict"
 let upload_anchor = "receipt-flow-upload"
 let accept_field = "receipt-accept"
 let reshoot_field = "receipt-reshoot"
+let discard_field = "receipt-discard"
 let note_field = "receipt-note"
 
 (* The before-and-after pair, and each half of it. A picture element carries no
@@ -349,6 +352,51 @@ let release_held previews =
    number of the last request kept so the next one cannot repeat it. *)
 let released previews = No_previews { generation = current_generation previews }
 
+(* The stored image the picker handed over, while the section is still holding
+   one. *)
+let picked_handle model =
+  match model.selection with
+  | Some file -> [ file.Element.blob_id ]
+  | None -> []
+
+(* The stored image the last completed pass produced, while a measured photo is
+   what the section is holding. A stage that measured nothing holds none: a pass
+   still running has produced no encode, and a pass that failed stored nothing
+   at all. *)
+let measured_handle model =
+  match model.stage with
+  | Ready { info; source_byte_size = _; upload = _ } ->
+      [ info.Processing.blob_id ]
+  | Idle
+  | Working
+  | Failed _ ->
+      []
+
+(* Both stored images the section is holding at this moment. *)
+let held_handles model = picked_handle model @ measured_handle model
+
+(* Everything named here, released. A stored image stays held until something
+   releases it - no runtime, no unmount and no collector does it - so a section
+   that lets one go without this retains every photograph the user has taken for
+   the rest of the session.
+
+   Releasing an entry is not revoking a URL minted from it, and neither performs
+   the other: a revoked URL leaves its entry registered, so a transition that
+   revokes and does not release still leaks. Every arm that lets go of a photo
+   therefore owes both. *)
+let release_handles handles =
+  Nopal_mvu.Cmd.batch
+    (List.map (fun blob_id -> Retention.release ~blob_id) handles)
+
+(* A pass answering for a photo the section is no longer describing. It stored
+   the encode it produced before it answered and nothing is going to hold it, so
+   the entry is released here rather than dropped - the same treatment, one level
+   down, that a URL minted for a pair the section has moved off already gets. A
+   pass that failed stored nothing and has nothing to release. *)
+let release_discarded_pass = function
+  | Ok info -> Retention.release ~blob_id:info.Processing.blob_id
+  | Error _ -> Nopal_mvu.Cmd.none
+
 (* A URL that arrived for a pair the section is no longer showing. It pins its
    picture exactly as a shown one does and nothing is going to show it, so it is
    released here rather than dropped. A delivery carrying no URL has nothing to
@@ -405,6 +453,65 @@ let init () =
 let update model msg =
   match msg with
   | Note_changed note -> ({ model with note }, Nopal_mvu.Cmd.none)
+  | Discard_clicked -> (
+      (* A user finished with the photo, asking for what was stored for it to be
+         let go. It ends where a re-shoot ends - nothing picked, nothing
+         measured, the pair released and its two entries with it - and the score
+         stays behind for the same reason it does everywhere else in this
+         module: a later photo has to have something to be judged against.
+
+         What it does that no other arm does is show that the entries are gone
+         rather than merely forgotten. Releasing an entry and dropping the
+         handle naming it are different acts and only one of them frees
+         anything, so the arm asks the preview seam for a URL naming each entry
+         it has just released. A registered entry mints one; a released entry
+         cannot, and the refusal is reported in the vocabulary this section
+         already states for a pair it cannot show. The two handles are the same
+         two in both lists on purpose - what is asked after is exactly what was
+         let go.
+
+         The releases sit ahead of the requests in the batch, as they do in
+         every other arm that replaces a pair, and here the order is the whole
+         point rather than a matter of hygiene: asked first, the entries would
+         still be registered and would mint. *)
+      match (model.stage, model.selection) with
+      | Ready { info; source_byte_size = _; upload = Not_started }, Some file ->
+          let generation = next_generation model.previews in
+          let discarded =
+            (* The photo that passed the guard above and the encode measured
+               from it, never [model.selection] read again afterwards. *)
+            [ file.Element.blob_id; info.Processing.blob_id ]
+          in
+          ( {
+              model with
+              selection = None;
+              stage = Idle;
+              previous_score = score_left_behind model;
+              previews =
+                Preview_pending
+                  { generation; original = None; processed = None };
+            },
+            Nopal_mvu.Cmd.batch
+              [
+                release_held model.previews;
+                release_handles discarded;
+                request_previews ~generation ~original:file.Element.blob_id
+                  ~processed:info.Processing.blob_id;
+              ] )
+      (* The control is offered in one stage only, and only while the measured
+         photo is still the section's to do something with, so there is no other
+         stage from which anything can be discarded. Nothing was let go here, so
+         nothing is dropped by answering with the model unchanged. *)
+      | ( Ready
+            {
+              info = _;
+              source_byte_size = _;
+              upload = In_flight | Stored _ | Rejected _ | Undelivered _;
+            },
+          (Some _ | None) )
+      | Ready { info = _; source_byte_size = _; upload = Not_started }, None
+      | (Idle | Working | Failed _), (Some _ | None) ->
+          (model, Nopal_mvu.Cmd.none))
   | Reshoot_clicked ->
       (* The rejected photo's readout goes, but its score stays: a re-shoot is
          precisely the moment a user is trying to beat the photo they were just
@@ -412,7 +519,11 @@ let update model msg =
          against. The note stays too - it describes the receipt, not the photo
          of it. The pair goes with the readout, and the URLs holding it are
          released as it goes: the pictures are not on screen any more, and a
-         re-shoot is the one thing a user of this section does repeatedly. *)
+         re-shoot is the one thing a user of this section does repeatedly. The
+         two stored images go too - the photo that was picked and the encode
+         measured from it - because the URLs were only what displayed them, and
+         the entries behind those URLs are still registered once the URLs are
+         revoked. *)
       ( {
           model with
           selection = None;
@@ -420,11 +531,13 @@ let update model msg =
           previous_score = score_left_behind model;
           previews = released model.previews;
         },
-        release_held model.previews )
+        Nopal_mvu.Cmd.batch
+          [ release_held model.previews; release_handles (held_handles model) ]
+      )
   | Selected [] ->
       (* The picker emptied. It reaches the same place a re-shoot does and owes
-         the same release: the pictures it was showing describe a photo the user
-         has taken back. *)
+         the same two releases: the pictures it was showing describe a photo the
+         user has taken back, and so do the entries behind them. *)
       ( {
           model with
           selection = None;
@@ -432,12 +545,23 @@ let update model msg =
           previous_score = score_left_behind model;
           previews = released model.previews;
         },
-        release_held model.previews )
+        Nopal_mvu.Cmd.batch
+          [ release_held model.previews; release_handles (held_handles model) ]
+      )
   | Selected (file :: _) ->
       (* The pair on screen describes the photo being replaced, so it is let go
          here rather than when the replacement's own pair arrives - which may be
          two turns away, or never, if the pass fails. Releasing before asking is
-         what keeps a re-shoot loop from holding every picture it has shown. *)
+         what keeps a re-shoot loop from holding every picture it has shown.
+         The two stored images that pair was displaying go the same way and for
+         the same reason. The photo just picked is not among them, and the
+         filter below is what says so rather than the store's promise that it
+         cannot be: a selection is issued a distinct handle every time and no
+         handle is ever reused, so the set held here should never name the file
+         this arm is about to send for processing - but that promise is made in
+         another package, and if it were ever broken this arm would free the
+         bytes the pass it is starting is about to read. The handle being picked
+         is therefore taken out of the set here, where the section sees it. *)
       ( {
           model with
           selection = Some file;
@@ -448,6 +572,10 @@ let update model msg =
         Nopal_mvu.Cmd.batch
           [
             release_held model.previews;
+            release_handles
+              (List.filter
+                 (fun handle -> not (String.equal handle file.Element.blob_id))
+                 (held_handles model));
             Processing.process ~blob_id:file.Element.blob_id
               ~config:(capture_config ()) (fun result ->
                 Processed { source = file.Element.blob_id; result });
@@ -478,7 +606,10 @@ let update model msg =
                      batch and ahead of the requests. A second pass can answer
                      for a photo still picked - two passes over one handle can be
                      started and both are recorded - and that second answer
-                     replaces the pair the first one produced. *)
+                     replaces the pair the first one produced. The encode that
+                     pair was made from goes with it. The picked photo does not:
+                     it is the same file this pass answered for, and the section
+                     is still holding it. *)
                   let generation = next_generation model.previews in
                   ( {
                       model with
@@ -502,6 +633,7 @@ let update model msg =
                     Nopal_mvu.Cmd.batch
                       [
                         release_held model.previews;
+                        release_handles (measured_handle model);
                         request_previews ~generation ~original:source
                           ~processed:info.Processing.blob_id;
                       ] )
@@ -513,7 +645,11 @@ let update model msg =
                  reached by the one route where the picker never changed. It is
                  also the only exit this arm has: a failed stage offers no
                  re-shoot control, so a pair left standing here would be pinned
-                 until the user found the picker again. *)
+                 until the user found the picker again. The encode that
+                 measurement was taken from goes with the pair, for the reason
+                 the pair goes with the measurement; the picked photo stays,
+                 since the picker is still naming it and it is what a second
+                 attempt would be made from. *)
               | Error error ->
                   ( {
                       model with
@@ -521,15 +657,23 @@ let update model msg =
                       previous_score = score_left_behind model;
                       previews = released model.previews;
                     },
-                    release_held model.previews ))
+                    Nopal_mvu.Cmd.batch
+                      [
+                        release_held model.previews;
+                        release_handles (measured_handle model);
+                      ] ))
           (* A pass for a photo that has since been replaced. It measured
              something the section is no longer holding, so it is not written
-             over the photo that is. *)
-          | false -> (model, Nopal_mvu.Cmd.none))
+             over the photo that is - and the encode it stored on the way is
+             released rather than dropped, since nothing is ever going to hold
+             it. *)
+          | false -> (model, release_discarded_pass result))
       (* Nothing on screen is waiting for a measurement: the picker was cleared
          or the photo re-shot, so there is no photo to record one against, or
          the receipt has already been sent and re-measuring it now would put the
-         section back to offering an upload that is already out. *)
+         section back to offering an upload that is already out. Whatever the
+         pass stored is released on the same grounds as the arm above: nothing
+         here is ever going to hold it. *)
       | ( Ready
             {
               info = _;
@@ -542,7 +686,7 @@ let update model msg =
           | Ready { info = _; source_byte_size = _; upload = Not_started }
           | Failed _ ),
           None ) ->
-          (model, Nopal_mvu.Cmd.none))
+          (model, release_discarded_pass result))
   | Accept_clicked -> (
       match model.stage with
       | Ready { info; source_byte_size; upload = Not_started } ->
@@ -576,11 +720,32 @@ let update model msg =
   | Upload_finished outcome -> (
       match model.stage with
       | Ready { info; source_byte_size; upload = In_flight } ->
+          (* The reply landed, and with it the last thing either stored image was
+             being kept for. The bytes that were going have gone, and the two
+             readouts left behind - the measurement and how the upload went - are
+             read off the model rather than off the store. No settled upload
+             offers a control that would send the same receipt again, whichever
+             way it settled, so a photo still held here would be held for the
+             rest of the session: this is the exit a re-shoot and a discard have
+             and an accepted receipt did not.
+
+             The two pictures stay on screen. A URL keeps the picture it names
+             alive for as long as the URL is live, so releasing the entries
+             behind them frees the entries and not the pair a person is looking
+             at - which is the whole distinction this section exists to show,
+             read in the other direction.
+
+             The handles stay named in the model, because the readout beside them
+             is what the stage carries, so a photo picked after this asks for the
+             same release a second time. Releasing a handle twice is a no-op the
+             seam documents, which is why it says a caller may release whatever
+             it happens to hold without keeping a record of what it has already
+             let go. *)
           ( {
               model with
               stage = Ready { info; source_byte_size; upload = settled outcome };
             },
-            Nopal_mvu.Cmd.none )
+            release_handles (held_handles model) )
       (* A reply for a photo the section has already moved on from - the user
          picked another one, or re-shot, while the request was out. It belongs
          to a receipt that is no longer on screen, so it is not written over the
@@ -822,7 +987,12 @@ let verdict_children model =
             control ~variant:Button.Secondary ~field:reshoot_field
               ~on_click:(Some Reshoot_clicked) "Re-shoot this receipt"
       in
-      [ choice; Element.text calibration_note ]
+      [
+        choice;
+        control ~variant:Button.Secondary ~field:discard_field
+          ~on_click:(Some Discard_clicked) "Discard this receipt";
+        Element.text calibration_note;
+      ]
 
 (* Every field is written out rather than taken from a constructor and amended,
    so what the note field does is stated here in full. *)
@@ -1091,6 +1261,7 @@ let serialize_msg = function
   | Processed { source = _; result = Ok _ } -> "ReceiptProcessed:ok;"
   | Processed { source = _; result = Error _ } -> "ReceiptProcessed:error;"
   | Reshoot_clicked -> "ReceiptReshootClicked;"
+  | Discard_clicked -> "ReceiptDiscardClicked;"
   (* The note itself is deliberately absent: it is whatever the user typed, so
      asserting on it would pin a value no test can predict, and it travels on
      the wire where a browser test can read it. *)

@@ -14,7 +14,18 @@ val none : 'msg t
 (** A command that does nothing. *)
 
 val batch : 'msg t list -> 'msg t
-(** Combine multiple commands. Nested batches are flattened by the runtime. *)
+(** Combine multiple commands. Nested batches are flattened by the runtime.
+
+    A batch's children are interpreted in list order: the first command in the
+    list is interpreted before the second, and flattening a nested batch
+    preserves that order across the nesting. An effect that has to be started
+    before another - freeing a resource before something asks for it again, say
+    \- may therefore be placed ahead of it in the list.
+
+    Interpreting a command is not completing its effect. An asynchronous effect
+    started first may finish last, and an interpreter is free to defer a request
+    it cannot serve at the moment it reads it, so the guarantee is about the
+    order the children are handed to the interpreter and nothing more. *)
 
 val perform : ('msg dispatch -> unit) -> 'msg t
 (** [perform f] creates a command for a general effect that needs direct access

@@ -23,7 +23,11 @@ open Image_web_test_helpers
 (* 1000 x 750 capped at a 900 pixel long edge downscales to 900 x 675; the
    sharpness pass, capped at 100, draws the same source at 100 x 75. Neither
    pass reuses the other's size, so a pipeline that measured the upload canvas
-   instead of allocating a second one is visible. *)
+   instead of allocating a second one is visible.
+
+   The sharpness pass comes first because running it first is what leaves no
+   step below the store that can fail: a pass that cannot be scored stores
+   nothing. *)
 let test_pipeline_call_sequence () =
   reset ();
   set_source ~width:1000 ~height:750;
@@ -33,15 +37,51 @@ let test_pipeline_call_sequence () =
   in
   let info = processed (run_pipeline ~blob_id:(stored_source ()) ~config) in
   Alcotest.(check (list string))
-    "decode, the upload draw, encode, the metric draw, one pixel read, release"
-    [ "decode"; "draw"; "encode"; "draw"; "pixels"; "release" ]
+    "decode, the metric draw, one pixel read, the upload draw, encode, release"
+    [ "decode"; "draw"; "pixels"; "draw"; "encode"; "release" ]
     (calls ());
   Alcotest.(check (list (pair int int)))
-    "the upload pass and the sharpness pass draw at different target sizes"
-    [ (900, 675); (100, 75) ]
+    "the sharpness pass and the upload pass draw at different target sizes"
+    [ (100, 75); (900, 675) ]
     (draws ());
   Alcotest.(check int)
     "the stored image is the one the upload pass drew" 900 info.Processing.width
+
+(* The score is taken off an image the encoder has never seen: the metric draw
+   and the pixel read that follows it both complete before the encoder is asked
+   for anything.
+
+   Projecting [calls ()] down to the three stages that carry this ordering pins
+   the property itself rather than the whole sequence, which the case above
+   already owns; it also survives a later stage being added elsewhere in the
+   pipeline, which a full-sequence assertion does not. [draws ()] is what says
+   which of the two draws is the metric one, since both record under the same
+   name.
+
+   The score is not merely computed early - nothing downstream can revise it, so
+   an encoder that changed the pixels could not move it, and a threshold
+   calibrated against it is calibrated against the source at the metric edge. *)
+let test_pipeline_scores_before_encoding () =
+  reset ();
+  set_source ~width:1000 ~height:750;
+  let config =
+    capture_config ~max_edge:900 ~metric_edge:100 ~quality:0.55
+      ~format:Config.Webp
+  in
+  let info = processed (run_pipeline ~blob_id:(stored_source ()) ~config) in
+  Alcotest.(check (list (pair int int)))
+    "the metric pass draws before the upload pass"
+    [ (100, 75); (900, 675) ]
+    (draws ());
+  Alcotest.(check (list string))
+    "the metric draw and its pixel read both precede the encode"
+    [ "draw"; "pixels"; "draw"; "encode" ]
+    (List.filter
+       (fun call -> List.mem call [ "draw"; "pixels"; "encode" ])
+       (calls ()));
+  Alcotest.(check bool)
+    "the pass that scored early still stored an image" true
+    (String.length info.Processing.blob_id > 0)
 
 (* The pixels cross into OCaml exactly once per processed image, and on the
    sharpness canvas rather than the upload one. A pipeline that read the upload
@@ -152,6 +192,8 @@ let tests =
   [
     Alcotest.test_case "the pipeline runs its stages in order" `Quick
       test_pipeline_call_sequence;
+    Alcotest.test_case "the score is taken before the encode" `Quick
+      test_pipeline_scores_before_encoding;
     Alcotest.test_case "pixels cross exactly once" `Quick test_single_pixel_read;
     Alcotest.test_case "the encode uses the configured format" `Quick
       test_encode_uses_typed_format;

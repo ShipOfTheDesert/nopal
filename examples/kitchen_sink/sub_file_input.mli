@@ -5,10 +5,10 @@
     (name, reported MIME type, byte size), plus the upload leg that sends the
     picked file as one part of a [multipart/form-data] body.
 
-    The picker hands over an opaque store handle per file, never bytes. Picking
-    again supersedes the previous selection in this model but does not release
-    the handle it held — a stored blob lives for the page session and only an
-    explicit call by the application releases it. *)
+    The picker hands over an opaque store handle per file, never bytes. A stored
+    blob lives for the page session and only an explicit call by the application
+    releases it, so picking again releases the handles the superseded selection
+    was holding rather than dropping them. *)
 
 (** How the most recent upload attempt ended. Distinct from the selection: a
     file stays picked after its upload succeeds or fails. *)
@@ -51,7 +51,12 @@ val init : unit -> model * msg Nopal_mvu.Cmd.t
 val update : model -> msg -> model * msg Nopal_mvu.Cmd.t
 (** [Selected files] replaces the whole selection, so clearing the picker
     empties the readout rather than leaving it stale, and resets the upload
-    state so a previous outcome is not shown beside a new file. *)
+    state so a previous outcome is not shown beside a new file. It also releases
+    the stored images the superseded selection was holding, since nothing the
+    section can still offer names them: an emptied picker reaches the same arm
+    and releases everything. A handle carried over into the new selection is
+    excluded from that release, so a store that reissued one could not have the
+    bytes of the file just picked freed underneath it. *)
 
 val view : Nopal_element.Viewport.t -> model -> msg Nopal_element.Element.t
 (** Renders a labelled file picker restricted to images, a readout of the
