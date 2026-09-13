@@ -18,6 +18,12 @@ const PUSH = `${SECTION} [data-action="bottom-tabs-push"]`;
 const BACK = `${SECTION} [data-action="nav-back"]`;
 const GUTTER = `${SECTION} [data-testid="bottom-tabs-gutter"]`;
 const BAR = `${SECTION} [data-testid="bottom-tabs-bar"]`;
+const TOGGLE_BACK = `${SECTION} [data-action="bottom-tabs-toggle-back"]`;
+
+// The kitchen sink's fixed demo inset, from `demo_safe_area_bottom`, and the
+// `padding_bottom` its gutter style asks for on top of it.
+const DEMO_SAFE_AREA_BOTTOM = 34;
+const DEMO_GUTTER_PAD_BOTTOM = 6;
 
 // Generous: the first model→DOM frame in a worker can lag while the rAF loop
 // warms up on a display-server-less machine.
@@ -76,6 +82,55 @@ test("tab bar respects bottom safe-area inset", async ({ page }) => {
     .locator(GUTTER)
     .evaluate((el) => parseFloat(getComputedStyle(el).paddingBottom));
   expect(paddingBottom).toBeGreaterThan(0);
+});
+
+test("gutter style sums with the safe-area inset", async ({ page }) => {
+  // Render-correctness DOM assertion: `Bottom_tabs.with_gutter_style` replaces
+  // every field of the gutter's style except `padding_bottom`, which the inset
+  // is ADDED to. A setter documented cosmetic must not be able to drop the bar
+  // under a gesture bar, so 6 + 34 — not 6, and not 34.
+  const padding = await page.locator(GUTTER).evaluate((el) => {
+    const s = getComputedStyle(el);
+    return {
+      bottom: parseFloat(s.paddingBottom),
+      left: parseFloat(s.paddingLeft),
+    };
+  });
+  expect(padding.bottom).toBeCloseTo(
+    DEMO_SAFE_AREA_BOTTOM + DEMO_GUTTER_PAD_BOTTOM,
+    1
+  );
+  // The side padding is the half that proves the override reached the element
+  // at all: the inset alone would leave it at zero.
+  expect(padding.left).toBeGreaterThan(0);
+});
+
+test("the component back affordance can be suppressed", async ({ page }) => {
+  const telemetry = new NopalTelemetry(page);
+
+  // Suppression only has a subject on a pushed screen.
+  await page.locator(PUSH).click();
+  await telemetry.waitForMessage("BottomTabs:Push", SETTLE);
+  await expect(page.locator(BACK)).toHaveCount(1);
+
+  await page.locator(TOGGLE_BACK).click();
+  await telemetry.waitForMessage("BottomTabs:ToggleBack", SETTLE);
+  await expect(page.locator(BACK)).toHaveCount(0);
+
+  // The screen is still drawn and the stack is untouched — suppression removes
+  // an element, it does not navigate. The trailing ';' bounds each fragment
+  // (undelimited-telemetry-fragment-aliasing).
+  await expect(page.locator(TOGGLE_BACK)).toHaveCount(1);
+  await telemetry.assertModelContains("home_depth=2;");
+  await telemetry.assertModelContains("back_suppressed=true;");
+
+  // And it is reversible, which is what makes the absence above the flag's
+  // doing rather than the screen's.
+  await page.locator(TOGGLE_BACK).click();
+  await telemetry.waitForMessage("BottomTabs:ToggleBack", SETTLE);
+  await expect(page.locator(BACK)).toHaveCount(1);
+
+  await telemetry.attachHistory(test.info());
 });
 
 test("bar-level geometry reaches the tablist", async ({ page }) => {

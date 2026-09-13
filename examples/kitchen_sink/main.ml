@@ -502,6 +502,7 @@ let serialize_msg : App.msg -> string = function
   | App.Bottom_tabs_msg (Sub_bottom_tabs.Select id) -> "BottomTabs:Select:" ^ id
   | App.Bottom_tabs_msg (Sub_bottom_tabs.Push _) -> "BottomTabs:Push"
   | App.Bottom_tabs_msg Sub_bottom_tabs.Back -> "BottomTabs:Back"
+  | App.Bottom_tabs_msg Sub_bottom_tabs.Toggle_back -> "BottomTabs:ToggleBack"
   | App.Modal_msg Sub_modal.Open -> "Modal:Open"
   | App.Modal_msg Sub_modal.Close -> "Modal:Close"
   | App.Modal_msg (Sub_modal.FocusChanged id) -> "Modal:FocusChanged:" ^ id

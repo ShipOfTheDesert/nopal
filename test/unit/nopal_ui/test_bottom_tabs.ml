@@ -102,6 +102,42 @@ let test_back_hidden_at_root () =
     "no back affordance at root" true
     (Option.is_none (find (By_attr ("data-action", "nav-back")) (tree r)))
 
+(* --- Back suppression --- *)
+
+(* Both halves are asserted in one case on purpose: [None] on the nav-back
+   query is also what a component rendering nothing at all would answer, and it
+   is what the root-stack arm already answers. The affirmative arm is the
+   screen still being drawn, and the stack being one that *can* pop
+   (empty-assertion-needs-affirmative-arm). *)
+let test_back_suppressed_even_when_can_pop () =
+  let config =
+    make_config ~tabs ~active:"a" ~safe_area_bottom:0
+    |> BT.with_back_suppressed true
+  in
+  let r = render (BT.view config) in
+  Alcotest.(check bool)
+    "back affordance suppressed" true
+    (Option.is_none (find (By_attr ("data-action", "nav-back")) (tree r)));
+  match find (By_attr ("role", "tabpanel")) (tree r) with
+  | None -> Alcotest.fail "no tabpanel node"
+  | Some node ->
+      Alcotest.(check bool)
+        "the screen is still drawn" true
+        (Test_util.string_contains (text_content node) ~sub:"A-detail")
+
+(* The flag's *value* has to reach the consumer, not merely its presence: an
+   implementation branching on [Some _] passes the suppressed case and the
+   default case and fails only here (config-knob-must-reach-its-consumer). *)
+let test_back_not_suppressed_when_flag_is_false () =
+  let config =
+    make_config ~tabs ~active:"a" ~safe_area_bottom:0
+    |> BT.with_back_suppressed false
+  in
+  let r = render (BT.view config) in
+  Alcotest.(check bool)
+    "back affordance still present" true
+    (Option.is_some (find (By_attr ("data-action", "nav-back")) (tree r)))
+
 (* --- Safe-area gutter --- *)
 
 let gutter_padding_bottom r =
@@ -129,6 +165,70 @@ let test_zero_safe_area_no_padding () =
   let r = render (BT.view config) in
   Alcotest.(check (option (float 0.001)))
     "gutter padding_bottom = 0" (Some 0.0) (gutter_padding_bottom r)
+
+(* Labelled, and the two values kept distinct: both edges are floats landing on
+   one record, so a transposed pair would otherwise render and pass. The
+   distinct values are what make 48 readable as 14 + 34 rather than as either
+   number doubled. *)
+let gutter_top_pad = 10.0
+let gutter_bottom_pad = 14.0
+
+let padding_style ~top ~bottom =
+  Style.default
+  |> Style.with_layout (fun l ->
+      { l with padding_top = Some top; padding_bottom = bottom })
+
+(* --- The gutter's own style --- *)
+
+let gutter_padding_top r =
+  match find (By_attr ("data-testid", "bottom-tabs-gutter")) (tree r) with
+  | None -> Alcotest.fail "no gutter node"
+  | Some node -> (
+      match style node with
+      | None -> Alcotest.fail "gutter has no style"
+      | Some s -> s.layout.padding_top)
+
+let test_with_gutter_style_applied () =
+  let config =
+    make_config ~tabs ~active:"a" ~safe_area_bottom:0
+    |> BT.with_gutter_style
+         (padding_style ~top:gutter_top_pad ~bottom:(Some gutter_bottom_pad))
+  in
+  let r = render (BT.view config) in
+  Alcotest.(check (option (float 0.001)))
+    "gutter padding_top from the override" (Some 10.0) (gutter_padding_top r)
+
+(* The contract the safe area rests on: the inset is *added* to whatever the
+   caller asked for, so a cosmetic override cannot drop the bar under a gesture
+   bar. 14 + 34, not 14 and not 34. *)
+let test_gutter_style_padding_bottom_sums_with_inset () =
+  let inset =
+    Viewport.safe_area_bottom
+      (Viewport.make_safe_area ~top:0 ~right:0 ~bottom:34 ~left:0 ())
+  in
+  let config =
+    make_config ~tabs ~active:"a" ~safe_area_bottom:inset
+    |> BT.with_gutter_style
+         (padding_style ~top:gutter_top_pad ~bottom:(Some gutter_bottom_pad))
+  in
+  let r = render (BT.view config) in
+  Alcotest.(check (option (float 0.001)))
+    "gutter padding_bottom = 14 + 34" (Some 48.0) (gutter_padding_bottom r)
+
+(* A gutter style that says nothing about the bottom edge leaves the inset
+   exactly as it was, rather than resetting it to zero. *)
+let test_gutter_style_without_bottom_keeps_the_inset () =
+  let inset =
+    Viewport.safe_area_bottom
+      (Viewport.make_safe_area ~top:0 ~right:0 ~bottom:34 ~left:0 ())
+  in
+  let config =
+    make_config ~tabs ~active:"a" ~safe_area_bottom:inset
+    |> BT.with_gutter_style (padding_style ~top:gutter_top_pad ~bottom:None)
+  in
+  let r = render (BT.view config) in
+  Alcotest.(check (option (float 0.001)))
+    "gutter padding_bottom = 34" (Some 34.0) (gutter_padding_bottom r)
 
 (* --- Cosmetic overrides (with_* accessors) --- *)
 
@@ -390,6 +490,10 @@ let () =
           Alcotest.test_case "shown and emits when can_pop" `Quick
             test_back_shown_and_emits_when_can_pop;
           Alcotest.test_case "hidden at root" `Quick test_back_hidden_at_root;
+          Alcotest.test_case "suppressed even when can_pop" `Quick
+            test_back_suppressed_even_when_can_pop;
+          Alcotest.test_case "not suppressed when the flag is false" `Quick
+            test_back_not_suppressed_when_flag_is_false;
         ] );
       ( "safe area",
         [
@@ -397,6 +501,12 @@ let () =
             test_safe_area_bottom_applies_padding;
           Alcotest.test_case "no padding for zero inset" `Quick
             test_zero_safe_area_no_padding;
+          Alcotest.test_case "with_gutter_style applied to the gutter" `Quick
+            test_with_gutter_style_applied;
+          Alcotest.test_case "gutter padding_bottom sums with the inset" `Quick
+            test_gutter_style_padding_bottom_sums_with_inset;
+          Alcotest.test_case "a gutter style without a bottom keeps the inset"
+            `Quick test_gutter_style_without_bottom_keeps_the_inset;
         ] );
       ( "cosmetic overrides",
         [
