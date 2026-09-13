@@ -16,6 +16,9 @@ type ('screen, 'msg) config = {
   on_select : string -> 'msg;
   on_back : 'msg;
   safe_area_bottom : int;
+  bar_style : Style.t option;
+  bar_interaction : Nopal_style.Interaction.t option;
+  bar_attrs : (string * string) list;
   tab_style : Style.t option;
   active_tab_style : Style.t option;
   panel_style : Style.t option;
@@ -33,6 +36,9 @@ let make ~tabs ~active ~render_screen ~on_select ~on_back ~safe_area_bottom =
     on_select;
     on_back;
     safe_area_bottom;
+    bar_style = None;
+    bar_interaction = None;
+    bar_attrs = [];
     tab_style = None;
     active_tab_style = None;
     panel_style = None;
@@ -40,6 +46,9 @@ let make ~tabs ~active ~render_screen ~on_select ~on_back ~safe_area_bottom =
     attrs = [];
   }
 
+let with_bar_style s config = { config with bar_style = Some s }
+let with_bar_interaction i config = { config with bar_interaction = Some i }
+let with_bar_attrs a config = { config with bar_attrs = a }
 let with_tab_style s config = { config with tab_style = Some s }
 let with_active_tab_style s config = { config with active_tab_style = Some s }
 let with_panel_style s config = { config with panel_style = Some s }
@@ -113,6 +122,17 @@ let bar config =
     | Some s -> Navigation_bar.with_active_tab_style s bar_config
     | None -> bar_config
   in
+  let bar_config =
+    match config.bar_style with
+    | Some s -> Navigation_bar.with_style s bar_config
+    | None -> bar_config
+  in
+  let bar_config =
+    match config.bar_interaction with
+    | Some i -> Navigation_bar.with_interaction i bar_config
+    | None -> bar_config
+  in
+  let bar_config = Navigation_bar.with_attrs config.bar_attrs bar_config in
   Navigation_bar.view bar_config
 
 let gutter config =

@@ -17,6 +17,7 @@ const PROFILE_TAB = `${SECTION} [data-testid="nav-tab-profile"]`;
 const PUSH = `${SECTION} [data-action="bottom-tabs-push"]`;
 const BACK = `${SECTION} [data-action="nav-back"]`;
 const GUTTER = `${SECTION} [data-testid="bottom-tabs-gutter"]`;
+const BAR = `${SECTION} [data-testid="bottom-tabs-bar"]`;
 
 // Generous: the first model→DOM frame in a worker can lag while the rAF loop
 // warms up on a display-server-less machine.
@@ -75,6 +76,28 @@ test("tab bar respects bottom safe-area inset", async ({ page }) => {
     .locator(GUTTER)
     .evaluate((el) => parseFloat(getComputedStyle(el).paddingBottom));
   expect(paddingBottom).toBeGreaterThan(0);
+});
+
+test("bar-level geometry reaches the tablist", async ({ page }) => {
+  // Render-correctness DOM assertion: `Bottom_tabs.with_bar_style` and
+  // `with_bar_attrs` target the bar's own container, not the root and not the
+  // panel, so both the attribute and the geometry must land on the tablist.
+  const bar = page.locator(BAR);
+  await expect(bar).toHaveAttribute("role", "tablist");
+
+  const geometry = await bar.evaluate((el) => {
+    const s = getComputedStyle(el);
+    return {
+      paddingTop: parseFloat(s.paddingTop),
+      borderRadius: parseFloat(s.borderTopLeftRadius),
+      gap: parseFloat(s.gap),
+      hasShadow: s.boxShadow !== "none",
+    };
+  });
+  expect(geometry.paddingTop).toBeGreaterThan(0);
+  expect(geometry.borderRadius).toBeGreaterThan(0);
+  expect(geometry.gap).toBeGreaterThan(0);
+  expect(geometry.hasShadow).toBe(true);
 });
 
 test("axe accessibility audit", async ({ page }, testInfo) => {

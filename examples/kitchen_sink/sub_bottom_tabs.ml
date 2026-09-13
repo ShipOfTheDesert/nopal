@@ -1,6 +1,7 @@
 open Nopal_element
 open Nopal_ui
 open Nopal_style
+module Interaction = Nopal_style.Interaction
 module Nav_stack = Nopal_navigation.Nav_stack
 
 type tab = Home | Profile
@@ -83,6 +84,41 @@ let push_button ~screen label =
     ~attrs:[ ("data-action", "bottom-tabs-push") ]
     ~on_click:(Push screen) (Element.text label)
 
+(* Bar-level geometry, set through [Bottom_tabs.with_bar_style] rather than
+   around the component: padding, gap, radius and a shadow all belong to the
+   [role="tablist"] row, which until these setters existed was unreachable
+   through [Bottom_tabs] even though [Navigation_bar] exposed it. *)
+let bar_style =
+  Style.default
+  |> Style.with_layout (fun l ->
+      { l with gap = Some 8.0 } |> Style.padding_all 8.0)
+  |> Style.with_paint (fun p ->
+      {
+        p with
+        background = Some (Style.hex "#f2f4f7");
+        border = Some { Style.default_border with radius = 12.0; style = Solid };
+        shadow =
+          Some
+            {
+              Style.default_shadow with
+              y = -2.0;
+              blur = 8.0;
+              color = Style.rgba 0 0 0 0.12;
+            };
+      })
+
+(* One interaction for the whole bar — [Navigation_bar] has no per-tab
+   interaction, and it applies this to every tab including the active one. *)
+let bar_interaction =
+  {
+    Interaction.default with
+    hover =
+      Some
+        (Style.default
+        |> Style.with_paint (fun p ->
+            { p with background = Some (Style.hex "#dbe4f0") }));
+  }
+
 let render_screen screen =
   match screen with
   | Home_root ->
@@ -113,6 +149,9 @@ let view _vp model =
       ~active:(tab_id model.active) ~render_screen
       ~on_select:(fun id -> Select id)
       ~on_back:Back ~safe_area_bottom:demo_safe_area_bottom
+    |> Bottom_tabs.with_bar_style bar_style
+    |> Bottom_tabs.with_bar_interaction bar_interaction
+    |> Bottom_tabs.with_bar_attrs [ ("data-testid", "bottom-tabs-bar") ]
   in
   Bottom_tabs.view config
 
