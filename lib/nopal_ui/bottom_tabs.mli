@@ -114,8 +114,45 @@ val with_panel_style :
     content-sized panel; any explicit value, including [Some 0.], is honoured as
     given. *)
 
+val with_gutter_style :
+  Nopal_style.Style.t -> ('screen, 'msg) config -> ('screen, 'msg) config
+(** Override the style of the wrapper the tab bar sits in — the
+    [data-testid="bottom-tabs-gutter"] box between the root and the
+    [role="tablist"] row. This is where geometry that must sit {e outside} the
+    bar pill lives: the margin between the pill and the screen edges, and the
+    space under it.
+
+    {b [padding_bottom] is added to, not replaced by, this style.} The gutter is
+    the sole carrier of [~safe_area_bottom] (REQ-F4), and every [with_*] here is
+    cosmetic: a cosmetic override must not be able to drop the bar underneath a
+    gesture bar. A style saying [padding_bottom = Some 14.] under a 34px inset
+    renders 48px; one saying nothing about the bottom edge renders the inset
+    unchanged. Every other field replaces as usual.
+
+    Distinct from {!with_bar_style}, which targets the [role="tablist"] row
+    inside this box. Cosmetic only. *)
+
 val with_back_label : string -> ('screen, 'msg) config -> ('screen, 'msg) config
 (** Override the back affordance label (default ["Back"]). Cosmetic only. *)
+
+val with_back_suppressed :
+  bool -> ('screen, 'msg) config -> ('screen, 'msg) config
+(** Suppress the component's own back affordance (default [false]).
+
+    With [true] the button described in {!view} is never rendered, whatever the
+    active stack's {!Nopal_navigation.Nav_stack.can_pop} says. Nothing else
+    changes: the stacks, [~on_back] and the panel's content are untouched, and
+    {!with_back_label} simply has nothing to label.
+
+    This exists for an application that draws its own back affordance and needs
+    exactly one on screen. The component's button is rendered inside the
+    tabpanel and above [~render_screen]'s output, which is a position no style
+    override can move it out of — so a caller whose design puts the affordance
+    anywhere else has no way to reconcile the two except by turning this one
+    off. Suppressing it makes the back path the caller's responsibility: the
+    component then surfaces no pop intent of its own, and only the hardware or
+    platform back press still reaches [~on_back]. Cosmetic only — it removes an
+    element and decides no navigation. *)
 
 val with_attrs :
   (string * string) list -> ('screen, 'msg) config -> ('screen, 'msg) config

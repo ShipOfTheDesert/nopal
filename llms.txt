@@ -903,13 +903,32 @@ val make :
 val with_tab_style        : Style.t -> ('s, 'm) config -> ('s, 'm) config
 val with_active_tab_style : Style.t -> ('s, 'm) config -> ('s, 'm) config
 val with_panel_style      : Style.t -> ('s, 'm) config -> ('s, 'm) config
+val with_gutter_style     : Style.t -> ('s, 'm) config -> ('s, 'm) config
 val with_back_label       : string  -> ('s, 'm) config -> ('s, 'm) config
+val with_back_suppressed  : bool    -> ('s, 'm) config -> ('s, 'm) config
 val with_attrs            : (string * string) list -> ('s, 'm) config -> ('s, 'm) config
+
+(* Bar-level overrides — the role="tablist" row inside the gutter, NOT the root.
+   with_attrs targets the root; the bar_ prefix is the whole distinction. *)
+val with_bar_style        : Style.t -> ('s, 'm) config -> ('s, 'm) config
+val with_bar_interaction  : Interaction.t -> ('s, 'm) config -> ('s, 'm) config
+val with_bar_attrs        : (string * string) list -> ('s, 'm) config -> ('s, 'm) config
+
+(* Two of the above replace less, or more, than they appear to:
+   with_active_tab_style REPLACES with_tab_style on the active tab rather than
+     merging over it — restate flex_grow, padding and radius or lose them.
+   with_gutter_style replaces every field EXCEPT padding_bottom, to which
+     safe_area_bottom is ADDED. A cosmetic setter must not be able to drop the
+     bar under a gesture bar, so the inset survives the override.
+   with_back_suppressed hides the component's own back button whatever can_pop
+     says, for an app drawing its own; nothing else changes. *)
 
 val view : ('screen, 'msg) config -> 'msg Element.t
 (* Renders Column [ Box[role="tabpanel"; data-field=<active id>]
-                      ( conditional Button[data-action="nav-back"] + render_screen );
-                    Box[data-testid="bottom-tabs-gutter"; padding_bottom=safe_area_bottom]
+                      ( Button[data-action="nav-back"] when can_pop and not
+                        back_suppressed, + render_screen );
+                    Box[data-testid="bottom-tabs-gutter";
+                        padding_bottom=gutter_style's + safe_area_bottom]
                       ( Navigation_bar.view → Row[role="tablist"] of tab Buttons ) ]. *)
 ```
 

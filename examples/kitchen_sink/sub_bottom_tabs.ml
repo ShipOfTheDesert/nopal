@@ -11,9 +11,14 @@ type model = {
   active : tab;
   home : screen Nav_stack.t;
   profile : screen Nav_stack.t;
+  (* Demonstrates [Bottom_tabs.with_back_suppressed]. It is model state rather
+     than a constant so the example can show both sides of the flag without a
+     second section — and so the existing push/pop E2E, which clicks the
+     component's own affordance, keeps working from the default. *)
+  back_suppressed : bool;
 }
 
-type msg = Select of string | Push of screen | Back
+type msg = Select of string | Push of screen | Back | Toggle_back
 
 let tab_id = function
   | Home -> "home"
@@ -29,6 +34,7 @@ let init () =
       active = Home;
       home = Nav_stack.create Home_root;
       profile = Nav_stack.create Profile_root;
+      back_suppressed = false;
     },
     Nopal_mvu.Cmd.none )
 
@@ -48,6 +54,7 @@ let update model msg =
         match model.active with
         | Home -> { model with home = Nav_stack.pop model.home }
         | Profile -> { model with profile = Nav_stack.pop model.profile })
+    | Toggle_back -> { model with back_suppressed = not model.back_suppressed }
   in
   (model', Nopal_mvu.Cmd.none)
 
@@ -84,6 +91,18 @@ let push_button ~screen label =
     ~attrs:[ ("data-action", "bottom-tabs-push") ]
     ~on_click:(Push screen) (Element.text label)
 
+(* Offered only on a pushed screen, which is the only place the component's
+   affordance exists to be suppressed. *)
+let toggle_back_button ~back_suppressed =
+  let label =
+    match back_suppressed with
+    | true -> "Restore the component back button"
+    | false -> "Suppress the component back button"
+  in
+  Element.button ~style:push_button_style
+    ~attrs:[ ("data-action", "bottom-tabs-toggle-back") ]
+    ~on_click:Toggle_back (Element.text label)
+
 (* Bar-level geometry, set through [Bottom_tabs.with_bar_style] rather than
    around the component: padding, gap, radius and a shadow all belong to the
    [role="tablist"] row, which until these setters existed was unreachable
@@ -119,7 +138,19 @@ let bar_interaction =
             { p with background = Some (Style.hex "#dbe4f0") }));
   }
 
-let render_screen screen =
+(* The wrapper the bar pill sits in, set through
+   [Bottom_tabs.with_gutter_style]. Its side padding is what holds the pill off
+   the screen edges — geometry that belongs outside the [role="tablist"] row and
+   so cannot come from [with_bar_style].
+
+   Its [padding_bottom] of 6px is *added* to [demo_safe_area_bottom], not
+   substituted for it: the component keeps the inset whatever this style says,
+   so the rendered value is 40. *)
+let gutter_style =
+  Style.default
+  |> Style.with_layout (fun l -> l |> Style.padding 6.0 12.0 6.0 12.0)
+
+let render_screen ~back_suppressed screen =
   match screen with
   | Home_root ->
       Element.column ~style:screen_style
@@ -128,7 +159,8 @@ let render_screen screen =
           push_button ~screen:Home_detail "Open home detail";
         ]
   | Home_detail ->
-      Element.column ~style:screen_style [ Element.text "Home detail" ]
+      Element.column ~style:screen_style
+        [ Element.text "Home detail"; toggle_back_button ~back_suppressed ]
   | Profile_root ->
       Element.column ~style:screen_style
         [
@@ -136,7 +168,8 @@ let render_screen screen =
           push_button ~screen:Profile_detail "Open profile detail";
         ]
   | Profile_detail ->
-      Element.column ~style:screen_style [ Element.text "Profile detail" ]
+      Element.column ~style:screen_style
+        [ Element.text "Profile detail"; toggle_back_button ~back_suppressed ]
 
 let view _vp model =
   let config =
@@ -146,19 +179,24 @@ let view _vp model =
           Bottom_tabs.tab ~id:"home" ~label:"Home" ~stack:model.home ();
           Bottom_tabs.tab ~id:"profile" ~label:"Profile" ~stack:model.profile ();
         ]
-      ~active:(tab_id model.active) ~render_screen
+      ~active:(tab_id model.active)
+      ~render_screen:(render_screen ~back_suppressed:model.back_suppressed)
       ~on_select:(fun id -> Select id)
       ~on_back:Back ~safe_area_bottom:demo_safe_area_bottom
     |> Bottom_tabs.with_bar_style bar_style
     |> Bottom_tabs.with_bar_interaction bar_interaction
     |> Bottom_tabs.with_bar_attrs [ ("data-testid", "bottom-tabs-bar") ]
+    |> Bottom_tabs.with_gutter_style gutter_style
+    |> Bottom_tabs.with_back_suppressed model.back_suppressed
   in
   Bottom_tabs.view config
 
 let subscriptions _model = Nopal_mvu.Sub.none
 
 let serialize_model model =
-  Printf.sprintf "active=%s; home_depth=%d; profile_depth=%d;"
+  Printf.sprintf
+    "active=%s; home_depth=%d; profile_depth=%d; back_suppressed=%b;"
     (tab_id model.active)
     (Nav_stack.depth model.home)
     (Nav_stack.depth model.profile)
+    model.back_suppressed
