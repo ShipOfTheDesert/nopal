@@ -4384,6 +4384,448 @@ let test_unchanged_reveal_still_writes_nothing () =
   Alcotest.(check (float 0.001))
     "centring row-3 in a 100-tall viewport" 125. (scroll_top container)
 
+(* --- The shrink guard: a parent's axis reaching its children --- *)
+
+(* Every box this backend lays out is a flex item, so a size declared on the
+   axis the parent lays out along is only a starting size until the guard is
+   emitted beside it. Which axis that is belongs to the PARENT: the same child
+   style is at risk inside a row and safe inside a column, so a fixture that
+   puts parent and child on the same axis cannot tell a correct resolution from
+   one that reads the child's own direction field. Every case below states the
+   parent's axis and the child's dimension separately. *)
+
+let plain_box ~style ~children =
+  Box
+    {
+      style;
+      interaction = Nopal_style.Interaction.default;
+      attrs = [];
+      children;
+      focusable = false;
+      on_focus = None;
+      on_blur = None;
+      on_pointer_move = None;
+      on_pointer_leave = None;
+      on_pointer_down = None;
+      on_pointer_up = None;
+      on_wheel = None;
+    }
+
+let plain_row ~style ~children =
+  Row
+    {
+      style;
+      interaction = Nopal_style.Interaction.default;
+      attrs = [];
+      children;
+    }
+
+let plain_column ~style ~children =
+  Column
+    {
+      style;
+      interaction = Nopal_style.Interaction.default;
+      attrs = [];
+      children;
+    }
+
+let axis_name = function
+  | None -> "no axis"
+  | Some Nopal_web.Style_css.Horizontal -> "horizontal"
+  | Some Nopal_web.Style_css.Vertical -> "vertical"
+
+let check_axis label expected el =
+  Alcotest.(check string)
+    label expected
+    (axis_name (Nopal_web.Renderer.container_main_axis el))
+
+let across = with_layout (fun l -> { l with direction = Some Row_dir }) default
+let down = with_layout (fun l -> { l with direction = Some Column_dir }) default
+
+let test_container_main_axis_row_ignores_style_direction () =
+  (* A row carrying the opposite direction in its style is still a row: both
+     constructors write their direction inline after the style is applied,
+     precisely so the element type wins. Reading the style field here would
+     answer with the loser. *)
+  check_axis "a row asking for a column is still horizontal" "horizontal"
+    (plain_row ~style:down ~children:[]);
+  check_axis "and a column asking for a row is still vertical" "vertical"
+    (plain_column ~style:across ~children:[])
+
+let test_container_main_axis_box_defaults_column () =
+  check_axis "a box with no direction lays out down the page" "vertical"
+    (plain_box ~style:default ~children:[]);
+  (* Affirmative arm on the same constructor: the field is read, so the answer
+     above is the absent field's meaning rather than a constant. *)
+  check_axis "a box asking for a row lays out across" "horizontal"
+    (plain_box ~style:across ~children:[])
+
+(* [Natural.of_int] and [Positive_float.of_float] refuse out-of-range values, so
+   the fixture states what it needs instead of forcing the option open. *)
+let require what = function
+  | Some v -> v
+  | None -> Alcotest.fail (what ^ " is out of range for its own fixture")
+
+let virtual_list_fixture () =
+  Virtual_list
+    {
+      style = default;
+      item_count =
+        require "item_count" (Nopal_element.Virtual_list.Natural.of_int 3);
+      row_height =
+        require "row_height"
+          (Nopal_element.Virtual_list.Positive_float.of_float 20.);
+      container_height =
+        require "container_height"
+          (Nopal_element.Virtual_list.Positive_float.of_float 100.);
+      scroll_state = Nopal_element.Virtual_list.scroll_state ~offset:0.;
+      overscan =
+        require "overscan" (Nopal_element.Virtual_list.Natural.of_int 0);
+      render_item = (fun _ -> Empty);
+      on_scroll = None;
+    }
+
+let test_container_main_axis_non_container_is_none () =
+  (* Only Box, Row and Column are given display:flex, so nothing else hands its
+     children a main axis. Scroll is the case worth stating: it is a container
+     by name, holds exactly one child, and is a block box. Keyed and
+     Virtual_list are the two whose "no axis" is load-bearing elsewhere in the
+     renderer — the create path deliberately hands a keyed child the axis that
+     arrived from above rather than the key's own answer, and the virtual list's
+     row items are created with a literal absence — so both are named here
+     rather than left to the reader. *)
+  check_axis "a scroll container is not a flex container" "no axis"
+    (Scroll { style = default; attrs = []; reveal = None; child = Empty });
+  check_axis "a key renders no node and so lays nothing out" "no axis"
+    (Keyed { key = "row-1"; child = Empty });
+  check_axis "a virtual list is not a flex container" "no axis"
+    (virtual_list_fixture ());
+  check_axis "a button is not a flex container" "no axis"
+    (Button
+       {
+         style = default;
+         interaction = Nopal_style.Interaction.default;
+         attrs = [];
+         on_click = None;
+         on_dblclick = None;
+         child = Empty;
+       });
+  check_axis "an image is not a flex container" "no axis"
+    (Image { style = default; src = "a.png"; alt = "a" });
+  (* Affirmative arm: the resolver is not answering "no axis" to everything. *)
+  check_axis "a box still is one" "vertical"
+    (plain_box ~style:down ~children:[])
+
+let fixed_width_child () =
+  (* Rebuilt per frame, never shared: the reconcile guards compare styles
+     structurally, and a shared value would make an unchanged style
+     indistinguishable from one the guard decided to skip. *)
+  plain_box
+    ~style:(with_layout (fun l -> { l with width = Some (Fixed 120.) }) default)
+    ~children:[]
+
+let first_child_style handle =
+  let node = Nopal_web.Renderer.dom_node handle in
+  Jv.get (Jv.get node "firstChild") "style"
+
+let shrink_of style_obj = Jv.Jstr.get style_obj "flex-shrink" |> Jstr.to_string
+
+let test_fixed_child_of_row_renders_with_shrink_guard () =
+  let dispatch, _msgs = fresh_dispatch () in
+  let guarded =
+    Nopal_web.Renderer.create ~dispatch ~parent:(fresh_parent ())
+      (plain_row ~style:across ~children:[ fixed_width_child () ])
+  in
+  let guarded_style = first_child_style guarded in
+  Alcotest.(check string)
+    "the declared width reached the child" "120px"
+    (Jv.Jstr.get guarded_style "width" |> Jstr.to_string);
+  Alcotest.(check string)
+    "a fixed width along the row is guarded" "0" (shrink_of guarded_style);
+  (* The same child under the other axis. Its width is the cross axis of a
+     column, is not squeezed there, and must render exactly what it rendered
+     before the guard existed — with the width assertion as the affirmative arm
+     so the absence cannot pass on a child that never got a style at all. *)
+  let unguarded =
+    Nopal_web.Renderer.create ~dispatch ~parent:(fresh_parent ())
+      (plain_column ~style:down ~children:[ fixed_width_child () ])
+  in
+  let unguarded_style = first_child_style unguarded in
+  Alcotest.(check string)
+    "the declared width reached this child too" "120px"
+    (Jv.Jstr.get unguarded_style "width" |> Jstr.to_string);
+  Alcotest.(check string)
+    "a fixed width across the column is not guarded" ""
+    (shrink_of unguarded_style)
+
+let fixed_height_child () =
+  plain_box
+    ~style:(with_layout (fun l -> { l with height = Some (Fixed 96.) }) default)
+    ~children:[]
+
+let test_fixed_child_of_column_renders_with_shrink_guard () =
+  (* The down-the-page half of the create path. The width cases above would all
+     stay green under an emitter that only ever looked at [width], so the height
+     dimension needs its own end-to-end pair at this layer too. *)
+  let dispatch, _msgs = fresh_dispatch () in
+  let guarded =
+    Nopal_web.Renderer.create ~dispatch ~parent:(fresh_parent ())
+      (plain_column ~style:down ~children:[ fixed_height_child () ])
+  in
+  let guarded_style = first_child_style guarded in
+  Alcotest.(check string)
+    "the declared height reached the child" "96px"
+    (Jv.Jstr.get guarded_style "height" |> Jstr.to_string);
+  Alcotest.(check string)
+    "a fixed height down the column is guarded" "0" (shrink_of guarded_style);
+  let unguarded =
+    Nopal_web.Renderer.create ~dispatch ~parent:(fresh_parent ())
+      (plain_row ~style:across ~children:[ fixed_height_child () ])
+  in
+  let unguarded_style = first_child_style unguarded in
+  Alcotest.(check string)
+    "the declared height reached this child too" "96px"
+    (Jv.Jstr.get unguarded_style "height" |> Jstr.to_string);
+  Alcotest.(check string)
+    "a fixed height across the row is not guarded" ""
+    (shrink_of unguarded_style)
+
+let test_keyed_fixed_child_of_row_is_guarded () =
+  (* A key renders no node of its own, so a keyed child's real parent is the
+     container one level further up and it must be handed that container's axis.
+     Resolving the axis of the [Keyed] element itself would answer "not a flex
+     container" and silently un-guard every row of every keyed list. *)
+  let dispatch, _msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent:(fresh_parent ())
+      (plain_row ~style:across
+         ~children:[ Keyed { key = "row-1"; child = fixed_width_child () } ])
+  in
+  let style_obj = first_child_style handle in
+  Alcotest.(check string)
+    "the declared width reached the keyed child" "120px"
+    (Jv.Jstr.get style_obj "width" |> Jstr.to_string);
+  Alcotest.(check string)
+    "a keyed fixed width along the row is guarded too" "0" (shrink_of style_obj)
+
+let nth_child_style handle n =
+  let node = Nopal_web.Renderer.dom_node handle in
+  Jv.get (Jv.get (Jv.get node "childNodes") (string_of_int n)) "style"
+
+let test_keyed_row_arriving_mid_reconcile_is_guarded () =
+  (* The create above is only half the keyed path. A key that was not in the
+     previous pass is built by the keyed reconciler's own create arm, which is
+     how rows actually arrive in a list, and that arm has to hand the child the
+     same axis the create path does — the container above the key, because the
+     key still renders no node of its own. *)
+  let dispatch, _msgs = fresh_dispatch () in
+  let keyed_row keys =
+    plain_row ~style:across
+      ~children:
+        (List.map (fun key -> Keyed { key; child = fixed_width_child () }) keys)
+  in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent:(fresh_parent ())
+      (keyed_row [ "row-1" ])
+  in
+  Alcotest.(check string)
+    "the row that was there from the start is guarded" "0"
+    (shrink_of (nth_child_style handle 0));
+  Nopal_web.Renderer.update ~dispatch handle (keyed_row [ "row-1"; "row-2" ]);
+  let arrival = nth_child_style handle 1 in
+  Alcotest.(check string)
+    "the arriving row got a style at all" "120px"
+    (Jv.Jstr.get arrival "width" |> Jstr.to_string);
+  Alcotest.(check string)
+    "and the arriving row is guarded too" "0" (shrink_of arrival);
+  (* The row carried over from the previous pass is untouched by the insertion,
+     so the assertion above is about the new node rather than about the list. *)
+  Alcotest.(check string)
+    "the carried-over row kept its guard" "0"
+    (shrink_of (nth_child_style handle 0))
+
+let test_restyle_adds_and_removes_shrink_guard () =
+  let dispatch, _msgs = fresh_dispatch () in
+  let flexible_child () =
+    plain_box
+      ~style:(with_layout (fun l -> { l with width = Some Fill }) default)
+      ~children:[]
+  in
+  let row child = plain_row ~style:across ~children:[ child () ] in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent:(fresh_parent ())
+      (row flexible_child)
+  in
+  let style_obj = first_child_style handle in
+  Alcotest.(check string)
+    "a filling child starts unguarded — it resolves its share by shrinking" ""
+    (shrink_of style_obj);
+  Nopal_web.Renderer.update ~dispatch handle (row fixed_width_child);
+  Alcotest.(check string)
+    "becoming fixed adds the guard" "0" (shrink_of style_obj);
+  Nopal_web.Renderer.update ~dispatch handle (row flexible_child);
+  Alcotest.(check string)
+    "becoming flexible again removes it" "" (shrink_of style_obj)
+
+let test_parent_axis_flip_restyles_children () =
+  let dispatch, _msgs = fresh_dispatch () in
+  (* The child's style is identical in every frame. Only the parent moves, so
+     nothing the child itself carries can explain the declaration appearing and
+     going away. *)
+  let parent_laid_out ~style =
+    plain_box ~style ~children:[ fixed_width_child () ]
+  in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent:(fresh_parent ())
+      (parent_laid_out ~style:down)
+  in
+  let style_obj = first_child_style handle in
+  Alcotest.(check string)
+    "a fixed width across a column needs no guard" "" (shrink_of style_obj);
+  Nopal_web.Renderer.update ~dispatch handle (parent_laid_out ~style:across);
+  Alcotest.(check string)
+    "the parent turning into a row puts the child's width on the main axis" "0"
+    (shrink_of style_obj);
+  Nopal_web.Renderer.update ~dispatch handle (parent_laid_out ~style:down);
+  Alcotest.(check string)
+    "and turning back takes the guard away again" "" (shrink_of style_obj)
+
+(* The same claim on the other branch of the reconcile. An element carrying a
+   hover style has its own declarations compiled into a stylesheet rule instead
+   of written inline, and that path has its own skip-when-unchanged guard, so a
+   parent moving the axis has to reach it too. The width is unique in this file
+   so the rules belonging to this child can be told apart from every other
+   rule the suite has injected into the shared document. *)
+let interactive_fixed_child () =
+  interactive_box
+    ~style:(with_layout (fun l -> { l with width = Some (Fixed 137.) }) default)
+    ~interaction:hover_interaction
+
+let rules_mentioning needle =
+  let doc = Jv.get Jv.global "document" in
+  let head = Jv.get doc "head" in
+  let children = Jv.get head "childNodes" in
+  let head_len = Jv.to_int (Jv.get children "length") in
+  let found = ref [] in
+  for i = 0 to head_len - 1 do
+    let child = Jv.get children (string_of_int i) in
+    let sheet = Jv.get child "sheet" in
+    if not (Jv.is_null sheet) then begin
+      let rules = Jv.get sheet "cssRules" in
+      let n = Jv.to_int (Jv.get rules "length") in
+      for j = 0 to n - 1 do
+        let text =
+          Jv.to_string (Jv.get (Jv.get rules (string_of_int j)) "cssText")
+        in
+        if Test_util.string_contains text ~sub:needle then
+          found := text :: !found
+      done
+    end
+  done;
+  !found
+
+let test_parent_axis_flip_restyles_interactive_children () =
+  let dispatch, _msgs = fresh_dispatch () in
+  let parent_laid_out ~style =
+    plain_box ~style ~children:[ interactive_fixed_child () ]
+  in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent:(fresh_parent ())
+      (parent_laid_out ~style:down)
+  in
+  let guarded_rules () =
+    List.filter
+      (fun text -> Test_util.string_contains text ~sub:"flex-shrink")
+      (rules_mentioning "137px")
+  in
+  Alcotest.(check bool)
+    "the child's own width reached a rule" true
+    (List.length (rules_mentioning "137px") > 0);
+  Alcotest.(check int)
+    "a fixed width across a column is unguarded in the sheet too" 0
+    (List.length (guarded_rules ()));
+  Nopal_web.Renderer.update ~dispatch handle (parent_laid_out ~style:across);
+  Alcotest.(check bool)
+    "the parent turning into a row rebuilds the rule with the guard" true
+    (List.length (guarded_rules ()) > 0);
+  Nopal_web.Renderer.update ~dispatch handle (parent_laid_out ~style:down);
+  Alcotest.(check int)
+    "and turning back releases the guarded rule" 0
+    (List.length (guarded_rules ()))
+
+(* The two remaining routes through the style reconcile: an element crossing
+   between inline styling and a generated rule. Each of them names an axis
+   twice — the axis the element's old declarations were emitted under, which is
+   what has to be cleared, and the axis its new ones are emitted under — and the
+   two are only ever different when the interactivity change and the parent's
+   flip land in the same pass. A fixture that keeps the child interactive
+   throughout, or the parent still, cannot tell the two apart. The width is
+   unique in this file so the rules belonging to this child are findable. *)
+let test_gaining_and_losing_interaction_across_an_axis_flip () =
+  let dispatch, _msgs = fresh_dispatch () in
+  let child_style =
+    with_layout (fun l -> { l with width = Some (Fixed 151.) }) default
+  in
+  let quiet_child () = plain_box ~style:child_style ~children:[] in
+  let live_child () =
+    interactive_box ~style:child_style ~interaction:hover_interaction
+  in
+  let parent ~style ~child = plain_box ~style ~children:[ child () ] in
+  let guarded_rules () =
+    List.filter
+      (fun text -> Test_util.string_contains text ~sub:"flex-shrink")
+      (rules_mentioning "151px")
+  in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent:(fresh_parent ())
+      (parent ~style:across ~child:quiet_child)
+  in
+  let style_obj = first_child_style handle in
+  Alcotest.(check string)
+    "the child starts inline and guarded, on the row's axis" "0"
+    (shrink_of style_obj);
+  (* Gaining an interaction while the parent flips away from the child's axis.
+     The inline declarations are cleared against the axis they were WRITTEN
+     under, not the one now in force, so the guard has to go with them —
+     clearing against the new axis leaves it behind, and an inline declaration
+     outranks the rule that replaces it, freezing the element for good. *)
+  Nopal_web.Renderer.update ~dispatch handle
+    (parent ~style:down ~child:live_child);
+  Alcotest.(check string)
+    "the stale inline guard left with the rest of the inline styles" ""
+    (shrink_of style_obj);
+  Alcotest.(check string)
+    "and so did the inline width" ""
+    (Jv.Jstr.get style_obj "width" |> Jstr.to_string);
+  Alcotest.(check bool)
+    "the child's width moved into a rule" true
+    (List.length (rules_mentioning "151px") > 0);
+  Alcotest.(check int)
+    "which carries no guard, the width now being across the column" 0
+    (List.length (guarded_rules ()));
+  (* Losing it again while the parent flips back. The inline styles reapplied
+     here are emitted under the axis now in force, not the one the rule was
+     built under. *)
+  Nopal_web.Renderer.update ~dispatch handle
+    (parent ~style:across ~child:quiet_child);
+  Alcotest.(check string)
+    "the width came back inline" "151px"
+    (Jv.Jstr.get style_obj "width" |> Jstr.to_string);
+  Alcotest.(check string)
+    "and came back guarded, the parent being a row again" "0"
+    (shrink_of style_obj);
+  (* Affirmative arm for the absent-guard assertion above: the same transition
+     with the parent left alone on the row's axis does put the guard in a rule,
+     so the emptiness there is the axis and not the route. *)
+  Nopal_web.Renderer.update ~dispatch handle
+    (parent ~style:across ~child:live_child);
+  Alcotest.(check string)
+    "the inline styles are gone again" ""
+    (Jv.Jstr.get style_obj "width" |> Jstr.to_string);
+  Alcotest.(check bool)
+    "and the rule built on the row's axis carries the guard" true
+    (List.length (guarded_rules ()) > 0)
+
 let () =
   Alcotest.run "nopal_web"
     [
@@ -4691,5 +5133,31 @@ let () =
             test_reconcile_row_reasserts_direction;
           Alcotest.test_case "reconcile column reasserts direction" `Quick
             test_reconcile_column_reasserts_direction;
+        ] );
+      ( "shrink guard",
+        [
+          Alcotest.test_case "row ignores its style direction" `Quick
+            test_container_main_axis_row_ignores_style_direction;
+          Alcotest.test_case "box defaults to column" `Quick
+            test_container_main_axis_box_defaults_column;
+          Alcotest.test_case "a non-container hands down no axis" `Quick
+            test_container_main_axis_non_container_is_none;
+          Alcotest.test_case "fixed child of a row is guarded" `Quick
+            test_fixed_child_of_row_renders_with_shrink_guard;
+          Alcotest.test_case "fixed child of a column is guarded" `Quick
+            test_fixed_child_of_column_renders_with_shrink_guard;
+          Alcotest.test_case "keyed fixed child of a row is guarded" `Quick
+            test_keyed_fixed_child_of_row_is_guarded;
+          Alcotest.test_case "a keyed row arriving mid-reconcile is guarded"
+            `Quick test_keyed_row_arriving_mid_reconcile_is_guarded;
+          Alcotest.test_case "restyle adds and removes the guard" `Quick
+            test_restyle_adds_and_removes_shrink_guard;
+          Alcotest.test_case "a parent axis flip restyles children" `Quick
+            test_parent_axis_flip_restyles_children;
+          Alcotest.test_case "a parent axis flip restyles interactive children"
+            `Quick test_parent_axis_flip_restyles_interactive_children;
+          Alcotest.test_case
+            "gaining and losing an interaction across an axis flip" `Quick
+            test_gaining_and_losing_interaction_across_an_axis_flip;
         ] );
     ]

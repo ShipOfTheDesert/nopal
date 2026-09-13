@@ -1,6 +1,7 @@
 open Nopal_style.Style
 
 type css_prop = { property : string; value : string }
+type main_axis = Horizontal | Vertical
 
 let color_to_css c =
   match c with
@@ -186,7 +187,7 @@ let of_text (text : Nopal_style.Text.t) =
   in
   List.rev acc
 
-let of_style (style : t) =
+let of_style ~(parent_axis : main_axis option) (style : t) =
   let layout = style.layout in
   let paint = style.paint in
   let acc = [] in
@@ -263,6 +264,28 @@ let of_style (style : t) =
     |> size "width" layout.width
     |> size "height" layout.height
     |> opt "flex-grow" (Printf.sprintf "%g") layout.flex_grow
+  in
+  (* Every box this backend lays out is a flex item, and a flex item at the CSS
+     default shrink is squeezed below the size it declares as soon as a sibling
+     wants more room; an empty one collapses to its automatic minimum of zero
+     and disappears. A Fixed main-axis size therefore carries a guard. The axis
+     is the parent's, which is why it is an argument: the cross-axis size is
+     never consulted, and the flexible sizes keep shrinking because Fill
+     resolves two siblings to half each only by shrinking. *)
+  let acc =
+    let main_axis_size =
+      match parent_axis with
+      | Some Horizontal -> layout.width
+      | Some Vertical -> layout.height
+      | None -> None
+    in
+    match main_axis_size with
+    | Some (Fixed _) -> add acc "flex-shrink" "0"
+    | Some Fill
+    | Some Hug
+    | Some (Fraction _)
+    | None ->
+        acc
   in
   let acc =
     match layout.position with
@@ -400,7 +423,18 @@ let normalize_key css class_name =
 let interaction_rules ~class_name (interaction : Nopal_style.Interaction.t) =
   let buf = Buffer.create 128 in
   let add_rule selector style =
-    let props = of_style style in
+    (* No parent axis, deliberately. This function is handed an interaction, not
+       a position in the tree, and the axis a size would have to be guarded
+       against belongs to the parent of the element the interaction is attached
+       to. So a size declared in a hover, focused or pressed style never carries
+       the shrink guard, and a state that introduces one where the base style
+       declares none leaves the element squeezable while that state is active.
+       Threading the axis in was weighed and declined: it widens three
+       signatures, and the interaction dedup key in Style_sheet would have to
+       carry the axis too, or two identical interactions under different parent
+       axes would share one rule. Recorded as D-9 in CONTRIBUTING.md, which
+       names who closes it. *)
+    let props = of_style ~parent_axis:None style in
     match props with
     | [] -> ()
     | _ ->

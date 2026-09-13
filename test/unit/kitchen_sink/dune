@@ -137,3 +137,7 @@
 (test
  (name test_focus_reveal_section)
  (libraries kitchen_sink_app nopal_test nopal_element alcotest))
+
+(test
+ (name test_fixed_size_section)
+ (libraries kitchen_sink_app nopal_test nopal_element nopal_style alcotest))

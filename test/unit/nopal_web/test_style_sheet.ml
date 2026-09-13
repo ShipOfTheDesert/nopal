@@ -74,7 +74,8 @@ let mk_interaction_all () =
     focused = Some (mk_style "#ccc");
   }
 
-let base_css_props color = Nopal_web.Style_css.of_style (mk_style color)
+let base_css_props color =
+  Nopal_web.Style_css.of_style ~parent_axis:None (mk_style color)
 
 (* ── Tests ── *)
 

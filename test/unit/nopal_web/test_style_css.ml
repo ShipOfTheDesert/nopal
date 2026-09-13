@@ -33,7 +33,7 @@ let count_prop name props =
 
 (* 1 *)
 let test_default_style_produces_empty () =
-  let props = of_style default in
+  let props = of_style ~parent_axis:None default in
   Alcotest.(check int) "no properties" 0 (List.length props)
 
 (* 2 *)
@@ -43,7 +43,7 @@ let test_background_color_rgba () =
       (fun p -> { p with background = Some (rgba 255 0 0 1.0) })
       default
   in
-  let props = of_style style in
+  let props = of_style ~parent_axis:None style in
   check_has_prop "background-color" "rgba(255,0,0,1)" props
 
 (* 3 *)
@@ -60,7 +60,7 @@ let test_padding_produces_css () =
         })
       default
   in
-  let props = of_style style in
+  let props = of_style ~parent_axis:None style in
   check_has_prop "padding" "10px 20px 30px 40px" props
 
 (* 4 *)
@@ -68,7 +68,7 @@ let test_flex_direction_row () =
   let style =
     with_layout (fun l -> { l with direction = Some Row_dir }) default
   in
-  let props = of_style style in
+  let props = of_style ~parent_axis:None style in
   check_has_prop "flex-direction" "row" props
 
 (* 5 *)
@@ -84,7 +84,7 @@ let test_border_produces_css () =
         })
       default
   in
-  let props = of_style style in
+  let props = of_style ~parent_axis:None style in
   check_has_prop "border" "2px solid rgba(0,0,0,1)" props;
   check_has_prop "border-radius" "4px" props
 
@@ -102,7 +102,7 @@ let test_to_inline_string_joins () =
 (* 7 *)
 let test_size_fill_produces_100_percent () =
   let style = with_layout (fun l -> { l with width = Some Fill }) default in
-  let props = of_style style in
+  let props = of_style ~parent_axis:None style in
   check_has_prop "width" "100%" props
 
 (* 8 *)
@@ -110,7 +110,7 @@ let test_size_fixed_produces_px () =
   let style =
     with_layout (fun l -> { l with width = Some (Fixed 200.) }) default
   in
-  let props = of_style style in
+  let props = of_style ~parent_axis:None style in
   check_has_prop "width" "200px" props
 
 (* 9 *)
@@ -118,19 +118,19 @@ let test_size_fraction_produces_percent () =
   let style =
     with_layout (fun l -> { l with width = Some (Fraction 0.5) }) default
   in
-  let props = of_style style in
+  let props = of_style ~parent_axis:None style in
   check_has_prop "width" "50%" props
 
 (* 10 *)
 let test_opacity_produces_css () =
   let style = with_paint (fun p -> { p with opacity = 0.5 }) default in
-  let props = of_style style in
+  let props = of_style ~parent_axis:None style in
   check_has_prop "opacity" "0.5" props
 
 (* 11 *)
 let test_overflow_hidden_produces_css () =
   let style = with_paint (fun p -> { p with overflow = Hidden }) default in
-  let props = of_style style in
+  let props = of_style ~parent_axis:None style in
   check_has_prop "overflow" "hidden" props
 
 (* 12 *)
@@ -146,7 +146,7 @@ let test_shadow_produces_box_shadow () =
         })
       default
   in
-  let props = of_style style in
+  let props = of_style ~parent_axis:None style in
   check_has_prop "box-shadow" "2px 4px 6px rgba(0,0,0,0.5)" props
 
 (* The CSS grammar reads the lengths positionally, so a spread written in any
@@ -166,7 +166,7 @@ let test_shadow_spread_emits_fourth_length () =
         })
       default
   in
-  let props = of_style style in
+  let props = of_style ~parent_axis:None style in
   check_has_prop "box-shadow" "2px 4px 6px 8px rgba(0,0,0,0.5)" props
 
 (* The focus-ring shape, which is the whole reason spread exists: no offset, no
@@ -189,23 +189,24 @@ let ring spread =
    still four lengths in grammar order and would pass any weaker check. *)
 let test_shadow_negative_spread_emits_fourth_length () =
   check_has_prop "box-shadow" "0px 0px 0px -2px rgba(0,0,0,0.5)"
-    (of_style (ring (-2.)))
+    (of_style ~parent_axis:None (ring (-2.)))
 
 let test_shadow_zero_spread_omits_fourth_length () =
   check_has_prop "box-shadow" "0px 0px 0px 3px rgba(0,0,0,0.5)"
-    (of_style (ring 3.));
-  check_has_prop "box-shadow" "0px 0px 0px rgba(0,0,0,0.5)" (of_style (ring 0.))
+    (of_style ~parent_axis:None (ring 3.));
+  check_has_prop "box-shadow" "0px 0px 0px rgba(0,0,0,0.5)"
+    (of_style ~parent_axis:None (ring 0.))
 
 (* 13 *)
 let test_gap_produces_css () =
   let style = with_layout (fun l -> { l with gap = Some 10. }) default in
-  let props = of_style style in
+  let props = of_style ~parent_axis:None style in
   check_has_prop "gap" "10px" props
 
 (* 14 *)
 let test_flex_grow_produces_css () =
   let style = with_layout (fun l -> { l with flex_grow = Some 1. }) default in
-  let props = of_style style in
+  let props = of_style ~parent_axis:None style in
   check_has_prop "flex-grow" "1" props
 
 (* 15 *)
@@ -213,7 +214,7 @@ let test_align_center_produces_css () =
   let style =
     with_layout (fun l -> { l with main_align = Some Center }) default
   in
-  let props = of_style style in
+  let props = of_style ~parent_axis:None style in
   check_has_prop "justify-content" "center" props
 
 (* 16 *)
@@ -221,32 +222,32 @@ let test_cross_align_stretch_produces_css () =
   let style =
     with_layout (fun l -> { l with cross_align = Some Stretch }) default
   in
-  let props = of_style style in
+  let props = of_style ~parent_axis:None style in
   check_has_prop "align-items" "stretch" props
 
 (* 17 *)
 let test_wrap_produces_css () =
   let style = with_layout (fun l -> { l with wrap = Some true }) default in
-  let props = of_style style in
+  let props = of_style ~parent_axis:None style in
   check_has_prop "flex-wrap" "wrap" props
 
 let test_wrap_false_produces_nowrap () =
   let style = with_layout (fun l -> { l with wrap = Some false }) default in
-  let props = of_style style in
+  let props = of_style ~parent_axis:None style in
   check_has_prop "flex-wrap" "nowrap" props
 
 let test_wrap_none_omits_property () =
   let style =
     with_layout (fun l -> { l with gap = Some 1.; wrap = None }) default
   in
-  let props = of_style style in
+  let props = of_style ~parent_axis:None style in
   check_no_prop "flex-wrap" props
 
 let test_size_hug_produces_no_property () =
   let style =
     with_layout (fun l -> { l with width = Some Hug; gap = Some 1. }) default
   in
-  let props = of_style style in
+  let props = of_style ~parent_axis:None style in
   let has_width = find_prop "width" props in
   Alcotest.(check bool) "no width property" true (Option.is_none has_width)
 
@@ -254,14 +255,14 @@ let test_background_color_hex () =
   let style =
     with_paint (fun p -> { p with background = Some (Hex "#ff0000") }) default
   in
-  let props = of_style style in
+  let props = of_style ~parent_axis:None style in
   check_has_prop "background-color" "#ff0000" props
 
 let test_background_color_named () =
   let style =
     with_paint (fun p -> { p with background = Some (Named "red") }) default
   in
-  let props = of_style style in
+  let props = of_style ~parent_axis:None style in
   check_has_prop "background-color" "red" props
 
 (* Substring search helper — returns position or -1 *)
@@ -345,6 +346,44 @@ let test_interaction_rules_default_empty () =
     interaction_rules ~class_name:"_nopal_ix_0" Nopal_style.Interaction.default
   in
   Alcotest.(check string) "default produces empty" "" result
+
+(* An interaction state never carries the shrink guard. Every state is resolved
+   against no parent axis, so a size introduced by a hover, focused or pressed
+   style is a plain flex item at the CSS default shrink for as long as that
+   state is active. Nothing in the tree declares a size in an interaction style
+   today; this pins the limitation so that changing it is a decision rather than
+   an accident. The record naming who closes it is CONTRIBUTING.md's D-9. *)
+let test_interaction_rules_never_emits_shrink_guard () =
+  let sized =
+    Nopal_style.Style.default
+    |> Nopal_style.Style.with_layout (fun l ->
+        {
+          l with
+          Nopal_style.Style.width = Some (Nopal_style.Style.Fixed 200.0);
+          height = Some (Nopal_style.Style.Fixed 100.0);
+        })
+  in
+  let check_state name state =
+    let result = interaction_rules ~class_name:"_nopal_ix_9" state in
+    Alcotest.(check bool)
+      (name ^ " emits the declared width")
+      true
+      (contains result "width:200px");
+    Alcotest.(check bool)
+      (name ^ " emits the declared height")
+      true
+      (contains result "height:100px");
+    Alcotest.(check bool)
+      (name ^ " emits no shrink guard")
+      true
+      (not (contains result "flex-shrink"))
+  in
+  check_state "hover"
+    { Nopal_style.Interaction.default with hover = Some sized };
+  check_state "focused"
+    { Nopal_style.Interaction.default with focused = Some sized };
+  check_state "pressed"
+    { Nopal_style.Interaction.default with pressed = Some sized }
 
 (* ── Text CSS tests ── *)
 
@@ -617,7 +656,7 @@ let test_style_text_color () =
     |> with_text
          (Nopal_style.Text.color (Nopal_style.Color.named "rebeccapurple"))
   in
-  let props = of_style style in
+  let props = of_style ~parent_axis:None style in
   check_has_prop "flex-direction" "row" props;
   check_has_prop "color" "rebeccapurple" props
 
@@ -632,7 +671,7 @@ let test_style_text_whitespace () =
     |> with_layout (fun l -> { l with direction = Some Row_dir })
     |> with_text (Nopal_style.Text.whitespace Nopal_style.Text.Preserve)
   in
-  let props = of_style style in
+  let props = of_style ~parent_axis:None style in
   check_has_prop "flex-direction" "row" props;
   check_has_prop "white-space" "pre-wrap" props
 
@@ -648,7 +687,7 @@ let test_style_text_figures () =
     |> with_layout (fun l -> { l with direction = Some Row_dir })
     |> with_text (Nopal_style.Text.figure_spacing Nopal_style.Text.Tabular)
   in
-  let spacing_props = of_style spacing_only in
+  let spacing_props = of_style ~parent_axis:None spacing_only in
   (* The layout property comes from a fold this gate cannot suppress, so it
      tells a gate that dropped the text block apart from a fixture that reached
      of_style and produced nothing at all. *)
@@ -659,7 +698,7 @@ let test_style_text_figures () =
     |> with_layout (fun l -> { l with direction = Some Row_dir })
     |> with_text (Nopal_style.Text.figure_style Nopal_style.Text.Oldstyle)
   in
-  let style_props = of_style style_only in
+  let style_props = of_style ~parent_axis:None style_only in
   check_has_prop "flex-direction" "row" style_props;
   check_has_prop "font-variant-numeric" "oldstyle-nums" style_props
 
@@ -1042,7 +1081,7 @@ let test_normalize_key_same_key_for_identical_styles () =
 
 let test_css_omits_all_for_default_layout () =
   let style = default in
-  let props = of_style style in
+  let props = of_style ~parent_axis:None style in
   check_no_prop "flex-direction" props;
   check_no_prop "justify-content" props;
   check_no_prop "align-items" props;
@@ -1057,7 +1096,7 @@ let test_css_emits_direction_when_set () =
   let style =
     with_layout (fun l -> { l with direction = Some Column_dir }) default
   in
-  let props = of_style style in
+  let props = of_style ~parent_axis:None style in
   check_has_prop "flex-direction" "column" props;
   (* Only direction was set — no other layout props should appear *)
   check_no_prop "justify-content" props;
@@ -1075,7 +1114,7 @@ let test_css_emits_only_set_fields () =
       (fun l -> { l with gap = Some 16.; width = Some (Fixed 300.) })
       default
   in
-  let props = of_style style in
+  let props = of_style ~parent_axis:None style in
   check_has_prop "gap" "16px" props;
   check_has_prop "width" "300px" props;
   (* Unset fields should not appear *)
@@ -1093,7 +1132,7 @@ let test_css_partial_padding_emits_individual () =
       (fun l -> { l with padding_top = Some 10.; padding_left = Some 5. })
       default
   in
-  let props = of_style style in
+  let props = of_style ~parent_axis:None style in
   check_has_prop "padding-top" "10px" props;
   check_has_prop "padding-left" "5px" props;
   check_no_prop "padding" props;
@@ -1126,7 +1165,7 @@ let test_css_emits_multiple_set_fields () =
         })
       default
   in
-  let props = of_style style in
+  let props = of_style ~parent_axis:None style in
   check_has_prop "flex-direction" "row" props;
   check_has_prop "justify-content" "center" props;
   check_has_prop "align-items" "flex-end" props;
@@ -1136,6 +1175,77 @@ let test_css_emits_multiple_set_fields () =
   check_has_prop "width" "100%" props;
   check_has_prop "height" "100px" props;
   check_has_prop "flex-grow" "2" props
+
+(* The shrink guard. Every box the web renderer lays out is a flex item, and a
+   flex item at the CSS default shrink is squeezed below the size it declares
+   whenever its siblings' content wants more room; an empty one collapses all
+   the way to its automatic minimum of zero and vanishes. A declared main-axis
+   size is therefore only honoured when the guard is emitted beside it.
+
+   The axis that matters is the PARENT's, which is why it arrives as an
+   argument and not as a field of the style: the very same style value emits
+   the guard for a child of a row and emits nothing for a child of a column. *)
+
+let fixed_width_120 =
+  with_layout (fun l -> { l with width = Some (Fixed 120.) }) default
+
+let test_fixed_width_row_emits_no_shrink () =
+  let props = of_style ~parent_axis:(Some Horizontal) fixed_width_120 in
+  check_has_prop "width" "120px" props;
+  check_has_prop "flex-shrink" "0" props
+
+let test_fixed_width_column_omits_shrink () =
+  (* The same style value as above. Width is the cross axis of a column, is not
+     squeezed there, and must emit exactly what it emitted before the guard
+     existed. The width assertion is the affirmative arm: it proves the fixture
+     still reaches the emitter, so the absence below cannot pass vacuously. *)
+  let props = of_style ~parent_axis:(Some Vertical) fixed_width_120 in
+  check_has_prop "width" "120px" props;
+  check_no_prop "flex-shrink" props
+
+let test_fixed_height_column_emits_no_shrink () =
+  let style =
+    with_layout (fun l -> { l with height = Some (Fixed 48.) }) default
+  in
+  let down = of_style ~parent_axis:(Some Vertical) style in
+  check_has_prop "height" "48px" down;
+  check_has_prop "flex-shrink" "0" down;
+  let across = of_style ~parent_axis:(Some Horizontal) style in
+  check_has_prop "height" "48px" across;
+  check_no_prop "flex-shrink" across
+
+let test_flexible_sizes_never_shrink_guard () =
+  (* Fill emits width:100%, so two Fill siblings in a row resolve to half each
+     only by shrinking. Freezing any of these three would break every existing
+     layout, so each one is checked on the main axis. *)
+  List.iter
+    (fun size ->
+      let style = with_layout (fun l -> { l with width = Some size }) default in
+      check_no_prop "flex-shrink"
+        (of_style ~parent_axis:(Some Horizontal) style);
+      (* Affirmative arm on the same fixture: swapping only the size for Fixed
+         makes the guard appear, so the absence above is caused by the size and
+         not by this style failing to reach the guard at all. *)
+      let fixed =
+        with_layout (fun l -> { l with width = Some (Fixed 120.) }) style
+      in
+      check_has_prop "flex-shrink" "0"
+        (of_style ~parent_axis:(Some Horizontal) fixed))
+    [ Fill; Hug; Fraction 0.5 ]
+
+let test_no_parent_axis_emits_nothing () =
+  (* None means the parent is not a flex container, so neither dimension is a
+     main axis and no size is at risk. Both sizes are Fixed, which is the only
+     size that ever emits the guard. *)
+  let style =
+    with_layout
+      (fun l -> { l with width = Some (Fixed 120.); height = Some (Fixed 48.) })
+      default
+  in
+  let props = of_style ~parent_axis:None style in
+  check_has_prop "width" "120px" props;
+  check_has_prop "height" "48px" props;
+  check_no_prop "flex-shrink" props
 
 let () =
   Alcotest.run "style_css"
@@ -1182,6 +1292,19 @@ let () =
           Alcotest.test_case "wrap none omits property" `Quick
             test_wrap_none_omits_property;
         ] );
+      ( "shrink guard",
+        [
+          Alcotest.test_case "fixed width in a row emits no-shrink" `Quick
+            test_fixed_width_row_emits_no_shrink;
+          Alcotest.test_case "fixed width in a column omits the guard" `Quick
+            test_fixed_width_column_omits_shrink;
+          Alcotest.test_case "fixed height in a column emits no-shrink" `Quick
+            test_fixed_height_column_emits_no_shrink;
+          Alcotest.test_case "flexible sizes never emit the guard" `Quick
+            test_flexible_sizes_never_shrink_guard;
+          Alcotest.test_case "no parent axis emits no guard" `Quick
+            test_no_parent_axis_emits_nothing;
+        ] );
       ( "to_inline_string",
         [
           Alcotest.test_case "joins properties" `Quick
@@ -1207,6 +1330,8 @@ let () =
             test_interaction_rules_default_empty;
           Alcotest.test_case "focused only" `Quick
             test_interaction_rules_focused_only;
+          Alcotest.test_case "no shrink guard in any state" `Quick
+            test_interaction_rules_never_emits_shrink_guard;
         ] );
       ( "of_text",
         [
