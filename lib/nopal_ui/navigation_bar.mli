@@ -32,10 +32,19 @@ val with_tab_style : Nopal_style.Style.t -> 'msg config -> 'msg config
 (** Override the base style for all tab items. *)
 
 val with_active_tab_style : Nopal_style.Style.t -> 'msg config -> 'msg config
-(** Override the style applied to the active tab (merged atop tab style). *)
+(** Override the style applied to the active tab.
+
+    This style {e replaces} the base tab style on the active tab; it is not
+    merged over it. Any property the active tab needs must therefore be restated
+    here — [flex_grow], padding, border radius and the rest do not carry over
+    from {!with_tab_style}, and an active style that sets only a background
+    loses whatever geometry the base style gave the other tabs. *)
 
 val with_interaction : Nopal_style.Interaction.t -> 'msg config -> 'msg config
-(** Override hover/pressed interaction for inactive tabs. *)
+(** Override the hover/pressed/focused interaction on the tab buttons.
+
+    One interaction is shared by the whole bar and is applied to {e every} item,
+    the active one included; there is no per-item interaction. *)
 
 val with_attrs : (string * string) list -> 'msg config -> 'msg config
 (** Additional attributes on the container element. User attrs override internal

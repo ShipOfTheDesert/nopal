@@ -3,6 +3,7 @@ module BT = Nopal_ui.Bottom_tabs
 module Nav_stack = Nopal_navigation.Nav_stack
 module E = Nopal_element.Element
 module Style = Nopal_style.Style
+module Interaction = Nopal_style.Interaction
 module Viewport = Nopal_element.Viewport
 
 type msg = Select of string | Back
@@ -195,6 +196,92 @@ let test_with_active_tab_style_applied () =
         "active tab carries overridden active style" (Some 9.0)
         (node_padding_top node)
 
+(* The bar is a [Navigation_bar] composed in, and the three setters below are
+   the ones that reach *it* rather than the root or the panel. They are resolved
+   through the tablist node, which is the bar's own container element. *)
+let bar_node r =
+  match find (By_attr ("role", "tablist")) (tree r) with
+  | None -> Alcotest.fail "no tablist node"
+  | Some node -> node
+
+let test_with_bar_style_applied_to_bar () =
+  let config =
+    make_config ~tabs ~active:"a" ~safe_area_bottom:0
+    |> BT.with_bar_style (style_with_padding_top 11.0)
+  in
+  let r = render (BT.view config) in
+  Alcotest.(check (option (float 0.001)))
+    "tablist container carries the bar style" (Some 11.0)
+    (node_padding_top (bar_node r))
+
+let test_with_bar_attrs_applied_to_bar () =
+  let config =
+    make_config ~tabs ~active:"a" ~safe_area_bottom:0
+    |> BT.with_bar_attrs [ ("data-testid", "custom-bar") ]
+  in
+  let r = render (BT.view config) in
+  match find (By_attr ("data-testid", "custom-bar")) (tree r) with
+  | None -> Alcotest.fail "no node carrying the bar attr"
+  | Some node ->
+      Alcotest.(check (option string))
+        "the attr lands on the tablist, not the root" (Some "tablist")
+        (attr "role" node)
+
+(* [with_attrs] targets the root and [with_bar_attrs] the bar; setting both must
+   not collapse them onto one element. *)
+let test_bar_attrs_and_root_attrs_are_distinct () =
+  let config =
+    make_config ~tabs ~active:"a" ~safe_area_bottom:0
+    |> BT.with_attrs [ ("data-testid", "the-root") ]
+    |> BT.with_bar_attrs [ ("data-testid", "the-bar") ]
+  in
+  let r = render (BT.view config) in
+  let role_of testid =
+    Option.bind (find (By_attr ("data-testid", testid)) (tree r)) (attr "role")
+  in
+  Alcotest.(check (option string))
+    "root has no tablist role" None (role_of "the-root");
+  Alcotest.(check (option string))
+    "bar is the tablist" (Some "tablist") (role_of "the-bar")
+
+(* [Navigation_bar] applies one interaction to every tab button, the active one
+   included; the assertion covers both so the forwarding is pinned to the
+   behaviour the .mli now describes rather than to the label it used to. *)
+let test_with_bar_interaction_reaches_every_tab () =
+  let hover =
+    {
+      Interaction.default with
+      hover =
+        Some
+          (Style.default
+          |> Style.with_paint (fun p ->
+              { p with background = Some (Style.rgba 1 2 3 1.0) }));
+    }
+  in
+  let config =
+    make_config ~tabs ~active:"a" ~safe_area_bottom:0
+    |> BT.with_bar_interaction hover
+  in
+  let r = render (BT.view config) in
+  let tab_has_hover id =
+    match find_tab r ~id with
+    | None -> Alcotest.fail ("no tab node " ^ id)
+    | Some node -> has_hover node
+  in
+  Alcotest.(check bool)
+    "inactive tab carries the hover style" true (tab_has_hover "b");
+  Alcotest.(check bool) "active tab carries it too" true (tab_has_hover "a")
+
+(* Without the setter no tab has one, so the assertion above is a change and not
+   a property of the default render. *)
+let test_no_bar_interaction_by_default () =
+  let config = make_config ~tabs ~active:"a" ~safe_area_bottom:0 in
+  let r = render (BT.view config) in
+  match find_tab r ~id:"b" with
+  | None -> Alcotest.fail "no inactive tab node"
+  | Some node ->
+      Alcotest.(check bool) "no hover style by default" false (has_hover node)
+
 let test_with_attrs_applied_to_root () =
   let config =
     make_config ~tabs ~active:"a" ~safe_area_bottom:0
@@ -323,6 +410,19 @@ let () =
             `Quick test_with_active_tab_style_applied;
           Alcotest.test_case "with_attrs applied to root" `Quick
             test_with_attrs_applied_to_root;
+        ] );
+      ( "bar-level overrides",
+        [
+          Alcotest.test_case "with_bar_style applied to the tablist" `Quick
+            test_with_bar_style_applied_to_bar;
+          Alcotest.test_case "with_bar_attrs applied to the tablist" `Quick
+            test_with_bar_attrs_applied_to_bar;
+          Alcotest.test_case "bar attrs and root attrs stay distinct" `Quick
+            test_bar_attrs_and_root_attrs_are_distinct;
+          Alcotest.test_case "with_bar_interaction reaches every tab" `Quick
+            test_with_bar_interaction_reaches_every_tab;
+          Alcotest.test_case "no bar interaction by default" `Quick
+            test_no_bar_interaction_by_default;
         ] );
       ( "filling the container",
         [

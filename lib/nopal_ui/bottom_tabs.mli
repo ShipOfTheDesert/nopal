@@ -64,13 +64,45 @@ val make :
       [Viewport.safe_area_bottom (Viewport.safe_area vp)]); 0 leaves layout
       unaffected (REQ-F4). *)
 
+val with_bar_style :
+  Nopal_style.Style.t -> ('screen, 'msg) config -> ('screen, 'msg) config
+(** Override the tab bar's own container style — the [role="tablist"] row that
+    holds the tabs, not the root and not the panel. This is where bar-level
+    geometry lives: padding, gap, border radius, shadow, background.
+
+    Distinct from {!with_attrs}, which targets the root container: a bar style
+    set here and attributes set there land on two different elements. Cosmetic
+    only — it cannot move the bar off the bottom, which is {!with_panel_style}'s
+    [flex_grow] and the root's [Fill] height between them. *)
+
+val with_bar_interaction :
+  Nopal_style.Interaction.t -> ('screen, 'msg) config -> ('screen, 'msg) config
+(** Override the hover/pressed/focused interaction on the tab buttons.
+
+    One interaction is shared by the whole bar and is applied to {e every} tab,
+    the active one included; there is no per-tab interaction. Cosmetic only. *)
+
+val with_bar_attrs :
+  (string * string) list -> ('screen, 'msg) config -> ('screen, 'msg) config
+(** Additional attributes on the tab bar's container element (the
+    [role="tablist"] row). Attributes given here override the bar's internal
+    ARIA attributes on conflict (last-writer-wins).
+
+    {!with_attrs} is the analogue for the root container; the two do not
+    interfere. Cosmetic only. *)
+
 val with_tab_style :
   Nopal_style.Style.t -> ('screen, 'msg) config -> ('screen, 'msg) config
 (** Override the base style for all tabs in the bar. Cosmetic only. *)
 
 val with_active_tab_style :
   Nopal_style.Style.t -> ('screen, 'msg) config -> ('screen, 'msg) config
-(** Override the style applied to the active tab. Cosmetic only. *)
+(** Override the style applied to the active tab. Cosmetic only.
+
+    This style {e replaces} the one from {!with_tab_style} on the active tab
+    rather than merging over it, so any property the active tab needs must be
+    restated here — [flex_grow], padding, border radius and the rest are not
+    inherited from the base tab style. *)
 
 val with_panel_style :
   Nopal_style.Style.t -> ('screen, 'msg) config -> ('screen, 'msg) config
@@ -87,7 +119,8 @@ val with_back_label : string -> ('screen, 'msg) config -> ('screen, 'msg) config
 
 val with_attrs :
   (string * string) list -> ('screen, 'msg) config -> ('screen, 'msg) config
-(** Additional attributes on the root container element. Cosmetic only. *)
+(** Additional attributes on the root container element. See {!with_bar_attrs}
+    for the tab bar's own container. Cosmetic only. *)
 
 val view : ('screen, 'msg) config -> 'msg Nopal_element.Element.t
 (** Renders the bottom-tabs structure:
