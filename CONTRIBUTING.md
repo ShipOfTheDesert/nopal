@@ -95,7 +95,8 @@ close it.
 Each record lives beside the rule it defers, so the next reader of that rule
 sees the exception: D-1, D-2 and D-6 under [E2E tests](#e2e-tests-playwright),
 D-3 under [Performance](#performance), D-4 under [Kitchen Sink](#kitchen-sink),
-D-5 and D-7 under [VIII. Bug-Class Prevention](#viii-bug-class-prevention).
+D-5 and D-7 under [VIII. Bug-Class Prevention](#viii-bug-class-prevention), D-8
+and D-9 under [V. Functional Patterns](#v-functional-patterns).
 
 ## Running Tests
 
@@ -561,6 +562,116 @@ concern of `nopal_web`, never application code.
 **Composition Over Inheritance**
 Use modules, functors, and first-class modules for polymorphism.
 No class hierarchies.
+
+**A Typed Size Is a Guarantee, Not a Hint**
+`Style.size` states what a dimension of an element is, and a backend has to
+deliver it. An element whose size on its parent's main axis is `Fixed` is not
+squeezed below that size to make room for a sibling's content, and it does not
+collapse away when it holds no content of its own to keep it open. The guarantee
+runs in the shrink direction only: `flex_grow` set beside a `Fixed` size still
+makes the element larger, and that is the caller asking for it, not the size
+being disregarded.
+`Fill`, `Hug` and `Fraction` are the flexible spellings and keep giving way —
+`Fill` resolves two siblings to half a container each only by giving way — so
+freezing them would break every layout in the framework. Which axis is the main
+axis belongs to the element's *parent*, never to the element: a renderer deciding
+it from the element's own `direction` is wrong by one level of the tree, and a
+`Row` inside a `Row` hides that it is. Deferring part of the guarantee is
+allowed; leaving it unrecorded is not — see
+[Deferrals and decisions not to cover](#deferrals-and-decisions-not-to-cover)
+for the `D-n` scheme. **Two records sit under this rule: a decision not to
+cover (D-8), and an open deferral naming three routes the guarantee does not
+reach (D-9).**
+
+#### Decision not to cover D-8 — a `Fraction` size is still squeezed
+
+**Owner: whoever first reports a `Fraction` size that did not survive, in the
+change that reports it.**
+
+The guarantee above is delivered for `Fixed` and for nothing else. `Fraction f`
+asks for the fraction `f` of its container on the same axis, is shrunk below it by
+the same mechanism under the same pressure, and deliberately keeps that
+behaviour.
+
+Two reasons, and one thing this record does not claim. First, nothing has
+reported it and nothing here would notice: `grep -rn 'Fraction' lib/ backends/
+examples/ --include=*.ml --include=*.mli`, run on 2026-09-12, returned not one
+line that constructs a `Fraction` — every hit is the type itself, its equality
+arm, the size emitter's arms, or prose — so no example and no view in this
+repository uses the spelling. The `Fixed` guarantee, by contrast, was written
+against a downstream report of measured columns that had turned fluid. Second,
+freezing a percentage is a different judgement from freezing a length. Fractions
+summing past the whole are easy to author by accident and are absorbed today by
+shrinking, while a set of `Fixed` sizes adding up to more than its container is a
+number someone typed; making fractions rigid converts those accidents into
+overflow, which may well be right and is a change to argue on its own evidence.
+
+What this record does not claim is that a `Fraction` cannot disappear the way an
+empty `Fixed` box did. That disappearance came from the minimum size a squeezed
+box is allowed on the web, which is derived from its content and not from the
+length it declared, so the same collapse is plausible here; nobody has measured
+it either way. The case for leaving `Fraction` alone is that no layout has hit
+it, not that no layout can.
+
+Which is also what discharges this: a report, not a count. A real layout where a
+`Fraction` was measured smaller than it declared and where that mattered. The
+change carrying that measurement extends the guard and deletes this record.
+
+#### Open deferral D-9 — three routes the shrink guard does not reach
+
+The guarantee above is delivered by the web backend emitting `flex-shrink: 0`
+beside a `Fixed` main-axis size, and that emission needs the axis of the
+element's *parent*. Three routes never supply one, so a `Fixed` size travelling
+any of them is an ordinary flex item at the CSS default shrink and is squeezable
+exactly as it was before the guarantee existed. Each is recorded rather than
+fixed, for the reason given under it, and each has its own owner.
+
+**An interaction state.** `Style_css.interaction_rules` resolves `hover`,
+`focused` and `pressed` with no parent axis, because it is handed an
+`Interaction.t` and not a position in the tree. All three fields are full
+`Style.t` values, so a size is expressible in them from the public API; where an
+interaction state introduces a `Fixed` main-axis size the base style does not
+declare, the element is squeezable for exactly as long as that state is active.
+Nothing hits this today: every `Interaction.t` constructed in `lib/` and
+`examples/` on 2026-09-12 sets paint fields only, and no size is declared in an
+interaction style anywhere in the repository. Threading the axis in was weighed
+and declined: it widens three signatures, and the interaction dedup key in
+`Style_sheet` would have to carry the axis too, or two identical interactions
+under different parent axes would share one rule. The limitation is pinned by
+"no shrink guard in any state" in `test/unit/nopal_web/test_style_css.ml`, so
+changing it is a decision rather than an accident.
+**Owner: whoever first declares a size in an interaction style, in the change
+that declares it.**
+
+**A `Draw`.** `Element.draw` carries no `Style.t` at all, so the style path is
+never walked for it; its size is written as inline `width` and `height` by the
+canvas setup that gives it a HiDPI backing store. It is a flex item all the
+same, whenever it sits in a `Box`, `Row` or `Column`. This one is structural
+rather than hypothetical — the guard cannot reach a `Draw` by any call site,
+because there is no style to put it in. Adding the property in the canvas setup
+was weighed and declined on two grounds: it writes a CSS string outside the one
+module allowed to generate them, and it changes the layout of every chart in the
+framework without anyone having asked for that.
+**Owner: whoever first reports a `Draw` rendered narrower than the size its
+canvas was set up at, in the change that reports it.**
+
+**The mount root.** The renderer creates and reconciles the root element with no
+parent axis, because the mount target was not built by this backend and how it
+lays its children out is not knowable from inside. That is right when the host
+lays nothing out, and wrong when the host page has made the mount target a flex
+container: a root sized `Fixed` is then squeezable and nothing here can tell.
+A host that hits this today can wrap its root in a container of its own, which
+does have an axis.
+**Owner: whoever gives the mount API a way to state the host's axis, in the
+change that adds it.**
+
+One thing this record does not defer is the tie between the guard's domain and
+the set of variants the backend lays out as flex containers.
+`Renderer.container_main_axis` answers `Some` for exactly the three variants
+that call `apply_container_base_style`, and a comment at each end says so; a
+fourth flex container added without a matching arm would un-guard that variant's
+children with the whole suite green, so the two are changed together rather than
+watched.
 
 ### VI. No Inline Helpers
 

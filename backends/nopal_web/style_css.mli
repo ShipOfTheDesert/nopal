@@ -7,6 +7,11 @@
 type css_prop = { property : string; value : string }
 (** A single CSS property-value pair. *)
 
+(** The axis a flex container lays its children out along. Stated before the
+    type rather than after it, because a doc comment following a variant
+    attaches to the last constructor instead of to the type. *)
+type main_axis = Horizontal | Vertical
+
 val of_text : Nopal_style.Text.t -> css_prop list
 (** [of_text text] returns the CSS properties for [text]. Only [Some] fields
     emit properties — [Text.default] produces [[]]. A set colour emits [color],
@@ -56,9 +61,45 @@ val of_text : Nopal_style.Text.t -> css_prop list
     carry the requested figure set ignores it silently, with no error and no
     fallback, which is a property of the font rather than of this encoding. *)
 
-val of_style : Nopal_style.Style.t -> css_prop list
-(** [of_style style] returns the CSS properties for [style]. Only non-default
-    values are emitted — a default [Style.t] produces [[]].
+val of_style :
+  parent_axis:main_axis option -> Nopal_style.Style.t -> css_prop list
+(** [of_style ~parent_axis style] returns the CSS properties for [style]. Only
+    non-default values are emitted — a default [Style.t] produces [[]].
+
+    [parent_axis] is the main axis of the container that lays this style's
+    element out, and it is what decides [flex-shrink]. Every box this backend
+    renders is a flex item, so a size declared on the main axis is a starting
+    size that a sibling's content can squeeze; an element with no content of its
+    own is squeezed all the way to zero and disappears. A [Fixed] main-axis size
+    is therefore emitted with [flex-shrink:0] beside it, which forecloses the
+    squeeze. It forecloses nothing else: [flex-grow] is emitted from
+    [layout.flex_grow] just above, unguarded, so a caller can still ask for more
+    than the declared size.
+
+    The rule in full, for whatever [parent_axis] it is given. Under
+    [Some Horizontal] a [Fixed] width emits the guard, and under [Some Vertical]
+    a [Fixed] height does. Nothing else ever emits it: the cross-axis size is
+    never consulted, because it is not at risk; [Fill], [Hug] and [Fraction] are
+    flexible by construction and keep shrinking, which is how two [Fill]
+    siblings in a row resolve to half the row each; and an absent size emits
+    nothing to guard. [None] means the parent is not a flex container, so
+    neither dimension is a main axis and no guard is emitted whatever the sizes
+    are.
+
+    What that does not say is that every element gets an axis offered to it. Two
+    routes pass [None] structurally rather than because a parent lays nothing
+    out: [interaction_rules] below, which is handed an interaction and not a
+    position in the tree, and the mount root, which this backend did not build
+    and cannot inspect. A [Fixed] size arriving by either is unguarded whatever
+    its parent does, and [Element.draw] carries no style and so never reaches
+    this function at all. CONTRIBUTING.md's D-9 records the three and names who
+    closes each.
+
+    [parent_axis] is required rather than optional so that no call site can fall
+    back to the unguarded behaviour without saying so. An element's own
+    [layout.direction] is not the answer to this question: that field is emitted
+    as this element's own [flex-direction] and governs its children, while this
+    element's shrink is governed by the axis of its parent.
 
     [box-shadow] carries the shadow's spread as a fourth length, after the blur
     and before the colour, which is the position the CSS grammar reads as

@@ -8,6 +8,31 @@
 
 type direction = Row_dir | Column_dir
 type align = Start | Center | End_ | Stretch | Space_between
+
+(** How much room one dimension of an element asks for.
+
+    [Fixed n] is honoured. On the axis its container lays children out along, an
+    element sized [Fixed n] is not squeezed below [n], whatever its siblings'
+    content would prefer, and it does not collapse away when it has no content
+    of its own to hold it open. The guarantee runs in that one direction only:
+    it forecloses the squeeze, and it says nothing about growth, so a
+    [layout.flex_grow] set beside a [Fixed] size still lets the element take
+    more than [n] — which is the caller asking for it.
+
+    The other three are flexible by construction, and a renderer may give them
+    less room than they ask for. [Fill] takes the room that is left, which is
+    how two [Fill] siblings resolve to half of their container each. [Hug] takes
+    what its own content needs. [Fraction f] asks for the fraction [f] of the
+    container, and is reduced under pressure like the other two rather than held
+    at [f].
+
+    The guarantee covers the container's main axis, which is the only axis where
+    siblings compete for room; a size on the cross axis behaves as it always
+    has. It also covers only elements a container lays out: an element whose
+    parent lays nothing out has no main axis, and its sizes are unaffected. The
+    same holds for a root mounted into a container this framework did not build:
+    its axis is not knowable from inside, so the guarantee is unavailable there
+    even when the host does lay its children out. *)
 type size = Fill | Hug | Fixed of float | Fraction of float
 
 (** Color values. Defined in [Color], which sits below [Text] so that both a

@@ -220,6 +220,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     reveal_list : Sub_reveal_list.model;
     scroll_pane : Sub_scroll_pane.model;
     focus_reveal : Sub_focus_reveal.model;
+    fixed_size : Sub_fixed_size.model;
     keyboard_height : int;  (** soft-keyboard height in logical px (REQ-N2) *)
     back_route : back_route;  (** current route of the back-navigation demo *)
   }
@@ -260,6 +261,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | Reveal_list_msg of Sub_reveal_list.msg
     | Scroll_pane_msg of Sub_scroll_pane.msg
     | Focus_reveal_msg of Sub_focus_reveal.msg
+    | Fixed_size_msg of Sub_fixed_size.msg
     | KeyboardHeightChanged of int  (** native soft-keyboard height (REQ-F5) *)
     | Back_demo_push  (** push the back-demo one step deep (to [Back_detail]) *)
     | Route_changed of back_route  (** popstate-driven route update (REQ-F3) *)
@@ -392,6 +394,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     let reveal_list, reveal_list_cmd = Sub_reveal_list.init () in
     let scroll_pane, scroll_pane_cmd = Sub_scroll_pane.init () in
     let focus_reveal, focus_reveal_cmd = Sub_focus_reveal.init () in
+    let fixed_size, fixed_size_cmd = Sub_fixed_size.init () in
     ( {
         button_clicks = 0;
         input_text = "";
@@ -461,6 +464,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         reveal_list;
         scroll_pane;
         focus_reveal;
+        fixed_size;
         keyboard_height = 0;
         back_route = Back_home;
       },
@@ -485,6 +489,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           Nopal_mvu.Cmd.map (fun m -> Reveal_list_msg m) reveal_list_cmd;
           Nopal_mvu.Cmd.map (fun m -> Scroll_pane_msg m) scroll_pane_cmd;
           Nopal_mvu.Cmd.map (fun m -> Focus_reveal_msg m) focus_reveal_cmd;
+          Nopal_mvu.Cmd.map (fun m -> Fixed_size_msg m) fixed_size_cmd;
           (* Re-read the persisted demo value so a reload dispatches a
              [StorageRestored] message — the E2E persistence proof (REQ-F3). *)
           Nopal_mvu.Cmd.task
@@ -666,6 +671,12 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         in
         ( { model with focus_reveal },
           Nopal_mvu.Cmd.map (fun m -> Focus_reveal_msg m) fr_cmd )
+    | Fixed_size_msg fs_msg ->
+        let fixed_size, fs_cmd =
+          Sub_fixed_size.update model.fixed_size fs_msg
+        in
+        ( { model with fixed_size },
+          Nopal_mvu.Cmd.map (fun m -> Fixed_size_msg m) fs_cmd )
     | DrawPointerMove (x, y) ->
         ({ model with draw_pointer = Some (x, y) }, Nopal_mvu.Cmd.none)
     | DrawPointerLeave ->
@@ -2827,6 +2838,25 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     let chart_w = 400.0 in
     let chart_h = 250.0 in
     let cat = Color.categorical in
+    (* A heat-map tooltip names its cell by indexing the label lists with the
+       row and column the component reports. The lookup is total: a label list
+       shorter than the count the chart was handed would otherwise take the whole
+       view down over a cosmetic string, so a missing label reads as its index
+       instead.
+
+       Observed 2026-09-12, by reading both grids below against the label lists
+       they are drawn with: the P&L cells span rows 0-3 and columns 0-4 against
+       four row labels and five column labels, and the correlation cells span
+       rows and columns 0-3 against four labels. Every index either grid can
+       reach is in range, so no tooltip text changes here. The index fallback is
+       consequently unreached, and no test pins it: a later edit that adds a row
+       or a column without adding its label will read as "#4" in a tooltip
+       rather than fail anywhere. *)
+    let label_at labels index =
+      match List.nth_opt labels index with
+      | Some label -> label
+      | None -> Printf.sprintf "#%d" index
+    in
     (* Heat map data: P&L by hour (rows) × day (cols), sequential scale *)
     let pnl_row_labels = [ "9am"; "10am"; "11am"; "12pm" ] in
     let pnl_col_labels = [ "Mon"; "Tue"; "Wed"; "Thu"; "Fri" ] in
@@ -2958,8 +2988,8 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                   ~format_tooltip:(fun (r, c, v) ->
                     Tooltip.text
                       (Printf.sprintf "%s %s: $%.1fk"
-                         (List.nth pnl_row_labels r)
-                         (List.nth pnl_col_labels c)
+                         (label_at pnl_row_labels r)
+                         (label_at pnl_col_labels c)
                          v))
                   ~on_hover:(fun h -> HeatMapHovered h)
                   ~on_leave:HeatMapLeft ?hover:model.heat_map_hover ();
@@ -2978,8 +3008,8 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                   ~height:chart_h
                   ~format_tooltip:(fun (r, c, v) ->
                     Tooltip.text
-                      (Printf.sprintf "%s vs %s: %.2f" (List.nth corr_labels r)
-                         (List.nth corr_labels c) v))
+                      (Printf.sprintf "%s vs %s: %.2f" (label_at corr_labels r)
+                         (label_at corr_labels c) v))
                   ~on_hover:(fun h -> HeatMapHovered h)
                   ~on_leave:HeatMapLeft ?hover:model.heat_map_hover ();
               ];
@@ -4075,6 +4105,19 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
            view_scroll model;
            view_keyed model;
            view_nested model;
+           (* Beside the nested-layout section on purpose. That section shows
+              sizes cooperating inside a container big enough for all of them;
+              this one shows what a declared size is worth when the container is
+              not, which is the case a layout only meets once real content
+              arrives. *)
+           view_section
+             ~attrs:[ ("data-testid", "fixed-size-section") ]
+             "A Fixed size must not shrink"
+             [
+               Element.map
+                 (fun m -> Fixed_size_msg m)
+                 (Sub_fixed_size.view vp model.fixed_size);
+             ];
            view_interaction_states model;
            view_style_removal model;
            Element.map (fun m -> Ui_msg m) (Kitchen_sink_ui.view vp model.ui);

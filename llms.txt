@@ -520,6 +520,26 @@ All styling is typed — no CSS strings in view code.
 type direction = Row_dir | Column_dir
 type align = Start | Center | End_ | Stretch | Space_between
 type size = Fill | Hug | Fixed of float | Fraction of float
+(* Fixed is honoured on the axis the parent lays its children out along: the
+   element is not squeezed below that size, whatever a sibling's content would
+   prefer, and an element with no content of its own does not collapse away. The
+   guarantee runs in the shrink direction only — a flex_grow set beside a Fixed
+   size still makes the element larger, which is the caller asking for it. The
+   other three stay flexible and may be given less room than they ask for — Fill
+   takes what is left, which is how two Fill siblings in a row resolve to half
+   each, and Fraction is reduced under pressure rather than held at its
+   percentage. The guarantee covers the main axis only, which is the only axis
+   where siblings compete for room, and only children of a container that lays
+   its children out. The web backend gets it by emitting flex-shrink: 0 beside a
+   Fixed main-axis size: width under a row parent, height under a column parent,
+   and nothing for any other size, for the cross axis, or for a child of an
+   element that is not a layout container. Three routes never get an axis at all
+   and so never get the guard: a size declared in an interaction (hover, focused
+   or pressed) style, a Draw element, which carries no Style.t, and a root
+   mounted into a container the framework did not build. CONTRIBUTING.md's D-9
+   records them. The axis is the parent's, not the element's own
+   layout.direction — that field is emitted as this element's
+   flex-direction and governs its children. *)
 
 type layout = {
   direction : direction option; main_align : align option;
@@ -3045,14 +3065,29 @@ examples/
                        fixed place to start from instead of counting tab stops
                        from the top of the page; and the reveal has exactly one
                        writer — the two focus edges — so the reset deliberately
-                       leaves it alone). Each lives in
+                       leaves it alone); and "A Fixed size must not shrink" (a
+                       box declaring a fixed width and a fixed height beside a
+                       Fill sibling whose text carries a token with no break
+                       opportunity in it, plus a row of three fixed columns
+                       declared wider than the row holding them — one control
+                       stops the sibling's line breaking, which is what makes it
+                       demand more room than the pair has, and another flips the
+                       pair's own axis, which moves the fixed box's main axis
+                       from its width to its height with no change to that box's
+                       own style. Nothing here is assertable from the element
+                       tree: whether a declared size survived is a measurement of
+                       rendered geometry, so the structural suite pins only the
+                       controls and the fixtures and the claim itself is measured
+                       in a browser). Each lives in
                        its own sub_*.ml/.mli with its own structural suite;
                        the receipt one is
                        examples/kitchen_sink/sub_receipt_flow.ml, the reveal one
                        examples/kitchen_sink/sub_reveal_list.ml, the
                        relative-scroll one
-                       examples/kitchen_sink/sub_scroll_pane.ml and the
-                       focus one examples/kitchen_sink/sub_focus_reveal.ml
+                       examples/kitchen_sink/sub_scroll_pane.ml, the
+                       focus one examples/kitchen_sink/sub_focus_reveal.ml and
+                       the fixed-size one
+                       examples/kitchen_sink/sub_fixed_size.ml
   dashboard/         — Charts showcase
 test/
   unit/              — Alcotest tests per package

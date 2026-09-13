@@ -82,8 +82,8 @@ let jv_of_live = function
 
 let dom_node handle = jv_of_live handle.root
 
-let apply_style el (style : Nopal_style.Style.t) =
-  let props = Style_css.of_style style in
+let apply_style ~parent_axis el (style : Nopal_style.Style.t) =
+  let props = Style_css.of_style ~parent_axis style in
   List.iter
     (fun { Style_css.property; value } ->
       Brr.El.set_inline_style (Jstr.v property) (Jstr.v value) el)
@@ -100,8 +100,77 @@ let apply_text_style el text_style =
       props
   | None -> []
 
+(* This function and the [Some] arms of [container_main_axis] below must name
+   the same set of variants: calling this is what makes a variant a flex
+   container, and being a flex container is what puts a child's declared size at
+   risk. A fourth call site added without a matching arm there un-guards that
+   variant's children with nothing failing, so the two change together. *)
 let apply_container_base_style el =
   Brr.El.set_inline_style (Jstr.v "display") (Jstr.v "flex") el
+
+(* The axis a container lays its children out along, and [None] for everything
+   that lays nothing out. It answers for the element's CHILDREN: whether a
+   declared size is at risk of being squeezed is decided by the axis of the
+   element one level up, which is why this is resolved from the enclosing
+   element and handed down rather than read out of the child's own style. An
+   element's own direction is emitted as its own flex-direction and governs the
+   level below it.
+
+   Only these three variants are laid out as flex containers by this backend, so
+   every other variant answers [None] — including the ones that hold a child,
+   which are ordinary block boxes their child cannot be squeezed inside.
+
+   [Row] and [Column] answer from the constructor, not from the style: both
+   write their direction inline after the style is applied, so a style asking
+   for the opposite axis loses and this must lose with it. [Box] has no
+   constructor answer and reads the field, whose absence means down the page
+   here even though CSS reads an absent flex-direction as across.
+
+   Call sites bind the result as [children_axis]. It is the axis the element
+   hands DOWN, never the one it sits on, and it is resolved inside the arms
+   that lay children out rather than once per element, so a leaf never pays
+   for an answer it cannot use. *)
+let container_main_axis (el : 'msg Nopal_element.Element.t) :
+    Style_css.main_axis option =
+  match el with
+  | Row _ -> Some Style_css.Horizontal
+  | Column _ -> Some Style_css.Vertical
+  | Box { style; _ } -> (
+      match style.Nopal_style.Style.layout.direction with
+      | Some Nopal_style.Style.Row_dir -> Some Style_css.Horizontal
+      | Some Nopal_style.Style.Column_dir
+      | None ->
+          Some Style_css.Vertical)
+  | Empty
+  | Text _
+  | Button _
+  | Input _
+  | Checkbox _
+  | Radio _
+  | Select _
+  | File_input _
+  | Image _
+  | Scroll _
+  | Keyed _
+  | Draw _
+  | Virtual_list _ ->
+      None
+
+(* Whether two axes are the same one. Written as an exhaustive match rather than
+   [=] so that a third axis becomes a compile error here instead of being
+   silently classified as "different from everything". *)
+let same_main_axis (a : Style_css.main_axis option)
+    (b : Style_css.main_axis option) =
+  match (a, b) with
+  | None, None -> true
+  | Some Style_css.Horizontal, Some Style_css.Horizontal
+  | Some Style_css.Vertical, Some Style_css.Vertical ->
+      true
+  | Some Style_css.Horizontal, Some Style_css.Vertical
+  | Some Style_css.Vertical, Some Style_css.Horizontal
+  | Some (Style_css.Horizontal | Style_css.Vertical), None
+  | None, Some (Style_css.Horizontal | Style_css.Vertical) ->
+      false
 
 (* Set every declared attribute on [el]. Shared by the create arms and by
    [maybe_apply_attrs], which adds the removal half for reconciliation. *)
@@ -158,10 +227,10 @@ let inject_interaction_class sheet el interaction =
         None
   else None
 
-let apply_styles_for_element ~sheet el (style : Nopal_style.Style.t)
-    (interaction : Nopal_style.Interaction.t) =
+let apply_styles_for_element ~sheet ~parent_axis el
+    (style : Nopal_style.Style.t) (interaction : Nopal_style.Interaction.t) =
   if Nopal_style.Interaction.has_any interaction then begin
-    let css_props = Style_css.of_style style in
+    let css_props = Style_css.of_style ~parent_axis style in
     let bid =
       match css_props with
       | [] -> None
@@ -171,7 +240,7 @@ let apply_styles_for_element ~sheet el (style : Nopal_style.Style.t)
     (bid, iid)
   end
   else begin
-    apply_style el style;
+    apply_style ~parent_axis el style;
     (None, None)
   end
 
@@ -519,7 +588,7 @@ let apply_focusable el focusable =
    set, [set_data_key], and [get_data_key] always agree (FR-4). *)
 let comment_key_prop = "__nopal_key"
 
-let rec create_live ~sheet ~reveals ~dispatch
+let rec create_live ~sheet ~reveals ~dispatch ~parent_axis
     (element : 'msg Nopal_element.Element.t) : 'msg live =
   match element with
   | Empty ->
@@ -561,12 +630,16 @@ let rec create_live ~sheet ~reveals ~dispatch
       in
       Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v dir) el;
       let base_id, interaction_id =
-        apply_styles_for_element ~sheet el style interaction
+        apply_styles_for_element ~sheet ~parent_axis el style interaction
       in
       apply_attrs el attrs;
       apply_focusable el focusable;
+      let children_axis = container_main_axis element in
       let live_children =
-        List.map (create_and_append ~sheet ~reveals ~dispatch el) children
+        List.map
+          (create_and_append ~sheet ~reveals ~dispatch
+             ~parent_axis:children_axis el)
+          children
       in
       let listeners =
         wire_box_pointer_events ~dispatch el on_pointer_move on_pointer_leave
@@ -586,14 +659,18 @@ let rec create_live ~sheet ~reveals ~dispatch
       let el = Brr.El.v (Jstr.v "div") [] in
       apply_container_base_style el;
       let base_id, interaction_id =
-        apply_styles_for_element ~sheet el style interaction
+        apply_styles_for_element ~sheet ~parent_axis el style interaction
       in
       (* Row always uses "row" — set after style application so the element
          type wins over any direction the style may carry. *)
       Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v "row") el;
       apply_attrs el attrs;
+      let children_axis = container_main_axis element in
       let live_children =
-        List.map (create_and_append ~sheet ~reveals ~dispatch el) children
+        List.map
+          (create_and_append ~sheet ~reveals ~dispatch
+             ~parent_axis:children_axis el)
+          children
       in
       Live_node
         {
@@ -608,14 +685,18 @@ let rec create_live ~sheet ~reveals ~dispatch
       let el = Brr.El.v (Jstr.v "div") [] in
       apply_container_base_style el;
       let base_id, interaction_id =
-        apply_styles_for_element ~sheet el style interaction
+        apply_styles_for_element ~sheet ~parent_axis el style interaction
       in
       (* Column always uses "column" — set after style application so the
          element type wins over any direction the style may carry. *)
       Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v "column") el;
       apply_attrs el attrs;
+      let children_axis = container_main_axis element in
       let live_children =
-        List.map (create_and_append ~sheet ~reveals ~dispatch el) children
+        List.map
+          (create_and_append ~sheet ~reveals ~dispatch
+             ~parent_axis:children_axis el)
+          children
       in
       Live_node
         {
@@ -629,10 +710,14 @@ let rec create_live ~sheet ~reveals ~dispatch
   | Button { style; interaction; attrs; on_click; on_dblclick; child } ->
       let el = Brr.El.v (Jstr.v "button") [] in
       let base_id, interaction_id =
-        apply_styles_for_element ~sheet el style interaction
+        apply_styles_for_element ~sheet ~parent_axis el style interaction
       in
       apply_attrs el attrs;
-      let live_child = create_and_append ~sheet ~reveals ~dispatch el child in
+      let children_axis = container_main_axis element in
+      let live_child =
+        create_and_append ~sheet ~reveals ~dispatch ~parent_axis:children_axis
+          el child
+      in
       let listeners =
         wire_click ~dispatch el on_click
         @ wire_dblclick ~dispatch el on_dblclick
@@ -661,7 +746,7 @@ let rec create_live ~sheet ~reveals ~dispatch
       } ->
       let el = Brr.El.v (Jstr.v "input") [] in
       let base_id, interaction_id =
-        apply_styles_for_element ~sheet el style interaction
+        apply_styles_for_element ~sheet ~parent_axis el style interaction
       in
       Jv.set (Brr.El.to_jv el) "value" (Jv.of_string value);
       Brr.El.set_at (Jstr.v "placeholder") (Some (Jstr.v placeholder)) el;
@@ -678,7 +763,7 @@ let rec create_live ~sheet ~reveals ~dispatch
       Jv.set (Brr.El.to_jv el) "checked" (Jv.of_bool checked);
       if disabled then Brr.El.set_at (Jstr.v "disabled") (Some (Jstr.v "")) el;
       let base_id, interaction_id =
-        apply_styles_for_element ~sheet el style interaction
+        apply_styles_for_element ~sheet ~parent_axis el style interaction
       in
       apply_attrs el attrs;
       let listeners =
@@ -702,7 +787,7 @@ let rec create_live ~sheet ~reveals ~dispatch
       Jv.set (Brr.El.to_jv el) "checked" (Jv.of_bool checked);
       if disabled then Brr.El.set_at (Jstr.v "disabled") (Some (Jstr.v "")) el;
       let base_id, interaction_id =
-        apply_styles_for_element ~sheet el style interaction
+        apply_styles_for_element ~sheet ~parent_axis el style interaction
       in
       apply_attrs el attrs;
       let listeners =
@@ -739,7 +824,7 @@ let rec create_live ~sheet ~reveals ~dispatch
       Jv.set (Brr.El.to_jv el) "value" (Jv.of_string selected);
       if disabled then Brr.El.set_at (Jstr.v "disabled") (Some (Jstr.v "")) el;
       let base_id, interaction_id =
-        apply_styles_for_element ~sheet el style interaction
+        apply_styles_for_element ~sheet ~parent_axis el style interaction
       in
       apply_attrs el attrs;
       let listeners =
@@ -764,7 +849,7 @@ let rec create_live ~sheet ~reveals ~dispatch
       Brr.El.set_at (Jstr.v "type") (Some (Jstr.v "file")) el;
       apply_file_input_config el ~accept ~capture ~multiple;
       let base_id, interaction_id =
-        apply_styles_for_element ~sheet el style interaction
+        apply_styles_for_element ~sheet ~parent_axis el style interaction
       in
       apply_attrs el attrs;
       let listeners = wire_file_change ~dispatch el on_change in
@@ -772,7 +857,7 @@ let rec create_live ~sheet ~reveals ~dispatch
         { dom = el; element; children = []; listeners; base_id; interaction_id }
   | Image { style; src; alt } ->
       let el = Brr.El.v (Jstr.v "img") [] in
-      apply_style el style;
+      apply_style ~parent_axis el style;
       Brr.El.set_at (Jstr.v "src") (Some (Jstr.v src)) el;
       Brr.El.set_at (Jstr.v "alt") (Some (Jstr.v alt)) el;
       Live_node
@@ -787,13 +872,17 @@ let rec create_live ~sheet ~reveals ~dispatch
   | Scroll { style; attrs; reveal; child } ->
       let el = Brr.El.v (Jstr.v "div") [] in
       Brr.El.set_inline_style (Jstr.v "overflow") (Jstr.v "auto") el;
-      apply_style el style;
+      apply_style ~parent_axis el style;
       apply_attrs el attrs;
       (* A container being created carried no declaration a moment ago, so
          [previous] is [None]. Collected before the child is built, so an outer
          container is queued ahead of any container nested inside it. *)
       collect_reveal ~reveals ~container:el ~previous:None ~next:reveal;
-      let live_child = create_and_append ~sheet ~reveals ~dispatch el child in
+      let children_axis = container_main_axis element in
+      let live_child =
+        create_and_append ~sheet ~reveals ~dispatch ~parent_axis:children_axis
+          el child
+      in
       Live_node
         {
           dom = el;
@@ -804,7 +893,13 @@ let rec create_live ~sheet ~reveals ~dispatch
           interaction_id = None;
         }
   | Keyed { key; child } ->
-      let live_child = create_live ~sheet ~reveals ~dispatch child in
+      (* A key renders no node of its own, so the child is appended to THIS
+         element's parent and inherits its axis unchanged. Resolving
+         [container_main_axis] on the key itself would tell the child it has no
+         main axis whenever its real parent is a row or a column. *)
+      let live_child =
+        create_live ~sheet ~reveals ~dispatch ~parent_axis child
+      in
       (* Set the key on the rendered node so it round-trips across reconciles.
          Elements/text carry it in a data-key attribute; comment nodes can't,
          so they carry it in [comment_key_prop] instead (FR-4). *)
@@ -878,7 +973,7 @@ let rec create_live ~sheet ~reveals ~dispatch
       Brr.El.set_inline_style (Jstr.v "height")
         (Jstr.v (Printf.sprintf "%.0fpx" ch))
         outer;
-      apply_style outer style;
+      apply_style ~parent_axis outer style;
       (* Always enforce overflow-y: auto regardless of style *)
       Brr.El.set_inline_style (Jstr.v "overflow-y") (Jstr.v "auto") outer;
       (* Inner spacer: total content height *)
@@ -910,7 +1005,13 @@ let rec create_live ~sheet ~reveals ~dispatch
             (range.last - range.first + 1)
             (fun i ->
               let item_el = render_item (range.first + i) in
-              create_and_append ~sheet ~reveals ~dispatch row_wrapper item_el)
+              (* The DOM parent of a row item is [row_wrapper], not the virtual
+                 list: a plain absolutely-positioned block that lays nothing
+                 out, so a row item sits on no main axis. Spelled literally so
+                 the value follows from the real parent rather than from the
+                 virtual list happening to answer the same thing. *)
+              create_and_append ~sheet ~reveals ~dispatch ~parent_axis:None
+                row_wrapper item_el)
       in
       (* rAF-gated scroll listener *)
       let raf_pending = ref false in
@@ -947,9 +1048,9 @@ let rec create_live ~sheet ~reveals ~dispatch
           interaction_id = None;
         }
 
-and create_and_append ~sheet ~reveals ~dispatch parent
+and create_and_append ~sheet ~reveals ~dispatch ~parent_axis parent
     (element : 'msg Nopal_element.Element.t) =
-  let live = create_live ~sheet ~reveals ~dispatch element in
+  let live = create_live ~sheet ~reveals ~dispatch ~parent_axis element in
   let jv = jv_of_live live in
   ignore (Jv.call (Brr.El.to_jv parent) "appendChild" [| jv |]);
   live
@@ -1076,7 +1177,9 @@ let drain_reveals (reveals : reveal_request Queue.t) =
 let create ~dispatch ~parent element =
   let sheet = Style_sheet.create () in
   let reveals = Queue.create () in
-  let live = create_live ~sheet ~reveals ~dispatch element in
+  (* The mount target was not built by this backend, so how it lays its
+     children out is not knowable from here. *)
+  let live = create_live ~sheet ~reveals ~dispatch ~parent_axis:None element in
   let jv = jv_of_live live in
   ignore (Jv.call (Brr.El.to_jv parent) "appendChild" [| jv |]);
   drain_reveals reveals;
@@ -1262,16 +1365,26 @@ let clear_inline_styles dom css_props =
       Brr.El.set_inline_style (Jstr.v property) (Jstr.v "") dom)
     css_props
 
-let maybe_apply_style dom old_el new_el =
+let maybe_apply_style ~old_parent_axis ~parent_axis dom old_el new_el =
   let old_style = style_of old_el in
   let new_style = style_of new_el in
   match (old_style, new_style) with
   | Some os, Some ns ->
       (* Unchanged style writes nothing — structural, not physical, equality,
-         since the view rebuilds the style each frame (NFR-1). *)
-      if not (Nopal_style.Style.equal os ns) then begin
-        let old_props = Style_css.of_style os in
-        let new_props = Style_css.of_style ns in
+         since the view rebuilds the style each frame, so an untouched style
+         arrives as a fresh but equal value rather than as the same one.
+
+         A parent that changed the axis it lays its children out along has moved
+         every child's main axis, so a child whose own style is untouched still
+         has to be re-emitted: the dimension that was safe across the parent is
+         now the one at risk along it, and the other way round. Skipping on
+         equal styles alone would leave the previous frame's answer painted. *)
+      if
+        (not (same_main_axis old_parent_axis parent_axis))
+        || not (Nopal_style.Style.equal os ns)
+      then begin
+        let old_props = Style_css.of_style ~parent_axis:old_parent_axis os in
+        let new_props = Style_css.of_style ~parent_axis ns in
         (* Remove inline props present last render but absent now so the painted
            result matches the model (FR-1). *)
         List.iter
@@ -1284,9 +1397,9 @@ let maybe_apply_style dom old_el new_el =
                    new_props)
             then Brr.El.set_inline_style (Jstr.v property) (Jstr.v "") dom)
           old_props;
-        apply_style dom ns
+        apply_style ~parent_axis dom ns
       end
-  | None, Some ns -> apply_style dom ns
+  | None, Some ns -> apply_style ~parent_axis dom ns
   | None, None -> ()
   | Some _, None ->
       (* Unreachable: reconcile_live only calls reconcile_node (and thus
@@ -1295,8 +1408,8 @@ let maybe_apply_style dom old_el new_el =
          don't (Empty, Text, Keyed) never reach this path. *)
       ()
 
-let rec reconcile_keyed_children ~sheet ~reveals ~dispatch parent_el
-    old_children new_pairs =
+let rec reconcile_keyed_children ~sheet ~reveals ~dispatch ~old_parent_axis
+    ~parent_axis parent_el old_children new_pairs =
   let parent_jv = Brr.El.to_jv parent_el in
   let old_map = Hashtbl.create (List.length old_children) in
   List.iter (fun (key, live) -> Hashtbl.replace old_map key live) old_children;
@@ -1308,7 +1421,8 @@ let rec reconcile_keyed_children ~sheet ~reveals ~dispatch parent_el
         | Some old_live ->
             Hashtbl.remove old_map key;
             let updated =
-              reconcile_live ~sheet ~reveals ~dispatch parent_el old_live child
+              reconcile_live ~sheet ~reveals ~dispatch ~old_parent_axis
+                ~parent_axis parent_el old_live child
             in
             (* On a variant change reconcile_live replaces the DOM node with a
                freshly-created one that does not carry the key, so re-establish
@@ -1320,7 +1434,9 @@ let rec reconcile_keyed_children ~sheet ~reveals ~dispatch parent_el
               set_data_key updated key;
             (key, updated)
         | None ->
-            let live = create_live ~sheet ~reveals ~dispatch child in
+            let live =
+              create_live ~sheet ~reveals ~dispatch ~parent_axis child
+            in
             set_data_key live key;
             (key, live))
       new_pairs
@@ -1366,8 +1482,8 @@ let rec reconcile_keyed_children ~sheet ~reveals ~dispatch parent_el
   reorder Jv.null (List.rev new_lives);
   List.map snd new_lives
 
-and reconcile_children ~sheet ~reveals ~dispatch parent_el old_children
-    new_elements =
+and reconcile_children ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
+    parent_el old_children new_elements =
   (* If all new elements are Keyed, use keyed reconciliation *)
   match extract_keyed_pairs new_elements with
   | Some keyed_pairs ->
@@ -1399,15 +1515,16 @@ and reconcile_children ~sheet ~reveals ~dispatch parent_el old_children
                 None)
           old_children
       in
-      reconcile_keyed_children ~sheet ~reveals ~dispatch parent_el old_keyed
-        keyed_pairs
+      reconcile_keyed_children ~sheet ~reveals ~dispatch ~old_parent_axis
+        ~parent_axis parent_el old_keyed keyed_pairs
   | None ->
       let rec go olds news acc =
         match (olds, news) with
         | [], [] -> List.rev acc
         | [], new_el :: rest_new ->
             let live =
-              create_and_append ~sheet ~reveals ~dispatch parent_el new_el
+              create_and_append ~sheet ~reveals ~dispatch ~parent_axis parent_el
+                new_el
             in
             go [] rest_new (live :: acc)
         | old_live :: rest_old, [] ->
@@ -1417,13 +1534,15 @@ and reconcile_children ~sheet ~reveals ~dispatch parent_el old_children
             go rest_old [] acc
         | old_live :: rest_old, new_el :: rest_new ->
             let updated =
-              reconcile_live ~sheet ~reveals ~dispatch parent_el old_live new_el
+              reconcile_live ~sheet ~reveals ~dispatch ~old_parent_axis
+                ~parent_axis parent_el old_live new_el
             in
             go rest_old rest_new (updated :: acc)
       in
       go old_children new_elements []
 
-and reconcile_live ~sheet ~reveals ~dispatch parent_el (old_live : 'msg live)
+and reconcile_live ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
+    parent_el (old_live : 'msg live)
     (new_element : 'msg Nopal_element.Element.t) : 'msg live =
   match (old_live, new_element) with
   | Live_text t, Text { content = s; text_style } ->
@@ -1452,7 +1571,8 @@ and reconcile_live ~sheet ~reveals ~dispatch parent_el (old_live : 'msg live)
       Live_text t
   | Live_comment c, Empty -> Live_comment c
   | Live_node old_n, new_el when same_variant old_n.element new_el ->
-      reconcile_node ~sheet ~reveals ~dispatch old_n new_el;
+      reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
+        old_n new_el;
       Live_node old_n
   | ( Live_text _,
       ( Empty | Box _ | Row _ | Column _ | Button _ | Input _ | Checkbox _
@@ -1464,7 +1584,9 @@ and reconcile_live ~sheet ~reveals ~dispatch parent_el (old_live : 'msg live)
       | Draw _ | Virtual_list _ ) )
   | Live_node _, _ ->
       (* Different variant or same_variant returned false — replace *)
-      let new_live = create_live ~sheet ~reveals ~dispatch new_element in
+      let new_live =
+        create_live ~sheet ~reveals ~dispatch ~parent_axis new_element
+      in
       let old_jv = jv_of_live old_live in
       let new_jv = jv_of_live new_live in
       unlisten_tree ~sheet old_live;
@@ -1472,8 +1594,8 @@ and reconcile_live ~sheet ~reveals ~dispatch parent_el (old_live : 'msg live)
         (Jv.call (Brr.El.to_jv parent_el) "replaceChild" [| new_jv; old_jv |]);
       new_live
 
-and maybe_reconcile_styles ~sheet (old_n : 'msg live_node)
-    (old_el : 'msg Nopal_element.Element.t)
+and maybe_reconcile_styles ~sheet ~old_parent_axis ~parent_axis
+    (old_n : 'msg live_node) (old_el : 'msg Nopal_element.Element.t)
     (new_el : 'msg Nopal_element.Element.t) =
   let old_ix = interaction_of old_el in
   let new_ix = interaction_of new_el in
@@ -1493,6 +1615,10 @@ and maybe_reconcile_styles ~sheet (old_n : 'msg live_node)
       let old_style = style_of old_el in
       let new_style = style_of new_el in
       let style_changed =
+        (* A parent that moved its children's main axis changes what this
+           element's own style emits, so the class is rebuilt then too. *)
+        (not (same_main_axis old_parent_axis parent_axis))
+        ||
         match (old_style, new_style) with
         (* Structural, not physical, equality: the view rebuilds the style each
            frame, so [os == ns] almost never holds and the base class would be
@@ -1515,7 +1641,7 @@ and maybe_reconcile_styles ~sheet (old_n : 'msg live_node)
         (* Inject new base class if there are style props *)
         match new_style with
         | Some ns ->
-            let css_props = Style_css.of_style ns in
+            let css_props = Style_css.of_style ~parent_axis ns in
             old_n.base_id <-
               (match css_props with
               | [] -> None
@@ -1547,13 +1673,13 @@ and maybe_reconcile_styles ~sheet (old_n : 'msg live_node)
       let old_style = style_of old_el in
       (match old_style with
       | Some os ->
-          let old_props = Style_css.of_style os in
+          let old_props = Style_css.of_style ~parent_axis:old_parent_axis os in
           clear_inline_styles old_n.dom old_props
       | None -> ());
       let new_style = style_of new_el in
       (match new_style with
       | Some ns ->
-          let css_props = Style_css.of_style ns in
+          let css_props = Style_css.of_style ~parent_axis ns in
           old_n.base_id <-
             (match css_props with
             | [] -> None
@@ -1581,16 +1707,21 @@ and maybe_reconcile_styles ~sheet (old_n : 'msg live_node)
       (* Apply inline styles for non-interactive element *)
       let new_style = style_of new_el in
       match new_style with
-      | Some ns -> apply_style old_n.dom ns
+      | Some ns -> apply_style ~parent_axis old_n.dom ns
       | None -> ())
   | false, false ->
       (* Both non-interactive: inline style reconciliation *)
-      maybe_apply_style old_n.dom old_el new_el
+      maybe_apply_style ~old_parent_axis ~parent_axis old_n.dom old_el new_el
 
-and reconcile_node ~sheet ~reveals ~dispatch (old_n : 'msg live_node)
-    (new_el : 'msg Nopal_element.Element.t) =
+and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
+    (old_n : 'msg live_node) (new_el : 'msg Nopal_element.Element.t) =
   let el = old_n.dom in
-  maybe_reconcile_styles ~sheet old_n old_n.element new_el;
+  (* What this element handed its children last frame, and what it hands them
+     now. Read before [old_n.element] is replaced at the end of this pass. *)
+  let old_children_axis = container_main_axis old_n.element in
+  let children_axis = container_main_axis new_el in
+  maybe_reconcile_styles ~sheet ~old_parent_axis ~parent_axis old_n
+    old_n.element new_el;
   (match new_el with
   | Box
       {
@@ -1626,19 +1757,25 @@ and reconcile_node ~sheet ~reveals ~dispatch (old_n : 'msg live_node)
           on_pointer_down on_pointer_up on_wheel
         @ wire_box_focus_events ~dispatch el ~on_focus ~on_blur;
       old_n.children <-
-        reconcile_children ~sheet ~reveals ~dispatch el old_n.children children
+        reconcile_children ~sheet ~reveals ~dispatch
+          ~old_parent_axis:old_children_axis ~parent_axis:children_axis el
+          old_n.children children
   | Row { children; _ } ->
       maybe_apply_attrs el old_n.element new_el;
       (* Re-assert hardcoded direction after style reconciliation. *)
       Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v "row") el;
       old_n.children <-
-        reconcile_children ~sheet ~reveals ~dispatch el old_n.children children
+        reconcile_children ~sheet ~reveals ~dispatch
+          ~old_parent_axis:old_children_axis ~parent_axis:children_axis el
+          old_n.children children
   | Column { children; _ } ->
       maybe_apply_attrs el old_n.element new_el;
       (* Re-assert hardcoded direction after style reconciliation. *)
       Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v "column") el;
       old_n.children <-
-        reconcile_children ~sheet ~reveals ~dispatch el old_n.children children
+        reconcile_children ~sheet ~reveals ~dispatch
+          ~old_parent_axis:old_children_axis ~parent_axis:children_axis el
+          old_n.children children
   | Button { on_click; on_dblclick; child; _ } ->
       maybe_apply_attrs el old_n.element new_el;
       unlisten_all old_n.listeners;
@@ -1646,7 +1783,9 @@ and reconcile_node ~sheet ~reveals ~dispatch (old_n : 'msg live_node)
         wire_click ~dispatch el on_click
         @ wire_dblclick ~dispatch el on_dblclick;
       old_n.children <-
-        reconcile_children ~sheet ~reveals ~dispatch el old_n.children [ child ]
+        reconcile_children ~sheet ~reveals ~dispatch
+          ~old_parent_axis:old_children_axis ~parent_axis:children_axis el
+          old_n.children [ child ]
   | Input
       {
         value;
@@ -1745,7 +1884,9 @@ and reconcile_node ~sheet ~reveals ~dispatch (old_n : 'msg live_node)
       in
       collect_reveal ~reveals ~container:el ~previous ~next:reveal;
       old_n.children <-
-        reconcile_children ~sheet ~reveals ~dispatch el old_n.children [ child ]
+        reconcile_children ~sheet ~reveals ~dispatch
+          ~old_parent_axis:old_children_axis ~parent_axis:children_axis el
+          old_n.children [ child ]
   | Draw
       {
         width;
@@ -1920,7 +2061,13 @@ and reconcile_node ~sheet ~reveals ~dispatch (old_n : 'msg live_node)
             (range.last - range.first + 1)
             (fun i ->
               let item_el = render_item (range.first + i) in
-              create_and_append ~sheet ~reveals ~dispatch row_wrapper item_el)
+              (* The DOM parent of a row item is [row_wrapper], not the virtual
+                 list: a plain absolutely-positioned block that lays nothing
+                 out, so a row item sits on no main axis. Spelled literally so
+                 the value follows from the real parent rather than from the
+                 virtual list happening to answer the same thing. *)
+              create_and_append ~sheet ~reveals ~dispatch ~parent_axis:None
+                row_wrapper item_el)
       in
       old_n.children <- live_children;
       (* Rewire scroll listener *)
@@ -2001,7 +2148,8 @@ let update ~dispatch handle new_element =
   Queue.clear handle.reveals;
   handle.root <-
     reconcile_live ~sheet:handle.sheet ~reveals:handle.reveals ~dispatch
-      handle.parent handle.root new_element;
+      ~old_parent_axis:None ~parent_axis:None handle.parent handle.root
+      new_element;
   drain_reveals handle.reveals
 
 let reveal_request_count handle = Queue.length handle.reveals

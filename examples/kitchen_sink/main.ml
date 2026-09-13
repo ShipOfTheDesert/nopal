@@ -441,6 +441,7 @@ let update model msg =
   | App.Reveal_list_msg _
   | App.Scroll_pane_msg _
   | App.Focus_reveal_msg _
+  | App.Fixed_size_msg _
   | App.KeyboardHeightChanged _
   | App.Back_demo_push
   | App.Route_changed _
@@ -694,7 +695,12 @@ let serialize_msg : App.msg -> string = function
   | App.ToggleKeyedIntoKeyed
   | App.ToggleKeyedVariant
   | App.ToggleKeyedEmpty
-  | App.SubWizardMsg _ ->
+  | App.SubWizardMsg _
+  (* The fixed-size section: its two controls change nothing the telemetry log
+     can show. What the section demonstrates is rendered geometry, which no model
+     fragment carries, so its browser case measures the boxes instead of reading
+     a serialised model. *)
+  | App.Fixed_size_msg _ ->
       "<msg>"
 
 let serialize_model (model : App.model) =

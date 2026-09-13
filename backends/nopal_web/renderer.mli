@@ -33,6 +33,27 @@ val reveal_request_count : 'msg t -> int
     that just finished and never accumulates across passes. Exposed for unit
     testing which changes are collected; not part of the behavioural API. *)
 
+val container_main_axis :
+  'msg Nopal_element.Element.t -> Style_css.main_axis option
+(** [container_main_axis el] is the axis [el] lays its children out along, and
+    [None] when [el] lays nothing out — it answers for the children, not for
+    [el] itself, because whether a declared size can be squeezed is settled one
+    level up.
+
+    [Row] is always horizontal and [Column] always vertical: both write their
+    direction onto the node after the style is applied, so the constructor wins
+    over a style asking for the other axis. [Box] reads its style's direction,
+    and an absent one means vertical here, not the horizontal an absent CSS
+    [flex-direction] would mean. Every remaining variant is [None], including
+    those holding a child: only these three are laid out as flex containers, so
+    nothing else puts a child on a main axis. That last clause is a fact about
+    the renderer rather than something derived from it — the same three
+    variants, and only those three, call [apply_container_base_style] — so a
+    fourth flex container added there needs an arm here in the same change, and
+    a comment at that function says so from the other side.
+
+    Exposed for unit testing the resolution; not part of the behavioural API. *)
+
 val dom_node : 'msg t -> Jv.t
 (** [dom_node handle] returns the top-level DOM node for this rendered tree.
     Returns a comment node for [Empty], a span for [Text], or the element node

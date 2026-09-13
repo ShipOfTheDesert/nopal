@@ -19,6 +19,7 @@
   nopal_style
   nopal_runtime
   nopal_mvu
+  test_util
   alcotest
   brr
   js_of_ocaml)

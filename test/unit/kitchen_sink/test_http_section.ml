@@ -180,6 +180,7 @@ let msg_pp fmt msg =
   | Reveal_list_msg _ -> Format.fprintf fmt "Reveal_list_msg _"
   | Scroll_pane_msg _ -> Format.fprintf fmt "Scroll_pane_msg _"
   | Focus_reveal_msg _ -> Format.fprintf fmt "Focus_reveal_msg _"
+  | Fixed_size_msg _ -> Format.fprintf fmt "Fixed_size_msg _"
   | KeyboardHeightChanged _ -> Format.fprintf fmt "KeyboardHeightChanged _"
   | Back_demo_push -> Format.fprintf fmt "Back_demo_push"
   | Route_changed _ -> Format.fprintf fmt "Route_changed _"
