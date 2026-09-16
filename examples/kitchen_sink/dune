@@ -26,6 +26,7 @@
   sub_reveal_list
   sub_scroll_pane
   sub_fixed_size
+  sub_min_size
   tauri_op)
  (libraries
   nopal_element

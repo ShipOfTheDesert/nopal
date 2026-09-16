@@ -101,6 +101,38 @@ val of_style :
     as this element's own [flex-direction] and governs its children, while this
     element's shrink is governed by the axis of its parent.
 
+    [min-width] and [min-height] are emitted from [layout.min_width] and
+    [layout.min_height], and they need no axis: a floor is a statement about
+    this element on its own, not about how it competes with a sibling for room.
+    So they reach every route that reaches this function, and in particular the
+    two that pass [None] structurally rather than because a parent lays nothing
+    out — an interaction state, and the mount root. That is the asymmetry with
+    the shrink guard, and it is deliberate. Of the three routes D-9 records,
+    only [Element.draw] stays outside a floor's reach, and it is not a [None]
+    route at all: it carries no style, so it never arrives here to be given one.
+    That much is structural and opens no new record. The interaction half is
+    pinned by "a minimum size in any state" beside the case pinning the guard's
+    absence; the mount root follows from the same [None] the renderer passes
+    there and carries no test of its own.
+
+    A floor and the shrink guard are independent declarations, and where both
+    apply both are emitted, neither displacing the other. A floor at or below
+    the [Fixed] main-axis size beside it changes no geometry: that size has
+    already foreclosed the squeeze, so there is nothing left for a floor to hold
+    open and a caller who sets one there sees no difference. A floor above it
+    does change geometry, because CSS clamps the used size into the floor rather
+    than merely lifting the shrink — [height: 200px] carrying
+    [min-height: 300px] is used at 300px. That is growth, the same direction a
+    [layout.flex_grow] beside a [Fixed] size is already allowed to take it, and
+    it is what the emitter's job here stops at: both declarations go out
+    unaltered and the browser does the clamping. A floor does its work on a
+    flexible size — [Fill], [Hug], or one carrying [layout.flex_grow] — where
+    the element can still be reduced and the floor is what stops it. The value
+    worth naming is zero, which is not the absence of a floor: it lifts the
+    automatic content minimum this platform gives a flex item, and lifting that
+    is what lets an ancestor of a scrolling child stop growing to fit the child.
+    It is emitted as [0px] rather than dropped.
+
     [box-shadow] carries the shadow's spread as a fourth length, after the blur
     and before the colour, which is the position the CSS grammar reads as
     spread. A zero spread omits that fourth length entirely rather than writing

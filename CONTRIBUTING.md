@@ -93,10 +93,11 @@ disagreeing with its argument rather than by waiting for the change that would
 close it.
 
 Each record lives beside the rule it defers, so the next reader of that rule
-sees the exception: D-1, D-2 and D-6 under [E2E tests](#e2e-tests-playwright),
-D-3 under [Performance](#performance), D-4 under [Kitchen Sink](#kitchen-sink),
-D-5 and D-7 under [VIII. Bug-Class Prevention](#viii-bug-class-prevention), D-8
-and D-9 under [V. Functional Patterns](#v-functional-patterns).
+sees the exception: D-1, D-2, D-6 and D-10 under
+[E2E tests](#e2e-tests-playwright), D-3 under [Performance](#performance), D-4
+under [Kitchen Sink](#kitchen-sink), D-5 and D-7 under
+[VIII. Bug-Class Prevention](#viii-bug-class-prevention), D-8 and D-9 under
+[V. Functional Patterns](#v-functional-patterns).
 
 ## Running Tests
 
@@ -159,8 +160,8 @@ and `touch ~/.cache/ms-playwright/<browser>-<rev>/INSTALLATION_COMPLETE`.
 Deferring a browser case is allowed; leaving it unrecorded is not — see
 [Deferrals and decisions not to cover](#deferrals-and-decisions-not-to-cover)
 for the `D-n` scheme these records follow.
-**There is one current deferral (D-1) and two decisions not to cover
-(D-2 and D-6).**
+**There is one current deferral (D-1) and three decisions not to cover
+(D-2, D-6 and D-10).**
 
 #### Open deferral D-1 — a relative-scroll request naming a container the frame removed
 
@@ -287,6 +288,56 @@ section-level `charts section renders`, plus the `beforeEach` wait for
 `[data-section='charts']`: the themed chart is a sibling of the others inside
 that section, so a configuration that crashed the view would take both down with
 it. Nothing asserts its canvas size, and nothing asserts its colours.
+
+#### Decision not to cover D-10 — no browser case measures a horizontal minimum
+
+**Owner: whoever first reports a horizontally scrolling row defeated by a
+container's automatic minimum, in the change that reports it.**
+
+`Style.layout` carries `min_width` and `min_height`, and both are first-class:
+either one set to zero revokes the content-based minimum a flex item is
+automatically allowed, which is what stops an ancestor of a scroll container
+growing instead of letting that container scroll.
+`test/e2e/tests/kitchen-sink-min-size.spec.ts` measures the vertical axis only,
+and that is a decision, not an oversight. The kitchen-sink section declares
+`min_height` and no `min_width` (`examples/kitchen_sink/sub_min_size.ml`), so
+nothing in a browser exercises the horizontal one.
+
+The mechanism is axis-symmetric. The automatic minimum is the item's
+content-based minimum on the axis its container lays out, and `min-width: 0`
+revokes it on a row exactly as `min-height: 0` revokes it on a column; nothing
+in the field, in the emitter or in the reported defect distinguishes the two.
+The axes differ only in which container the downstream report happened to be
+about — a scrolling column at 200% font scale.
+
+What is covered, and where: both clauses are pinned at the emitter by
+`test/unit/nopal_web/test_style_css.ml` — `test_min_width_produces_css` and
+`test_min_height_produces_css` assert each declaration on its own,
+`test_min_size_zero_produces_css` asserts both axes at zero, and
+`test_min_size_absent_when_none` asserts neither appears when unset. The zero
+case is the one that carries weight, because zero is the value that does the
+work and the neighbouring padding and `gap` idioms in that same emitter drop it.
+`test/unit/nopal_style/test_style.ml` covers both fields symmetrically too:
+`equal_layout_distinguishes_min_width` and `equal_layout_distinguishes_min_height`
+each separate a zero from an unset, against a hand-written `equal_layout` with no
+compiler backstop.
+
+What that leaves uncovered, stated so the paragraph above cannot be read as more
+than it is: no test in this repository shows a horizontal minimum changing
+rendered geometry. The browser case exists to prove the mechanism reaches the
+screen at all, and it does that once, on the axis that was actually reported. A
+defect reachable only on the horizontal axis — a `min-width` the emitter writes
+but a row layout does not honour — would pass every gate here. That is the same
+shape D-8 accepts for `Fraction`: the case for not writing the second case is
+that no layout has hit it, not that no layout can.
+
+Which is also what discharges this: a report, not a count. A real layout in
+which a horizontally scrolling row was pushed out by its container's automatic
+minimum, and where that mattered. The change carrying that measurement adds a
+horizontal declaration to the kitchen-sink section and the browser case that
+measures it, and deletes this record. Nothing mechanical is waiting meanwhile —
+`just check-e2e-wired` already matches the existing spec to a CI-run Playwright
+project, and a new case inside it wires nothing new.
 
 ### Desktop Development (Tauri)
 
@@ -623,8 +674,17 @@ The guarantee above is delivered by the web backend emitting `flex-shrink: 0`
 beside a `Fixed` main-axis size, and that emission needs the axis of the
 element's *parent*. Three routes never supply one, so a `Fixed` size travelling
 any of them is an ordinary flex item at the CSS default shrink and is squeezable
-exactly as it was before the guarantee existed. Each is recorded rather than
-fixed, for the reason given under it, and each has its own owner.
+exactly as it was before the guarantee existed. What these routes withhold is
+the shrink guard specifically, and not every protection a size can have:
+`Style.layout`'s `min_width` and `min_height` need no parent axis — a floor is a
+statement about one element, not about how it competes with a sibling for room —
+so they are emitted wherever `Style_css.of_style` is reached, an interaction
+state and the mount root included. The third route below is outside that, and
+for a different reason: a `Draw` carries no `Style.t`, so it has nowhere to
+declare a floor either. A layout that needs a floor on one of the two routes
+that do carry a style can have one; what it cannot have is the `Fixed`
+guarantee. Each route is recorded rather than fixed, for the reason given under
+it, and each has its own owner.
 
 **An interaction state.** `Style_css.interaction_rules` resolves `hover`,
 `focused` and `pressed` with no parent axis, because it is handed an

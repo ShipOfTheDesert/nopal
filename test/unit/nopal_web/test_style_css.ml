@@ -385,6 +385,44 @@ let test_interaction_rules_never_emits_shrink_guard () =
   check_state "pressed"
     { Nopal_style.Interaction.default with pressed = Some sized }
 
+(* A minimum size does reach an interaction state, and it sits here against the
+   case above so that the asymmetry between the two is a decision rather than an
+   accident of placement. The shrink guard needs the axis of the element's
+   parent and this function has no position in the tree to read one from; a
+   minimum needs no axis at all, so nothing withholds it here. The fixture
+   declares minima and nothing else, which means the rule exists only if they
+   were emitted — an empty property list produces no rule text at all. A floor
+   of zero is one of the two under test because it is the value the feature
+   exists to carry and the one an emitter that conflates unset with zero would
+   drop. *)
+let test_min_size_emitted_in_interaction_style () =
+  let floored =
+    Nopal_style.Style.default
+    |> Nopal_style.Style.with_layout (fun l ->
+        {
+          l with
+          Nopal_style.Style.min_width = Some 120.0;
+          min_height = Some 0.0;
+        })
+  in
+  let check_state name state =
+    let result = interaction_rules ~class_name:"_nopal_ix_10" state in
+    Alcotest.(check bool)
+      (name ^ " emits the declared minimum width")
+      true
+      (contains result "min-width:120px");
+    Alcotest.(check bool)
+      (name ^ " emits a minimum height of zero")
+      true
+      (contains result "min-height:0px")
+  in
+  check_state "hover"
+    { Nopal_style.Interaction.default with hover = Some floored };
+  check_state "focused"
+    { Nopal_style.Interaction.default with focused = Some floored };
+  check_state "pressed"
+    { Nopal_style.Interaction.default with pressed = Some floored }
+
 (* ── Text CSS tests ── *)
 
 let text_props ts = of_text ts
@@ -1162,6 +1200,8 @@ let test_css_emits_multiple_set_fields () =
           bottom = None;
           left = None;
           z_index = None;
+          min_width = None;
+          min_height = None;
         })
       default
   in
@@ -1247,6 +1287,74 @@ let test_no_parent_axis_emits_nothing () =
   check_has_prop "height" "48px" props;
   check_no_prop "flex-shrink" props
 
+(* Minimum size. Every box this backend lays out is an item of a flex
+   container, and such an item's automatic minimum is its own content, so an
+   ancestor of a scrolling child grows to fit that child instead of letting it
+   scroll. Declaring a floor of zero is what hands the overflow back to the
+   scrolling descendant, which is why zero is a value that has to reach the
+   output rather than one an emitter may treat as "nothing set". Two idioms in
+   this very function drop zeros — gap, and partially-set padding — so the zero
+   case below is the one that distinguishes a working emitter from a plausible
+   one, and every expectation here is a whole value rather than a substring. *)
+
+let test_min_width_produces_css () =
+  let style = with_layout (fun l -> { l with min_width = Some 120. }) default in
+  check_has_prop "min-width" "120px" (of_style ~parent_axis:None style)
+
+let test_min_height_produces_css () =
+  let style = with_layout (fun l -> { l with min_height = Some 48. }) default in
+  check_has_prop "min-height" "48px" (of_style ~parent_axis:None style)
+
+let test_min_size_zero_produces_css () =
+  let style =
+    with_layout
+      (fun l -> { l with min_width = Some 0.; min_height = Some 0. })
+      default
+  in
+  let props = of_style ~parent_axis:None style in
+  check_has_prop "min-width" "0px" props;
+  check_has_prop "min-height" "0px" props
+
+let test_min_size_absent_when_none () =
+  (* The gap assertion is the affirmative arm on the same fixture: it proves
+     this style still reaches the emitter and produces a declaration, so the two
+     absences below cannot pass because nothing was emitted at all. *)
+  let style = with_layout (fun l -> { l with gap = Some 6. }) default in
+  let props = of_style ~parent_axis:None style in
+  check_has_prop "gap" "6px" props;
+  check_no_prop "min-width" props;
+  check_no_prop "min-height" props
+
+let test_min_size_beside_fixed_size () =
+  (* A floor at or below a fixed main-axis size is inert: that size already
+     carries the shrink guard, so there is nothing left for the floor to hold
+     open. It still has to be emitted, and the guard still has to be there:
+     neither declaration may displace the other. *)
+  let style =
+    with_layout
+      (fun l -> { l with height = Some (Fixed 200.); min_height = Some 0. })
+      default
+  in
+  let props = of_style ~parent_axis:(Some Vertical) style in
+  check_has_prop "height" "200px" props;
+  check_has_prop "flex-shrink" "0" props;
+  check_has_prop "min-height" "0px" props
+
+let test_min_size_above_fixed_size () =
+  (* A floor above the fixed size is not inert: the used size is the larger of
+     the two. That geometry is the browser's, and what this layer owes it is
+     both declarations, unaltered and side by side — the emitter may not decide
+     that one of them has won. *)
+  let style =
+    with_layout
+      (fun l -> { l with height = Some (Fixed 200.); min_height = Some 300. })
+      default
+  in
+  let props = of_style ~parent_axis:(Some Vertical) style in
+  check_has_prop "height" "200px" props;
+  check_has_prop "flex-shrink" "0" props;
+  check_has_prop "min-height" "300px" props
+
 let () =
   Alcotest.run "style_css"
     [
@@ -1305,6 +1413,21 @@ let () =
           Alcotest.test_case "no parent axis emits no guard" `Quick
             test_no_parent_axis_emits_nothing;
         ] );
+      ( "minimum size",
+        [
+          Alcotest.test_case "min width produces css" `Quick
+            test_min_width_produces_css;
+          Alcotest.test_case "min height produces css" `Quick
+            test_min_height_produces_css;
+          Alcotest.test_case "a minimum of zero produces css" `Quick
+            test_min_size_zero_produces_css;
+          Alcotest.test_case "an unset minimum emits nothing" `Quick
+            test_min_size_absent_when_none;
+          Alcotest.test_case "a minimum beside a fixed size" `Quick
+            test_min_size_beside_fixed_size;
+          Alcotest.test_case "a minimum above a fixed size" `Quick
+            test_min_size_above_fixed_size;
+        ] );
       ( "to_inline_string",
         [
           Alcotest.test_case "joins properties" `Quick
@@ -1332,6 +1455,8 @@ let () =
             test_interaction_rules_focused_only;
           Alcotest.test_case "no shrink guard in any state" `Quick
             test_interaction_rules_never_emits_shrink_guard;
+          Alcotest.test_case "a minimum size in any state" `Quick
+            test_min_size_emitted_in_interaction_style;
         ] );
       ( "of_text",
         [

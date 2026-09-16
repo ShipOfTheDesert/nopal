@@ -547,8 +547,29 @@ type layout = {
   padding_top : float option; padding_right : float option;
   padding_bottom : float option; padding_left : float option;
   width : size option; height : size option; flex_grow : float option;
+  min_width : float option; min_height : float option;
 }
 (* Style.default_layout has all fields None. *)
+(* min_width and min_height are floors in pixels on the rendered box, and a
+   floor of zero is not the same as no floor. A box this framework lays out is
+   an item of its container's layout, and the platform gives such an item an
+   automatic minimum equal to its own content — which is why an ancestor of a
+   scrolling child grows to fit that child instead of letting it scroll, pushing
+   whatever follows it out of view. Setting the floor to 0. hands the overflow
+   back to the scrolling descendant; a larger floor is an ordinary minimum size;
+   None leaves the platform default in place. A floor at or below a Fixed size
+   on the axis the parent lays its children out along is inert, since such a
+   size is already not squeezed below what it declares; a floor above it is not
+   — CSS clamps the used size into the floor, so the box is used at the larger
+   of the two, which is growth in the same direction flex_grow beside a Fixed
+   size already allows. A floor does its work on a flexible size: Fill, Hug, or
+   one carrying flex_grow. Unlike the shrink guard above, a floor needs no
+   parent axis, because it states something about this element alone rather
+   than about how it competes with a sibling for room; it
+   is therefore emitted in an interaction (hover, focused or pressed) style too,
+   and beside a Fixed size both declarations are emitted, neither displacing the
+   other. The web backend emits min-width and min-height including the zero:
+   min-height: 0px, never a dropped declaration. *)
 
 (* Colors — defined in Color, a leaf module of nopal_style. Integer RGBA for CSS
    authoring; distinct from Nopal_scene.Color, the float 0.0-1.0 graphics type. *)
@@ -3097,7 +3118,25 @@ examples/
                        tree: whether a declared size survived is a measurement of
                        rendered geometry, so the structural suite pins only the
                        controls and the fixtures and the claim itself is measured
-                       in a browser). Each lives in
+                       in a browser); and, beside it, "A floor of zero lets a
+                       scrolling descendant scroll" (a bounded column of a
+                       settled height holding a trailing band and, through an
+                       intermediate column, a scroll pane whose content
+                       overflows — one control declares min_height = Some 0. on
+                       that intermediate column. Without it the column cannot be
+                       reduced below its own content, so the pane never scrolls
+                       and the band is laid out past the bounded column's bottom
+                       edge; with it the column gives way, the overflow goes back
+                       to the pane and the band comes home. The floor is on the
+                       intermediate column and neither of its neighbours because
+                       a floor on either is inert — a scroll container's own
+                       automatic minimum is already zero, and a declared height
+                       already caps one — which is why the fixture has three
+                       levels. Nothing here is assertable from the element tree
+                       either; the structural suite pins that the control reaches
+                       that column and no other and that the fixture is still
+                       overconstrained, and the geometry is measured in a
+                       browser). Each lives in
                        its own sub_*.ml/.mli with its own structural suite;
                        the receipt one is
                        examples/kitchen_sink/sub_receipt_flow.ml, the reveal one
@@ -3106,7 +3145,8 @@ examples/
                        examples/kitchen_sink/sub_scroll_pane.ml, the
                        focus one examples/kitchen_sink/sub_focus_reveal.ml and
                        the fixed-size one
-                       examples/kitchen_sink/sub_fixed_size.ml
+                       examples/kitchen_sink/sub_fixed_size.ml and the
+                       minimum-size one examples/kitchen_sink/sub_min_size.ml
   dashboard/         — Charts showcase
 test/
   unit/              — Alcotest tests per package

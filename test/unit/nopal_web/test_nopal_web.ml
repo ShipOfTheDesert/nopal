@@ -4667,6 +4667,44 @@ let test_restyle_adds_and_removes_shrink_guard () =
   Alcotest.(check string)
     "becoming flexible again removes it" "" (shrink_of style_obj)
 
+(* The restyle gate compares whole Style.t records, and the layout half of that
+   comparison is a hand-written conjunction the compiler cannot police. A
+   minimum left out of it is a floor that moves with the model and never reaches
+   the node: the element keeps the declaration from the frame before, the
+   scrolling descendant the floor exists for never gets its overflow back, and
+   the whole suite stays green because the emitter is correct and simply never
+   asked to run again. Four transitions, each moving the floor and nothing else:
+   a non-zero start, then to zero, which is the value the emitter is most likely
+   to discard, then away from zero again, then to unset, the one direction that
+   removes a declaration rather than rewriting it. Each arm reads the painted
+   declaration back before the update that follows it, so no expectation here
+   can be met by a node that never carried the property. The element is rebuilt
+   on every frame, as a real view function rebuilds it, so nothing here can pass
+   on physical identity. *)
+let test_restyle_on_min_height_change () =
+  let dispatch, _msgs = fresh_dispatch () in
+  let mk min_height =
+    plain_box
+      ~style:(with_layout (fun l -> { l with min_height }) default)
+      ~children:[]
+  in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent:(fresh_parent ())
+      (mk (Some 120.))
+  in
+  let style_obj = Jv.get (Nopal_web.Renderer.dom_node handle) "style" in
+  let painted () = Jv.Jstr.get style_obj "min-height" |> Jstr.to_string in
+  Alcotest.(check string) "authored floor painted before" "120px" (painted ());
+  Nopal_web.Renderer.update ~dispatch handle (mk (Some 0.));
+  Alcotest.(check string)
+    "a change to a floor of zero repaints the declaration" "0px" (painted ());
+  Nopal_web.Renderer.update ~dispatch handle (mk (Some 48.));
+  Alcotest.(check string)
+    "a change away from zero repaints too" "48px" (painted ());
+  Nopal_web.Renderer.update ~dispatch handle (mk None);
+  Alcotest.(check string)
+    "dropping the floor removes the declaration" "" (painted ())
+
 let test_parent_axis_flip_restyles_children () =
   let dispatch, _msgs = fresh_dispatch () in
   (* The child's style is identical in every frame. Only the parent moves, so
@@ -5152,6 +5190,8 @@ let () =
             `Quick test_keyed_row_arriving_mid_reconcile_is_guarded;
           Alcotest.test_case "restyle adds and removes the guard" `Quick
             test_restyle_adds_and_removes_shrink_guard;
+          Alcotest.test_case "restyle on a minimum-height change" `Quick
+            test_restyle_on_min_height_change;
           Alcotest.test_case "a parent axis flip restyles children" `Quick
             test_parent_axis_flip_restyles_children;
           Alcotest.test_case "a parent axis flip restyles interactive children"
