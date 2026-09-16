@@ -442,6 +442,7 @@ let update model msg =
   | App.Scroll_pane_msg _
   | App.Focus_reveal_msg _
   | App.Fixed_size_msg _
+  | App.Min_size_msg _
   | App.KeyboardHeightChanged _
   | App.Back_demo_push
   | App.Route_changed _
@@ -701,7 +702,13 @@ let serialize_msg : App.msg -> string = function
      can show. What the section demonstrates is rendered geometry, which no model
      fragment carries, so its browser case measures the boxes instead of reading
      a serialised model. *)
-  | App.Fixed_size_msg _ ->
+  | App.Fixed_size_msg _
+  (* The minimum-size section: its one control changes nothing the telemetry log
+     can show either. What it demonstrates is rendered geometry — where a band
+     came to rest and whether a pane scrolls — which no model fragment carries,
+     so its browser case measures the boxes instead of reading a serialised
+     model. *)
+  | App.Min_size_msg _ ->
       "<msg>"
 
 let serialize_model (model : App.model) =

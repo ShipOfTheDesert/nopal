@@ -265,6 +265,18 @@ let of_style ~(parent_axis : main_axis option) (style : t) =
     |> size "height" layout.height
     |> opt "flex-grow" (Printf.sprintf "%g") layout.flex_grow
   in
+  (* A floor of zero is not the absence of a floor. A box here is an item of a
+     flex container, and such an item's automatic minimum is its own content, so
+     an ancestor of a scrolling child grows to fit that child instead of letting
+     it scroll; declaring the floor at zero hands the overflow back to the
+     scrolling descendant. Both clauses therefore go through the zero-preserving
+     px formatter above and never through the padding block's nonzero_px, which
+     would discard the one value these fields exist to carry. *)
+  let acc =
+    acc
+    |> opt "min-width" px layout.min_width
+    |> opt "min-height" px layout.min_height
+  in
   (* Every box this backend lays out is a flex item, and a flex item at the CSS
      default shrink is squeezed below the size it declares as soon as a sibling
      wants more room; an empty one collapses to its automatic minimum of zero

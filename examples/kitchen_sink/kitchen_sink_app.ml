@@ -221,6 +221,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     scroll_pane : Sub_scroll_pane.model;
     focus_reveal : Sub_focus_reveal.model;
     fixed_size : Sub_fixed_size.model;
+    min_size : Sub_min_size.model;
     keyboard_height : int;  (** soft-keyboard height in logical px (REQ-N2) *)
     back_route : back_route;  (** current route of the back-navigation demo *)
   }
@@ -262,6 +263,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | Scroll_pane_msg of Sub_scroll_pane.msg
     | Focus_reveal_msg of Sub_focus_reveal.msg
     | Fixed_size_msg of Sub_fixed_size.msg
+    | Min_size_msg of Sub_min_size.msg
     | KeyboardHeightChanged of int  (** native soft-keyboard height (REQ-F5) *)
     | Back_demo_push  (** push the back-demo one step deep (to [Back_detail]) *)
     | Route_changed of back_route  (** popstate-driven route update (REQ-F3) *)
@@ -395,6 +397,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     let scroll_pane, scroll_pane_cmd = Sub_scroll_pane.init () in
     let focus_reveal, focus_reveal_cmd = Sub_focus_reveal.init () in
     let fixed_size, fixed_size_cmd = Sub_fixed_size.init () in
+    let min_size, min_size_cmd = Sub_min_size.init () in
     ( {
         button_clicks = 0;
         input_text = "";
@@ -465,6 +468,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         scroll_pane;
         focus_reveal;
         fixed_size;
+        min_size;
         keyboard_height = 0;
         back_route = Back_home;
       },
@@ -490,6 +494,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           Nopal_mvu.Cmd.map (fun m -> Scroll_pane_msg m) scroll_pane_cmd;
           Nopal_mvu.Cmd.map (fun m -> Focus_reveal_msg m) focus_reveal_cmd;
           Nopal_mvu.Cmd.map (fun m -> Fixed_size_msg m) fixed_size_cmd;
+          Nopal_mvu.Cmd.map (fun m -> Min_size_msg m) min_size_cmd;
           (* Re-read the persisted demo value so a reload dispatches a
              [StorageRestored] message — the E2E persistence proof (REQ-F3). *)
           Nopal_mvu.Cmd.task
@@ -677,6 +682,10 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         in
         ( { model with fixed_size },
           Nopal_mvu.Cmd.map (fun m -> Fixed_size_msg m) fs_cmd )
+    | Min_size_msg ms_msg ->
+        let min_size, ms_cmd = Sub_min_size.update model.min_size ms_msg in
+        ( { model with min_size },
+          Nopal_mvu.Cmd.map (fun m -> Min_size_msg m) ms_cmd )
     | DrawPointerMove (x, y) ->
         ({ model with draw_pointer = Some (x, y) }, Nopal_mvu.Cmd.none)
     | DrawPointerLeave ->
@@ -4117,6 +4126,19 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                Element.map
                  (fun m -> Fixed_size_msg m)
                  (Sub_fixed_size.view vp model.fixed_size);
+             ];
+           (* Next to the section above on purpose. That one is about an element
+              keeping a size it declared; this one is about an element being let
+              go of a size nobody declared — the minimum the platform gives every
+              item from its own content, which is what stops a scrolling
+              descendant scrolling. *)
+           view_section
+             ~attrs:[ ("data-testid", "min-size-section") ]
+             "A floor of zero lets a scrolling descendant scroll"
+             [
+               Element.map
+                 (fun m -> Min_size_msg m)
+                 (Sub_min_size.view vp model.min_size);
              ];
            view_interaction_states model;
            view_style_removal model;

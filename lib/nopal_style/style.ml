@@ -47,6 +47,8 @@ type layout = {
   bottom : float option;
   left : float option;
   z_index : int option;
+  min_width : float option;
+  min_height : float option;
 }
 
 type paint = {
@@ -85,6 +87,8 @@ let default_layout =
     bottom = None;
     left = None;
     z_index = None;
+    min_width = None;
+    min_height = None;
   }
 
 let default_paint =
@@ -196,6 +200,8 @@ let equal_layout a b =
   && Option.equal Float.equal a.bottom b.bottom
   && Option.equal Float.equal a.left b.left
   && Option.equal Int.equal a.z_index b.z_index
+  && Option.equal Float.equal a.min_width b.min_width
+  && Option.equal Float.equal a.min_height b.min_height
 
 let equal_overflow a b =
   match (a, b) with

@@ -47,7 +47,11 @@ let test_default_layout_values () =
   Alcotest.(check bool) "left is None" true (Option.is_none default_layout.left);
   Alcotest.(check bool)
     "z_index is None" true
-    (Option.is_none default_layout.z_index)
+    (Option.is_none default_layout.z_index);
+  Alcotest.(check (option (float 0.001)))
+    "min_width is None" None default_layout.min_width;
+  Alcotest.(check (option (float 0.001)))
+    "min_height is None" None default_layout.min_height
 
 (* --- Default paint tests --- *)
 
@@ -425,6 +429,74 @@ let test_equal_paint_distinguishes_spread () =
     "equal non-zero spreads are equal" true
     (equal_paint (paint_with_spread 3.) (paint_with_spread 3.))
 
+(* A fresh record on every call. [equal_layout] is reached through [equal],
+   which gates the web renderer's restyle path; that path rebuilds its input
+   every frame, so sharing one value between the two sides of a comparison
+   would let a physical-equality implementation pass. Every field is named
+   rather than inherited from [default_layout], because [equal_layout] compares
+   all of them and a default that drifted would silently change what these
+   cases assert. *)
+let layout_with_min ~min_width ~min_height =
+  {
+    direction = Some Column_dir;
+    main_align = Some Start;
+    cross_align = Some Stretch;
+    wrap = Some false;
+    gap = Some 8.;
+    padding_top = Some 4.;
+    padding_right = Some 4.;
+    padding_bottom = Some 4.;
+    padding_left = Some 4.;
+    width = Some Fill;
+    height = Some Fill;
+    flex_grow = Some 1.;
+    position = Some Pos_relative;
+    top = Some 0.;
+    right = Some 0.;
+    bottom = Some 0.;
+    left = Some 0.;
+    z_index = Some 1;
+    min_width;
+    min_height;
+  }
+
+(* The other axis is held at the same set value on both sides of every
+   comparison, so a conjunct present on one axis only cannot account for the
+   inequality this case reports. *)
+let test_equal_layout_distinguishes_min_width () =
+  Alcotest.(check bool)
+    "min_width-only difference is unequal" false
+    (equal_layout
+       (layout_with_min ~min_width:(Some 0.) ~min_height:(Some 24.))
+       (layout_with_min ~min_width:(Some 120.) ~min_height:(Some 24.)));
+  Alcotest.(check bool)
+    "a zero min_width differs from an unset one" false
+    (equal_layout
+       (layout_with_min ~min_width:(Some 0.) ~min_height:(Some 24.))
+       (layout_with_min ~min_width:None ~min_height:(Some 24.)));
+  Alcotest.(check bool)
+    "equal min_widths are equal" true
+    (equal_layout
+       (layout_with_min ~min_width:(Some 120.) ~min_height:(Some 24.))
+       (layout_with_min ~min_width:(Some 120.) ~min_height:(Some 24.)))
+
+let test_equal_layout_distinguishes_min_height () =
+  Alcotest.(check bool)
+    "min_height-only difference is unequal" false
+    (equal_layout
+       (layout_with_min ~min_width:(Some 24.) ~min_height:(Some 0.))
+       (layout_with_min ~min_width:(Some 24.) ~min_height:(Some 120.)));
+  Alcotest.(check bool)
+    "a zero min_height differs from an unset one" false
+    (equal_layout
+       (layout_with_min ~min_width:(Some 24.) ~min_height:(Some 0.))
+       (layout_with_min ~min_width:(Some 24.) ~min_height:None));
+  Alcotest.(check bool)
+    "equal min_heights are equal" true
+    (equal_layout
+       (layout_with_min ~min_width:(Some 24.) ~min_height:(Some 120.))
+       (layout_with_min ~min_width:(Some 24.) ~min_height:(Some 120.)))
+
 (* --- Text integration tests --- *)
 
 let test_default_text_is_text_default () =
@@ -719,6 +791,10 @@ let () =
           Alcotest.test_case "equal_paint_same" `Quick test_equal_paint_same;
           Alcotest.test_case "equal_paint_distinguishes_spread" `Quick
             test_equal_paint_distinguishes_spread;
+          Alcotest.test_case "equal_layout_distinguishes_min_width" `Quick
+            test_equal_layout_distinguishes_min_width;
+          Alcotest.test_case "equal_layout_distinguishes_min_height" `Quick
+            test_equal_layout_distinguishes_min_height;
         ] );
       ( "Optional layout fields",
         [

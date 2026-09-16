@@ -89,7 +89,28 @@ type layout = {
   bottom : float option;
   left : float option;
   z_index : int option;
+  min_width : float option;
+  min_height : float option;
 }
+(** [min_width] and [min_height] are floors in pixels on the rendered box.
+
+    They exist because a floor of zero is not the same as no floor. A box this
+    framework lays out is an item of its container's layout, and the platform
+    gives such an item an automatic minimum equal to its own content. That is
+    why an ancestor of a scrolling child grows to fit the child rather than
+    letting it scroll, pushing whatever follows it out of view. Setting the
+    floor to [0.] is what hands the overflow back to the scrolling descendant. A
+    larger floor is an ordinary minimum size. [None] leaves the platform default
+    in place.
+
+    A floor at or below a [Fixed] size on the axis the container lays its
+    children out along is inert. Such a size is already not squeezed below what
+    it declares, so there is nothing left for a floor to hold open, and a caller
+    who sets one there sees no difference. A floor above it is not inert: the
+    element is given the larger of the two, which is growth, the same direction
+    a [flex_grow] set beside a [Fixed] size is already allowed to take it. A
+    floor does its work on a flexible size — [Fill], [Hug], or one carrying
+    [flex_grow] — which is where the element can still be reduced. *)
 
 type paint = {
   background : color option;
