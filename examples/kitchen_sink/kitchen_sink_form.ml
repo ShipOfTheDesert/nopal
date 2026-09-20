@@ -147,4 +147,39 @@ let view _vp model =
               Element.select_option ~value:"val-2" "Value 2";
             ];
         ];
+      (* A control whose caller tries to overrule an attribute the element
+         derives from a typed field. The typed [placeholder] wins and the
+         caller's pair never reaches the DOM. [type] is deliberately not in this
+         list: [Element.input] derives none, so a caller's [type] is the only
+         way to spell [password] or [email] and legitimately applies — the rule
+         governs keys a typed field claims, and no more. *)
+      Element.column ~style:group_style
+        [
+          Element.styled_text ~text_style:label_text
+            "Caller attrs vs derived attrs:";
+          Element.input
+            ~attrs:
+              [
+                ("data-testid", "form-derived-wins");
+                ("aria-label", "Derived attributes win");
+                ("placeholder", "caller-placeholder");
+              ]
+            ~placeholder:"derived-placeholder" "";
+        ];
+      (* The same collision on a variant whose type IS derived: a checkbox stays
+         a checkbox, and stays disabled, whatever the caller writes. *)
+      Element.column ~style:group_style
+        [
+          Element.styled_text ~text_style:label_text
+            "Derived type and disabled:";
+          Element.checkbox
+            ~attrs:
+              [
+                ("data-testid", "form-derived-checkbox");
+                ("aria-label", "Derived type wins");
+                ("type", "text");
+                ("disabled", "not-this-value");
+              ]
+            ~disabled:true false;
+        ];
     ]

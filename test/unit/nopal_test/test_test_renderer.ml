@@ -983,8 +983,12 @@ let file_input_node_shape () =
     "a text field does not answer to the file input's tag" true
     (Option.is_none (find (By_tag "input") (tree r)))
 
-(* Every config field has an absent form, and each must reach the node as such
-   rather than silently carrying the previous fixture's value. *)
+(* Every config field has an absent form, and in it the field contributes no
+   pair at all — the web renderer writes no such DOM attribute, and a structural
+   answer of [Some ""] or [Some "false"] would be a configured value rather than
+   an absent one. The [data-field] assertion is the affirmative arm: it proves
+   the node was found and carries attributes, so the three absences above are
+   the declining derivations and not an empty node. *)
 let file_input_node_shape_unconfigured () =
   let r = render (E.file_input ~attrs:[ ("data-field", "receipt") ] ()) in
   let node =
@@ -993,11 +997,14 @@ let file_input_node_shape_unconfigured () =
     | None -> Alcotest.fail "file input node not found by its own tag"
   in
   Alcotest.(check (option string))
-    "an empty accept is the empty string" (Some "") (attr "accept" node);
+    "an empty accept contributes no pair" None (attr "accept" node);
   Alcotest.(check (option string))
-    "an absent capture is the empty string" (Some "") (attr "capture" node);
+    "an absent capture contributes no pair" None (attr "capture" node);
   Alcotest.(check (option string))
-    "multiple defaults to false" (Some "false") (attr "multiple" node)
+    "multiple off contributes no pair" None (attr "multiple" node);
+  Alcotest.(check (option string))
+    "while the view's own attribute is on the node" (Some "receipt")
+    (attr "data-field" node)
 
 let file_input_tests =
   [
@@ -1110,7 +1117,7 @@ let scroll_projects_its_attrs () =
           (tree (render (E.scroll ~attrs:[ ("id", "reading-pane") ] child)))));
   (* Attributes and a reveal on one container, which is the pairing the
      ordering contract is written about: neither projection may displace the
-     other, and the derived reveal keys are prepended so a view that supplies
+     other, and the derived reveal keys are appended so a view that supplies
      its own "reveal" key cannot shadow them. *)
   let both =
     scroll_node_of "no scroll node for a container declaring both"
@@ -1181,6 +1188,316 @@ let box_focusable_attr () =
 let focusable_tests =
   [ Alcotest.test_case "box_focusable_attr" `Quick box_focusable_attr ]
 
+(* Within-list precedence is last-writer-wins, at every point that resolves an
+   attribute. *)
+
+let duplicate_pair_box =
+  E.box
+    ~attrs:[ ("data-role", "first"); ("data-role", "last") ]
+    [ E.text "collides" ]
+
+let caller_duplicate_resolves_to_the_last_pair () =
+  let r = render duplicate_pair_box in
+  Alcotest.(check (option string))
+    "a duplicate key resolves to the last pair the view declared" (Some "last")
+    (attr "data-role" (tree r))
+
+let by_attr_matches_the_resolved_value () =
+  let r = render duplicate_pair_box in
+  Alcotest.(check bool)
+    "find does not reach the node on the pair that lost" false
+    (Option.is_some (find (By_attr ("data-role", "first")) (tree r)));
+  Alcotest.(check bool)
+    "find reaches the same node on the pair that won" true
+    (Option.is_some (find (By_attr ("data-role", "last")) (tree r)));
+  Alcotest.(check int)
+    "find_all agrees with find on the losing pair" 0
+    (List.length (find_all (By_attr ("data-role", "first")) (tree r)));
+  Alcotest.(check int)
+    "find_all agrees with find on the winning pair" 1
+    (List.length (find_all (By_attr ("data-role", "last")) (tree r)));
+  let dispatching =
+    render
+      (E.button
+         ~attrs:[ ("data-role", "first"); ("data-role", "last") ]
+         ~on_click:Click (E.text "ok"))
+  in
+  Alcotest.(check (result unit error_testable))
+    "event dispatch does not reach the node on the pair that lost"
+    (Error (Not_found (By_attr ("data-role", "first"))))
+    (click (By_attr ("data-role", "first")) dispatching);
+  Alcotest.(check (result unit error_testable))
+    "event dispatch reaches the same node on the pair that won" (Ok ())
+    (click (By_attr ("data-role", "last")) dispatching);
+  Alcotest.(check (list msg_testable))
+    "and dispatches exactly once" [ Click ] (messages dispatching)
+
+let has_attr_is_presence_not_precedence () =
+  let r = render duplicate_pair_box in
+  Alcotest.(check bool)
+    "presence does not depend on which pair won" true
+    (has_attr "data-role" (tree r));
+  Alcotest.(check (option string))
+    "while the lookup on the same node resolves to the last pair" (Some "last")
+    (attr "data-role" (tree r));
+  Alcotest.(check bool)
+    "a key no pair on the node spells is absent" false
+    (has_attr "data-label" (tree r))
+
+(* A pair a typed field derives sits above the view's own [attrs] list, so it
+   wins a key the caller also spelled. The six arms below are every arm that
+   derives a pair and can also carry [attrs]; [Scroll] is covered by
+   [scroll_projects_its_attrs] on the same rule. *)
+let derived_pair_beats_a_caller_pair_of_the_same_key () =
+  let read ~tag ~key element =
+    match find (By_tag tag) (tree (render element)) with
+    | Some node -> attr key node
+    | None -> Alcotest.fail ("no node rendered for " ^ tag)
+  in
+  Alcotest.(check (option string))
+    "an input's derived placeholder wins over the caller's pair"
+    (Some "Email address")
+    (read ~tag:"input" ~key:"placeholder"
+       (E.input
+          ~attrs:[ ("placeholder", "hijacked") ]
+          ~placeholder:"Email address" ""));
+  Alcotest.(check (option string))
+    "a checkbox's derived checked state wins" (Some "true")
+    (read ~tag:"checkbox" ~key:"checked"
+       (E.checkbox ~attrs:[ ("checked", "hijacked") ] true));
+  Alcotest.(check (option string))
+    "a radio's derived name wins" (Some "colour")
+    (read ~tag:"radio" ~key:"name"
+       (E.radio ~attrs:[ ("name", "hijacked") ] ~name:"colour" ()));
+  Alcotest.(check (option string))
+    "a select's derived selection wins" (Some "b")
+    (read ~tag:"select" ~key:"selected"
+       (E.select
+          ~attrs:[ ("selected", "hijacked") ]
+          ~selected:"b"
+          [
+            E.select_option ~value:"a" "Alpha";
+            E.select_option ~value:"b" "Beta";
+          ]));
+  Alcotest.(check (option string))
+    "a picker's derived accept wins" (Some "image/png")
+    (read ~tag:"file_input" ~key:"accept"
+       (E.file_input ~attrs:[ ("accept", "*/*") ] ~accept:[ "image/png" ] ()));
+  Alcotest.(check (option string))
+    "a box's derived focusable flag wins" (Some "true")
+    (read ~tag:"box" ~key:"focusable"
+       (E.box
+          ~attrs:[ ("focusable", "decoy") ]
+          ~focusable:true
+          [ E.text "palette" ]))
+
+(* A derivation asserts a value and never denies one: a control that is not
+   disabled says nothing about the key, so whatever the view declared for it
+   stands. The fixture supplies the caller pair on purpose — asserting the
+   absence of a derived pair against a fixture that declared nothing would
+   prove nothing at all. The [~disabled:true] arm on the same fixture is what
+   proves this one is reached. *)
+let absent_disabled_leaves_the_caller_pair_standing () =
+  let checkbox_disabled disabled =
+    let element =
+      E.checkbox ~attrs:[ ("disabled", "caller-said-so") ] ~disabled false
+    in
+    match find (By_tag "checkbox") (tree (render element)) with
+    | Some node -> attr "disabled" node
+    | None -> Alcotest.fail "no checkbox node rendered"
+  in
+  Alcotest.(check (option string))
+    "the caller's pair stands where the typed field declines"
+    (Some "caller-said-so") (checkbox_disabled false);
+  Alcotest.(check (option string))
+    "and loses to the same field once it asserts" (Some "true")
+    (checkbox_disabled true);
+  let radio_disabled disabled =
+    let element =
+      E.radio
+        ~attrs:[ ("disabled", "caller-said-so") ]
+        ~disabled ~name:"colour" ()
+    in
+    match find (By_tag "radio") (tree (render element)) with
+    | Some node -> attr "disabled" node
+    | None -> Alcotest.fail "no radio node rendered"
+  in
+  Alcotest.(check (option string))
+    "the same holds on a radio" (Some "caller-said-so") (radio_disabled false);
+  Alcotest.(check (option string))
+    "and the same way round when it asserts" (Some "true") (radio_disabled true);
+  let select_disabled disabled =
+    let element =
+      E.select
+        ~attrs:[ ("disabled", "caller-said-so") ]
+        ~disabled ~selected:"a"
+        [ E.select_option ~value:"a" "Alpha" ]
+    in
+    match find (By_tag "select") (tree (render element)) with
+    | Some node -> attr "disabled" node
+    | None -> Alcotest.fail "no select node rendered"
+  in
+  Alcotest.(check (option string))
+    "and on a select" (Some "caller-said-so") (select_disabled false);
+  Alcotest.(check (option string))
+    "both ways" (Some "true") (select_disabled true)
+
+(* A picker that configures no capture mode carries no such key, the way the
+   DOM carries none, rather than an empty string that reads as a configured
+   value of "". The configured picker beside it is the affirmative arm: it
+   proves the key reaches the node at all, so the absence above is the
+   declining derivation and not a fixture that never got there. *)
+let absent_capture_reports_no_pair () =
+  let picker_node element =
+    match find (By_tag "file_input") (tree (render element)) with
+    | Some node -> node
+    | None -> Alcotest.fail "no file input node rendered"
+  in
+  let unconfigured =
+    picker_node (E.file_input ~attrs:[ ("data-field", "receipt") ] ())
+  in
+  Alcotest.(check (option string))
+    "an unconfigured capture reads back as no pair at all" None
+    (attr "capture" unconfigured);
+  Alcotest.(check bool)
+    "and presence agrees with the lookup" false
+    (has_attr "capture" unconfigured);
+  Alcotest.(check (option string))
+    "while the view's own attribute is still on the node" (Some "receipt")
+    (attr "data-field" unconfigured);
+  let configured =
+    picker_node
+      (E.file_input
+         ~attrs:[ ("data-field", "receipt") ]
+         ~capture:E.Environment ())
+  in
+  Alcotest.(check (option string))
+    "the same picker configured reports the wire token" (Some "environment")
+    (attr "capture" configured);
+  Alcotest.(check bool)
+    "and presence agrees there too" true
+    (has_attr "capture" configured)
+
+(* The answer-change enumeration this change publishes.
+
+   Each candidate is a key one arm derives, read on an element whose typed
+   field is in its default state and which declares no [attrs] pair of that
+   name. The third column is what the structural renderer answered at the tree
+   this change is measured against, where a derived pair was prepended, a
+   lookup resolved to the first pair, and a pair was emitted for a key even
+   where the typed field asserted nothing. It is recorded data: no code in this
+   tree can produce it. The reading beside it comes from the renderer as it
+   stands, so a candidate whose two columns differ is a key whose answer moved.
+
+   The candidates that did not move are this case's affirmative arm. Without
+   them a defect that stopped every arm reporting anything would read as
+   "nothing moved" against a list of seven and pass. *)
+let answer_change_candidates : (string * string * string option * msg E.t) list
+    =
+  let a_select =
+    E.select ~selected:"a"
+      [ E.select_option ~value:"a" "Alpha"; E.select_option ~value:"b" "Beta" ]
+  in
+  let a_picker = E.file_input () in
+  [
+    ("checkbox", "disabled", Some "false", E.checkbox false);
+    ("radio", "disabled", Some "false", E.radio ~name:"colour" ());
+    ("select", "disabled", Some "false", a_select);
+    ("option", "disabled", Some "false", a_select);
+    ("file_input", "accept", Some "", a_picker);
+    ("file_input", "capture", Some "", a_picker);
+    ("file_input", "multiple", Some "false", a_picker);
+    ("checkbox", "checked", Some "false", E.checkbox false);
+    ("radio", "name", Some "colour", E.radio ~name:"colour" ());
+    ("radio", "checked", Some "false", E.radio ~name:"colour" ());
+    ("select", "selected", Some "a", a_select);
+    ("option", "value", Some "a", a_select);
+    ("option", "label", Some "Alpha", a_select);
+    ("input", "value", Some "", E.input "");
+    ("input", "placeholder", Some "", E.input "");
+    ("box", "focusable", None, E.box [ E.text "palette" ]);
+    ("scroll", "reveal", None, E.scroll (E.text "content"));
+    ("scroll", "reveal-align", None, E.scroll (E.text "content"));
+  ]
+
+(* The key-by-key table published in llms.txt, as (node tag, key). The two
+   further changes published beside that table move no key's answer and are
+   deliberately not rows in it: the resolution point a selector reaches through
+   a simulated event, and the position a derived pair now takes in the node's
+   attrs list. This list and that table are edited together. *)
+let published_answer_change_list =
+  [
+    ("checkbox", "disabled");
+    ("radio", "disabled");
+    ("select", "disabled");
+    ("option", "disabled");
+    ("file_input", "accept");
+    ("file_input", "capture");
+    ("file_input", "multiple");
+  ]
+
+(* The keys the enumeration records as unchanged, in candidate order. *)
+let unchanged_answer_keys =
+  [
+    ("checkbox", "checked");
+    ("radio", "name");
+    ("radio", "checked");
+    ("select", "selected");
+    ("option", "value");
+    ("option", "label");
+    ("input", "value");
+    ("input", "placeholder");
+    ("box", "focusable");
+    ("scroll", "reveal");
+    ("scroll", "reveal-align");
+  ]
+
+let answer_change_list_matches_the_keys_that_moved () =
+  let reading tag key element =
+    match find (By_tag tag) (tree (render element)) with
+    | Some node -> attr key node
+    | None -> Alcotest.fail ("no " ^ tag ^ " node rendered")
+  in
+  let moved, unmoved =
+    List.partition
+      (fun (tag, key, before, element) -> reading tag key element <> before)
+      answer_change_candidates
+  in
+  let keys entries = List.map (fun (tag, key, _, _) -> (tag, key)) entries in
+  let key_list = Alcotest.(list (pair string string)) in
+  Alcotest.check key_list
+    "the published list is exactly the keys whose answer moved"
+    published_answer_change_list (keys moved);
+  Alcotest.check key_list "a published key whose answer did not move" []
+    (List.filter
+       (fun k -> not (List.mem k (keys moved)))
+       published_answer_change_list);
+  Alcotest.check key_list "a key whose answer moved and was not published" []
+    (List.filter
+       (fun k -> not (List.mem k published_answer_change_list))
+       (keys moved));
+  Alcotest.check key_list
+    "and the keys recorded as unchanged were read, and are unchanged"
+    unchanged_answer_keys (keys unmoved)
+
+let attr_precedence_tests =
+  [
+    Alcotest.test_case "caller_duplicate_resolves_to_the_last_pair" `Quick
+      caller_duplicate_resolves_to_the_last_pair;
+    Alcotest.test_case "derived_pair_beats_a_caller_pair_of_the_same_key" `Quick
+      derived_pair_beats_a_caller_pair_of_the_same_key;
+    Alcotest.test_case "absent_disabled_leaves_the_caller_pair_standing" `Quick
+      absent_disabled_leaves_the_caller_pair_standing;
+    Alcotest.test_case "absent_capture_reports_no_pair" `Quick
+      absent_capture_reports_no_pair;
+    Alcotest.test_case "by_attr_matches_the_resolved_value" `Quick
+      by_attr_matches_the_resolved_value;
+    Alcotest.test_case "has_attr_is_presence_not_precedence" `Quick
+      has_attr_is_presence_not_precedence;
+    Alcotest.test_case "answer_change_list_matches_the_keys_that_moved" `Quick
+      answer_change_list_matches_the_keys_that_moved;
+  ]
+
 let () =
   Alcotest.run "Test_renderer"
     [
@@ -1194,4 +1511,5 @@ let () =
       ("file_input", file_input_tests);
       ("reveal", reveal_tests);
       ("focusable", focusable_tests);
+      ("attr_precedence", attr_precedence_tests);
     ]

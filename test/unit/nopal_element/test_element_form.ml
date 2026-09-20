@@ -23,7 +23,7 @@ let checkbox_renders_as_checkbox_tag () =
        {
          tag = "checkbox";
          style = s0;
-         attrs = [ ("checked", "true"); ("disabled", "false") ];
+         attrs = [ ("checked", "true") ];
          children = [];
          interaction = ix0;
        })
@@ -70,8 +70,7 @@ let radio_renders_as_radio_tag_with_name () =
        {
          tag = "radio";
          style = s0;
-         attrs =
-           [ ("name", "color"); ("checked", "false"); ("disabled", "false") ];
+         attrs = [ ("name", "color"); ("checked", "false") ];
          children = [];
          interaction = ix0;
        })
@@ -118,15 +117,14 @@ let select_renders_as_select_tag_with_options () =
        {
          tag = "select";
          style = s0;
-         attrs = [ ("selected", "a"); ("disabled", "false") ];
+         attrs = [ ("selected", "a") ];
          children =
            [
              Element
                {
                  tag = "option";
                  style = s0;
-                 attrs =
-                   [ ("value", "a"); ("label", "Alpha"); ("disabled", "false") ];
+                 attrs = [ ("value", "a"); ("label", "Alpha") ];
                  children = [];
                  interaction = ix0;
                };
@@ -134,8 +132,7 @@ let select_renders_as_select_tag_with_options () =
                {
                  tag = "option";
                  style = s0;
-                 attrs =
-                   [ ("value", "b"); ("label", "Beta"); ("disabled", "false") ];
+                 attrs = [ ("value", "b"); ("label", "Beta") ];
                  children = [];
                  interaction = ix0;
                };

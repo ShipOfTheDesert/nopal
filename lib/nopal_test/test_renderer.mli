@@ -37,12 +37,49 @@ val render : 'msg Nopal_element.Element.t -> 'msg rendered
 (** [render element] renders an element tree into an inspectable node tree with
     event simulation support. The message list starts empty.
 
+    The rule this renderer implements is:
+    {b typed-field derivations beat the [~attrs] list; within the list, the last
+       pair wins.} Those are two tiers and they are not the same tier. A typed
+    field sits above the list; a pair a component put into that list sits inside
+    it and loses to a caller's later pair of the same name.
+
+    The mechanism here is an overlay. A pair derived from a typed field is
+    appended after the view's own [attrs], and a duplicate key resolves to the
+    last pair, so a derivation wins lookup over a caller-supplied pair of the
+    same name while every other pair the view declared is left where it was.
+    Within [attrs] itself the same resolution applies: the last pair the view
+    wrote is the one {!attr}, a {!By_attr} selector, and the selector {!click},
+    {!input}, {!submit} and {!select_files} resolve, all answer with.
+
+    The web backend carries the same rule by a different mechanism — it applies
+    the declared list before it writes any derivation — so on the keys it writes
+    as real attributes the two renderers answer identically, which is the whole
+    value of asserting on this one. Those keys are ["disabled"], ["accept"],
+    ["capture"], ["multiple"], ["placeholder"], a radio's ["name"] and a
+    control's ["type"]. A box's [focusable] is a first-tier derivation in both,
+    but each renderer spells it in its own vocabulary — a tab-order attribute
+    there, ["focusable"] here — so there is no shared key to compare.
+    ["checked"], ["value"] and ["selected"] are {e not} among them: the browser
+    carries all three as JS properties and never as attributes, so a caller's
+    pair of one of those names is not overruled there. This renderer still
+    overlays them, as a faithful read-out of the typed field, and an assertion
+    on one of the three is a statement about this renderer alone. [Element.draw]
+    carries neither a style nor an attribute list, so it is structurally outside
+    the rule, and a backend nobody has written is bound by nothing here: a rule
+    holds where a test holds it.
+
+    A derivation asserts a value and never denies one. Where a typed field
+    declines — a picker configuring no [capture], a control that is not
+    [disabled] — no pair is contributed for that key, so a pair [attrs] declared
+    under the same name is uncovered rather than erased, and {!attr} reads back
+    [None] where neither spoke. This holds for ["disabled"], ["accept"],
+    ["capture"] and ["multiple"], the keys a browser spells as real attributes
+    and whose absence it spells as removal.
+
     A scroll container's [reveal] declaration is surfaced for inspection as the
     derived attribute pairs ["reveal"] and ["reveal-align"], carried exactly as
-    the view wrote them. They are prepended to the view's own [attrs], so a
-    declaration wins lookup over a caller-supplied pair of the same name — the
-    same precedence the input, checkbox, radio, select and file-input arms
-    already use. A container that declares neither carries no attributes at all.
+    the view wrote them. A container that declares neither carries no attributes
+    at all.
 
     Nothing marks a pair as derived, so the precedence does not run the other
     way: a container that supplies [("reveal", "decoy")] in [attrs] and declares
