@@ -79,8 +79,10 @@ val with_bar_interaction :
   Nopal_style.Interaction.t -> ('screen, 'msg) config -> ('screen, 'msg) config
 (** Override the hover/pressed/focused interaction on the tab buttons.
 
-    One interaction is shared by the whole bar and is applied to {e every} tab,
-    the active one included; there is no per-tab interaction. Cosmetic only. *)
+    One interaction is shared by the whole bar and is applied to every tab the
+    {!with_tab_interaction} function does not answer for, the active one
+    included. With no per-tab function it is applied to {e every} tab. Cosmetic
+    only. *)
 
 val with_bar_attrs :
   (string * string) list -> ('screen, 'msg) config -> ('screen, 'msg) config
@@ -133,7 +135,9 @@ val with_gutter_style :
     inside this box. Cosmetic only. *)
 
 val with_back_label : string -> ('screen, 'msg) config -> ('screen, 'msg) config
-(** Override the back affordance label (default ["Back"]). Cosmetic only. *)
+(** Override the back affordance label (default ["Back"]). {!with_back_style} is
+    the rest of its appearance, including that label's typography. Cosmetic
+    only. *)
 
 val with_back_suppressed :
   bool -> ('screen, 'msg) config -> ('screen, 'msg) config
@@ -153,6 +157,59 @@ val with_back_suppressed :
     component then surfaces no pop intent of its own, and only the hardware or
     platform back press still reaches [~on_back]. Cosmetic only — it removes an
     element and decides no navigation. *)
+
+val with_back_style :
+  Nopal_style.Style.t -> ('screen, 'msg) config -> ('screen, 'msg) config
+(** [with_back_style style config] styles the back affordance — the
+    [data-action="nav-back"] button {!val-view} renders above the active screen.
+    The style {e replaces}; nothing is merged.
+
+    It carries the label's typography with it: [style]'s [text] component is
+    handed to the label's text node explicitly, so a colour or a weight set here
+    is observable structurally and not only in a browser. {!with_back_label}
+    moves the string, this moves everything else about it, and before the two of
+    them the button's appearance was reachable from nowhere. Cosmetic only — it
+    decides no navigation, and under {!with_back_suppressed} there is no button
+    to style. *)
+
+val with_tab_text_style :
+  Nopal_style.Text.t -> ('screen, 'msg) config -> ('screen, 'msg) config
+(** [with_tab_text_style text config] sets the typography of every tab's label,
+    by way of [Navigation_bar.with_item_text_style].
+
+    It takes a [Text.t] and not a whole [Style.t] because the label is a text
+    node, which carries a text style and nothing else: every field of [text]
+    reaches it. The tab button's own style is {!with_tab_style} and
+    {!with_active_tab_style}, and the gap between an icon and its label is
+    {!with_tab_row_style}. The text style {e replaces}; nothing is merged.
+    Cosmetic only. *)
+
+val with_tab_row_style :
+  Nopal_style.Style.t -> ('screen, 'msg) config -> ('screen, 'msg) config
+(** [with_tab_row_style style config] styles the row that holds a tab's icon and
+    its label, by way of [Navigation_bar.with_item_row_style]. That row is the
+    route to the gap between the two. The style {e replaces}; nothing is merged.
+
+    The row exists only for a tab built with [~icon]. A label-only tab renders
+    its label directly in its button and has no gap to set, and this setter adds
+    no element to give it one. Cosmetic only. *)
+
+val with_tab_interaction :
+  (string -> Nopal_style.Interaction.t option) ->
+  ('screen, 'msg) config ->
+  ('screen, 'msg) config
+(** [with_tab_interaction f config] gives one tab a different
+    hover/pressed/focused interaction from the rest, by way of
+    [Navigation_bar.with_item_interaction]. For every tab the bar renders, [f]
+    is asked by the tab's [id]: [Some i] puts [i] on that tab's button, and
+    [None] leaves the tab on {!with_bar_interaction}'s bar-wide interaction — or
+    on no interaction at all, when that is unset. [f] is called once per tab per
+    render and must be total.
+
+    It is keyed on the [id] string rather than on the tab value because
+    [('screen, 'msg) tab] is abstract and every tab has an [id] by construction.
+    An answer of [Some] {e replaces} the bar-wide interaction on that tab rather
+    than merging with it. Cosmetic only. *)
 
 val with_attrs :
   (string * string) list -> ('screen, 'msg) config -> ('screen, 'msg) config

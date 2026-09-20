@@ -21,3 +21,13 @@ let slugify s =
   let len = String.length result in
   if len > 0 && result.[len - 1] = '-' then String.sub result 0 (len - 1)
   else result
+
+let derive_id ~explicit ~label ?suffix () =
+  let base =
+    match explicit with
+    | Some id -> id
+    | None -> slugify label
+  in
+  match suffix with
+  | Some s -> base ^ "-" ^ s
+  | None -> base

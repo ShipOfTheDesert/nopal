@@ -95,9 +95,12 @@ close it.
 Each record lives beside the rule it defers, so the next reader of that rule
 sees the exception: D-1, D-2, D-6 and D-10 under
 [E2E tests](#e2e-tests-playwright), D-3 under [Performance](#performance), D-4
-under [Kitchen Sink](#kitchen-sink), D-5 and D-7 under
-[VIII. Bug-Class Prevention](#viii-bug-class-prevention), D-8, D-9 and D-11
-under [V. Functional Patterns](#v-functional-patterns).
+and D-12 under [Kitchen Sink](#kitchen-sink), D-5 and D-7 under
+[VIII. Bug-Class Prevention](#viii-bug-class-prevention), D-8, D-9, D-11 and
+D-13 under [V. Functional Patterns](#v-functional-patterns). D-11 is
+discharged; its record stays where it was, because an id is assigned once and
+never reused and a reader who meets the id in an older commit message has to be
+able to find it.
 
 ## Reporting a framework gap
 
@@ -712,29 +715,139 @@ renderer answers and is not evidence about the browser.
 
 Deferring part of the rule is allowed; leaving it unrecorded is not — see
 [Deferrals and decisions not to cover](#deferrals-and-decisions-not-to-cover)
-for the `D-n` scheme. **One record sits under this rule: an open deferral on the
+for the `D-n` scheme. **One record sits under this rule and it is discharged: the
 position a derived pair takes in a node's `attrs` list (D-11).**
 
-#### Open deferral D-11 — the node `attrs` list order is pinned nowhere
+**Every Visual Decision a Component Makes Is Overridable**
+Every visual decision a `nopal_ui` component makes must be overridable without
+abandoning the component. A decision with no override is a fork waiting to
+happen, and a fork does not lose only the styling: a downstream consumer forked
+a text input because the label's font weight and the label-to-box gap were
+unreachable at every configuration, and the fork silently dropped the
+label-to-control association the component had been making for it. The visible
+cost was three lines of appearance; the invisible cost was the accessible name.
 
-**Owner: whoever first writes a whole-node fixture carrying both a caller pair
-and a derived pair, in the change that writes it.**
+The rule rests on a three-way split, and getting a decision into the wrong
+bucket is how the surface goes wrong:
+
+1. **A visual decision** — colour, spacing, typography, a hover or pressed
+   treatment — is overridden by a typed `Nopal_style.Style.t` or
+   `Nopal_style.Interaction.t`, and never by an `~attrs` pair. A typed override
+   cannot collide with the ARIA the component emits, which is the whole reason
+   it is the mechanism: a caller restyling a control can never accidentally
+   unname it.
+2. **A semantic or metadata decision** — a `role`, an `aria-*` association, a
+   `data-*` anchor — stays an ordinary pair in the `~attrs` list the component
+   hands down. It is caller-replaceable at the second tier of *A Typed Field
+   Outranks the `~attrs` List* above, and that is deliberate: the escape hatch is
+   what keeps a consumer using the component instead of abandoning it.
+3. **A value a caller must not be able to replace** needs a typed field, not a
+   list pair. A pair in a list the caller can append to is a default, however the
+   `.mli` words it.
+
+**An override that compiles is not an override.** The failure this rule exists to
+remove is a knob that does not reach the node, so a new mechanism is demonstrated
+by setting it to a **non-default** value and asserting the rendered node changed.
+A case that sets an override to the value the component would have used anyway
+passes most loudly when the override reached nothing at all.
+
+**Where two overrides land on the same node, the most specific wins and an absent
+answer uncovers rather than clears.** A per-element setter answering `Some` beats
+the component-wide one; answering `None` leaves the component-wide one standing
+rather than blanking the node. That is the same semantics as an absent derivation
+in the attribute rule above, and every such ordering is stated at both signatures
+rather than left to be discovered.
+
+**A decision that is structural rather than visual is named, not hidden.** Some
+decisions must not be reachable — a modal backdrop that does not cover the dialog
+is not a backdrop, and a tab bar that does not clear the gesture bar cannot be
+tapped. Those are recorded at their own signature, with the reason, and with the
+scope stated: whether the component *forces* a field back over the caller's style
+(and which other fields still replace as usual), or merely *fills one in* when
+the caller expressed no opinion. An uncited forcing is not an exemption; it is an
+unreached decision that has not been noticed yet.
+
+**This is checked when a component is added, and when a component gains an
+element.** The enumeration — component × visual decision × override mechanism —
+lives in `llms.txt` under `### UI Components`, and no cell in it may read "fork".
+Adding a component without adding its rows leaves the claim that table makes
+false; adding an element inside an existing component without giving it a
+mechanism is the same defect one level down, and it is the shape that produced
+the fork above.
+
+Deferring part of the rule is allowed; leaving it unrecorded is not — see
+[Deferrals and decisions not to cover](#deferrals-and-decisions-not-to-cover)
+for the `D-n` scheme. **One record sits under this rule: a decision not to
+cover a toast's message typography and the `llms.txt` prose no test reads
+(D-13).**
+
+#### Discharged deferral D-11 — the node `attrs` list order
+
+**Discharged by `test/unit/nopal_ui/test_aria_survival.ml`,
+`derived pairs sit at the back`.**
 
 `nopal_test` moved its derived pairs from the front of a node's `attrs` list to
 the back, which is what makes the last-pair lookup answer the derivation. Every
-lookup on that list is pinned — `attr`, a `By_attr` selector and the selector an
-event simulation resolves all assert the winner. The *position* is not: every
-whole-node fixture in the suite
+lookup on that list was pinned from the start — `attr`, a `By_attr` selector and
+the selector an event simulation resolves all assert the winner. The *position*
+was not: every whole-node fixture in the suite
 (`test/unit/nopal_element/test_element_form.ml`, the three `node` comparisons)
 declares no caller `attrs` at all, so `[] @ derived` and `derived @ []` are the
-same list and the prepend-to-append move reddens nothing.
+same list and the prepend-to-append move reddened nothing.
 
 This matters because `Test_renderer.node` exposes `attrs` publicly, so a
 downstream suite doing whole-list equality on a node sees a changed list with no
 compiler help — which is why the move is published in `llms.txt` under
-"Attribute answers that moved" rather than left to be discovered. It is recorded
-rather than fixed because the fixture that would pin it is the fixture that
-would also want to assert the winner, and no case in the tree needs both today.
+"Attribute answers that moved" rather than left to be discovered.
+
+A labelled `nopal_ui` control is the fixture the record was waiting for: the
+component contributes its own naming pairs and its anchor, the caller's `~attrs`
+list follows, and the renderer appends what it derives from the typed fields. The
+discharging case asserts that node's **whole** list rather than a lookup on it, so
+a prepend reddens it even where no derived key collides with a declared one — the
+case that `attr`-level pins cannot see. It asserts the resolved winner on the same
+fixture too, so the position and the tier are pinned together; that the two wanted
+one fixture is what had kept the record open.
+
+#### Decision not to cover D-13 — a toast's message typography, and prose no test reads
+
+**Owner for the typography row: whoever first reports a toast message whose
+typography did not follow the toast's own style, in the change that reports it.
+Owner for the prose: whoever next edits the audit summary under `llms.txt`
+`### UI Components`, in the change that edits it.**
+
+Two parts of the rule's first application are carried by prose rather than by a
+test. Both are named here so the rule above is not read as claiming more than it
+covers.
+
+**A toast's message typography.** A toast's message is an `Element.text` child of
+the toast's own button (`lib/nopal_ui/toast.ml:157`), so the `text` component of
+the toast's style reaches it by CSS inheritance and not by any pair on the
+message node itself. `nopal_test` models no inheritance, so a structural case
+cannot observe that override at all: it would read the message as unstyled while
+a browser renders it styled — which is the shape *An override that compiles is
+not an override* exists to catch, arriving from the other direction. The proof
+that row wants is therefore a web-backend case, and none was written; the row at
+`lib/nopal_ui/toast.mli:118-122` states the mechanism and asserts nothing about a
+rendered node.
+
+**The precedence rules and the structural exemptions in `llms.txt`.**
+`test/unit/nopal_ui/test_change_list.ml` pins the *change list* — each attribute
+row and each tree row, in both directions — and nothing else. The four
+precedence bullets are pinned indirectly, by component cases in `test_toast.ml`,
+`test_button.ml`, `test_data_table.ml`, `test_navigation_bar.ml` and
+`test_bottom_tabs.ml`; the four structural exemptions are pinned by nothing.
+Nothing mechanical joins either set to the `llms.txt` text, so prose edited
+without the components, or components edited without the prose, reddens no test.
+
+Why this is a decision rather than work owed now: an exemption states that a
+decision must *not* be reachable, and a test of that asserts the absence of a
+mechanism — which passes exactly as loudly for a component that never had the
+mechanism as for one that correctly keeps forcing it. Neither part is discharged
+by a count. What discharges the typography row is a report of a toast message
+whose typography did not follow its style; what discharges the prose is the next
+edit to the audit summary, which either brings the text under a test or restates
+here why it still is not.
 
 **A Typed Size Is a Guarantee, Not a Hint**
 `Style.size` states what a dimension of an element is, and a backend has to
@@ -1104,7 +1217,7 @@ rule by itself. It does still need a section before the capability can be said
 to work in a real browser, because the kitchen sink is what Playwright drives.
 Deferring that section is allowed; leaving it unrecorded is not — see
 [Deferrals and decisions not to cover](#deferrals-and-decisions-not-to-cover)
-for the `D-n` scheme. **There is one current deferral (D-4).**
+for the `D-n` scheme. **There are two current deferrals (D-4 and D-12).**
 
 #### Open deferral D-4 — `Platform_tauri.on_back_pressed`
 
@@ -1187,3 +1300,40 @@ browser is where that collision is real, so the suite takes
 costs no production hook: the store probes for the member and reports its
 absence, and the decode path is `createImageBitmap`, so the pass itself does not
 notice.
+
+
+#### Open deferral D-12 — the `nopal_ui` overrides with no kitchen-sink demonstration
+
+**Owner: whoever next edits each of the `Button`, `Data_table`, `Modal`,
+`Navigation_bar` and `Bottom_tabs` kitchen-sink sub-sections
+(`examples/kitchen_sink/kitchen_sink_ui.ml`, `sub_data_table.ml`,
+`sub_modal.ml`, `sub_navigation_bar.ml`, `sub_bottom_tabs.ml`) — the
+demonstration goes in beside whatever else that change adds, and the component
+leaves this record when its own sub-section carries it.**
+
+*Every Visual Decision a Component Makes Is Overridable* gave every `nopal_ui`
+component an override for every visual decision it makes. The kitchen sink
+followed for five of them in the same change: `Text_input`
+(`kitchen_sink_text_input.ml`), `Checkbox`, `Radio_group` and `Select_input`
+(`kitchen_sink_form_controls.ml`), and `Toast` (`sub_toast.ml`). It did not
+follow for the setters added to `Button`, `Data_table`, `Modal`,
+`Navigation_bar` and `Bottom_tabs`: those sub-sections exist, and they are
+untouched. **None of the setters on those five components is exercised in a real
+browser.** Playwright drives the kitchen sink and nothing else, so a setter with
+no section there has no browser-level evidence of any kind.
+
+What they do have is the coverage the rule itself demands, one layer down. Each
+is exercised in `test/unit/nopal_ui/` with a **non-default** value and asserted
+to change the rendered structural node — never set to the value the component
+would have used anyway, which is the pass that means nothing — and each
+assertion is mutation-proved: reverting the setter's application in the
+component reddens its case. That is what makes this a deferral of the
+demonstration rather than of the mechanism.
+
+What the deferral therefore costs is what only a browser shows: that the style
+survives the web renderer's own derivations, that an interaction override
+resolves in real `:hover` and `:active` rules rather than in the structural
+read-out of them, and that nothing in the cascade overrides the override. The
+per-component sub-sections are the right home for each, which is why the owner
+is the next change to touch one rather than a single change owning all five —
+each discharges its own share, and this record shrinks as they land.

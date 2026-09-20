@@ -23,7 +23,9 @@ let test_add_appends_toast () =
   | [ t ] ->
       Alcotest.(check string) "id" "t1" t.id;
       Alcotest.(check string) "message" "hello" t.message
-  | _ -> Alcotest.fail "expected exactly one toast"
+  | []
+  | _ :: _ :: _ ->
+      Alcotest.fail "expected exactly one toast"
 
 let test_add_preserves_existing () =
   let existing = [ make_toast ~id:"t0" ~variant:Success ~message:"first" ] in
@@ -34,7 +36,10 @@ let test_add_preserves_existing () =
   | [ a; b ] ->
       Alcotest.(check string) "original id" "t0" a.id;
       Alcotest.(check string) "new id" "t1" b.id
-  | _ -> Alcotest.fail "expected exactly two toasts"
+  | []
+  | [ _ ]
+  | _ :: _ :: _ :: _ ->
+      Alcotest.fail "expected exactly two toasts"
 
 let test_add_with_duration_returns_cmd_after () =
   let _toasts, cmd =
@@ -67,7 +72,9 @@ let test_dismiss_removes_matching_toast () =
   let result = Toast.dismiss "t1" toasts in
   match result with
   | [ t ] -> Alcotest.(check string) "remaining" "t2" t.id
-  | _ -> Alcotest.fail "expected exactly one toast after dismiss"
+  | []
+  | _ :: _ :: _ ->
+      Alcotest.fail "expected exactly one toast after dismiss"
 
 let test_dismiss_nonexistent_id_unchanged () =
   let toasts = [ make_toast ~id:"t1" ~variant:Info ~message:"one" ] in
@@ -86,7 +93,10 @@ let test_view_empty_list_renders_container () =
         "no aria-live on container" None
         (List.assoc_opt "aria-live" attrs);
       Alcotest.(check int) "no children" 0 (List.length children)
-  | _ -> Alcotest.fail "expected column element at root"
+  | Element _
+  | Empty
+  | Text _ ->
+      Alcotest.fail "expected column element at root"
 
 let test_view_multiple_toasts_renders_all () =
   let config = Toast.make ~dismiss in
@@ -102,7 +112,10 @@ let test_view_multiple_toasts_renders_all () =
   match root with
   | Element { tag = "column"; children; _ } ->
       Alcotest.(check int) "three children" 3 (List.length children)
-  | _ -> Alcotest.fail "expected column element at root"
+  | Element _
+  | Empty
+  | Text _ ->
+      Alcotest.fail "expected column element at root"
 
 let test_view_click_dispatches_dismiss () =
   let config = Toast.make ~dismiss in
@@ -159,7 +172,10 @@ let test_custom_style_applied () =
       Alcotest.(check int) "one child" 1 (List.length children);
       Alcotest.(check (option (float 0.01)))
         "custom gap applied" (Some 20.0) s.layout.gap
-  | _ -> Alcotest.fail "expected column element at root"
+  | Element _
+  | Empty
+  | Text _ ->
+      Alcotest.fail "expected column element at root"
 
 let test_custom_interaction_applied () =
   let custom_hover =
@@ -204,7 +220,9 @@ let test_custom_attrs_propagated () =
       Alcotest.(check (option string))
         "no aria-live on container" None
         (List.assoc_opt "aria-live" attrs)
-  | _ -> Alcotest.fail "expected column element at root"
+  | Empty
+  | Text _ ->
+      Alcotest.fail "expected column element at root"
 
 (* --- aria-live --- *)
 
@@ -282,6 +300,122 @@ let test_default_interaction_for_variants () =
     "four distinct hover backgrounds" 4
     (Test_util.count_unique color_option_equal hover_bgs)
 
+(* --- per-toast overrides --- *)
+
+let style_with_background hex =
+  S.default |> S.with_paint (fun p -> { p with background = Some (S.hex hex) })
+
+let interaction_with_hover hex =
+  { I.default with hover = Some (style_with_background hex) }
+
+(* Total over the four variants, and a different value for each: a constant
+   function would satisfy "the override reached the node" while proving nothing
+   about the variant the component passed in. *)
+let override_style_for variant =
+  match variant with
+  | Toast.Info -> style_with_background "#101010"
+  | Toast.Success -> style_with_background "#202020"
+  | Toast.Warning -> style_with_background "#303030"
+  | Toast.Error -> style_with_background "#404040"
+
+let override_interaction_for variant =
+  match variant with
+  | Toast.Info -> interaction_with_hover "#151515"
+  | Toast.Success -> interaction_with_hover "#252525"
+  | Toast.Warning -> interaction_with_hover "#353535"
+  | Toast.Error -> interaction_with_hover "#454545"
+
+let toast_button config variant =
+  let toasts = [ make_toast ~id:"t1" ~variant ~message:"a toast" ] in
+  match find (By_tag "button") (tree (render (Toast.view config toasts))) with
+  | Some btn -> btn
+  | None -> Alcotest.fail "expected a toast button element"
+
+let test_toast_style_displaces_the_variant_default () =
+  let config =
+    Toast.with_toast_style override_style_for (Toast.make ~dismiss)
+  in
+  List.iter
+    (fun variant ->
+      let btn = toast_button config variant in
+      Alcotest.(check (option bool))
+        "the override reaches the toast" (Some true)
+        (Option.map (S.equal (override_style_for variant)) (style btn));
+      Alcotest.(check (option bool))
+        "and displaces the variant default" (Some false)
+        (Option.map (S.equal (Toast.default_style_for variant)) (style btn)))
+    all_variants
+
+let test_toast_interaction_displaces_the_variant_default () =
+  let config =
+    Toast.with_toast_interaction override_interaction_for (Toast.make ~dismiss)
+  in
+  List.iter
+    (fun variant ->
+      let btn = toast_button config variant in
+      Alcotest.(check (option bool))
+        "the override reaches the toast" (Some true)
+        (Option.map
+           (I.equal (override_interaction_for variant))
+           (interaction btn));
+      Alcotest.(check (option bool))
+        "and displaces the variant default" (Some false)
+        (Option.map
+           (I.equal (Toast.default_interaction_for variant))
+           (interaction btn)))
+    all_variants
+
+let test_variant_default_is_kept_when_no_override_is_given () =
+  let config = Toast.make ~dismiss in
+  List.iter
+    (fun variant ->
+      let btn = toast_button config variant in
+      Alcotest.(check (option bool))
+        "the variant style is what the toast carries" (Some true)
+        (Option.map (S.equal (Toast.default_style_for variant)) (style btn));
+      Alcotest.(check (option bool))
+        "the variant interaction is what the toast carries" (Some true)
+        (Option.map
+           (I.equal (Toast.default_interaction_for variant))
+           (interaction btn)))
+    all_variants
+
+let test_aria_live_is_unchanged_under_a_style_override () =
+  let config =
+    Toast.make ~dismiss
+    |> Toast.with_toast_style override_style_for
+    |> Toast.with_toast_interaction override_interaction_for
+  in
+  List.iter
+    (fun variant ->
+      let btn = toast_button config variant in
+      Alcotest.(check (option string))
+        "aria-live"
+        (Some (Toast.aria_live_for variant))
+        (attr "aria-live" btn);
+      Alcotest.(check (option string))
+        "the data-action anchor" (Some "toast-dismiss") (attr "data-action" btn))
+    all_variants
+
+(* The precedence between the per-variant setter and the uniform
+   [config.interaction] is a published rule (toast.mli), so it is pinned rather
+   than left to drift. *)
+let test_toast_interaction_wins_over_the_uniform_interaction () =
+  let uniform = interaction_with_hover "#ffffff" in
+  let config =
+    { (Toast.make ~dismiss) with interaction = Some uniform }
+    |> Toast.with_toast_interaction override_interaction_for
+  in
+  let btn = toast_button config Toast.Warning in
+  Alcotest.(check (option bool))
+    "the per-variant setter wins" (Some true)
+    (Option.map
+       (I.equal (override_interaction_for Toast.Warning))
+       (interaction btn));
+  Alcotest.(check (option bool))
+    "the uniform interaction is displaced" (Some false)
+    (Option.map (I.equal uniform) (interaction btn))
+
 (* --- Test runner --- *)
 
 let () =
@@ -337,5 +471,18 @@ let () =
             test_default_style_for_variants;
           Alcotest.test_case "default_interaction_for variants" `Quick
             test_default_interaction_for_variants;
+        ] );
+      ( "per-toast overrides",
+        [
+          Alcotest.test_case "toast style displaces the variant default" `Quick
+            test_toast_style_displaces_the_variant_default;
+          Alcotest.test_case "toast interaction displaces the variant default"
+            `Quick test_toast_interaction_displaces_the_variant_default;
+          Alcotest.test_case "variant default kept when no override is given"
+            `Quick test_variant_default_is_kept_when_no_override_is_given;
+          Alcotest.test_case "aria-live unchanged under a style override" `Quick
+            test_aria_live_is_unchanged_under_a_style_override;
+          Alcotest.test_case "toast interaction wins over the uniform one"
+            `Quick test_toast_interaction_wins_over_the_uniform_interaction;
         ] );
     ]

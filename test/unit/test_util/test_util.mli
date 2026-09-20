@@ -35,3 +35,26 @@ val check_node :
 val count_unique : ('a -> 'a -> bool) -> 'a list -> int
 (** [count_unique eq lst] returns the number of distinct elements in [lst] using
     [eq] for equality comparison. *)
+
+val find_or_fail :
+  string ->
+  Nopal_test.Test_renderer.selector ->
+  Nopal_test.Test_renderer.node ->
+  Nopal_test.Test_renderer.node
+(** [find_or_fail message selector node] is the first descendant of [node]
+    matching [selector], or an Alcotest failure carrying [message]. Use it
+    wherever the absence of the node is itself a test failure rather than a
+    value the test goes on to inspect. *)
+
+val style_testable : Nopal_style.Style.t Alcotest.testable
+(** Compares whole styles with {!Nopal_style.Style.equal}; prints an opaque
+    placeholder, so a failure names the assertion rather than the record. *)
+
+val text_style_testable : Nopal_style.Text.t Alcotest.testable
+(** Compares text styles with {!Nopal_style.Text.equal}. *)
+
+val bold_label_style : Nopal_style.Style.t
+(** A style whose only departure from {!Nopal_style.Style.default} is a bold
+    font weight on its text component — the standard fixture for asserting that
+    a label style override reaches both the label box and the text node inside
+    it. *)

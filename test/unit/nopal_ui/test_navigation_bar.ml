@@ -310,12 +310,196 @@ let test_active_tab_has_distinct_style () =
             match (bg_a, bg_b) with
             | Some ca, Some cb -> Nopal_style.Style.equal_color ca cb
             | None, None -> true
-            | _ -> false
+            | Some _, None
+            | None, Some _ ->
+                false
           in
           Alcotest.(check bool)
             "active and inactive have different background" false bg_equal
-      | _ -> Alcotest.fail "could not extract styles from tabs")
-  | _ -> Alcotest.fail "could not find both tabs"
+      | None, _
+      | Some _, None ->
+          Alcotest.fail "could not extract styles from tabs")
+  | None, _
+  | Some _, None ->
+      Alcotest.fail "could not find both tabs"
+
+(* --- Per-item overrides --- *)
+
+let style_testable = Test_util.style_testable
+let text_style_testable = Test_util.text_style_testable
+
+let interaction_testable =
+  Alcotest.testable
+    (fun fmt _ -> Format.fprintf fmt "<interaction>")
+    Nopal_style.Interaction.equal
+
+let bold_item_text_style =
+  { Nopal_style.Text.default with font_weight = Some Nopal_style.Font.Bold }
+
+let wide_item_row_style =
+  Nopal_style.Style.default
+  |> Nopal_style.Style.with_layout (fun l ->
+      { l with Nopal_style.Style.gap = Some 12.0 })
+
+(* Every field written out rather than inherited from [Interaction.default]:
+   [interaction] answers with the whole record and [Interaction.equal] compares
+   all three fields, so a fixture that left two of them to a default would be
+   asserting values it never stated. *)
+let hover_background bg =
+  {
+    Nopal_style.Interaction.hover =
+      Some
+        (Nopal_style.Style.default
+        |> Nopal_style.Style.with_paint (fun p ->
+            { p with background = Some bg }));
+    pressed = None;
+    focused = None;
+  }
+
+let per_item_hover = hover_background (Nopal_style.Style.rgba 200 0 0 1.0)
+let bar_wide_hover = hover_background (Nopal_style.Style.rgba 0 0 200 1.0)
+let find_or_fail = Test_util.find_or_fail
+
+let tab_node root ~id =
+  find_or_fail
+    ("no tab node nav-tab-" ^ id)
+    (By_attr ("data-testid", "nav-tab-" ^ id))
+    root
+
+(* One item with an icon and one without, because the label is the same text
+   node in both arms of the icon match and a style reaching only one arm would
+   still pass on half the items the component renders. *)
+let icon_items =
+  [
+    NB.item ~icon:(E.text "\xe2\x98\x85") ~id:"star" "Starred";
+    NB.item ~id:"plain" "Plain";
+  ]
+
+let icon_config () =
+  NB.make ~items:icon_items ~active:"star" ~on_select:(fun v -> Selected v)
+
+let test_item_text_style_reaches_the_item_label () =
+  let config = icon_config () |> NB.with_item_text_style bold_item_text_style in
+  let r = render (NB.view config) in
+  let expected = Some bold_item_text_style in
+  let label_style_of tree_root ~id ~text =
+    text_style
+      (find_or_fail
+         ("no label node for " ^ id)
+         (By_text text) (tab_node tree_root ~id))
+  in
+  Alcotest.(check (option text_style_testable))
+    "the style's text component reaches a label beside an icon" expected
+    (label_style_of (tree r) ~id:"star" ~text:"Starred");
+  Alcotest.(check (option text_style_testable))
+    "and the label of an item with no icon" expected
+    (label_style_of (tree r) ~id:"plain" ~text:"Plain");
+  let plain = render (NB.view (icon_config ())) in
+  Alcotest.(check (option text_style_testable))
+    "without the setter a label carries no text style at all" None
+    (label_style_of (tree plain) ~id:"star" ~text:"Starred")
+
+let test_item_interaction_reaches_only_that_item () =
+  let one_item_differs id =
+    match id with
+    | "b" -> Some per_item_hover
+    | _ -> None
+  in
+  let config =
+    NB.make ~items ~active:"a" ~on_select:(fun v -> Selected v)
+    |> NB.with_interaction bar_wide_hover
+    |> NB.with_item_interaction one_item_differs
+  in
+  let r = render (NB.view config) in
+  let interaction_of root ~id = interaction (tab_node root ~id) in
+  Alcotest.(check (option interaction_testable))
+    "the item the function names carries its own interaction"
+    (Some per_item_hover)
+    (interaction_of (tree r) ~id:"b");
+  Alcotest.(check (option interaction_testable))
+    "an item it answers None for keeps the bar-wide one" (Some bar_wide_hover)
+    (interaction_of (tree r) ~id:"a");
+  Alcotest.(check (option interaction_testable))
+    "and so does the third" (Some bar_wide_hover)
+    (interaction_of (tree r) ~id:"c");
+  (* With nothing to fall through to, [None] means none — the per-item answer
+     for one item does not leak onto the others. *)
+  let no_fallback =
+    NB.make ~items ~active:"a" ~on_select:(fun v -> Selected v)
+    |> NB.with_item_interaction one_item_differs
+  in
+  let r2 = render (NB.view no_fallback) in
+  Alcotest.(check (option interaction_testable))
+    "no per-item answer and no bar-wide interaction leaves the tab empty"
+    (Some Nopal_style.Interaction.default)
+    (interaction_of (tree r2) ~id:"a")
+
+(* The row is the icon-to-label gap, so it exists only where there are two
+   things to space. A label-only item gains no node for it: a setter that
+   invented an element would move the rendered tree a consumer's structural
+   suite asserts on, and this one's contract is to style what is already
+   there. *)
+let test_item_row_style_reaches_the_icon_row () =
+  let config = icon_config () |> NB.with_item_row_style wide_item_row_style in
+  let r = render (NB.view config) in
+  Alcotest.(check (option style_testable))
+    "the row holding the icon and the label carries the override"
+    (Some wide_item_row_style)
+    (style
+       (find_or_fail "no icon-and-label row" (By_tag "row")
+          (tab_node (tree r) ~id:"star")));
+  Alcotest.(check bool)
+    "an item with no icon gains no row" true
+    (Option.is_none (find (By_tag "row") (tab_node (tree r) ~id:"plain")));
+  let plain = render (NB.view (icon_config ())) in
+  Alcotest.(check (option style_testable))
+    "without the setter that row carries no style"
+    (Some Nopal_style.Style.default)
+    (style
+       (find_or_fail "no icon-and-label row" (By_tag "row")
+          (tab_node (tree plain) ~id:"star")))
+
+(* What a fork loses silently is the ARIA and the E2E anchors, so they are
+   asserted with every style override the component offers applied at once and
+   every one of them a non-default value. *)
+let test_role_tab_and_aria_selected_survive_every_style_override () =
+  let config =
+    icon_config ()
+    |> NB.with_style custom_red_style
+    |> NB.with_tab_style custom_green_style
+    |> NB.with_active_tab_style custom_blue_style
+    |> NB.with_interaction bar_wide_hover
+    |> NB.with_item_text_style bold_item_text_style
+    |> NB.with_item_row_style wide_item_row_style
+    |> NB.with_item_interaction (fun id ->
+        match id with
+        | "plain" -> Some per_item_hover
+        | _ -> None)
+  in
+  let r = render (NB.view config) in
+  let root = tree r in
+  Alcotest.(check (option string))
+    "the container is still the tablist" (Some "tablist") (attr "role" root);
+  Alcotest.(check int)
+    "still one tab per item" 2
+    (List.length (find_all (By_attr ("role", "tab")) root));
+  let check_tab ~id ~selected =
+    let node = tab_node root ~id in
+    Alcotest.(check (option string))
+      (id ^ " keeps role=tab") (Some "tab") (attr "role" node);
+    Alcotest.(check (option string))
+      (id ^ " keeps its aria-selected")
+      (Some selected)
+      (attr "aria-selected" node);
+    Alcotest.(check (option string))
+      (id ^ " keeps the action anchor")
+      (Some "nav-navigate") (attr "data-action" node);
+    Alcotest.(check (option string))
+      (id ^ " keeps the field anchor")
+      (Some id) (attr "data-field" node)
+  in
+  check_tab ~id:"star" ~selected:"true";
+  check_tab ~id:"plain" ~selected:"false"
 
 (* --- Test runner --- *)
 
@@ -377,5 +561,17 @@ let () =
             test_with_attrs_adds_custom_attrs;
           Alcotest.test_case "with_interaction does not crash" `Quick
             test_with_interaction_does_not_crash;
+        ] );
+      ( "per-item overrides",
+        [
+          Alcotest.test_case "item text style reaches the item label" `Quick
+            test_item_text_style_reaches_the_item_label;
+          Alcotest.test_case "item interaction reaches only that item" `Quick
+            test_item_interaction_reaches_only_that_item;
+          Alcotest.test_case "item row style reaches the icon row" `Quick
+            test_item_row_style_reaches_the_icon_row;
+          Alcotest.test_case
+            "role=tab and aria-selected survive every style override" `Quick
+            test_role_tab_and_aria_selected_survive_every_style_override;
         ] );
     ]

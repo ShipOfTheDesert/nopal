@@ -25,7 +25,7 @@ nopal_charts    ← Composable interactive charts (Bar, Line, Area, Pie, Scatter
 nopal_http      ← Pure HTTP types + backend abstraction — no platform deps
 nopal_navigation ← Nav_stack: pure stack-based navigation state (non-empty, total pop) — no platform deps
 nopal_image     ← Validated RGBA Buffer, perceptual Luma, Sharpness metric, capture Config, Processing + Preview + Retention seams — depends on nopal_mvu (Task/Cmd types); no platform deps
-nopal_ui        ← High-level UI components (Bottom_tabs, Button, Checkbox, Data_table, Modal, Navigation_bar, Radio_group, Select_input, Slug, Text_input, Toast) — no platform deps
+nopal_ui        ← High-level UI components (Bottom_tabs, Button, Checkbox, Data_table, Modal, Navigation_bar, Radio_group, Select_input, Slug, Text_input, Text_node, Toast) — no platform deps
 nopal_runtime   ← Lwd reactive integration + MVU loop; Telemetry (E2E event log)
 nopal_test      ← Pure OCaml test renderer + Telemetry_test harness — no js_of_ocaml
 nopal_web       ← js_of_ocaml + Brr DOM renderer (only browser-dependent package)
@@ -806,6 +806,113 @@ Text.figure_style   : figure_style -> Text.t -> Text.t
 
 High-level UI components built on `nopal_element` and `nopal_style`. No platform dependencies — compiles native.
 
+**Every visual decision a component makes is overridable — the audit.** All
+eleven components were enumerated as component × visual decision × override
+mechanism, and no cell reads "fork". The table below is that enumeration in
+summary; the per-component blocks that follow carry the signatures. What the
+table covers is bounded: it covers *visual* decisions. A component's roles, ARIA
+associations and `data-*` anchors are not visual decisions and are not in it —
+they are pairs in the `~attrs` list the component hands down, replaceable by a
+caller at the second tier of the attribute-precedence rule, and they answer the
+same under every override below.
+
+| Component | Visual decision → override |
+|---|---|
+| `Bottom_tabs` | bar container → `with_bar_style`; bar-wide tab-button interaction → `with_bar_interaction`; base and active tab → `with_tab_style` / `with_active_tab_style`; content panel → `with_panel_style`; gutter → `with_gutter_style`; tab label typography → `with_tab_text_style`; icon-to-label row, i.e. the gap between them → `with_tab_row_style`; per-tab interaction → `with_tab_interaction`; back affordance label text → `with_back_label`; back affordance style, and its label typography through that style's `text` component → `with_back_style` |
+| `Button` | container → `config.style`; interaction → `config.interaction`; disabled and loading treatment → `with_disabled_style` / `with_loading_style`; the label is the caller's own `Element.t` |
+| `Checkbox` | control → `config.style` / `config.interaction`; label typography → `with_label_style`; control-to-label row → `with_row_style`; identifier → `with_id` |
+| `Data_table` | container, header cell, row, cell → `?style` / `?header_style` / `?row_style` / `?cell_style`; container interaction → `?interaction`; one column at a time → `with_column_style`; the button a `sort_key` turns a header into → `with_sort_control_style` and `with_header_interaction`; header row → `with_header_row_style`; cell contents are the caller's own `Element.t` |
+| `Modal` | dialog → `with_style`; backdrop → `with_backdrop_style`; interaction → `with_interaction`; root box → `with_root_style`, displacing the published `default_root_style`; the title is part of the caller's body |
+| `Navigation_bar` | container → `with_style`; tab and active tab → `with_tab_style` / `with_active_tab_style`; bar-wide interaction → `with_interaction`; item label typography → `with_item_text_style`; per-item interaction → `with_item_interaction`; icon-to-label row, i.e. the gap between them → `with_item_row_style`; the icon is the caller's own `Element.t` |
+| `Radio_group` | each option's radio input → `config.style` / `config.interaction`; group container → `with_group_style`; group label → `with_visible_label` opts the element in and `with_label_style` styles it; option label typography → `with_option_label_style`; option row → `with_option_row_style`; identifiers → `with_id` |
+| `Select_input` | control → `config.style` / `config.interaction`; label typography → `with_label_style`; label-to-control wrapper → `with_wrapper_style`; identifier → `with_id` |
+| `Slug` | none — a pure function module that renders nothing |
+| `Text_input` | input → `config.style` / `config.interaction`; label typography → `with_label_style`; label-to-box gap → `with_wrapper_style`; error slot, and the error message's typography through that style's `text` component → `with_error_style`; identifier → `with_id`, which sets the pre-existing `config.id` field |
+| `Toast` | stack container → `config.style`; per-toast style → `with_toast_style`, displacing `default_style_for`; per-toast interaction → `with_toast_interaction`, displacing `default_interaction_for`; the message's typography is reached by the toast style's `text` component through CSS inheritance, which the structural renderer does not model |
+
+**Named as structural rather than visual, and deliberately not reachable.** Each
+is stated at its own signature rather than left implicit:
+
+- `Bottom_tabs` — the root's `Fill` height and the panel's `flex_grow`. A caller
+  who sets `flex_grow` explicitly keeps it, including `Some 0.`; only the absence
+  of an opinion is filled in.
+- `Bottom_tabs` — the gutter's `padding_bottom`, which the safe-area inset is
+  *added* to rather than replacing. A partial exemption: every other field of
+  `with_gutter_style`'s style replaces as usual.
+- `Modal` — the backdrop's `position`, `top`, `left`, `width` and `height` are
+  forced back over `with_backdrop_style`, because a backdrop that does not cover
+  the dialog is not a backdrop and the dialog's own positioning depends on it.
+  Also partial: paint, border, shadow, padding and the rest of layout replace.
+- `Modal` — the dialog's `position` is *filled in* as `Pos_relative` only when a
+  backdrop is present **and** the caller's style leaves `position` unset. A style
+  naming its own `position` keeps it, and with no backdrop nothing is filled in.
+  This is a fill-in, not a force.
+
+**Precedence, where two overrides land on the same node.** Most specific wins,
+and an absent answer *uncovers* the general one rather than clearing it:
+
+- `Toast` — `with_toast_interaction` outranks `config.interaction`, which outranks
+  `default_interaction_for`.
+- `Button` — the disabled style outranks the loading style, and the two fall
+  through: a loading style still applies to a disabled-and-loading button whose
+  disabled style is unset.
+- `Data_table` — `with_column_style` outranks `header_style` and `cell_style` for
+  the columns it answers `Some` for, and reaches a column's **header cell as well
+  as its data cells**, so a per-column width lines the column up with its own
+  header. `None` leaves that column on the general styles.
+- `Navigation_bar` and `Bottom_tabs` — `with_item_interaction` and
+  `with_tab_interaction` outrank the bar-wide `with_interaction` and
+  `with_bar_interaction` on the items they answer `Some` for; `None` uncovers the
+  bar-wide one, and with no such function the bar-wide one reaches every item as
+  before.
+
+**Shapes worth knowing before reaching for one of these.**
+
+- `with_id` — on all four labelled controls — moves a control's `id` and its
+  `aria-labelledby` together. On `Checkbox`, `Select_input` and `Radio_group` it
+  deliberately does **not** move `data-field`, which stays on the slugified label
+  (or, on `Radio_group`, the group `name`). On `Text_input` it does, because that
+  control's `data-field` has always been its `id`; `Text_input.with_id` sets the
+  `id` field that record has published from the start. That divergence between
+  the four is deliberate — moving an anchor moves an E2E selector contract.
+- `Radio_group.with_label_style` is inert until `with_visible_label true` gives it
+  an element to style, and the group's own label element carries no pointer
+  handler — a group has no single control for a click to act on.
+- `Radio_group` option ids are derived from the option's **`value`**, so two
+  options sharing a value share an id.
+- `with_item_text_style` and `with_tab_text_style` take a `Text.t`, not a whole
+  `Style.t`: the label is a text node, so every field of the parameter reaches it.
+  `with_back_style` does take a whole `Style.t` — that one styles the back
+  *button* and forwards the style's `text` component to the label inside it.
+- `with_item_interaction` and `with_tab_interaction` are keyed on the item's or
+  tab's **`id` string**, not on the item or tab value: those types are abstract,
+  so a function of the value could not tell one from another.
+  `Radio_group.with_on_label_click` is `(string -> 'msg)` for the same reason — a
+  group has many labels, and a single message could not say which was pressed.
+
+**Clicking a label focuses its control — the application completes it.** A view
+function cannot issue a `Cmd`, so the four labelled controls supply the mechanism
+and the application spends one line on it: `with_on_label_click` turns the click
+into a message, and `control_id` (or `Radio_group.option_id ~value`) names the
+focus target.
+
+```ocaml
+(* in the view *)
+TextInput.make ~label:"Email" ~value:model.email
+|> TextInput.with_on_label_click Focus_email
+
+(* in update *)
+| Focus_email -> (model, Cmd.focus (TextInput.control_id (email_config model)))
+```
+
+The click rides `Element.box`'s `?on_pointer_down`, and a pointer-down on a
+non-focusable box moves no focus by itself — the `Cmd.focus` is what does. Note
+the timing: `nopal_web` queues a focus request during dispatch and drains it in
+the animation-frame loop, so `document.activeElement` is still `body` through
+`pointerdown`, `mousedown`, `mouseup` and `click`, and becomes the control one
+frame later. A browser assertion on focus has to wait for it rather than read it
+inside the click handler.
+
 #### Toast
 
 Dismissible toast notifications with variant-based styling and optional auto-dismiss.
@@ -823,10 +930,24 @@ type 'msg config = {
   style : Style.t option;
   interaction : Interaction.t option;
   attrs : (string * string) list;
+  toast_style : (variant -> Style.t) option;
+  toast_interaction : (variant -> Interaction.t) option;
 }
 
-(* Constructor — style/interaction/attrs default to None/[] *)
+(* Constructor — style/interaction/attrs default to None/[], and neither
+   per-variant override is set *)
 val make : dismiss:(string -> 'msg) -> 'msg config
+
+(* Per-variant overrides. The supported route to the last two fields. *)
+val with_toast_style : (variant -> Style.t) -> 'msg config -> 'msg config
+(* Styles each toast with f's answer for that toast's variant, REPLACING
+   default_style_for; nothing is merged. f must answer for all four variants. *)
+
+val with_toast_interaction :
+  (variant -> Interaction.t) -> 'msg config -> 'msg config
+(* Gives each toast f's answer for that toast's variant, REPLACING
+   default_interaction_for. This OUTRANKS config.interaction, which the
+   component otherwise applies to every toast. *)
 
 (* State helpers *)
 val add : variant:variant -> message:string -> id:string -> ?duration_ms:int
@@ -840,24 +961,29 @@ val dismiss : string -> toast list -> toast list
 (* View *)
 val view : 'msg config -> toast list -> 'msg Element.t
 (* Renders a column container. Each toast carries aria-live per variant:
-   Info/Success="polite", Warning/Error="assertive". config.style controls
-   container layout only — toast styling always uses default_style_for.
-   Each toast is a button with on_click dispatching config.dismiss id,
-   data-variant attr, and aria-label. Empty list renders empty container. *)
+   Info/Success="polite", Warning/Error="assertive". config.style is the stack
+   container's own style. Each toast's style is with_toast_style's answer for
+   its variant when set, else default_style_for's; its interaction is
+   with_toast_interaction's answer when set, else config.interaction, else
+   default_interaction_for's. Each toast is a button with on_click dispatching
+   config.dismiss id, data-variant attr, and aria-label. Empty list renders
+   empty container. *)
 
 (* Accessibility *)
 val aria_live_for : variant -> string
-(* Returns "polite" for Info/Success, "assertive" for Warning/Error. *)
+(* Returns "polite" for Info/Success, "assertive" for Warning/Error. Exposed
+   for testing and for asserting it, not as an override point: announcement
+   urgency is not a visual decision, so no setter replaces it. *)
 
-(* Styling *)
+(* Variant defaults — the answers the two overrides displace. Compose with
+   them to change one variant and keep the rest. *)
 val default_style_for : variant -> Style.t
 (* Info=blue, Success=green, Warning=amber, Error=red with padding and
-   border radius. Exposed for extending rather than replacing styling. *)
+   border radius. What with_toast_style replaces. *)
 
 val default_interaction_for : variant -> Interaction.t
 (* Hover/pressed overrides per variant — each variant gets distinct hover
-   and pressed background colors. Exposed for extending rather than
-   replacing interaction styling. *)
+   and pressed background colors. What with_toast_interaction replaces. *)
 ```
 
 Usage pattern — subapp integration:
@@ -921,7 +1047,25 @@ val with_active_tab_style : Style.t -> 'msg config -> 'msg config
 (* Override the style applied to the active tab (merged atop tab style). *)
 
 val with_interaction : Interaction.t -> 'msg config -> 'msg config
-(* Override hover/pressed interaction for inactive tabs. *)
+(* Override hover/pressed interaction for inactive tabs. Bar-wide: it reaches
+   every item with_item_interaction does not answer for, and with no such
+   function it reaches every item. *)
+
+val with_item_text_style : Text.t -> 'msg config -> 'msg config
+(* Typography of every item's label. Takes a Text.t, not a Style.t: the label is
+   a text node, so every field of it reaches the node. The button's own style is
+   with_tab_style / with_active_tab_style. *)
+
+val with_item_row_style : Style.t -> 'msg config -> 'msg config
+(* The icon-to-label row, i.e. the gap between them. Only an item built with
+   ~icon has that row, so a label-only item is untouched and no node appears. *)
+
+val with_item_interaction :
+  (string -> Interaction.t option) -> 'msg config -> 'msg config
+(* Per-item interaction, keyed on the item's id STRING (the item type is
+   abstract, so a function of the value could not discriminate). Some i
+   OUTRANKS with_interaction for that item; None uncovers the bar-wide one
+   rather than clearing it. *)
 
 val with_attrs : (string * string) list -> 'msg config -> 'msg config
 (* Additional attributes on the container element. *)
@@ -1016,7 +1160,30 @@ val with_attrs            : (string * string) list -> ('s, 'm) config -> ('s, 'm
    with_attrs targets the root; the bar_ prefix is the whole distinction. *)
 val with_bar_style        : Style.t -> ('s, 'm) config -> ('s, 'm) config
 val with_bar_interaction  : Interaction.t -> ('s, 'm) config -> ('s, 'm) config
+(* Bar-wide: reaches every tab with_tab_interaction does not answer for, and
+   with no such function it reaches every tab. *)
 val with_bar_attrs        : (string * string) list -> ('s, 'm) config -> ('s, 'm) config
+
+(* The back affordance and the per-tab decisions the bar routes through
+   Navigation_bar. *)
+val with_back_style       : Style.t -> ('s, 'm) config -> ('s, 'm) config
+(* Styles the data-action="nav-back" button, and its label's typography through
+   that style's text component. with_back_label moves only the string. *)
+
+val with_tab_text_style   : Text.t -> ('s, 'm) config -> ('s, 'm) config
+(* Typography of every tab's label, by way of Navigation_bar.with_item_text_style.
+   A Text.t, not a Style.t: the label is a text node and every field reaches
+   it. *)
+
+val with_tab_row_style    : Style.t -> ('s, 'm) config -> ('s, 'm) config
+(* The icon-to-label row, by way of Navigation_bar.with_item_row_style. Only a
+   tab built with ~icon has that row, so a label-only tab is untouched and no
+   node appears. *)
+
+val with_tab_interaction  :
+  (string -> Interaction.t option) -> ('s, 'm) config -> ('s, 'm) config
+(* Per-tab interaction, keyed on the tab's id STRING (the tab type is abstract).
+   Some i OUTRANKS with_bar_interaction for that tab; None uncovers it. *)
 
 (* Two of the above replace less, or more, than they appear to:
    with_active_tab_style REPLACES with_tab_style on the active tab rather than
@@ -1033,7 +1200,12 @@ val view : ('screen, 'msg) config -> 'msg Element.t
                         back_suppressed, + render_screen );
                     Box[data-testid="bottom-tabs-gutter";
                         padding_bottom=gutter_style's + safe_area_bottom]
-                      ( Navigation_bar.view → Row[role="tablist"] of tab Buttons ) ]. *)
+                      ( Navigation_bar.view → Row[role="tablist"] of tab Buttons ) ].
+   Two decisions here are structural rather than cosmetic and no setter reaches
+   them: the root's Fill height, and the panel's flex_grow — together they are
+   what puts the bar at the BOTTOM rather than under the content. A caller who
+   sets flex_grow explicitly keeps it, including Some 0.; only the absence of an
+   opinion is filled in. *)
 ```
 
 #### Modal
@@ -1061,9 +1233,29 @@ val with_on_backdrop_click : 'msg -> 'msg config -> 'msg config
    backdrop dispatches the provided message. When not set, no backdrop. *)
 
 val with_style : Style.t -> 'msg config -> 'msg config
+(* The dialog container. With a backdrop present, position is FILLED IN as
+   Pos_relative only when this style leaves position unset; a style naming its
+   own position keeps it, and with no backdrop nothing is filled in. *)
+
 val with_backdrop_style : Style.t -> 'msg config -> 'msg config
+(* The backdrop overlay. position/top/left/width/height are FORCED back over
+   whatever this style says — a backdrop that does not cover the dialog is not
+   a backdrop, and the dialog's own positioning depends on it. Every other
+   field (paint, border, shadow, padding, the rest of layout) replaces. *)
+
 val with_interaction : Interaction.t -> 'msg config -> 'msg config
 val with_attrs : (string * string) list -> 'msg config -> 'msg config
+
+val with_root_style : Style.t -> 'msg config -> 'msg config
+(* The data-testid="modal-root" box. REPLACES default_root_style wholesale —
+   compose with that value to keep the overlay behaviour and change one field,
+   e.g. for a bottom sheet. *)
+
+val default_root_style : Style.t
+(* What with_root_style displaces: position fixed, zero insets, Fill sizing,
+   z_index 1000, centred. There is deliberately no default_backdrop_style to
+   match: it consists only of the five fields view re-forces over any override,
+   so there would be nothing to compose with. *)
 
 val view : 'msg config -> 'msg Element.t
 (* When open_=false, returns Element.empty.
@@ -1173,19 +1365,58 @@ type ('row, 'msg) config = {
   sort : sort option;
   on_sort : string -> 'msg;
   style : Style.t option;
+  header_style : Style.t option;
+  row_style : Style.t option;
+  cell_style : Style.t option;
   interaction : Interaction.t option;
   attrs : (string * string) list;
+  column_style : (('row, 'msg) column -> Style.t option) option;
+  sort_control_style : Style.t option;
+  header_interaction : Interaction.t option;
+  header_row_style : Style.t option;
 }
 
 (* Constructor — sort_key defaults to None *)
 val column : header:string -> cell:('row -> 'msg Element.t)
   -> ?sort_key:string -> unit -> ('row, 'msg) column
 
-(* Constructor — sort/style/interaction/attrs default to None/[] *)
+(* Constructor — every optional field defaults to None/[], including the four
+   override fields, which make does not take *)
 val make : columns:('row, 'msg) column list -> rows:'row list
   -> key:('row -> string) -> on_sort:(string -> 'msg)
-  -> ?sort:sort -> ?style:Style.t -> ?interaction:Interaction.t
+  -> ?sort:sort -> ?style:Style.t -> ?header_style:Style.t
+  -> ?row_style:Style.t -> ?cell_style:Style.t
+  -> ?interaction:Interaction.t
   -> ?attrs:(string * string) list -> unit -> ('row, 'msg) config
+
+(* Per-column and header overrides — the supported route to the last four
+   fields. *)
+val with_column_style :
+  (('row, 'msg) column -> Style.t option) -> ('row, 'msg) config
+  -> ('row, 'msg) config
+(* Styles one column at a time. f is asked for every column; Some s OUTRANKS
+   header_style AND cell_style for that column, and reaches the column's HEADER
+   CELL as well as its data cells, so a per-column width lines the column up
+   with its own header. None leaves that column on the general styles. Keyed on
+   the column VALUE because sort_key is optional — a non-sortable column has no
+   name to key on; match on header or sort_key, since (=) on a column raises
+   (cell is a function). *)
+
+val with_sort_control_style :
+  Style.t -> ('row, 'msg) config -> ('row, 'msg) config
+(* Styles the button a column with a sort_key turns its header into.
+   header_style and with_column_style land on the box AROUND that button, never
+   on the button itself. *)
+
+val with_header_interaction :
+  Interaction.t -> ('row, 'msg) config -> ('row, 'msg) config
+(* Hover/pressed/focused on every sortable header's button. Like
+   with_sort_control_style it lands on the button, not on the header box. *)
+
+val with_header_row_style :
+  Style.t -> ('row, 'msg) config -> ('row, 'msg) config
+(* Styles the header row itself — the role="row" element holding the header
+   cells. row_style reaches only the data rows. *)
 
 (* View *)
 val view : ('row, 'msg) config -> 'msg Element.t
@@ -1255,17 +1486,32 @@ type 'msg config = {
   style : Style.t option;
   interaction : Interaction.t option;
   attrs : (string * string) list;
+  disabled_style : Style.t option;
+  loading_style : Style.t option;
 }
 
 val default : variant -> 'msg config
 (* [default v] returns a config for variant [v] with disabled=false,
-   loading=false, on_click=None, default style/interaction, empty attrs. *)
+   loading=false, on_click=None, default style/interaction, empty attrs and
+   no disabled or loading style. *)
+
+val with_disabled_style : Style.t -> 'msg config -> 'msg config
+(* The treatment while disabled. The component makes no visual distinction of
+   its own — it emits aria-disabled and nothing else — so this INTRODUCES the
+   decision, and with both setters unset the rendering is unchanged. *)
+
+val with_loading_style : Style.t -> 'msg config -> 'msg config
+(* The treatment while loading. When both states hold, the DISABLED style
+   outranks this one, and the two fall through: a loading style still applies
+   to a disabled-and-loading button whose disabled style is unset. *)
 
 val view : 'msg config -> 'msg Element.t -> 'msg Element.t
 (* [view config child] renders a button element.
    When disabled: includes aria-disabled="true", click suppressed.
    When loading: includes aria-busy="true", click suppressed.
-   style/interaction override variant defaults when Some.
+   The style is disabled_style while disabled, else loading_style while
+   loading, else config.style, else the variant default; interaction likewise
+   falls back to the variant default.
    User attrs merged with ARIA attrs (user attrs take precedence). *)
 
 val variant_to_string : variant -> string
@@ -1285,15 +1531,49 @@ type 'msg config = {
   style : Style.t option;
   interaction : Interaction.t option;
   attrs : (string * string) list;
+  id : string option;
+  label_style : Style.t option;
+  row_style : Style.t option;
+  on_label_click : 'msg option;
 }
 
 val make : label:string -> checked:bool -> 'msg config
 (* [make ~label ~checked] returns a config with disabled=false,
-   on_toggle=None, no style/interaction override, empty attrs. *)
+   on_toggle=None, no style/interaction override, empty attrs, and no id,
+   label style, row style or label-click message. *)
+
+val with_id : string -> 'msg config -> 'msg config
+(* The control's identifier, used verbatim. The supported route to it. Moves
+   the control's id AND its aria-labelledby together; it does NOT move
+   data-field, which stays on the slugified label because that anchor is an
+   E2E selector contract. *)
+
+val with_label_style : Style.t -> 'msg config -> 'msg config
+(* The label box, and the label text's typography through that style's text
+   component (handed over explicitly, never inherited). *)
+
+val with_row_style : Style.t -> 'msg config -> 'msg config
+(* The control-to-label Row — the gap between them. *)
+
+val with_on_label_click : 'msg -> 'msg config -> 'msg config
+(* Turns a pointer-down on the label into a message. Pair it with control_id
+   and return Cmd.focus in update; a view function cannot issue a Cmd. *)
+
+val control_id : 'msg config -> string
+(* config.id when set, else the slugified label. The label element's own id is
+   this value ^ "-label", which is what aria-labelledby points at. *)
 
 val view : 'msg config -> 'msg Element.t
-(* Renders a horizontal Row containing an Element.checkbox and an
-   Element.text label. When disabled, on_toggle is suppressed. *)
+(* Renders a horizontal Row containing:
+   1. An Element.checkbox carrying ("id", control_id config),
+      ("aria-labelledby", control_id config ^ "-label") and
+      ("data-field", slug(label))
+   2. A label element — a Box carrying ("id", control_id config ^ "-label")
+      and wrapping the label's text node
+   The control is named by aria-labelledby and carries no aria-label of its
+   own; an ("aria-label", _) pair pushed through config.attrs survives in the
+   tree but does not name the control, because aria-labelledby wins the
+   accessible-name computation. When disabled, on_toggle is suppressed. *)
 ```
 
 #### Radio_group
@@ -1310,9 +1590,16 @@ type 'msg config = {
   disabled : bool;
   name : string option;
   on_select : (string -> 'msg) option;
-  style : Style.t option;
-  interaction : Interaction.t option;
-  attrs : (string * string) list;
+  style : Style.t option;      (* lands on each RADIO INPUT, not on the group *)
+  interaction : Interaction.t option;  (* likewise per radio input *)
+  attrs : (string * string) list;      (* lands on the group container *)
+  id : string option;
+  visible_label : bool option;
+  label_style : Style.t option;
+  group_style : Style.t option;
+  option_label_style : Style.t option;
+  option_row_style : Style.t option;
+  on_label_click : (string -> 'msg) option;
 }
 
 val radio_option : ?disabled:bool -> value:string -> string -> radio_option
@@ -1321,14 +1608,61 @@ val radio_option : ?disabled:bool -> value:string -> string -> radio_option
 val make : label:string -> options:radio_option list -> selected:string -> 'msg config
 (* [make ~label ~options ~selected] returns a config with name=None
    (auto-generated from slugified label), disabled=false, on_select=None,
-   no style/interaction override, empty attrs. *)
+   no style/interaction override, empty attrs, and none of the seven
+   override fields set. *)
+
+val with_id : string -> 'msg config -> 'msg config
+(* The group's identifier, used verbatim, and the stem every option id is
+   derived from. Moves every id and every aria-labelledby together; it does NOT
+   move data-field, which stays on the group name. *)
+
+val with_visible_label : bool -> 'msg config -> 'msg config
+(* Opts the group's own label ELEMENT in. OFF by default: the group renders no
+   label text today, so making one appear is a rendered-tree change for every
+   existing consumer. Until it is used the group keeps aria-label; with it the
+   group's name moves to aria-labelledby pointing at the new element. *)
+
+val with_label_style : Style.t -> 'msg config -> 'msg config
+(* The group's own label box. INERT until with_visible_label true gives it an
+   element to style. *)
+
+val with_group_style : Style.t -> 'msg config -> 'msg config
+(* The group container Column. Independent of config.style, which lands on each
+   radio input instead. *)
+
+val with_option_label_style : Style.t -> 'msg config -> 'msg config
+(* Each option's label box, and its text typography through that style's text
+   component. *)
+
+val with_option_row_style : Style.t -> 'msg config -> 'msg config
+(* Each option's radio-to-label Row. *)
+
+val with_on_label_click : (string -> 'msg) -> 'msg config -> 'msg config
+(* Turns a pointer-down on an OPTION's label into a message carrying that
+   option's value — a group has many labels, so a single 'msg could not say
+   which was pressed. The group's own label element carries no handler: it has
+   no single control to act on. *)
+
+val control_id : 'msg config -> string
+(* config.id when set, else the slugified group label. On the group container
+   unconditionally. *)
+
+val option_id : 'msg config -> value:string -> string
+(* control_id config ^ "-" ^ slugify value. Keyed on the VALUE, so two options
+   sharing a value share an id. *)
 
 val view : 'msg config -> 'msg Element.t
-(* Renders a Column with role="radiogroup" and aria-label=config.label
-   containing one Row per option. Each Row has an Element.radio (sharing
-   the group name) and an Element.text label. When config.disabled is true,
-   all radios are disabled and on_select is suppressed. Per-option disabled
-   is also respected. *)
+(* Renders a Column with role="radiogroup", ("id", control_id config), and
+   aria-label=config.label — or aria-labelledby and a leading label element
+   when with_visible_label true — containing one Row per option. Each Row has:
+   1. An Element.radio (sharing the group name) carrying
+      ("id", option_id config ~value),
+      ("aria-labelledby", option_id config ~value ^ "-label") and
+      ("data-field", <group name>)
+   2. A label element — a Box carrying ("id", option_id … ^ "-label")
+   Each option is named by aria-labelledby and carries no aria-label of its
+   own. When config.disabled is true, all radios are disabled and on_select is
+   suppressed. Per-option disabled is also respected. *)
 ```
 
 #### Select_input
@@ -1346,17 +1680,46 @@ type 'msg config = {
   style : Style.t option;
   interaction : Interaction.t option;
   attrs : (string * string) list;
+  id : string option;
+  label_style : Style.t option;
+  wrapper_style : Style.t option;
+  on_label_click : 'msg option;
 }
 
 val make : label:string -> options:Element.select_option list
   -> selected:string -> 'msg config
 (* [make ~label ~options ~selected] returns a config with placeholder=None,
-   disabled=false, on_change=None, no style/interaction override, empty attrs. *)
+   disabled=false, on_change=None, no style/interaction override, empty attrs,
+   and no id, label style, wrapper style or label-click message. *)
+
+val with_id : string -> 'msg config -> 'msg config
+(* The control's identifier, used verbatim. Moves the control's id AND its
+   aria-labelledby together; it does NOT move data-field, which stays on the
+   slugified label. *)
+
+val with_label_style : Style.t -> 'msg config -> 'msg config
+(* The label box, and the label text's typography through that style's text
+   component. *)
+
+val with_wrapper_style : Style.t -> 'msg config -> 'msg config
+(* The label-to-control Column — the gap between them. *)
+
+val with_on_label_click : 'msg -> 'msg config -> 'msg config
+(* Pointer-down on the label as a message. Pair with control_id + Cmd.focus. *)
+
+val control_id : 'msg config -> string
+(* config.id when set, else the slugified label. *)
 
 val view : 'msg config -> 'msg Element.t
-(* Renders a vertical Column containing a text label and an Element.select.
-   When placeholder is Some text, a disabled option with value="" is prepended.
-   When disabled, on_change is suppressed. *)
+(* Renders a vertical Column containing:
+   1. A label element — a Box carrying ("id", control_id config ^ "-label")
+      and wrapping the label's text node
+   2. An Element.select carrying ("id", control_id config),
+      ("aria-labelledby", control_id config ^ "-label"),
+      ("data-action", "select-open") and ("data-field", slug(label))
+   The control is named by aria-labelledby and carries no aria-label of its
+   own. When placeholder is Some text, a disabled option with value="" is
+   prepended. When disabled, on_change is suppressed. *)
 ```
 
 #### Slug
@@ -1368,6 +1731,42 @@ val slugify : string -> string
 (* [slugify s] lowercases [s], replaces whitespace and non-alphanumeric
    characters with hyphens, collapses consecutive hyphens, and trims
    leading/trailing hyphens. *)
+
+val derive_id :
+  explicit:string option -> label:string -> ?suffix:string -> unit -> string
+(* The id-derivation convention every labelled control uses: [explicit] when the
+   caller set one, else [slugify label]; [suffix] is appended after one hyphen,
+   so ~suffix:"error" on "First Name" yields "first-name-error".
+   [explicit] is used VERBATIM — never slugified — and wins even when it is the
+   empty string. An empty label slugifies to "", so with no explicit id the
+   answer is "" or "-error". Total; never raises; invents no non-empty
+   fallback. *)
+```
+
+`Slug` renders nothing, so it makes no visual decision and has no override
+surface.
+
+#### Text_node
+
+The label and error text node every override that carries typography goes
+through: the four labelled controls' label and error text, `Navigation_bar`'s
+item label, `Bottom_tabs`' back-affordance label. Shared helper, not a
+component: its style is its argument, so it makes no visual decision of its own
+and has no row in the audit table above.
+
+```ocaml
+val of_style : style:Style.t option -> string -> 'msg Element.t
+(* [of_style ~style text] is the text node for [text]. With None it is
+   Element.text — a node with no text style at all, byte for byte what a control
+   with no style override has always rendered. With Some s it is
+   Element.styled_text carrying s.text.
+   Which arm applies is decided by the OPTION alone and never by the contents of
+   s.text: Some with an all-None text component still produces a styled text
+   node, so adding a style override never leaves the node looking unstyled.
+   It exists because the label is a BOX carrying the generated id (styled_text
+   takes no attrs) and nopal_test has no inheritance — a text node styled only
+   by its parent reads as unstyled structurally while rendering correctly in a
+   browser. That hand-off is written in exactly one place. *)
 ```
 
 #### Text_input
@@ -1388,11 +1787,40 @@ type 'msg config = {
   style : Style.t option;
   interaction : Interaction.t option;
   attrs : (string * string) list;
+  label_style : Style.t option;
+  wrapper_style : Style.t option;
+  error_style : Style.t option;
+  on_label_click : 'msg option;
 }
 
 val make : label:string -> value:string -> 'msg config
 (* [make ~label ~value] returns a config with all optional fields None,
    disabled=false, attrs=[]. *)
+
+val with_id : string -> 'msg config -> 'msg config
+(* Sets config.id: the input's id, and the stem the label's "-label" and the
+   error slot's "-error" ids derive from. data-field moves with it — on THIS
+   control alone, because it has always carried control_id. *)
+
+val with_label_style : Style.t -> 'msg config -> 'msg config
+(* The label box, and the label text's typography through that style's text
+   component — the label WEIGHT and, with with_wrapper_style, the label-to-box
+   gap, which are the two decisions a consumer once had to fork for. *)
+
+val with_wrapper_style : Style.t -> 'msg config -> 'msg config
+(* The outer Column holding label, input and error slot — its gap is the
+   label-to-box distance. *)
+
+val with_error_style : Style.t -> 'msg config -> 'msg config
+(* The error slot box, and the error message's typography through that style's
+   text component. *)
+
+val with_on_label_click : 'msg -> 'msg config -> 'msg config
+(* Pointer-down on the label as a message. Pair with control_id + Cmd.focus. *)
+
+val control_id : 'msg config -> string
+(* config.id when set, else the slugified label. This is the input's id, the
+   value data-field carries, and the stem of the label and error ids. *)
 
 val error_id : 'msg config -> string
 (* Returns the identifier used for aria-describedby linkage. If config.id
@@ -1400,12 +1828,160 @@ val error_id : 'msg config -> string
 
 val view : 'msg config -> 'msg Element.t
 (* Renders a vertical column containing:
-   1. A label (Element.text)
-   2. An input (Element.input) with value, placeholder, and event handlers
-   3. When config.error is Some msg, an error text with role="alert" and
+   1. A label element — a Box carrying ("id", control_id config ^ "-label")
+      and wrapping the label's text node
+   2. An input (Element.input) with value, placeholder and event handlers,
+      carrying ("id", control_id config),
+      ("aria-labelledby", control_id config ^ "-label") and
+      ("data-field", control_id config)
+   3. When config.error is Some msg, an error box with role="alert" and
       id=error_id; the input gains aria-describedby=error_id
+   The input is named by aria-labelledby and carries no aria-label of its own;
+   an ("aria-label", _) pair pushed through config.attrs survives in the tree
+   but does not name the input. Pushing ("id", _) through config.attrs replaces
+   the input's id at the attrs tier and the caller then owns re-pointing
+   aria-labelledby; with_id (equivalently config.id) is the supported route.
    When disabled, input carries disabled="" and event handlers are suppressed. *)
 ```
+
+**Component output that moved — read this on a pin bump.** Four components now
+own the element that renders their label, so a control is named by
+`aria-labelledby` pointing at that element instead of by its own `aria-label`.
+Every existing function signature is unchanged, so a downstream structural suite
+meets this with no compiler help — this list is the only warning it gets. The one
+compile-visible change is the complete-literal break in the last table below. The "before" column is the
+tree at commit `2198a3c`. Attribute rows and tree rows are kept apart: a node
+appearing is not a key changing its answer, and a suite that asserts on shape
+meets it differently. Both halves are pinned in both directions by
+`test/unit/nopal_ui/test_change_list.ml`.
+
+**Attribute rows — keys whose answer moved.**
+
+| # | Node | Key | Before | Now |
+|---|---|---|---|---|
+| 1 | `Text_input`'s input | `aria-label` | the label string | **absent** |
+| 2 | `Text_input`'s input | `aria-labelledby` | absent | `control_id config ^ "-label"` |
+| 3 | `Text_input`'s input | `id` | absent | `control_id config` |
+| 4 | `Checkbox`'s checkbox | `aria-label` | the label string | **absent** |
+| 5 | `Checkbox`'s checkbox | `aria-labelledby` | absent | `control_id config ^ "-label"` |
+| 6 | `Checkbox`'s checkbox | `id` | absent | `control_id config` |
+| 7 | `Select_input`'s select | `aria-label` | the label string | **absent** |
+| 8 | `Select_input`'s select | `aria-labelledby` | absent | `control_id config ^ "-label"` |
+| 9 | `Select_input`'s select | `id` | absent | `control_id config` |
+| 10 | each `Radio_group` option's radio | `aria-label` | that option's label string | **absent** |
+| 11 | each `Radio_group` option's radio | `aria-labelledby` | absent | `option_id config ~value ^ "-label"` |
+| 12 | each `Radio_group` option's radio | `id` | absent | `option_id config ~value` |
+| 13 | the `Radio_group` container | `id` | absent | `control_id config` |
+| 14 | the `Radio_group` container, under `with_visible_label true` | `aria-label` | the group label string | **absent** |
+| 15 | the `Radio_group` container, under `with_visible_label true` | `aria-labelledby` | absent | `control_id config ^ "-label"` |
+
+Row 13 is unconditional, unlike the group's label element: `control_id` is
+published, and an accessor whose value appears nowhere in the rendered tree would
+be a published lie. Rows 14 and 15 apply only when the group label is opted in —
+without the setter the group keeps `aria-label`, which is why it is not row 4's
+shape.
+
+Keys that did **not** move, recorded so a reader does not go looking:
+
+- Every `data-*` anchor. `Text_input`'s `data-field` is `control_id` and always
+  was. `Checkbox`'s and `Select_input`'s stay the **slugified label** and
+  `with_id` deliberately does not move them; `Radio_group`'s stays the group
+  `name`. The divergence from `Text_input` is deliberate — moving an anchor moves
+  an E2E selector contract. `Select_input` also keeps `data-action="select-open"`.
+- `Text_input`'s error slot keeps its `id` and `role="alert"`, and the input
+  keeps `aria-describedby` when an error is present.
+- The `Radio_group` container keeps `role="radiogroup"`, and keeps `aria-label`
+  whenever the group label is not opted in.
+- **No attribute moved on `Toast`, `Button`, `Data_table`, `Modal`,
+  `Navigation_bar` or `Bottom_tabs`.** Every key those six emit answers exactly
+  as it did, under every override old and new — including `Toast`'s own
+  `aria-label`, which is a dismiss hint on the toast button and not a control's
+  accessible name. Each of the six is pinned exhaustively by its own
+  every-override-at-once case; `test_change_list.ml` reads a representative key
+  per component so that the "nothing else moved" half of this list is pinned too.
+
+**Tree rows — nodes that appear or change shape.** Five, and the last is opt-in.
+
+| # | Container | Before | Now |
+|---|---|---|---|
+| 1 | `Text_input`'s column | `[text; input]` | `[box; input]` |
+| 2 | `Checkbox`'s row | `[checkbox; text]` | `[checkbox; box]` |
+| 3 | `Select_input`'s column | `[text; select]` | `[box; select]` |
+| 4 | each `Radio_group` option's row | `[radio; text]` | `[radio; box]` |
+| 5 | the `Radio_group` container, under `with_visible_label true` | `[row; row]` | `[box; row; row]` |
+
+Each new box carries `("id", <the label id>)` and wraps the label's text node, so
+rows 1–4 add exactly one node per control and reorder nothing — the control is
+still its container's first or second child, as it was. Row 5 puts the group's own
+label element ahead of every option row; without the setter, and with `false`, no
+such node exists. `Element.styled_text` and `Element.text` are the same node in
+the structural tree — both are `Text { content; text_style }` — so a label whose
+style setter is unset renders exactly the text node it always did, and no other
+container in `nopal_ui` gains, loses or reorders a child.
+
+**Compile-break rows.** Every override's state lives in a new `option` field
+appended to the component's published `config` record, and every existing
+`make`/`default` signature is unchanged and fills the new fields with `None`. A
+consumer building a config with the constructor, or with `{ constructor … with … }`,
+compiles untouched. A consumer writing a **complete record literal** does not: the
+compiler says `Error: Some record fields are undefined: …` and the fix is to add
+the listed fields as `None`.
+
+| Config | New fields |
+|---|---|
+| `'msg Text_input.config` | `label_style`, `wrapper_style`, `error_style`, `on_label_click` |
+| `'msg Checkbox.config` | `id`, `label_style`, `row_style`, `on_label_click` |
+| `'msg Select_input.config` | `id`, `label_style`, `wrapper_style`, `on_label_click` |
+| `'msg Radio_group.config` | `id`, `visible_label`, `label_style`, `group_style`, `option_label_style`, `option_row_style`, `on_label_click` |
+| `'msg Toast.config` | `toast_style`, `toast_interaction` |
+| `'msg Button.config` | `disabled_style`, `loading_style` |
+| `('row, 'msg) Data_table.config` | `column_style`, `sort_control_style`, `header_interaction`, `header_row_style` |
+
+`Modal.config`, `Navigation_bar.config` and `Bottom_tabs.config` are **abstract**
+in their `.mli`s, so their new fields (`root_style`; `item_text_style`,
+`item_row_style`, `item_interaction`; `back_style`, `tab_text_style`,
+`tab_row_style`, `tab_interaction`) are invisible to every consumer and break nothing.
+
+**Three cases named rather than left to be derived.**
+
+1. **A consumer who overrode the accessible name through `~attrs`.** An
+   `("aria-label", _)` pair pushed through `config.attrs` still survives in the
+   tree and still wins its own key — that is the second tier of the
+   attribute-precedence rule working as designed. But the control now also
+   carries the component's `aria-labelledby`, and `aria-labelledby` wins the
+   accessible-name computation, so that override is silently overridden. The
+   replacement route, stated on all four `.mli`s: point `aria-labelledby` at your
+   own element, or change the label text. `aria-label` no longer names these four
+   controls. One caveat is on `Radio_group`: `config.attrs` reaches the group
+   container only and never an option, so an option's name is a change to what
+   the component contributes rather than something a call site can undo per
+   option.
+2. **`Radio_group`'s group label** is a rendered-tree change and not an attribute
+   change, and it is **opt-in**: the group renders no label text today, so making
+   one appear would be a tree change for every existing consumer, including those
+   who built their own heading around its absence. `with_visible_label true` is
+   what adds it, and only then does the group's name move to `aria-labelledby`.
+3. **These ids must be unique on the page, and nothing enforces it.** Each is
+   derived from the slugified label alone (`<base>`, `<base>-label`,
+   `<base>-error`, and on `Radio_group` `<base>-<slug value>`), so two controls
+   sharing a label emit the same `id` and both `aria-labelledby` associations
+   resolve to the first label element; within one `Radio_group`, an option whose
+   `value` slugifies to `label` collides with the group's own label element under
+   `with_visible_label true`. Before this change none of these controls emitted an
+   `id` at all, so the precondition is new. No uniqueness is invented for them —
+   the caller settles it with `with_id`, and each `control_id` docblock says so.
+
+**Two further changes travel with the rows above and move no key's answer.**
+
+1. **A node's `attrs` list.** The four controls' control nodes gain pairs, and on
+   `Text_input` the position of `data-field` inside that list shifts (the two
+   naming pairs are contributed ahead of it). Every lookup answers as the table
+   above says, but `Test_renderer.node` exposes `attrs` publicly, so a whole-list
+   equality on one of those nodes sees a different list.
+2. **No accessor was renamed or removed.** `Text_input.error_id` answers exactly
+   as before. `control_id` on the four, and `Radio_group.option_id`, are new
+   surface rather than renamed surface, so nothing downstream is spelled
+   differently.
 
 ### Navigation Stack (`nopal_navigation`)
 

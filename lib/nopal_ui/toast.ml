@@ -6,9 +6,22 @@ type 'msg config = {
   style : Nopal_style.Style.t option;
   interaction : Nopal_style.Interaction.t option;
   attrs : (string * string) list;
+  toast_style : (variant -> Nopal_style.Style.t) option;
+  toast_interaction : (variant -> Nopal_style.Interaction.t) option;
 }
 
-let make ~dismiss = { dismiss; style = None; interaction = None; attrs = [] }
+let make ~dismiss =
+  {
+    dismiss;
+    style = None;
+    interaction = None;
+    attrs = [];
+    toast_style = None;
+    toast_interaction = None;
+  }
+
+let with_toast_style f config = { config with toast_style = Some f }
+let with_toast_interaction f config = { config with toast_interaction = Some f }
 
 let add ~variant ~message ~id ?duration_ms ~dismiss toasts =
   let toast = { id; variant; message } in
@@ -139,11 +152,18 @@ let view config toasts =
   let toast_elements =
     List.map
       (fun (t : toast) ->
-        let toast_style = default_style_for t.variant in
+        let toast_style =
+          match config.toast_style with
+          | Some f -> f t.variant
+          | None -> default_style_for t.variant
+        in
         let interaction =
-          match config.interaction with
-          | Some i -> i
-          | None -> default_interaction_for t.variant
+          match (config.toast_interaction, config.interaction) with
+          | Some f, Some _
+          | Some f, None ->
+              f t.variant
+          | None, Some i -> i
+          | None, None -> default_interaction_for t.variant
         in
         let attrs =
           [

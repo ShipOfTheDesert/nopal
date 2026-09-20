@@ -8,6 +8,8 @@ type 'msg config = {
   style : Nopal_style.Style.t option;
   interaction : Nopal_style.Interaction.t option;
   attrs : (string * string) list;
+  disabled_style : Nopal_style.Style.t option;
+  loading_style : Nopal_style.Style.t option;
 }
 
 let default variant =
@@ -19,7 +21,14 @@ let default variant =
     style = None;
     interaction = None;
     attrs = [];
+    disabled_style = None;
+    loading_style = None;
   }
+
+let with_disabled_style style config =
+  { config with disabled_style = Some style }
+
+let with_loading_style style config = { config with loading_style = Some style }
 
 let variant_to_string = function
   | Primary -> "primary"
@@ -211,10 +220,27 @@ let default_interaction_for variant =
       }
 
 let view config child =
-  let style =
+  let base_style =
     match config.style with
     | Some s -> s
     | None -> default_style_for config.variant
+  in
+  let state_override =
+    let when_disabled =
+      if config.disabled then config.disabled_style else None
+    in
+    let when_loading = if config.loading then config.loading_style else None in
+    match (when_disabled, when_loading) with
+    | Some s, Some _
+    | Some s, None ->
+        Some s
+    | None, Some s -> Some s
+    | None, None -> None
+  in
+  let style =
+    match state_override with
+    | Some s -> s
+    | None -> base_style
   in
   let interaction =
     match config.interaction with

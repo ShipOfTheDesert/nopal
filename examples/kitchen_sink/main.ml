@@ -480,6 +480,12 @@ let serialize_msg : App.msg -> string = function
       "Select_color:" ^ v
   | App.Form_controls_msg (Kitchen_sink_form_controls.Change_size v) ->
       "Change_size:" ^ v
+  | App.Form_controls_msg (Kitchen_sink_form_controls.Toggle_gift_wrap v) ->
+      "Toggle_gift_wrap:" ^ string_of_bool v
+  | App.Form_controls_msg (Kitchen_sink_form_controls.Select_speed v) ->
+      "Select_speed:" ^ v
+  | App.Form_controls_msg (Kitchen_sink_form_controls.Change_window v) ->
+      "Change_window:" ^ v
   | App.Text_input_msg (Kitchen_sink_text_input.Default_changed v) ->
       "Default_changed:" ^ v
   | App.Text_input_msg Kitchen_sink_text_input.Default_submitted ->
@@ -488,6 +494,10 @@ let serialize_msg : App.msg -> string = function
       "Placeholder_changed:" ^ v
   | App.Text_input_msg (Kitchen_sink_text_input.Error_changed v) ->
       "Error_changed:" ^ v
+  | App.Text_input_msg (Kitchen_sink_text_input.Restyled_changed v) ->
+      "Restyled_changed:" ^ v
+  | App.Text_input_msg Kitchen_sink_text_input.Restyled_label_clicked ->
+      "Restyled_label_clicked"
   | App.Toast_msg Sub_toast.ShowInfo -> "Toast:ShowInfo"
   | App.Toast_msg Sub_toast.ShowSuccess -> "Toast:ShowSuccess"
   | App.Toast_msg Sub_toast.ShowWarning -> "Toast:ShowWarning"

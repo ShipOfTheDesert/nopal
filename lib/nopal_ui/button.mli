@@ -9,13 +9,45 @@ type 'msg config = {
   style : Nopal_style.Style.t option;
   interaction : Nopal_style.Interaction.t option;
   attrs : (string * string) list;
+  disabled_style : Nopal_style.Style.t option;
+  loading_style : Nopal_style.Style.t option;
 }
-(** Button configuration. All fields except [variant] have sensible defaults. *)
+(** Button configuration. All fields except [variant] have sensible defaults.
+
+    The last two fields are the state-treatment override surface. The supported
+    route to them is {!with_disabled_style} and {!with_loading_style} rather
+    than writing them by hand; they are fields because a setter needs somewhere
+    to put its value, and a caller who builds this record as a complete literal
+    must supply them. *)
 
 val default : variant -> 'msg config
 (** [default v] returns a config for variant [v] with [disabled = false],
-    [loading = false], [on_click = None], default style/interaction, and empty
-    attrs. *)
+    [loading = false], [on_click = None], default style/interaction, empty attrs
+    and no disabled or loading style. *)
+
+val with_disabled_style : Nopal_style.Style.t -> 'msg config -> 'msg config
+(** [with_disabled_style style config] gives the button [style] while
+    [config.disabled] is [true]. It {e replaces} whatever the button would
+    otherwise carry — [config.style] when the caller set one, the variant
+    default otherwise; nothing is merged.
+
+    Without it a disabled button looks exactly like an enabled one, which is
+    what it has always done: the component draws no distinction of its own and
+    {!view}'s [aria-disabled] is the only difference. So this setter introduces
+    the visual decision rather than replacing one, and a button that sets
+    neither state style renders as before.
+
+    It does not touch [aria-disabled] or the click suppression, both of which
+    follow [config.disabled] alone. *)
+
+val with_loading_style : Nopal_style.Style.t -> 'msg config -> 'msg config
+(** [with_loading_style style config] gives the button [style] while
+    [config.loading] is [true], on the same replacing terms as
+    {!with_disabled_style}.
+
+    When both states are true, the disabled style wins if it is set, and this
+    one applies only if it is not. It does not touch [aria-busy] or the click
+    suppression. *)
 
 val view :
   'msg config -> 'msg Nopal_element.Element.t -> 'msg Nopal_element.Element.t
@@ -28,8 +60,14 @@ val view :
     [("aria-busy", "true")] and click events are suppressed.
 
     The [config.style] and [config.interaction] fields, when [Some], override
-    the variant's default styling. User-supplied [config.attrs] are merged with
-    ARIA attrs (user attrs take precedence on conflict). *)
+    the variant's default styling. On top of that, a button in a suppressed
+    state carries {!with_disabled_style}'s style while [disabled] is [true],
+    else {!with_loading_style}'s while [loading] is [true], else the style above
+    — disabled first when both hold. A button with neither state style set
+    renders exactly as it did before those setters existed.
+
+    User-supplied [config.attrs] are merged with ARIA attrs (user attrs take
+    precedence on conflict). *)
 
 val variant_to_string : variant -> string
 (** [variant_to_string v] returns a lowercase string name for test/debug. *)

@@ -35,11 +35,15 @@ let make_config ?sort ?(rows = [ alice; bob ]) cols =
 
 let children_of = function
   | Element { children; _ } -> children
-  | _ -> Alcotest.fail "expected Element with children"
+  | Empty
+  | Text _ ->
+      Alcotest.fail "expected Element with children"
 
 let attrs_of = function
   | Element { attrs; _ } -> attrs
-  | _ -> Alcotest.fail "expected Element with attrs"
+  | Empty
+  | Text _ ->
+      Alcotest.fail "expected Element with attrs"
 
 (* --- ARIA role tests --- *)
 
@@ -91,7 +95,9 @@ let test_data_rows_have_role_row () =
               Alcotest.(check (option string))
                 "role=row" (Some "row")
                 (List.assoc_opt "role" (attrs_of actual_row))
-          | _ -> Alcotest.fail "expected keyed to wrap one row")
+          | []
+          | _ :: _ :: _ ->
+              Alcotest.fail "expected keyed to wrap one row")
         data_rows
   | [] -> Alcotest.fail "expected children"
 
@@ -112,7 +118,9 @@ let test_data_cells_have_role_cell () =
                     "role=cell" (Some "cell")
                     (List.assoc_opt "role" (attrs_of cell)))
                 cells
-          | _ -> Alcotest.fail "expected keyed to wrap one row")
+          | []
+          | _ :: _ :: _ ->
+              Alcotest.fail "expected keyed to wrap one row")
         data_rows
   | [] -> Alcotest.fail "expected children"
 
@@ -185,7 +193,9 @@ let test_non_sorted_columns_no_aria_sort () =
           Alcotest.(check (option string))
             "no aria-sort on age" None
             (List.assoc_opt "aria-sort" (attrs_of second))
-      | _ -> Alcotest.fail "expected at least two header cells")
+      | []
+      | [ _ ] ->
+          Alcotest.fail "expected at least two header cells")
   | [] -> Alcotest.fail "expected header row"
 
 let test_no_sort_config_no_aria_sort () =
@@ -214,7 +224,9 @@ let test_rows_are_keyed () =
               "tag is keyed" (Some "keyed")
               (match row with
               | Element { tag; _ } -> Some tag
-              | _ -> None);
+              | Empty
+              | Text _ ->
+                  None);
             List.assoc_opt "key" (attrs_of row))
           data_rows
       in
@@ -237,7 +249,9 @@ let test_empty_rows_renders_header_only () =
       Alcotest.(check (option string))
         "role=row" (Some "row")
         (List.assoc_opt "role" (attrs_of header_row))
-  | _ -> Alcotest.fail "expected exactly one child"
+  | []
+  | _ :: _ :: _ ->
+      Alcotest.fail "expected exactly one child"
 
 (* --- cell renderer --- *)
 
@@ -254,7 +268,9 @@ let test_cell_renderer_called_per_row () =
             | [ actual_row ] ->
                 let cells = children_of actual_row in
                 List.map text_content cells
-            | _ -> Alcotest.fail "expected keyed to wrap one row")
+            | []
+            | _ :: _ :: _ ->
+                Alcotest.fail "expected keyed to wrap one row")
           data_rows
       in
       Alcotest.(check (list (list string)))
@@ -286,7 +302,11 @@ let test_style_passed_to_container () =
     "background passed through" (Some "#f00")
     (match style root with
     | Some { paint = { background = Some (Hex h); _ }; _ } -> Some h
-    | _ -> None)
+    | Some
+        { paint = { background = Some (Rgba _ | Named _ | Transparent); _ }; _ }
+    | Some { paint = { background = None; _ }; _ }
+    | None ->
+        None)
 
 let test_interaction_passed_to_container () =
   let hover_style =
@@ -359,7 +379,11 @@ let green_bg =
 let has_bg hex node =
   match style node with
   | Some { paint = { background = Some (Hex h); _ }; _ } -> String.equal h hex
-  | _ -> false
+  | Some
+      { paint = { background = Some (Rgba _ | Named _ | Transparent); _ }; _ }
+  | Some { paint = { background = None; _ }; _ }
+  | None ->
+      false
 
 let test_header_style_applied_to_header_cells () =
   let config =
@@ -395,7 +419,9 @@ let test_cell_style_applied_to_data_cells () =
                   Alcotest.(check bool)
                     "data cell has blue bg" true (has_bg "#00f" cell))
                 (children_of actual_row)
-          | _ -> Alcotest.fail "expected keyed to wrap one row")
+          | []
+          | _ :: _ :: _ ->
+              Alcotest.fail "expected keyed to wrap one row")
         data_rows
   | [] -> Alcotest.fail "expected children"
 
@@ -414,9 +440,181 @@ let test_row_style_applied_to_data_rows () =
           | [ actual_row ] ->
               Alcotest.(check bool)
                 "data row has green bg" true (has_bg "#0f0" actual_row)
-          | _ -> Alcotest.fail "expected keyed to wrap one row")
+          | []
+          | _ :: _ :: _ ->
+              Alcotest.fail "expected keyed to wrap one row")
         data_rows
   | [] -> Alcotest.fail "expected children"
+
+(* --- override reachability --- *)
+
+let hover_red = { Nopal_style.Interaction.default with hover = Some red_bg }
+let header_cells root = find_all (By_attr ("role", "columnheader")) root
+let data_cells root = find_all (By_attr ("role", "cell")) root
+
+let test_column_style_reaches_only_its_own_column () =
+  let config =
+    DT.make ~columns:[ name_col; age_col ] ~rows:[ alice ] ~key:key_fn ~on_sort
+      ~header_style:blue_bg ~cell_style:green_bg ~attrs:[] ()
+    |> DT.with_column_style (fun col ->
+        match String.equal col.DT.header "Name" with
+        | true -> Some red_bg
+        | false -> None)
+  in
+  let r = render (DT.view config) in
+  let root = tree r in
+  (match header_cells root with
+  | [ name_header; age_header ] ->
+      Alcotest.(check bool)
+        "column style on its own header cell" true
+        (has_bg "#f00" name_header);
+      Alcotest.(check bool)
+        "uncovered column keeps header_style" true (has_bg "#00f" age_header)
+  | []
+  | [ _ ]
+  | _ :: _ :: _ :: _ ->
+      Alcotest.fail "expected exactly two header cells");
+  match data_cells root with
+  | [ name_cell; age_cell ] ->
+      Alcotest.(check bool)
+        "column style on its own data cell" true (has_bg "#f00" name_cell);
+      Alcotest.(check bool)
+        "uncovered column keeps cell_style" true (has_bg "#0f0" age_cell)
+  | []
+  | [ _ ]
+  | _ :: _ :: _ :: _ ->
+      Alcotest.fail "expected exactly two data cells"
+
+let test_sort_control_style_reaches_the_sort_control () =
+  let config =
+    DT.make ~columns:[ name_col ] ~rows:[ alice ] ~key:key_fn ~on_sort
+      ~header_style:blue_bg ~attrs:[] ()
+    |> DT.with_sort_control_style red_bg
+  in
+  let r = render (DT.view config) in
+  let root = tree r in
+  match find (By_attr ("data-action", "datatable-sort")) root with
+  | Some control -> (
+      Alcotest.(check bool)
+        "sort control carries the override" true (has_bg "#f00" control);
+      match header_cells root with
+      | [ header ] ->
+          Alcotest.(check bool)
+            "the header box around it keeps header_style" true
+            (has_bg "#00f" header)
+      | []
+      | _ :: _ :: _ ->
+          Alcotest.fail "expected exactly one header cell")
+  | None -> Alcotest.fail "expected the sort control button"
+
+let test_header_interaction_reaches_the_header_button () =
+  let config =
+    DT.make ~columns:[ name_col ] ~rows:[ alice ] ~key:key_fn ~on_sort ~attrs:[]
+      ()
+    |> DT.with_header_interaction hover_red
+  in
+  let r = render (DT.view config) in
+  let root = tree r in
+  match find (By_attr ("data-action", "datatable-sort")) root with
+  | Some control -> (
+      Alcotest.(check bool)
+        "sort control has the hover interaction" true (has_hover control);
+      Alcotest.(check bool)
+        "the table container does not" false (has_hover root);
+      match header_cells root with
+      | [ header ] ->
+          Alcotest.(check bool)
+            "the header box around it does not" false (has_hover header)
+      | []
+      | _ :: _ :: _ ->
+          Alcotest.fail "expected exactly one header cell")
+  | None -> Alcotest.fail "expected the sort control button"
+
+let test_header_row_style_reaches_the_header_row () =
+  let config =
+    DT.make ~columns:[ name_col ] ~rows:[ alice ] ~key:key_fn ~on_sort
+      ~row_style:green_bg ~attrs:[] ()
+    |> DT.with_header_row_style red_bg
+  in
+  let r = render (DT.view config) in
+  let root = tree r in
+  match children_of root with
+  | header_row :: keyed_row :: _ -> (
+      Alcotest.(check bool)
+        "header row carries the override" true (has_bg "#f00" header_row);
+      match children_of keyed_row with
+      | [ data_row ] ->
+          Alcotest.(check bool)
+            "data rows keep row_style" true (has_bg "#0f0" data_row)
+      | []
+      | _ :: _ :: _ ->
+          Alcotest.fail "expected keyed to wrap one row")
+  | []
+  | [ _ ] ->
+      Alcotest.fail "expected a header row and one data row"
+
+let test_role_and_aria_sort_are_unchanged_under_every_style_override () =
+  let sort = { DT.column = "name"; direction = Ascending } in
+  let config =
+    DT.make ~columns:[ name_col; static_col ] ~rows:[ alice ] ~key:key_fn
+      ~on_sort ~sort ~style:red_bg ~header_style:blue_bg ~row_style:green_bg
+      ~cell_style:red_bg ~interaction:hover_red ~attrs:[] ()
+    |> DT.with_column_style (fun _col -> Some blue_bg)
+    |> DT.with_sort_control_style green_bg
+    |> DT.with_header_interaction hover_red
+    |> DT.with_header_row_style red_bg
+  in
+  let r = render (DT.view config) in
+  let root = tree r in
+  Alcotest.(check (option string))
+    "role=table" (Some "table")
+    (List.assoc_opt "role" (attrs_of root));
+  (match children_of root with
+  | header_row :: keyed_row :: _ -> (
+      Alcotest.(check (option string))
+        "header row role=row" (Some "row")
+        (List.assoc_opt "role" (attrs_of header_row));
+      match children_of keyed_row with
+      | [ data_row ] ->
+          Alcotest.(check (option string))
+            "data row role=row" (Some "row")
+            (List.assoc_opt "role" (attrs_of data_row))
+      | []
+      | _ :: _ :: _ ->
+          Alcotest.fail "expected keyed to wrap one row")
+  | []
+  | [ _ ] ->
+      Alcotest.fail "expected a header row and one data row");
+  (match header_cells root with
+  | [ sortable; plain ] ->
+      Alcotest.(check (option string))
+        "sortable header role" (Some "columnheader")
+        (List.assoc_opt "role" (attrs_of sortable));
+      Alcotest.(check (option string))
+        "aria-sort survives" (Some "ascending")
+        (List.assoc_opt "aria-sort" (attrs_of sortable));
+      Alcotest.(check (option string))
+        "non-sortable header role" (Some "columnheader")
+        (List.assoc_opt "role" (attrs_of plain));
+      Alcotest.(check (option string))
+        "no aria-sort on the unsorted column" None
+        (List.assoc_opt "aria-sort" (attrs_of plain))
+  | []
+  | [ _ ]
+  | _ :: _ :: _ :: _ ->
+      Alcotest.fail "expected exactly two header cells");
+  List.iter
+    (fun cell ->
+      Alcotest.(check (option string))
+        "role=cell" (Some "cell")
+        (List.assoc_opt "role" (attrs_of cell)))
+    (data_cells root);
+  match find (By_attr ("data-action", "datatable-sort")) root with
+  | Some control ->
+      Alcotest.(check (option string))
+        "data-field anchor survives" (Some "name")
+        (List.assoc_opt "data-field" (attrs_of control))
+  | None -> Alcotest.fail "expected the sort control button"
 
 (* --- Test runner --- *)
 
@@ -483,5 +681,19 @@ let () =
             test_cell_style_applied_to_data_cells;
           Alcotest.test_case "row_style applied to data rows" `Quick
             test_row_style_applied_to_data_rows;
+        ] );
+      ( "override reachability",
+        [
+          Alcotest.test_case "column style reaches only its own column" `Quick
+            test_column_style_reaches_only_its_own_column;
+          Alcotest.test_case "sort control style reaches the sort control"
+            `Quick test_sort_control_style_reaches_the_sort_control;
+          Alcotest.test_case "header interaction reaches the header button"
+            `Quick test_header_interaction_reaches_the_header_button;
+          Alcotest.test_case "header row style reaches the header row" `Quick
+            test_header_row_style_reaches_the_header_row;
+          Alcotest.test_case
+            "role and aria-sort unchanged under every style override" `Quick
+            test_role_and_aria_sort_are_unchanged_under_every_style_override;
         ] );
     ]

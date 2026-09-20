@@ -6,12 +6,18 @@ import { assertNoAxeViolations } from "./axe";
 // intrinsic `data-field` anchor (Task 1) and asserts the resulting message via
 // telemetry (REQ-N2). Every option in a group shares `data-field=<group name>`
 // (slug of the group label "Favorite color"), so the specific option is
-// disambiguated by its aria-label.
+// disambiguated by its own `id`, which is `<group id>-<slug value>`.
+//
+// It used to be disambiguated by `aria-label`. That pair is no longer emitted
+// on a radio: an option is now named by `aria-labelledby` pointing at its
+// label element, so carrying `aria-label` as well would give it two accessible
+// names and let the invisible one win. The `id` is the replacement selector,
+// and unlike the old one it is stable under a relabelling.
 //
 // Headless rAF mitigations (headless-chromium-raf-stall): navigate fresh with
 // `goto` (never page.reload), and waitForFunction before asserting.
 
-const GREEN = '[data-field="favorite-color"][aria-label="Green"]';
+const GREEN = '[data-field="favorite-color"][id="favorite-color-green"]';
 
 const SETTLE = 15000;
 
