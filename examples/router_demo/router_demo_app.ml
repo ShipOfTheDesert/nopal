@@ -73,6 +73,8 @@ let nav_button ~action ~msg label =
       style = None;
       interaction = None;
       attrs = [ ("data-action", action) ];
+      disabled_style = None;
+      loading_style = None;
     }
     (E.text label)
 

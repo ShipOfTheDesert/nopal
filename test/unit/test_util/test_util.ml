@@ -83,3 +83,23 @@ let count_unique eq lst =
          in
          first_index 0 lst = i)
        lst)
+
+let find_or_fail message selector node =
+  match find selector node with
+  | Some n -> n
+  | None -> Alcotest.fail message
+
+let style_testable =
+  Alcotest.testable
+    (fun fmt _ -> Format.fprintf fmt "<style>")
+    Nopal_style.Style.equal
+
+let text_style_testable =
+  Alcotest.testable
+    (fun fmt _ -> Format.fprintf fmt "<text style>")
+    Nopal_style.Text.equal
+
+let bold_label_style =
+  Nopal_style.Style.default
+  |> Nopal_style.Style.with_text (fun t ->
+      { t with Nopal_style.Text.font_weight = Some Nopal_style.Font.Bold })

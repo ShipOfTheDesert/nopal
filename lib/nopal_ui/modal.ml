@@ -11,6 +11,7 @@ type 'msg config = {
   backdrop_style : Nopal_style.Style.t option;
   interaction : Nopal_style.Interaction.t option;
   attrs : (string * string) list;
+  root_style : Nopal_style.Style.t option;
 }
 
 let make ~open_ ~title_id ~on_close ~body =
@@ -24,6 +25,7 @@ let make ~open_ ~title_id ~on_close ~body =
     backdrop_style = None;
     interaction = None;
     attrs = [];
+    root_style = None;
   }
 
 let with_on_backdrop_click msg config =
@@ -38,8 +40,9 @@ let with_interaction interaction config =
   { config with interaction = Some interaction }
 
 let with_attrs attrs config = { config with attrs }
+let with_root_style style config = { config with root_style = Some style }
 
-let overlay_style =
+let default_root_style =
   let open Nopal_style.Style in
   default
   |> with_layout (fun l ->
@@ -139,7 +142,12 @@ let view config =
           [ backdrop; dialog ]
       | None -> [ dialog ]
     in
-    E.box ~style:overlay_style ~attrs:[ ("data-testid", "modal-root") ] children
+    let root_style =
+      match config.root_style with
+      | Some s -> s
+      | None -> default_root_style
+    in
+    E.box ~style:root_style ~attrs:[ ("data-testid", "modal-root") ] children
 
 let subscriptions config =
   if not config.open_ then Sub.none
@@ -171,4 +179,4 @@ let next_focus ~focusable_ids ~current ~key =
           let len = List.length focusable_ids in
           let prev_idx = (idx - 1 + len) mod len in
           safe_nth prev_idx focusable_ids)
-  | _, _ -> None
+  | _ :: _, _ -> None

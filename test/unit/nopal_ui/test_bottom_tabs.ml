@@ -465,6 +465,245 @@ let test_explicit_flex_grow_is_honoured () =
     "an explicit 0 opts out rather than being filled in" (Some 0.0)
     (panel_flex_grow r)
 
+(* --- Per-tab overrides and the back affordance --- *)
+
+let style_testable = Test_util.style_testable
+let text_style_testable = Test_util.text_style_testable
+
+let interaction_testable =
+  Alcotest.testable
+    (fun fmt _ -> Format.fprintf fmt "<interaction>")
+    Interaction.equal
+
+let bold_tab_text_style =
+  { Nopal_style.Text.default with font_weight = Some Nopal_style.Font.Bold }
+
+let wide_tab_row_style =
+  Style.default |> Style.with_layout (fun l -> { l with Style.gap = Some 12.0 })
+
+let quiet_back_style =
+  Style.default
+  |> Style.with_text (fun t ->
+      { t with Nopal_style.Text.color = Some (Style.hex "#666666") })
+  |> Style.with_layout (fun l -> { l with padding_left = Some 6.0 })
+
+(* All three fields written out: [interaction] answers with the whole record and
+   [Interaction.equal] compares all three, so a fixture inheriting two of them
+   from [Interaction.default] would assert values it never stated. *)
+let hover_background bg =
+  {
+    Interaction.hover =
+      Some
+        (Style.default
+        |> Style.with_paint (fun p -> { p with background = Some bg }));
+    pressed = None;
+    focused = None;
+  }
+
+let per_tab_hover = hover_background (Style.rgba 200 0 0 1.0)
+let bar_wide_hover = hover_background (Style.rgba 0 0 200 1.0)
+let find_or_fail = Test_util.find_or_fail
+
+let tab_or_fail r ~id =
+  match find_tab r ~id with
+  | Some node -> node
+  | None -> Alcotest.fail ("no tab node " ^ id)
+
+let test_tab_text_style_reaches_the_tab_label () =
+  let config =
+    make_config ~tabs ~active:"a" ~safe_area_bottom:0
+    |> BT.with_tab_text_style bold_tab_text_style
+  in
+  let r = render (BT.view config) in
+  let label_style_of rendered ~id ~text =
+    text_style
+      (find_or_fail
+         ("no label node for " ^ id)
+         (By_text text) (tab_or_fail rendered ~id))
+  in
+  let expected = Some bold_tab_text_style in
+  Alcotest.(check (option text_style_testable))
+    "the style's text component reaches the active tab's label" expected
+    (label_style_of r ~id:"a" ~text:"Alpha");
+  Alcotest.(check (option text_style_testable))
+    "and the inactive tab's label" expected
+    (label_style_of r ~id:"b" ~text:"Beta");
+  let plain =
+    render (BT.view (make_config ~tabs ~active:"a" ~safe_area_bottom:0))
+  in
+  Alcotest.(check (option text_style_testable))
+    "without the setter a tab label carries no text style at all" None
+    (label_style_of plain ~id:"a" ~text:"Alpha")
+
+(* One tab with an icon and one without, because the label is the same text
+   node in both arms of the icon match and a row style reaching only one arm
+   would still pass on half the tabs the bar renders. *)
+let icon_tabs =
+  [
+    BT.tab ~icon:(E.text "\xe2\x98\x85") ~id:"a" ~label:"Alpha" ~stack:a_stack
+      ();
+    BT.tab ~id:"b" ~label:"Beta" ~stack:b_stack ();
+  ]
+
+(* The row is the icon-to-label gap, so it exists only where there are two
+   things to space. A label-only tab gains no node for it. *)
+let test_tab_row_style_reaches_the_icon_row () =
+  let config =
+    make_config ~tabs:icon_tabs ~active:"a" ~safe_area_bottom:0
+    |> BT.with_tab_row_style wide_tab_row_style
+  in
+  let r = render (BT.view config) in
+  Alcotest.(check (option style_testable))
+    "the row holding the icon and the label carries the override"
+    (Some wide_tab_row_style)
+    (style
+       (find_or_fail "no icon-and-label row" (By_tag "row")
+          (tab_or_fail r ~id:"a")));
+  Alcotest.(check bool)
+    "a tab with no icon gains no row" true
+    (Option.is_none (find (By_tag "row") (tab_or_fail r ~id:"b")));
+  let plain =
+    render
+      (BT.view (make_config ~tabs:icon_tabs ~active:"a" ~safe_area_bottom:0))
+  in
+  Alcotest.(check (option style_testable))
+    "without the setter that row carries no style" (Some Style.default)
+    (style
+       (find_or_fail "no icon-and-label row" (By_tag "row")
+          (tab_or_fail plain ~id:"a")))
+
+let test_tab_interaction_reaches_only_that_tab () =
+  let one_tab_differs id =
+    match id with
+    | "b" -> Some per_tab_hover
+    | _ -> None
+  in
+  let config =
+    make_config ~tabs ~active:"a" ~safe_area_bottom:0
+    |> BT.with_bar_interaction bar_wide_hover
+    |> BT.with_tab_interaction one_tab_differs
+  in
+  let r = render (BT.view config) in
+  Alcotest.(check (option interaction_testable))
+    "the tab the function names carries its own interaction"
+    (Some per_tab_hover)
+    (interaction (tab_or_fail r ~id:"b"));
+  Alcotest.(check (option interaction_testable))
+    "the tab it answers None for keeps the bar-wide one" (Some bar_wide_hover)
+    (interaction (tab_or_fail r ~id:"a"));
+  (* With no bar-wide interaction to fall through to, [None] means none. *)
+  let no_fallback =
+    make_config ~tabs ~active:"a" ~safe_area_bottom:0
+    |> BT.with_tab_interaction one_tab_differs
+  in
+  let r2 = render (BT.view no_fallback) in
+  Alcotest.(check (option interaction_testable))
+    "no per-tab answer and no bar-wide interaction leaves the tab empty"
+    (Some Interaction.default)
+    (interaction (tab_or_fail r2 ~id:"a"))
+
+(* [with_back_label] moves only the string, so before this the back affordance's
+   appearance was reachable from nowhere. The one setter carries both halves:
+   the style lands on the button and its [text] component on the label. *)
+let test_back_style_reaches_the_back_affordance_and_its_label () =
+  let config =
+    make_config ~tabs ~active:"a" ~safe_area_bottom:0
+    |> BT.with_back_style quiet_back_style
+  in
+  let r = render (BT.view config) in
+  let back =
+    find_or_fail "no back affordance"
+      (By_attr ("data-action", "nav-back"))
+      (tree r)
+  in
+  Alcotest.(check (option style_testable))
+    "the style lands on the back button" (Some quiet_back_style) (style back);
+  Alcotest.(check (option text_style_testable))
+    "and its text component on the back label"
+    (Some quiet_back_style.Style.text)
+    (text_style (find_or_fail "no back label node" (By_text "Back") back));
+  let plain =
+    render (BT.view (make_config ~tabs ~active:"a" ~safe_area_bottom:0))
+  in
+  let plain_back =
+    find_or_fail "no back affordance"
+      (By_attr ("data-action", "nav-back"))
+      (tree plain)
+  in
+  Alcotest.(check (option style_testable))
+    "without the setter the button carries no style" (Some Style.default)
+    (style plain_back);
+  Alcotest.(check (option text_style_testable))
+    "and its label no text style" None
+    (text_style (find_or_fail "no back label node" (By_text "Back") plain_back))
+
+(* Every override the component offers, applied at once and each a non-default
+   value, against the ARIA and the anchors a fork would lose — and against the
+   two structural properties the .mli says no cosmetic override can reach. *)
+let fully_overridden () =
+  let inset =
+    Viewport.safe_area_bottom
+      (Viewport.make_safe_area ~top:0 ~right:0 ~bottom:34 ~left:0 ())
+  in
+  make_config ~tabs ~active:"a" ~safe_area_bottom:inset
+  |> BT.with_attrs [ ("data-testid", "styled-root") ]
+  |> BT.with_bar_style (style_with_padding_top 3.0)
+  |> BT.with_bar_interaction bar_wide_hover
+  |> BT.with_bar_attrs [ ("data-testid", "styled-bar") ]
+  |> BT.with_tab_style (style_with_padding_top 4.0)
+  |> BT.with_active_tab_style (style_with_padding_top 5.0)
+  |> BT.with_panel_style (style_with_padding_top 6.0)
+  |> BT.with_gutter_style
+       (padding_style ~top:gutter_top_pad ~bottom:(Some gutter_bottom_pad))
+  |> BT.with_back_label "Go up"
+  |> BT.with_back_style quiet_back_style
+  |> BT.with_tab_text_style bold_tab_text_style
+  |> BT.with_tab_interaction (fun id ->
+      match id with
+      | "b" -> Some per_tab_hover
+      | _ -> None)
+
+let test_tablist_and_tabpanel_roles_survive_every_style_override () =
+  let r = render (BT.view (fully_overridden ())) in
+  let root = tree r in
+  let panel = find_or_fail "no tabpanel" (By_attr ("role", "tabpanel")) root in
+  Alcotest.(check (option string))
+    "the panel is still the tabpanel" (Some "tabpanel") (attr "role" panel);
+  Alcotest.(check (option string))
+    "and still names the active tab" (Some "a") (attr "data-field" panel);
+  Alcotest.(check bool)
+    "the bar is still the tablist" true
+    (Option.is_some (find (By_attr ("role", "tablist")) root));
+  Alcotest.(check int)
+    "still one tab per tab" 2
+    (List.length (find_all (By_attr ("role", "tab")) root));
+  Alcotest.(check (option string))
+    "the active tab is still selected" (Some "true")
+    (attr "aria-selected" (tab_or_fail r ~id:"a"));
+  Alcotest.(check (option string))
+    "the inactive tab is still not" (Some "false")
+    (attr "aria-selected" (tab_or_fail r ~id:"b"));
+  Alcotest.(check (option string))
+    "the back affordance keeps its anchor" (Some "nav-back")
+    (attr "data-action"
+       (find_or_fail "no back affordance"
+          (By_attr ("data-testid", "bottom-tabs-back"))
+          root));
+  (* The two structural exemptions the .mli names, under the full override
+     set: the panel still grows and the root still fills. *)
+  Alcotest.(check (option (float 0.001)))
+    "the panel still grows into the leftover space" (Some 1.0)
+    (panel_flex_grow r);
+  Alcotest.(check (option size_testable))
+    "the root still fills its container" (Some Style.Fill)
+    (node_height
+       (find_or_fail "no root node"
+          (By_attr ("data-testid", "styled-root"))
+          root));
+  Alcotest.(check (option (float 0.001)))
+    "and the safe-area inset is still added to the gutter" (Some 48.0)
+    (gutter_padding_bottom r)
+
 let () =
   Alcotest.run "nopal_ui_bottom_tabs"
     [
@@ -544,5 +783,19 @@ let () =
             test_panel_grows_through_cosmetic_override;
           Alcotest.test_case "explicit flex_grow is honoured" `Quick
             test_explicit_flex_grow_is_honoured;
+        ] );
+      ( "per-tab overrides",
+        [
+          Alcotest.test_case "tab text style reaches the tab label" `Quick
+            test_tab_text_style_reaches_the_tab_label;
+          Alcotest.test_case "tab row style reaches the icon row" `Quick
+            test_tab_row_style_reaches_the_icon_row;
+          Alcotest.test_case "tab interaction reaches only that tab" `Quick
+            test_tab_interaction_reaches_only_that_tab;
+          Alcotest.test_case "back style reaches the affordance and its label"
+            `Quick test_back_style_reaches_the_back_affordance_and_its_label;
+          Alcotest.test_case
+            "tablist and tabpanel roles survive every style override" `Quick
+            test_tablist_and_tabpanel_roles_survive_every_style_override;
         ] );
     ]

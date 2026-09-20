@@ -959,6 +959,8 @@ let control ~variant ~field ~on_click label =
       style = None;
       interaction = None;
       attrs = [ ("data-field", field) ];
+      disabled_style = None;
+      loading_style = None;
     }
     (Element.text label)
 
@@ -1011,6 +1013,10 @@ let note_input model =
       style = None;
       interaction = None;
       attrs = [];
+      label_style = None;
+      wrapper_style = None;
+      error_style = None;
+      on_label_click = None;
     }
 
 (* A photograph under the heading that says which of the two it is. Every field

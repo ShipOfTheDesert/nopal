@@ -11,7 +11,13 @@
 
 (test
  (name test_toast_section)
- (libraries kitchen_sink_app nopal_test nopal_element test_util alcotest))
+ (libraries
+  kitchen_sink_app
+  nopal_test
+  nopal_element
+  nopal_style
+  test_util
+  alcotest))
 
 (test
  (name test_style_removal_section)
@@ -145,3 +151,13 @@
 (test
  (name test_min_size_section)
  (libraries kitchen_sink_app nopal_test nopal_element nopal_style alcotest))
+
+(test
+ (name test_text_input_section)
+ (libraries
+  kitchen_sink_app
+  nopal_test
+  nopal_element
+  nopal_mvu
+  nopal_style
+  alcotest))

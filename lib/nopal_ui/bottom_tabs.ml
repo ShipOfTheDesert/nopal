@@ -26,6 +26,10 @@ type ('screen, 'msg) config = {
   back_label : string option;
   back_suppressed : bool;
   attrs : (string * string) list;
+  back_style : Style.t option;
+  tab_text_style : Nopal_style.Text.t option;
+  tab_row_style : Style.t option;
+  tab_interaction : (string -> Nopal_style.Interaction.t option) option;
 }
 
 let tab ?icon ~id ~label ~stack () = { id; label; icon; stack }
@@ -48,6 +52,10 @@ let make ~tabs ~active ~render_screen ~on_select ~on_back ~safe_area_bottom =
     back_label = None;
     back_suppressed = false;
     attrs = [];
+    back_style = None;
+    tab_text_style = None;
+    tab_row_style = None;
+    tab_interaction = None;
   }
 
 let with_bar_style s config = { config with bar_style = Some s }
@@ -60,6 +68,10 @@ let with_gutter_style s config = { config with gutter_style = Some s }
 let with_back_suppressed b config = { config with back_suppressed = b }
 let with_back_label l config = { config with back_label = Some l }
 let with_attrs a config = { config with attrs = a }
+let with_back_style s config = { config with back_style = Some s }
+let with_tab_text_style s config = { config with tab_text_style = Some s }
+let with_tab_row_style s config = { config with tab_row_style = Some s }
+let with_tab_interaction f config = { config with tab_interaction = Some f }
 let default_back_label = "Back"
 
 let back_button config =
@@ -68,9 +80,10 @@ let back_button config =
     | Some l -> l
     | None -> default_back_label
   in
-  E.button
+  E.button ?style:config.back_style
     ~attrs:[ ("data-action", "nav-back"); ("data-testid", "bottom-tabs-back") ]
-    ~on_click:config.on_back (E.text label)
+    ~on_click:config.on_back
+    (Text_node.of_style ~style:config.back_style label)
 
 (* The panel takes every pixel the tab bar does not, which is the whole of what
    puts the bar at the *bottom* of the container rather than immediately under
@@ -136,6 +149,21 @@ let bar config =
   let bar_config =
     match config.bar_interaction with
     | Some i -> Navigation_bar.with_interaction i bar_config
+    | None -> bar_config
+  in
+  let bar_config =
+    match config.tab_text_style with
+    | Some s -> Navigation_bar.with_item_text_style s bar_config
+    | None -> bar_config
+  in
+  let bar_config =
+    match config.tab_row_style with
+    | Some s -> Navigation_bar.with_item_row_style s bar_config
+    | None -> bar_config
+  in
+  let bar_config =
+    match config.tab_interaction with
+    | Some f -> Navigation_bar.with_item_interaction f bar_config
     | None -> bar_config
   in
   let bar_config = Navigation_bar.with_attrs config.bar_attrs bar_config in

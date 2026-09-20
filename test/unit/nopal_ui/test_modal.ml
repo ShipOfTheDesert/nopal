@@ -18,7 +18,9 @@ let test_closed_modal_renders_empty () =
   let r = render (Modal.view config) in
   match tree r with
   | Empty -> ()
-  | _ -> Alcotest.fail "expected Empty when modal is closed"
+  | Text _
+  | Element _ ->
+      Alcotest.fail "expected Empty when modal is closed"
 
 let test_open_modal_renders_dialog () =
   let config =
@@ -105,7 +107,10 @@ let test_subscriptions_none_when_closed () =
 let escape_handler subs =
   match Sub.atoms subs with
   | [ Keydown { handler; _ } ] -> Some handler
-  | _ -> Option.none
+  | [ (Every _ | Keyup _ | Resize _ | Visibility _ | Viewport _ | Custom _) ]
+  | []
+  | _ :: _ :: _ ->
+      Option.none
 
 let test_subscriptions_intercepts_escape_when_open () =
   let config =
@@ -207,6 +212,176 @@ let test_with_interaction_applies_to_dialog () =
   | Some _ -> ()
   | None -> Alcotest.fail "expected modal-dialog node"
 
+(* --- root style and the forced-positioning contract --- *)
+
+let custom_root_style =
+  Nopal_style.Style.default
+  |> Nopal_style.Style.with_paint (fun p ->
+      { p with background = Some (Nopal_style.Style.rgba 0 0 200 1.0) })
+  |> Nopal_style.Style.with_layout (fun l -> { l with main_align = Some End_ })
+
+let layout_of node =
+  match style node with
+  | Some s -> s.Nopal_style.Style.layout
+  | None -> Alcotest.fail "expected a styled element"
+
+let test_root_style_reaches_the_modal_root () =
+  let config =
+    Modal.make ~open_:true ~title_id:"t" ~on_close:Close ~body:E.empty
+    |> Modal.with_root_style custom_root_style
+  in
+  let r = render (Modal.view config) in
+  match find (By_attr ("data-testid", "modal-root")) (tree r) with
+  | Some root ->
+      let l = layout_of root in
+      Alcotest.(check bool)
+        "the override's main_align replaced the default's" true
+        (match l.main_align with
+        | Some End_ -> true
+        | Some Start
+        | Some Center
+        | Some Stretch
+        | Some Space_between
+        | None ->
+            false);
+      Alcotest.(check bool)
+        "nothing of the default style is merged back in" true
+        (Option.is_none l.z_index && Option.is_none l.position)
+  | None -> Alcotest.fail "expected modal-root node"
+
+let test_default_root_style_positions_the_root_without_an_override () =
+  let config =
+    Modal.make ~open_:true ~title_id:"t" ~on_close:Close ~body:E.empty
+  in
+  let r = render (Modal.view config) in
+  match find (By_attr ("data-testid", "modal-root")) (tree r) with
+  | Some root ->
+      let l = layout_of root in
+      Alcotest.(check bool)
+        "root is fixed" true
+        (match l.position with
+        | Some Pos_fixed -> true
+        | Some Pos_static
+        | Some Pos_relative
+        | Some Pos_absolute
+        | None ->
+            false);
+      Alcotest.(check (option int)) "root z-index" (Some 1000) l.z_index;
+      Alcotest.(check bool)
+        "the published default is what the root carries" true
+        (Nopal_style.Style.equal
+           (match style root with
+           | Some s -> s
+           | None -> Nopal_style.Style.default)
+           Modal.default_root_style)
+  | None -> Alcotest.fail "expected modal-root node"
+
+let test_backdrop_positioning_is_forced_over_the_override () =
+  let mispositioned =
+    Nopal_style.Style.default
+    |> Nopal_style.Style.with_paint (fun p ->
+        { p with background = Some (Nopal_style.Style.rgba 0 0 0 0.5) })
+    |> Nopal_style.Style.with_layout (fun l ->
+        { l with position = Some Pos_static; top = Some 50.0 })
+  in
+  let config =
+    Modal.make ~open_:true ~title_id:"t" ~on_close:Close ~body:E.empty
+    |> Modal.with_on_backdrop_click Close
+    |> Modal.with_backdrop_style mispositioned
+  in
+  let r = render (Modal.view config) in
+  match find (By_attr ("data-testid", "modal-backdrop")) (tree r) with
+  | Some backdrop ->
+      let l = layout_of backdrop in
+      Alcotest.(check bool)
+        "position is forced back to absolute" true
+        (match l.position with
+        | Some Pos_absolute -> true
+        | Some Pos_static
+        | Some Pos_relative
+        | Some Pos_fixed
+        | None ->
+            false);
+      Alcotest.(check (option (float 0.001)))
+        "top is forced to 0" (Some 0.0) l.top;
+      Alcotest.(check bool)
+        "every other field still replaces — the paint survives" true
+        (match (style backdrop : Nopal_style.Style.t option) with
+        | Some s -> (
+            match s.paint.background with
+            | Some bg ->
+                Nopal_style.Style.equal_color bg
+                  (Nopal_style.Style.rgba 0 0 0 0.5)
+            | None -> false)
+        | None -> false)
+  | None -> Alcotest.fail "expected modal-backdrop node"
+
+let test_dialog_position_is_filled_in_only_when_absent () =
+  let positioned =
+    Nopal_style.Style.default
+    |> Nopal_style.Style.with_layout (fun l ->
+        { l with position = Some Pos_absolute })
+  in
+  let dialog_position config =
+    let r = render (Modal.view config) in
+    match find (By_attr ("data-testid", "modal-dialog")) (tree r) with
+    | Some dialog -> (layout_of dialog).position
+    | None -> Alcotest.fail "expected modal-dialog node"
+  in
+  let base =
+    Modal.make ~open_:true ~title_id:"t" ~on_close:Close ~body:E.empty
+    |> Modal.with_on_backdrop_click Close
+  in
+  Alcotest.(check bool)
+    "filled in when the caller leaves it unset" true
+    (match dialog_position (base |> Modal.with_style custom_style) with
+    | Some Pos_relative -> true
+    | Some Pos_static
+    | Some Pos_absolute
+    | Some Pos_fixed
+    | None ->
+        false);
+  Alcotest.(check bool)
+    "the caller's own position is kept" true
+    (match dialog_position (base |> Modal.with_style positioned) with
+    | Some Pos_absolute -> true
+    | Some Pos_static
+    | Some Pos_relative
+    | Some Pos_fixed
+    | None ->
+        false)
+
+let test_dialog_aria_is_unchanged_under_every_style_override () =
+  let config =
+    Modal.make ~open_:true ~title_id:"my-title" ~on_close:Close ~body:E.empty
+    |> Modal.with_on_backdrop_click Close
+    |> Modal.with_style custom_style
+    |> Modal.with_backdrop_style custom_backdrop_style
+    |> Modal.with_interaction custom_interaction
+    |> Modal.with_root_style custom_root_style
+  in
+  let r = render (Modal.view config) in
+  let root = tree r in
+  (match find (By_attr ("data-testid", "modal-dialog")) root with
+  | Some dialog ->
+      Alcotest.(check (option string))
+        "role" (Some "dialog") (attr "role" dialog);
+      Alcotest.(check (option string))
+        "aria-modal" (Some "true") (attr "aria-modal" dialog);
+      Alcotest.(check (option string))
+        "aria-labelledby" (Some "my-title")
+        (attr "aria-labelledby" dialog)
+  | None -> Alcotest.fail "expected modal-dialog node");
+  (match find (By_attr ("data-testid", "modal-backdrop")) root with
+  | Some backdrop ->
+      Alcotest.(check (option string))
+        "dismiss anchor survives" (Some "modal-dismiss")
+        (attr "data-action" backdrop)
+  | None -> Alcotest.fail "expected modal-backdrop node");
+  match find (By_attr ("data-testid", "modal-root")) root with
+  | Some _ -> ()
+  | None -> Alcotest.fail "expected the modal-root anchor to stay put"
+
 (* --- next_focus --- *)
 
 let test_next_focus_tab_advances () =
@@ -296,6 +471,19 @@ let () =
             test_with_backdrop_style_overrides_backdrop;
           Alcotest.test_case "with_interaction applies to dialog" `Quick
             test_with_interaction_applies_to_dialog;
+        ] );
+      ( "root style and forced positioning",
+        [
+          Alcotest.test_case "root style reaches the modal root" `Quick
+            test_root_style_reaches_the_modal_root;
+          Alcotest.test_case "default root style positions the root" `Quick
+            test_default_root_style_positions_the_root_without_an_override;
+          Alcotest.test_case "backdrop positioning is forced" `Quick
+            test_backdrop_positioning_is_forced_over_the_override;
+          Alcotest.test_case "dialog position is filled in only when absent"
+            `Quick test_dialog_position_is_filled_in_only_when_absent;
+          Alcotest.test_case "dialog ARIA unchanged under every override" `Quick
+            test_dialog_aria_is_unchanged_under_every_style_override;
         ] );
       ( "next_focus",
         [

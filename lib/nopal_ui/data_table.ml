@@ -19,6 +19,10 @@ type ('row, 'msg) config = {
   cell_style : Nopal_style.Style.t option;
   interaction : Nopal_style.Interaction.t option;
   attrs : (string * string) list;
+  column_style : (('row, 'msg) column -> Nopal_style.Style.t option) option;
+  sort_control_style : Nopal_style.Style.t option;
+  header_interaction : Nopal_style.Interaction.t option;
+  header_row_style : Nopal_style.Style.t option;
 }
 
 let column ~header ~cell ?sort_key () = { header; cell; sort_key }
@@ -42,7 +46,22 @@ let make ~columns ~rows ~key ~on_sort ?sort ?style ?header_style ?row_style
     cell_style;
     interaction;
     attrs;
+    column_style = None;
+    sort_control_style = None;
+    header_interaction = None;
+    header_row_style = None;
   }
+
+let with_column_style f config = { config with column_style = Some f }
+
+let with_sort_control_style style config =
+  { config with sort_control_style = Some style }
+
+let with_header_interaction interaction config =
+  { config with header_interaction = Some interaction }
+
+let with_header_row_style style config =
+  { config with header_row_style = Some style }
 
 let view config =
   let module E = Nopal_element.Element in
@@ -59,27 +78,45 @@ let view config =
     | None ->
         []
   in
+  let column_style_for col =
+    match config.column_style with
+    | Some f -> f col
+    | None -> None
+  in
   let render_header col =
     let base_attrs = [ ("role", "columnheader") ] in
+    let header_style =
+      match column_style_for col with
+      | Some s -> Some s
+      | None -> config.header_style
+    in
     match col.sort_key with
     | Some key ->
         let attrs = base_attrs @ aria_sort_for key in
         let sort_attrs =
           [ ("data-action", "datatable-sort"); ("data-field", key) ]
         in
-        E.box ~attrs ?style:config.header_style
+        E.box ~attrs ?style:header_style
           [
-            E.button ~attrs:sort_attrs ~on_click:(config.on_sort key)
-              (E.text col.header);
+            E.button ~attrs:sort_attrs ?style:config.sort_control_style
+              ?interaction:config.header_interaction
+              ~on_click:(config.on_sort key) (E.text col.header);
           ]
-    | None ->
-        E.box ~attrs:base_attrs ?style:config.header_style [ E.text col.header ]
+    | None -> E.box ~attrs:base_attrs ?style:header_style [ E.text col.header ]
   in
   let header_row =
-    E.row ~attrs:[ ("role", "row") ] (List.map render_header config.columns)
+    E.row
+      ~attrs:[ ("role", "row") ]
+      ?style:config.header_row_style
+      (List.map render_header config.columns)
   in
   let render_cell row col =
-    E.box ~attrs:[ ("role", "cell") ] ?style:config.cell_style [ col.cell row ]
+    let cell_style =
+      match column_style_for col with
+      | Some s -> Some s
+      | None -> config.cell_style
+    in
+    E.box ~attrs:[ ("role", "cell") ] ?style:cell_style [ col.cell row ]
   in
   let render_row row =
     let cells = List.map (render_cell row) config.columns in

@@ -50,6 +50,38 @@ let test_already_hyphenated () =
 let test_all_uppercase () =
   Alcotest.(check string) "all caps" "email" (Nopal_ui.Slug.slugify "EMAIL")
 
+let test_derive_id_prefers_the_explicit_id () =
+  Alcotest.(check string)
+    "explicit id wins over the label" "email-field"
+    (Nopal_ui.Slug.derive_id ~explicit:(Some "email-field") ~label:"Email" ())
+
+let test_derive_id_falls_back_to_the_slugified_label () =
+  Alcotest.(check string)
+    "slugified label when no explicit id" "first-name"
+    (Nopal_ui.Slug.derive_id ~explicit:None ~label:"First Name" ())
+
+let test_derive_id_applies_the_suffix_to_both_routes () =
+  Alcotest.(check string)
+    "suffix on the explicit route" "email-field-error"
+    (Nopal_ui.Slug.derive_id ~explicit:(Some "email-field") ~label:"Email"
+       ~suffix:"error" ());
+  Alcotest.(check string)
+    "suffix on the label route" "first-name-error"
+    (Nopal_ui.Slug.derive_id ~explicit:None ~label:"First Name" ~suffix:"error"
+       ())
+
+let test_derive_id_is_total_on_an_empty_label () =
+  Alcotest.(check string)
+    "empty label yields an empty base" ""
+    (Nopal_ui.Slug.derive_id ~explicit:None ~label:"" ());
+  Alcotest.(check string)
+    "empty label still takes the suffix" "-error"
+    (Nopal_ui.Slug.derive_id ~explicit:None ~label:"" ~suffix:"error" ());
+  Alcotest.(check string)
+    "an explicit empty id is used verbatim" "-error"
+    (Nopal_ui.Slug.derive_id ~explicit:(Some "") ~label:"Email" ~suffix:"error"
+       ())
+
 let () =
   Alcotest.run "nopal_ui_slug"
     [
@@ -70,5 +102,16 @@ let () =
           Alcotest.test_case "digits preserved" `Quick test_digits_preserved;
           Alcotest.test_case "already hyphenated" `Quick test_already_hyphenated;
           Alcotest.test_case "all uppercase" `Quick test_all_uppercase;
+        ] );
+      ( "derive_id",
+        [
+          Alcotest.test_case "prefers the explicit id" `Quick
+            test_derive_id_prefers_the_explicit_id;
+          Alcotest.test_case "falls back to the slugified label" `Quick
+            test_derive_id_falls_back_to_the_slugified_label;
+          Alcotest.test_case "applies the suffix to both routes" `Quick
+            test_derive_id_applies_the_suffix_to_both_routes;
+          Alcotest.test_case "is total on an empty label" `Quick
+            test_derive_id_is_total_on_an_empty_label;
         ] );
     ]

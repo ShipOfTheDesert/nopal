@@ -278,11 +278,182 @@ let test_button_aria_is_overridable_through_config_attrs () =
       style = None;
       interaction = None;
       attrs = [ ("data-case", "button"); ("aria-disabled", "false") ];
+      disabled_style = None;
+      loading_style = None;
     }
   in
   check_override ~marker:("data-case", "button") ~name:"aria-disabled"
     ~expected:(Some "false")
     (Button.view config (E.text "Save"))
+
+(* --- The two naming keys the labelled controls introduce.
+
+   A control's [id] and the [aria-labelledby] pointing at its own label box are
+   ordinary attribute pairs, not derivations, so nothing above decides them — but
+   the question 0141 answered for a derived attribute still has to be answered
+   here: a structural assertion on either key is evidence about the browser only
+   if the browser writes the key at all, and on the element kind that carries it.
+   The four controls put these two keys on five different element kinds — a box
+   for every label, and an input, a checkbox, a select and a radio for the
+   controls — which is the axis a divergence would run along.
+
+   Each control is located by a caller marker pushed through [config.attrs], a
+   key no component derives, so finding the node never depends on the keys under
+   test; a radio, whose attrs are fixed by the component, is located by its group
+   field anchor instead. Each label box is located by the very [id] the case
+   expects, which is what makes the read affirmative: a backend that writes no
+   [id] on a box finds no node and answers [None] against a literal.
+
+   Every fixture is a complete record literal. Starting from [make] and setting
+   one field would inherit behavioural defaults the case never asked for. *)
+
+let naming_marker = ("data-case", "naming")
+
+let text_input_fixture () : msg Nopal_ui.TextInput.config =
+  {
+    Nopal_ui.TextInput.label = "Email address";
+    value = "someone@example.com";
+    placeholder = None;
+    error = None;
+    disabled = false;
+    id = None;
+    on_change = None;
+    on_submit = None;
+    on_blur = None;
+    style = None;
+    interaction = None;
+    attrs = [ naming_marker ];
+    label_style = None;
+    wrapper_style = None;
+    error_style = None;
+    on_label_click = None;
+  }
+
+let checkbox_fixture () : msg Nopal_ui.Checkbox.config =
+  {
+    Nopal_ui.Checkbox.label = "Accept terms";
+    checked = false;
+    disabled = false;
+    on_toggle = None;
+    style = None;
+    interaction = None;
+    attrs = [ naming_marker ];
+    id = None;
+    label_style = None;
+    row_style = None;
+    on_label_click = None;
+  }
+
+let select_input_fixture () : msg Nopal_ui.Select_input.config =
+  {
+    Nopal_ui.Select_input.label = "Country";
+    options = [ E.select_option ~value:"mx" "Mexico" ];
+    selected = "mx";
+    placeholder = None;
+    disabled = false;
+    on_change = None;
+    style = None;
+    interaction = None;
+    attrs = [ naming_marker ];
+    id = None;
+    label_style = None;
+    wrapper_style = None;
+    on_label_click = None;
+  }
+
+let radio_group_fixture ~visible_label : msg Nopal_ui.Radio_group.config =
+  {
+    Nopal_ui.Radio_group.label = "Colour";
+    options = [ Nopal_ui.Radio_group.radio_option ~value:"red" "Red" ];
+    selected = "red";
+    disabled = false;
+    name = None;
+    on_select = None;
+    style = None;
+    interaction = None;
+    attrs = [ naming_marker ];
+    id = None;
+    visible_label;
+    label_style = None;
+    group_style = None;
+    option_label_style = None;
+    option_row_style = None;
+    on_label_click = None;
+  }
+
+(* Same two reads as [check_override], a different claim: not that the caller's
+   pair won, but that both backends answer a component-derived naming pair with
+   the same value. *)
+let check_naming ~marker ~name ~expected element =
+  check_opt
+    (name ^ " reads the same in the web backend")
+    expected
+    (marked_web_attr ~marker element ~name);
+  check_opt
+    (name ^ " reads the same in the structural backend")
+    expected
+    (marked_structural_attr ~marker element ~name)
+
+(* What this case does NOT cover, stated rather than left to be found: a label
+   box is located by the id it is expected to carry, so the case pins the VALUE
+   both backends answer and not the node the id sits on. A mutation moving the id
+   outwards to the wrapper is answered by the wrapper here and stays green.
+   Placement is a single-renderer question and is pinned structurally, by
+   [test_aria_survival.ml] (which requires the id-carrying node to be a label
+   element) and by [test_text_input.ml]'s association cases. *)
+let test_generated_id_resolves_identically_in_both_backends () =
+  let control ~marker ~expected element =
+    check_naming ~marker ~name:"id" ~expected:(Some expected) element
+  in
+  let label ~id element =
+    check_naming ~marker:("id", id) ~name:"id" ~expected:(Some id) element
+  in
+  let text_input = Nopal_ui.TextInput.view (text_input_fixture ()) in
+  control ~marker:naming_marker ~expected:"email-address" text_input;
+  label ~id:"email-address-label" text_input;
+  let checkbox = Nopal_ui.Checkbox.view (checkbox_fixture ()) in
+  control ~marker:naming_marker ~expected:"accept-terms" checkbox;
+  label ~id:"accept-terms-label" checkbox;
+  let select = Nopal_ui.Select_input.view (select_input_fixture ()) in
+  control ~marker:naming_marker ~expected:"country" select;
+  label ~id:"country-label" select;
+  let radios =
+    Nopal_ui.Radio_group.view (radio_group_fixture ~visible_label:(Some true))
+  in
+  (* the group's own id, then the one option's, then both label boxes *)
+  control ~marker:naming_marker ~expected:"colour" radios;
+  control ~marker:("data-field", "colour") ~expected:"colour-red" radios;
+  label ~id:"colour-label" radios;
+  label ~id:"colour-red-label" radios
+
+let test_labelledby_resolves_identically_in_both_backends () =
+  let named ~marker ~expected element =
+    check_naming ~marker ~name:"aria-labelledby" ~expected:(Some expected)
+      element;
+    check_naming ~marker ~name:"aria-label" ~expected:None element
+  in
+  named ~marker:naming_marker ~expected:"email-address-label"
+    (Nopal_ui.TextInput.view (text_input_fixture ()));
+  named ~marker:naming_marker ~expected:"accept-terms-label"
+    (Nopal_ui.Checkbox.view (checkbox_fixture ()));
+  named ~marker:naming_marker ~expected:"country-label"
+    (Nopal_ui.Select_input.view (select_input_fixture ()));
+  let radios =
+    Nopal_ui.Radio_group.view (radio_group_fixture ~visible_label:(Some true))
+  in
+  named ~marker:naming_marker ~expected:"colour-label" radios;
+  named ~marker:("data-field", "colour") ~expected:"colour-red-label" radios;
+  (* The affirmative arm for the four [aria-label] absences above: a group with
+     no visible label element has nothing to point at, so it is still named by
+     [aria-label] — in both backends. An absence that held because neither
+     backend wrote any naming pair at all would fail here. *)
+  let unlabelled =
+    Nopal_ui.Radio_group.view (radio_group_fixture ~visible_label:None)
+  in
+  check_naming ~marker:naming_marker ~name:"aria-label"
+    ~expected:(Some "Colour") unlabelled;
+  check_naming ~marker:naming_marker ~name:"aria-labelledby" ~expected:None
+    unlabelled
 
 (* Reconciliation runs a different code path from creation, and a rule that
    holds only on the first frame is not a rule. *)
@@ -441,6 +612,13 @@ let () =
             test_bottom_tabs_aria_is_overridable_through_bar_attrs;
           Alcotest.test_case "button aria-disabled" `Quick
             test_button_aria_is_overridable_through_config_attrs;
+        ] );
+      ( "the naming keys in both backends",
+        [
+          Alcotest.test_case "a generated id" `Quick
+            test_generated_id_resolves_identically_in_both_backends;
+          Alcotest.test_case "aria-labelledby, and no aria-label" `Quick
+            test_labelledby_resolves_identically_in_both_backends;
         ] );
       ( "reconciliation",
         [

@@ -11,6 +11,9 @@ type 'msg config = {
   active_tab_style : Nopal_style.Style.t option;
   interaction : Nopal_style.Interaction.t option;
   attrs : (string * string) list;
+  item_text_style : Nopal_style.Text.t option;
+  item_row_style : Nopal_style.Style.t option;
+  item_interaction : (string -> Nopal_style.Interaction.t option) option;
 }
 
 let item ?icon ~id label = { id; label; icon }
@@ -25,6 +28,9 @@ let make ~items ~active ~on_select =
     active_tab_style = None;
     interaction = None;
     attrs = [];
+    item_text_style = None;
+    item_row_style = None;
+    item_interaction = None;
   }
 
 let with_style s config = { config with style = Some s }
@@ -32,6 +38,9 @@ let with_tab_style s config = { config with tab_style = Some s }
 let with_active_tab_style s config = { config with active_tab_style = Some s }
 let with_interaction i config = { config with interaction = Some i }
 let with_attrs a config = { config with attrs = a }
+let with_item_text_style s config = { config with item_text_style = Some s }
+let with_item_row_style s config = { config with item_row_style = Some s }
+let with_item_interaction f config = { config with item_interaction = Some f }
 let default_inactive_bg = Nopal_style.Style.rgba 240 240 240 1.0
 let default_active_bg = Nopal_style.Style.rgba 59 130 246 1.0
 
@@ -55,12 +64,20 @@ let view config =
       else base_style
     in
     let on_click = if is_active then None else Some (config.on_select tab.id) in
+    let label =
+      Text_node.of_text_style ~text_style:config.item_text_style tab.label
+    in
     let content =
       match tab.icon with
-      | Some icon -> E.row [ icon; E.text tab.label ]
-      | None -> E.text tab.label
+      | Some icon -> E.row ?style:config.item_row_style [ icon; label ]
+      | None -> label
     in
-    E.button ~style:tab_style ?on_click ?interaction:config.interaction
+    let interaction =
+      match Option.bind config.item_interaction (fun f -> f tab.id) with
+      | Some i -> Some i
+      | None -> config.interaction
+    in
+    E.button ~style:tab_style ?on_click ?interaction
       ~attrs:
         [
           ("role", "tab");

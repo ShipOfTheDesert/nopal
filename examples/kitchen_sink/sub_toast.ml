@@ -63,8 +63,38 @@ let trigger_button_interaction =
 
 let subscriptions _model = Nopal_mvu.Sub.none
 
+(* [toast.mli] used to say individual toast styling always uses
+   [default_style_for] and offer a hand-written view as the alternative — an
+   interface instructing a fork. These two overrides are what replaced it. Both
+   compose with the exposed variant defaults rather than discarding them, which
+   is the route the docblock names; keeping the default background is also what
+   keeps the toast's contrast the same as before. *)
+
+let square_border =
+  {
+    Style.width = 2.0;
+    style = Solid;
+    color = Style.hex "#1f2933";
+    radius = 0.0;
+  }
+
+let restyled_toast_style variant =
+  Toast.default_style_for variant
+  |> Style.with_paint (fun p -> { p with border = Some square_border })
+
+let restyled_toast_interaction variant =
+  let hover =
+    Toast.default_style_for variant
+    |> Style.with_paint (fun p -> { p with opacity = 0.8 })
+  in
+  { Interaction.hover = Some hover; pressed = None; focused = None }
+
 let view _vp model =
-  let config = Toast.make ~dismiss:(fun id -> Dismiss id) in
+  let config =
+    Toast.make ~dismiss:(fun id -> Dismiss id)
+    |> Toast.with_toast_style restyled_toast_style
+    |> Toast.with_toast_interaction restyled_toast_interaction
+  in
   Element.column
     ~style:
       (Style.default |> Style.with_layout (fun l -> { l with gap = Some 12.0 }))
