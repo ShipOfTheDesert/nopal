@@ -166,6 +166,49 @@ Focus is last and takes no `preventScroll`, so batching `Cmd.focus` on an
 off-screen target with a `Cmd.scroll_by` lands at focus's position, not the
 scroll's.
 
+#### Focus
+
+Focus has two directions and they are different mechanisms; reaching for the
+wrong one is the usual reason an application concludes the framework cannot do
+this.
+
+**To move focus** — a command, from `update`:
+
+```ocaml
+| Opened -> ({ model with open_ = true }, Cmd.focus "email")
+```
+
+`Cmd.focus id` names an element by its DOM id, which is a pair the view put in
+`~attrs`:
+
+```ocaml
+Element.input ~attrs:[ ("id", "email") ] ~on_change:Typed model.email
+```
+
+It carries no message and reports no outcome. An id naming nothing is a no-op,
+not an error. Because the request is applied after the frame's DOM patch, an
+element created in the same update as the `Cmd.focus` that targets it is
+focusable — the element exists by the time the request drains. Within one frame
+the order is **reveal first, relative scroll second, focus last** (above), so a
+`Cmd.focus` batched with a `Cmd.scroll_by` lands at focus's position.
+
+**To learn that focus moved** — a handler, into `update`:
+
+```ocaml
+Element.input ~on_focus:Focused ~on_blur:Blurred model.value
+Element.box ~focusable:true ~on_focus:Entered ~on_blur:Left [ ... ]
+```
+
+`Element.input` takes `?on_focus`/`?on_blur`; `Element.box` takes both plus
+`?focusable`, and its edges are scoped to the whole subtree — a box reports
+focus arriving anywhere inside it and leaving all of it, so a field group can
+track "is anything in me focused" without per-field wiring. `?focusable` places
+the container in the platform's natural tab order.
+
+There is no `autofocus` field and none is needed: `Cmd.focus` from `init`'s
+command focuses on first render, which is also the version an application can
+make conditional.
+
 ### Tasks (`Task.t`)
 
 Composable async operations — a continuation monad. Tasks are pure descriptions; they do not execute until `run` is called. Use `let*` / `let+` syntax from `Task.Syntax` for readable chaining.
@@ -243,6 +286,46 @@ Only Ctrl and Shift are folded, so a subscription naming a bare key still matche
 ### Element DSL (`nopal_element`)
 
 `Element.t` is an exposed (not abstract) variant type so renderers can pattern-match exhaustively.
+
+**Attribute precedence.** Where a builder takes both `?attrs` and a typed field
+a backend renders as an attribute — `placeholder`, a radio's `name`, a picker's
+`accept`/`capture`/`multiple`, `disabled`, a container's `focusable` — the rule
+is: **typed-field derivations beat the `~attrs` list; within the list, the last
+pair wins.**
+
+Those are two tiers, and they are not the same tier. A typed field sits *above*
+the list, so `?attrs` is an escape hatch for keys the DSL does not model and
+cannot overrule the ones it does. A pair a component puts *into* that list sits
+*inside* it, so a caller's later pair of the same name replaces it.
+
+The second tier is where a `nopal_ui` component's `role`, `aria-describedby`
+and `data-field` travel. They are ordinary list pairs, so a caller passing the
+same key through the component's own attributes replaces them — `Modal`,
+`Navigation_bar`, `Bottom_tabs` and `Button` each document that as a deliberate
+override rather than an accident, and it is the escape hatch a consumer reaches
+for instead of abandoning the component.
+
+A derivation that is *absent* leaves the caller's pair standing — a picker with
+no `capture` does not erase a `capture` the caller declared, because the typed
+field saying nothing is not the same as it saying "no attribute".
+
+`nopal_web` and `nopal_test` are the two renderers that enforce this: the web
+backend applies `?attrs` before it writes any derivation, and the structural
+renderer appends derived pairs after the view's own and resolves every lookup —
+`attr`, a `By_attr` selector, and the selector an event simulation
+resolves — to the last pair. They answer identically on the keys the web backend
+writes as real attributes: `disabled`, `accept`, `capture`, `multiple`,
+`placeholder`, a radio's `name` and a control's `type`. A container's
+`focusable` is a first-tier derivation in both, but each spells it in its own
+vocabulary — a tab-order attribute in the browser, `focusable` in the structural
+tree — so there is no shared key to compare. `checked`, `value` and `selected`
+are outside that — the browser carries all three as JS properties and
+never as attributes, so a caller's pair of one of those names is not overruled
+there. `nopal_test` still overlays them as derived pairs, so a structural
+assertion on one of the three states what that renderer answers and is not
+evidence about the browser. `Element.draw` carries neither a `Style.t` nor an
+`attrs` list and is structurally outside the rule. No backend that has not been
+written is bound by a test nobody has written.
 
 ```ocaml
 Element.empty                                                    (* renders nothing *)
@@ -2601,8 +2684,9 @@ Pure OCaml structural testing without a browser:
 (* Render and inspect *)
 Test_renderer.render   : 'msg Element.t -> 'msg rendered
   (* A scroll container's [reveal] declaration is surfaced as the derived attr
-     pairs "reveal" and "reveal-align", prepended to the view's own attrs so a
-     declaration wins lookup over a caller-supplied pair of the same name.
+     pairs "reveal" and "reveal-align", appended after the view's own attrs;
+     a lookup resolves to the last pair, so a declaration wins over a
+     caller-supplied pair of the same name.
      Nothing marks a pair as derived, so the precedence does not run the other
      way: a container supplying ("reveal", "decoy") in attrs and declaring no
      reveal reads back attr "reveal" = Some "decoy", which is the caller's own
@@ -2627,9 +2711,11 @@ type selector = By_tag of string | By_text of string | By_attr of string * strin
 Test_renderer.click        : selector -> 'msg rendered -> (unit, error) result
 Test_renderer.input        : selector -> string -> 'msg rendered -> (unit, error) result
 Test_renderer.select_files : selector -> Element.file_info list -> 'msg rendered -> (unit, error) result
-  (* File input node renders under tag "file_input" with accept/capture/multiple
-     as node attrs. Passing [[]] simulates clearing the picker: the handler
-     still fires, with an empty list. *)
+  (* File input node renders under tag "file_input", carrying accept/capture/
+     multiple as node attrs only where the picker configures them — an
+     unconfigured one carries no such key at all, the way the DOM carries none.
+     Passing [[]] simulates clearing the picker: the handler still fires, with
+     an empty list. *)
 Test_renderer.submit       : selector -> 'msg rendered -> (unit, error) result
 Test_renderer.dblclick     : selector -> 'msg rendered -> (unit, error) result
 Test_renderer.focus        : selector -> 'msg rendered -> (unit, error) result
@@ -2657,6 +2743,57 @@ Test_renderer.run_app :
   view:('model -> 'msg Element.t) ->
   'msg list -> 'model * 'msg rendered
 ```
+
+**Attribute answers that moved — read this on a pin bump.** The structural
+renderer now resolves an attribute the way the browser does, and that moves
+what it answers on seven `(node tag, key)` pairs. Every signature is unchanged,
+so a downstream structural suite meets this with no compiler help. The "before"
+column is the tree at commit `b74a21d`, where a derived pair was prepended, a
+lookup resolved to the first pair, and a pair was emitted for a key even where
+the typed field asserted nothing.
+
+| # | Node tag | Key | When | Before | Now |
+|---|---|---|---|---|---|
+| 1 | `checkbox` | `disabled` | the control is not disabled (the default) | `Some "false"` | the view's own last pair for that key, else `None` |
+| 2 | `radio` | `disabled` | the control is not disabled (the default) | `Some "false"` | the view's own last pair for that key, else `None` |
+| 3 | `select` | `disabled` | the control is not disabled (the default) | `Some "false"` | the view's own last pair for that key, else `None` |
+| 4 | `option` (a select's generated child) | `disabled` | that option is not disabled (the default) | `Some "false"` | `None` — option children carry no caller attrs, so there is nothing to uncover |
+| 5 | `file_input` | `accept` | `?accept` is `[]` (the default) | `Some ""` | the view's own last pair for that key, else `None` |
+| 6 | `file_input` | `capture` | no `?capture` (the default) | `Some ""` | the view's own last pair for that key, else `None` |
+| 7 | `file_input` | `multiple` | `?multiple` is false (the default) | `Some "false"` | the view's own last pair for that key, else `None` |
+
+Where the typed field does assert — `~disabled:true`, a non-empty `~accept`, a
+`~capture`, `~multiple:true` — nothing moved: the value is unchanged and the
+derivation still wins the key. For a node whose view declared no pair of that
+name, each of the seven also moves `has_attr` from `true` to `false`, and a
+`By_attr (key, "false")` or `By_attr ("capture", "")` selector that matched that
+node now matches nothing.
+
+Keys that did **not** move, recorded so a reader does not go looking: `checked`,
+`value`, `selected`, `label`, `name`, `placeholder`, `focusable`, `reveal`,
+`reveal-align`. Each is either unconditional and still unconditional, or was
+already conditional before this change.
+
+Two further changes travel with the seven and move no key's answer:
+
+8. **Every resolution point agrees.** Last-wins now governs not only `attr` and
+   `find`/`find_all` but also the selector `click`, `input`, `submit` and
+   `select_files` resolve. A suite selecting `By_attr` on a key its own view
+   spells twice reaches the node on the last pair and no longer reaches it on
+   the first. The dispatch path is covered — `by_attr_matches_the_resolved_value`
+   clicks `By_attr ("data-role", …)` on a button whose view spells that key
+   twice and asserts both outcomes — but the compiler cannot see the change, so
+   a downstream suite meets it with no help. (`has_attr` is presence only and is
+   not governed by last-wins; it answers `true` whichever pair won.)
+
+9. **Node `attrs` list order.** A derived pair used to sit at the front of a
+   node's `attrs` list and now sits at the back, on every arm that derives one:
+   `box` (`focusable`), `input` (`value`, `placeholder`), `checkbox`
+   (`checked`), `radio` (`name`, `checked`), `select` (`selected`), `option`
+   (`value`, `label`), `file_input` (`accept`, `capture`, `multiple`) and
+   `scroll` (`reveal`, `reveal-align`). `node` exposes `attrs` publicly, so a
+   whole-list equality on a node sees a different list even where every lookup
+   on it answers the same.
 
 #### Telemetry harness (`Nopal_test.Telemetry_test`)
 

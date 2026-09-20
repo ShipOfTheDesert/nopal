@@ -1,3 +1,4 @@
+module Attrs = Attrs
 module Element = Element
 module Reveal = Reveal
 module Scroll_delta = Scroll_delta

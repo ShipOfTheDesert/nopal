@@ -53,6 +53,30 @@ type 'msg rendered = {
   box_handlers : 'msg box_handler_entry list;
 }
 
+(* A pair derived from a typed field is an overlay over the view's own [attrs]
+   list, not a replacement for it: it is appended, so a lookup — which resolves
+   a duplicate key to the last pair — answers with the derivation wherever the
+   two collide, and with the view's own pair everywhere else.
+
+   A derivation asserts a value and never denies one. For the four keys the web
+   renderer spells as real DOM attributes and whose absence it spells as
+   removal — ["disabled"], ["accept"], ["capture"] and ["multiple"] — a typed
+   field that declines contributes no pair at all, so whatever [attrs] declared
+   for that name is uncovered rather than erased and the two renderers cannot
+   disagree about who won. [derived_flag] is the boolean spelling of the same
+   rule and also carries ["focusable"], whose conditional shape predates it.
+
+   Each arm builds its overlay once and appends it once. *)
+let derived_pair name value =
+  match value with
+  | None -> []
+  | Some v -> [ (name, v) ]
+
+let derived_flag name flag =
+  match flag with
+  | true -> [ (name, "true") ]
+  | false -> []
+
 let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
   let handlers = ref [] in
   let draw_handlers = ref [] in
@@ -107,19 +131,15 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
                The DSL says only that the container is focusable; how a platform
                spells a tab stop is that platform's business, so the derived
                pair carries the DSL's own word and no backend's attribute name.
-               The pair is prepended to the view's own attributes so it wins
+               The pair is appended to the view's own attributes so it wins
                lookup over a caller-supplied key of the same name, the same
-               shape [Scroll]'s [reveal] and the input arms already use. A
-               container that is not focusable carries no pair at all, so every
-               tree that rendered before this arm reads back unchanged. Only the
-               flag is surfaced: this renderer fires the selected node's own
-               handler and models no propagation, so the subtree scoping of a
-               container's focus edges is not observable here at all. *)
-            attrs =
-              (match focusable with
-                | true -> [ ("focusable", "true") ]
-                | false -> [])
-              @ attrs;
+               shape [Scroll]'s [reveal] and the input arms use. A container
+               that is not focusable carries no pair at all, so every tree that
+               rendered before this arm reads back unchanged. Only the flag is
+               surfaced: this renderer fires the selected node's own handler and
+               models no propagation, so the subtree scoping of a container's
+               focus edges is not observable here at all. *)
+            attrs = attrs @ derived_flag "focusable" focusable;
             children = go_children rev_path children;
             interaction;
           }
@@ -195,7 +215,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
           {
             tag = "input";
             style;
-            attrs = [ ("value", value); ("placeholder", placeholder) ] @ attrs;
+            attrs = attrs @ [ ("value", value); ("placeholder", placeholder) ];
             children = [];
             interaction;
           }
@@ -220,11 +240,9 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             tag = "checkbox";
             style;
             attrs =
-              [
-                ("checked", string_of_bool checked);
-                ("disabled", string_of_bool disabled);
-              ]
-              @ attrs;
+              attrs
+              @ ("checked", string_of_bool checked)
+                :: derived_flag "disabled" disabled;
             children = [];
             interaction;
           }
@@ -249,12 +267,10 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             tag = "radio";
             style;
             attrs =
-              [
-                ("name", name);
-                ("checked", string_of_bool checked);
-                ("disabled", string_of_bool disabled);
-              ]
-              @ attrs;
+              attrs
+              @ ("name", name)
+                :: ("checked", string_of_bool checked)
+                :: derived_flag "disabled" disabled;
             children = [];
             interaction;
           }
@@ -283,11 +299,8 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
                   tag = "option";
                   style = Nopal_style.Style.default;
                   attrs =
-                    [
-                      ("value", opt.value);
-                      ("label", opt.label);
-                      ("disabled", string_of_bool opt.disabled);
-                    ];
+                    [ ("value", opt.value); ("label", opt.label) ]
+                    @ derived_flag "disabled" opt.disabled;
                   children = [];
                   interaction = Nopal_style.Interaction.default;
                 })
@@ -298,8 +311,8 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             tag = "select";
             style;
             attrs =
-              [ ("selected", selected); ("disabled", string_of_bool disabled) ]
-              @ attrs;
+              attrs
+              @ (("selected", selected) :: derived_flag "disabled" disabled);
             children = option_children;
             interaction;
           }
@@ -319,26 +332,29 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             on_files = on_change;
           }
           :: !handlers;
-        (* Picker configuration is surfaced as node attributes, prepended so it
+        (* Picker configuration is surfaced as node attributes, appended so it
            wins lookup over a caller-supplied key of the same name — the same
            shape as [Input], [Checkbox], [Radio] and [Select]. [accept] is the
-           comma-joined form the DOM carries, and an absent [capture] is the
-           empty string so the key is always present and the attribute list
-           stays total. *)
+           comma-joined form the DOM carries. All three fields have an absent
+           form, and each contributes no pair in it, exactly as the web renderer
+           writes no such DOM attribute; a view that spelled one through [attrs]
+           keeps it for as long as the typed field declines to speak. *)
+        let picker_config =
+          derived_pair "accept"
+            (match accept with
+            | [] -> None
+            | _ :: _ -> Some (String.concat "," accept))
+          @ derived_pair "capture"
+              (match capture with
+              | None -> None
+              | Some c -> Some (Nopal_element.Element.capture_to_string c))
+          @ derived_flag "multiple" multiple
+        in
         Element
           {
             tag = "file_input";
             style;
-            attrs =
-              [
-                ("accept", String.concat "," accept);
-                ( "capture",
-                  match capture with
-                  | None -> ""
-                  | Some c -> Nopal_element.Element.capture_to_string c );
-                ("multiple", string_of_bool multiple);
-              ]
-              @ attrs;
+            attrs = attrs @ picker_config;
             children = [];
             interaction;
           }
@@ -361,21 +377,22 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
                under which alignment. The key is carried exactly as the view
                wrote it — escaping belongs to whichever backend builds a query
                out of it, and a value escaped here would be escaped twice there
-               and resolve to nothing. The derived pair is prepended to the
+               and resolve to nothing. The derived pair is appended to the
                view's own attributes so it wins lookup over a caller-supplied
                key of the same name, the same shape [Input], [Checkbox],
-               [Radio], [Select] and [File_input] already use. A container that
+               [Radio], [Select] and [File_input] use. A container that
                declares neither carries no attributes at all, so every tree
                that renders today reads back unchanged. *)
             attrs =
-              (match reveal with
-                | None -> []
-                | Some { Nopal_element.Reveal.key; align } ->
-                    [
-                      ("reveal", key);
-                      ("reveal-align", Nopal_element.Reveal.align_token align);
-                    ])
-              @ attrs;
+              (attrs
+              @
+              match reveal with
+              | None -> []
+              | Some { Nopal_element.Reveal.key; align } ->
+                  [
+                    ("reveal", key);
+                    ("reveal-align", Nopal_element.Reveal.align_token align);
+                  ]);
             children = [ go (0 :: rev_path) child ];
             interaction = Nopal_style.Interaction.default;
           }
@@ -535,6 +552,21 @@ let text_style node =
   | Element _ ->
       None
 
+(* Within an attribute list a duplicate key resolves to the LAST pair, which is
+   what a browser does with repeated writes of the same attribute name. Every
+   point below that answers a question about an attribute goes through these
+   two, so reading a value back, selecting a node by one and dispatching an
+   event at one cannot disagree. The fold itself is
+   [Nopal_element.Attrs.resolve] — one definition, called from both renderers,
+   so the lookup stays total and there is nothing for the two to drift apart
+   from on a repeated key. *)
+let resolved_attr = Nopal_element.Attrs.resolve
+
+let attr_resolves_to attrs ~name ~value =
+  match resolved_attr name attrs with
+  | Some resolved -> String.equal resolved value
+  | None -> false
+
 let rec find sel node =
   match sel with
   | By_tag tag -> (
@@ -556,11 +588,7 @@ let rec find sel node =
   | By_attr (name, value) -> (
       match node with
       | Element { attrs; children; _ } ->
-          if
-            List.exists
-              (fun (k, v) -> String.equal k name && String.equal v value)
-              attrs
-          then Some node
+          if attr_resolves_to attrs ~name ~value then Some node
           else find_in_children sel children
       | Empty
       | Text _ ->
@@ -611,12 +639,7 @@ let find_all sel node =
         match n with
         | Element { attrs; children; _ } ->
             let acc =
-              if
-                List.exists
-                  (fun (k, v) -> String.equal k name && String.equal v value)
-                  attrs
-              then n :: acc
-              else acc
+              if attr_resolves_to attrs ~name ~value then n :: acc else acc
             in
             List.fold_left go acc children
         | Empty
@@ -667,10 +690,7 @@ let has_attr name node =
 
 let attr name node =
   match node with
-  | Element { attrs; _ } -> (
-      match List.find_opt (fun (k, _) -> String.equal k name) attrs with
-      | Some (_, v) -> Some v
-      | None -> None)
+  | Element { attrs; _ } -> resolved_attr name attrs
   | Empty
   | Text _ ->
       None
@@ -707,11 +727,8 @@ let resolve_path sel node =
     | By_attr (name, value) -> (
         match n with
         | Element { attrs; children; _ } ->
-            if
-              List.exists
-                (fun (k, v) -> String.equal k name && String.equal v value)
-                attrs
-            then Some (List.rev rev_path, n)
+            if attr_resolves_to attrs ~name ~value then
+              Some (List.rev rev_path, n)
             else go_children rev_path children
         | Empty
         | Text _ ->

@@ -111,3 +111,29 @@ test("select disabled does not change", async ({ page }) => {
   expect(await sel.isDisabled()).toBe(true);
   await expect(sel).toHaveValue("val-1");
 });
+
+// Attribute precedence: an attribute a control derives from a typed field wins
+// over a pair the caller passed through ~attrs. Asserted on the live DOM
+// because the whole point of the rule is that the structural layer and the
+// browser now agree — a structural-only assertion could not tell the two apart,
+// which is the divergence this rule closes.
+const DERIVED_INPUT = '[data-testid="form-derived-wins"]';
+const DERIVED_CHECKBOX = '[data-testid="form-derived-checkbox"]';
+
+test("a derived placeholder wins over the caller's attrs pair", async ({
+  page,
+}) => {
+  const input = page.locator(DERIVED_INPUT);
+  await expect(input).toHaveAttribute("placeholder", "derived-placeholder");
+  // The caller's own keys, which no typed field claims, still apply.
+  await expect(input).toHaveAttribute("aria-label", "Derived attributes win");
+});
+
+test("a derived input type and disabled state win over the caller's attrs", async ({
+  page,
+}) => {
+  const box = page.locator(DERIVED_CHECKBOX);
+  await expect(box).toHaveAttribute("type", "checkbox");
+  await expect(box).toHaveAttribute("disabled", "");
+  expect(await box.isDisabled()).toBe(true);
+});

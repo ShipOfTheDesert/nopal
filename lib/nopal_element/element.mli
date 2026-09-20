@@ -182,7 +182,65 @@ type 'msg t =
 (** {1 Builders}
 
     Ergonomic constructors with labelled optional arguments. Application code
-    should use these instead of raw variant constructors. *)
+    should use these instead of raw variant constructors.
+
+    {2 Attribute precedence}
+
+    Several builders take both an [?attrs] list and typed fields a backend turns
+    into attributes of its own — an input's [placeholder], a radio's [name], a
+    picker's [accept], a container's [focusable]. The rule is:
+    {b typed-field derivations beat the [~attrs] list; within the list, the last
+       pair wins.}
+
+    Those are two tiers and they are not the same tier. A typed field sits above
+    the list, so [attrs] is an escape hatch for keys the DSL does not model, not
+    a way to overrule the keys it does. A pair a component puts into that list
+    sits inside it, so a caller's later pair of the same name replaces it.
+
+    The second tier is where a component's own attributes travel. A [role], an
+    [aria-describedby] or a [data-field] that a component writes is an ordinary
+    pair in the list it hands down, so a caller passing the same key through
+    that component's attributes replaces it. That is the deliberate escape
+    hatch, and the published contract of the components that document it; it is
+    not a guarantee that an accessibility association or a test anchor cannot be
+    replaced from the call site.
+
+    A derivation that is absent does not erase the key: a picker with no
+    [capture], or a control that is not [disabled], leaves whatever [attrs]
+    declared for that name standing. Absent means the typed field is saying
+    nothing, which is not the same as saying "no attribute".
+
+    Not every derivation has an absent form. An input's [placeholder] is a
+    [string] and not a [string option], so an input derives a pair for that key
+    on every render and a ["placeholder"] pair in [attrs] is replaced rather
+    than left standing, empty default included — as is a radio's required
+    [name]. Uncovering is the behaviour of the derivations that can decline:
+    ["disabled"], ["accept"], ["capture"] and ["multiple"].
+
+    Two renderers enforce this and no more than two, by two different
+    mechanisms. The web backend applies the declared list before it writes any
+    derivation, so application order is what carries the rule there. The
+    structural test renderer appends derived pairs after the declared list and
+    resolves every lookup to the last pair, so an overlay is what carries it
+    there. The within-list half is the same function in both — {!Attrs.resolve}
+    — so there is one definition of what a repeated key answers and nothing for
+    the two to drift apart from. {!draw} carries neither a style nor an
+    attribute list, so it is structurally outside the rule. A backend nobody has
+    written is bound by nothing here: a rule holds where a test holds it.
+
+    The first tier is a shared rule only for the keys the web backend writes as
+    real attributes: ["disabled"], ["accept"], ["capture"], ["multiple"],
+    ["placeholder"], a radio's ["name"] and a control's ["type"]. A container's
+    [focusable] is a first-tier derivation in both renderers, but each spells it
+    in its own vocabulary — a tab-order attribute in the browser, ["focusable"]
+    in the structural tree — so there is no shared key to compare. A checkbox's
+    or radio's [checked], an input's or select's value, and an option's
+    selection are JS {e properties} in the browser and never attributes, so a
+    caller's ["checked"], ["value"] or ["selected"] pair in [attrs] lands on the
+    DOM as an ordinary attribute and is not overruled there. The structural
+    renderer still overlays those three, as a faithful read-out of the typed
+    field, but a structural assertion on them states what that renderer answers
+    and not what the browser does. *)
 
 val empty : 'msg t
 (** An element that renders nothing. *)
@@ -353,11 +411,14 @@ val file_input :
     through [attrs] at the call site — and any accessible name, since the DSL
     has no label element to associate one with.
 
-    [attrs] is an escape hatch for keys this builder does not model. Do not put
-    [type], [accept], [capture] or [multiple] in it: those are written from the
-    typed arguments above, and a reconcile that leaves [attrs] unchanged
-    rewrites them from the typed values regardless of what the initial render
-    put there. *)
+    [attrs] is an escape hatch for keys this builder does not model, and the
+    typed arguments above outrank it wherever they assert a value: a [type], or
+    an [accept], [capture] or [multiple] the arguments configure, is written
+    over whatever [attrs] declared for that name, on the initial render and on
+    every reconcile that leaves [attrs] unchanged. Spelling one of those keys
+    through [attrs] is therefore pointless while the typed argument speaks — it
+    stands only for as long as the argument declines, which [type] never does.
+*)
 
 val image :
   ?style:Nopal_style.Style.t -> src:string -> alt:string -> unit -> 'msg t

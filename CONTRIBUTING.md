@@ -96,8 +96,60 @@ Each record lives beside the rule it defers, so the next reader of that rule
 sees the exception: D-1, D-2, D-6 and D-10 under
 [E2E tests](#e2e-tests-playwright), D-3 under [Performance](#performance), D-4
 under [Kitchen Sink](#kitchen-sink), D-5 and D-7 under
-[VIII. Bug-Class Prevention](#viii-bug-class-prevention), D-8 and D-9 under
-[V. Functional Patterns](#v-functional-patterns).
+[VIII. Bug-Class Prevention](#viii-bug-class-prevention), D-8, D-9 and D-11
+under [V. Functional Patterns](#v-functional-patterns).
+
+## Reporting a framework gap
+
+A downstream consumer that cannot do something with Nopal writes it down, and
+this is the shape it is written in. The shape exists because the last two
+reports to reach this repository each carried claims that were **false at the
+consumer's own pin**, and in both cases the framework was asked to build
+something it had already shipped.
+
+Every claim is one line, and it carries three things:
+
+```
+Nopal-at-pin-<sha> cannot X — verified at HEAD: yes/no — checked against <file:line>
+```
+
+- **The pin.** Not "Nopal cannot X". A consumer speaks for the tree it is
+  pinned to, and nothing else. `<sha>` is what that consumer's lockfile names.
+- **The HEAD answer.** Whether the claim still holds at the tip of `main` at
+  the moment the report is written. **A claim false at HEAD is a consumer
+  upgrade, not a feature request**, and it is triaged as one: the report says
+  which commit closed it and stops there.
+- **The citation.** The `<file:line>` the claim was checked against, in this
+  repository. A claim with no citation is an impression. The citation is also
+  what makes the claim falsifiable by someone who was not there — which is the
+  whole of what this section buys.
+
+Verify against **`llms.txt`**. It is tracked, it ships in every clone, and it
+is kept current feature by feature. Do not verify against `docs/` — that tree
+is in `.git/info/exclude` and reaches nobody (D-5, under
+[Deferrals and decisions not to cover](#deferrals-and-decisions-not-to-cover)),
+so a claim checked against it cannot be re-checked by the reader. Where
+`llms.txt` does not settle the question, cite the `.mli`.
+
+Two failure modes this format is aimed at, both observed:
+
+- **A capability that shipped before the pin.** A consumer pinned at `81455c3`
+  (2026-09-12) reported that nothing in Nopal focuses an element from
+  application code. `Cmd.focus` is at `lib/nopal_mvu/cmd.mli:89` in that exact
+  tree, and `Element.box`'s `~on_focus`/`~on_blur` landed in `ec85d4b`, a week
+  before the pin. The claim was written into the consumer's own source as the
+  justification for a workaround, where nothing would ever re-check it. The
+  HEAD column is what catches this; the citation column is what makes the catch
+  cheap.
+- **A claim introduced by a re-teller.** A report assembled by summarising a
+  consumer's code, rather than by the consumer, attributed to it a lost
+  `role="alert"` the consumer had deliberately never rendered — its own comments
+  said so. A summary is not a report. Whoever holds the pin writes the claim, or
+  the claim names the file it was read out of so the substitution is visible.
+
+A report may of course also carry things this format does not fit — a
+measurement, a screenshot, a rendered geometry. Those are welcome and need no
+ceremony. The format governs the sentence "Nopal cannot X", and only that.
 
 ## Running Tests
 
@@ -613,6 +665,76 @@ concern of `nopal_web`, never application code.
 **Composition Over Inheritance**
 Use modules, functors, and first-class modules for polymorphism.
 No class hierarchies.
+
+**A Typed Field Outranks the `~attrs` List**
+Where an element builder takes both an `~attrs` list and a typed field a backend
+renders as an attribute — `placeholder`, a radio's `name`, a picker's
+`accept`/`capture`/`multiple`, `disabled`, a container's `focusable` — the rule
+is: **typed-field derivations beat the `~attrs` list; within the list, the last
+pair wins.** Those are two tiers and they are not the same tier. A typed field
+sits above the list, so `~attrs` is an escape hatch for keys the DSL does not
+model and cannot overrule the ones it does. A pair a component puts into that
+list sits inside it, so a caller's later pair of the same name replaces it.
+
+The second tier is the one a `nopal_ui` component author designs against. A
+component's own `role`, `aria-describedby` or `data-field` is an ordinary pair
+in the list it hands down, so a caller passing the same key through the
+component's attributes replaces it. That is deliberate — it is the escape hatch
+that keeps a consumer using the component rather than abandoning it — and a
+component whose `.mli` promises a caller override is promising this tier, not a
+guarantee enforced above it. A component that needs a value a caller cannot
+replace needs a typed field, not a list pair.
+
+A derivation that is absent uncovers rather than erases: a picker with no
+`capture` leaves a `capture` the caller declared standing, because a typed field
+saying nothing is not the same as it saying "no attribute".
+
+Two renderers enforce this and no more than two, by two different mechanisms:
+`nopal_web` applies the declared list before it writes any derivation, and
+`nopal_test` appends derived pairs after the declared list and resolves every
+lookup to the last pair. The within-list half of the rule is one function,
+`Nopal_element.Attrs.resolve`, which both call, so there is a single definition
+of what a repeated key answers. `Element.draw` carries neither a `Style.t` nor an
+`attrs` list and is structurally outside the rule. A backend nobody has written
+is bound by nothing here — a rule holds where a test holds it.
+
+The first tier is a rule both renderers hold on the keys `nopal_web` writes as
+real attributes: `disabled`, `accept`, `capture`, `multiple`, `placeholder`, a
+radio's `name` and a control's `type`. A container's `focusable` is a first-tier
+derivation in both, but each spells it in its own vocabulary — a tab-order
+attribute in the browser, `focusable` in the structural tree — so there is no
+shared key to compare. `checked`, `value` and `selected` are outside it. The browser carries those three as JS properties and never as
+attributes, so a caller's `("checked", _)`, `("value", _)` or `("selected", _)`
+pair reaches the DOM as an ordinary attribute and the typed field does not
+overrule it there. `nopal_test` still overlays all three — a faithful read-out
+of the typed field — but a structural assertion on one of them states what that
+renderer answers and is not evidence about the browser.
+
+Deferring part of the rule is allowed; leaving it unrecorded is not — see
+[Deferrals and decisions not to cover](#deferrals-and-decisions-not-to-cover)
+for the `D-n` scheme. **One record sits under this rule: an open deferral on the
+position a derived pair takes in a node's `attrs` list (D-11).**
+
+#### Open deferral D-11 — the node `attrs` list order is pinned nowhere
+
+**Owner: whoever first writes a whole-node fixture carrying both a caller pair
+and a derived pair, in the change that writes it.**
+
+`nopal_test` moved its derived pairs from the front of a node's `attrs` list to
+the back, which is what makes the last-pair lookup answer the derivation. Every
+lookup on that list is pinned — `attr`, a `By_attr` selector and the selector an
+event simulation resolves all assert the winner. The *position* is not: every
+whole-node fixture in the suite
+(`test/unit/nopal_element/test_element_form.ml`, the three `node` comparisons)
+declares no caller `attrs` at all, so `[] @ derived` and `derived @ []` are the
+same list and the prepend-to-append move reddens nothing.
+
+This matters because `Test_renderer.node` exposes `attrs` publicly, so a
+downstream suite doing whole-list equality on a node sees a changed list with no
+compiler help — which is why the move is published in `llms.txt` under
+"Attribute answers that moved" rather than left to be discovered. It is recorded
+rather than fixed because the fixture that would pin it is the fixture that
+would also want to assert the winner, and no case in the tree needs both today.
 
 **A Typed Size Is a Guarantee, Not a Hint**
 `Style.size` states what a dimension of an element is, and a backend has to

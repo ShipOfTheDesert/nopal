@@ -173,9 +173,45 @@ let same_main_axis (a : Style_css.main_axis option)
       false
 
 (* Set every declared attribute on [el]. Shared by the create arms and by
-   [maybe_apply_attrs], which adds the removal half for reconciliation. *)
+   [maybe_apply_attrs], which adds the removal half for reconciliation.
+
+   Applied BEFORE the attributes an arm derives from its own typed fields, so a
+   derivation wins a collision — the first tier of the rule stated on
+   [Nopal_element.Element]'s builders, and the one [apply_focusable] already
+   spelled out for a container's tab order. Within the list itself the LAST pair
+   wins, because writing the list in order leaves the later [set_at] standing. A
+   component's [role], [aria-*] or [data-field] is an ordinary pair in the list
+   it hands down, so it sits in that second tier and a caller's later pair of
+   the same name replaces it — the deliberate escape hatch four [nopal_ui]
+   [.mli]s publish. [Nopal_test.Test_renderer] resolves both tiers the same way,
+   by appending its derived pairs and answering a lookup with the last match. *)
 let apply_attrs el attrs =
   List.iter (fun (k, v) -> Brr.El.set_at (Jstr.v k) (Some (Jstr.v v)) el) attrs
+
+(* Within a declared list a duplicate key resolves to the LAST pair, which is
+   what [apply_attrs] leaves on the element after writing the list in order and
+   what [Nopal_test.Test_renderer] answers. The fold itself is
+   [Nopal_element.Attrs.resolve] — one definition, called from both renderers,
+   so the lookup stays total and there is nothing for the two to drift apart
+   from on a repeated key. *)
+let declared_attr = Nopal_element.Attrs.resolve
+
+(* Write a derived attribute over whatever [~attrs] put there, and — when the
+   derivation is absent — uncover the declared pair rather than erasing the key.
+
+   A derivation asserts a value and never denies one. [Some v] is the typed
+   field speaking; [None] is it saying nothing, which is not the same as saying
+   "no attribute": an application that spells [accept] or [disabled] through
+   [~attrs] keeps it for as long as the typed field declines to. This is
+   [reconcile_focusable]'s asymmetry, generalised to every arm whose derivation
+   can go away. *)
+let set_derived el ~declared name value =
+  let resolved =
+    match value with
+    | Some v -> Some v
+    | None -> declared_attr name declared
+  in
+  Brr.El.set_at (Jstr.v name) (Option.map Jstr.v resolved) el
 
 (* Element.t has no Map constructor — the runtime resolves mapped subtrees
    before they reach the renderer. This match is exhaustive over all
@@ -356,19 +392,19 @@ let equal_file_input_config ~old_accept ~old_capture ~old_multiple ~accept
   && equal_capture_opt old_capture capture
   && Bool.equal old_multiple multiple
 
-let apply_file_input_config el ~accept ~capture ~multiple =
-  let set name value = Brr.El.set_at (Jstr.v name) value el in
+let apply_file_input_config el ~declared ~accept ~capture ~multiple =
+  let set = set_derived el ~declared in
   set "accept"
     (match accept with
     | [] -> None
-    | _ :: _ -> Some (Jstr.v (String.concat "," accept)));
+    | _ :: _ -> Some (String.concat "," accept));
   set "capture"
     (match capture with
     | None -> None
-    | Some c -> Some (Jstr.v (Nopal_element.Element.capture_to_string c)));
+    | Some c -> Some (Nopal_element.Element.capture_to_string c));
   set "multiple"
     (match multiple with
-    | true -> Some (Jstr.v "")
+    | true -> Some ""
     | false -> None)
 
 (* The bytes stay on the JavaScript side: each selected [File] is registered
@@ -749,8 +785,8 @@ let rec create_live ~sheet ~reveals ~dispatch ~parent_axis
         apply_styles_for_element ~sheet ~parent_axis el style interaction
       in
       Jv.set (Brr.El.to_jv el) "value" (Jv.of_string value);
-      Brr.El.set_at (Jstr.v "placeholder") (Some (Jstr.v placeholder)) el;
       apply_attrs el attrs;
+      Brr.El.set_at (Jstr.v "placeholder") (Some (Jstr.v placeholder)) el;
       let listeners =
         wire_input_events ~dispatch el ~on_change ~on_submit ~on_focus ~on_blur
           ~on_keydown
@@ -759,13 +795,14 @@ let rec create_live ~sheet ~reveals ~dispatch ~parent_axis
         { dom = el; element; children = []; listeners; base_id; interaction_id }
   | Checkbox { style; interaction; attrs; checked; disabled; on_toggle } ->
       let el = Brr.El.v (Jstr.v "input") [] in
-      Brr.El.set_at (Jstr.v "type") (Some (Jstr.v "checkbox")) el;
       Jv.set (Brr.El.to_jv el) "checked" (Jv.of_bool checked);
-      if disabled then Brr.El.set_at (Jstr.v "disabled") (Some (Jstr.v "")) el;
       let base_id, interaction_id =
         apply_styles_for_element ~sheet ~parent_axis el style interaction
       in
       apply_attrs el attrs;
+      Brr.El.set_at (Jstr.v "type") (Some (Jstr.v "checkbox")) el;
+      set_derived el ~declared:attrs "disabled"
+        (if disabled then Some "" else None);
       let listeners =
         match (on_toggle, disabled) with
         | Some f, false ->
@@ -782,14 +819,15 @@ let rec create_live ~sheet ~reveals ~dispatch ~parent_axis
         { dom = el; element; children = []; listeners; base_id; interaction_id }
   | Radio { style; interaction; attrs; name; checked; disabled; on_select } ->
       let el = Brr.El.v (Jstr.v "input") [] in
-      Brr.El.set_at (Jstr.v "type") (Some (Jstr.v "radio")) el;
-      Brr.El.set_at (Jstr.v "name") (Some (Jstr.v name)) el;
       Jv.set (Brr.El.to_jv el) "checked" (Jv.of_bool checked);
-      if disabled then Brr.El.set_at (Jstr.v "disabled") (Some (Jstr.v "")) el;
       let base_id, interaction_id =
         apply_styles_for_element ~sheet ~parent_axis el style interaction
       in
       apply_attrs el attrs;
+      Brr.El.set_at (Jstr.v "type") (Some (Jstr.v "radio")) el;
+      Brr.El.set_at (Jstr.v "name") (Some (Jstr.v name)) el;
+      set_derived el ~declared:attrs "disabled"
+        (if disabled then Some "" else None);
       let listeners =
         match (on_select, disabled) with
         | Some msg, false ->
@@ -822,11 +860,12 @@ let rec create_live ~sheet ~reveals ~dispatch ~parent_axis
          select reflects no selection (selectedIndex = -1) rather than the
          browser's default first option (FR-4). *)
       Jv.set (Brr.El.to_jv el) "value" (Jv.of_string selected);
-      if disabled then Brr.El.set_at (Jstr.v "disabled") (Some (Jstr.v "")) el;
       let base_id, interaction_id =
         apply_styles_for_element ~sheet ~parent_axis el style interaction
       in
       apply_attrs el attrs;
+      set_derived el ~declared:attrs "disabled"
+        (if disabled then Some "" else None);
       let listeners =
         match (on_change, disabled) with
         | Some f, false ->
@@ -846,12 +885,12 @@ let rec create_live ~sheet ~reveals ~dispatch ~parent_axis
   | File_input
       { style; interaction; attrs; accept; capture; multiple; on_change } ->
       let el = Brr.El.v (Jstr.v "input") [] in
-      Brr.El.set_at (Jstr.v "type") (Some (Jstr.v "file")) el;
-      apply_file_input_config el ~accept ~capture ~multiple;
       let base_id, interaction_id =
         apply_styles_for_element ~sheet ~parent_axis el style interaction
       in
       apply_attrs el attrs;
+      Brr.El.set_at (Jstr.v "type") (Some (Jstr.v "file")) el;
+      apply_file_input_config el ~declared:attrs ~accept ~capture ~multiple;
       let listeners = wire_file_change ~dispatch el on_change in
       Live_node
         { dom = el; element; children = []; listeners; base_id; interaction_id }
@@ -1283,6 +1322,10 @@ let attrs_of (el : 'msg Nopal_element.Element.t) =
   | Virtual_list _ ->
       []
 
+(* Returns whether it wrote anything. A caller that derives attributes of its
+   own re-asserts them when this returns [true]: the declared list has just been
+   re-applied wholesale, so a pair colliding with a derivation is sitting on the
+   element even though the derived value itself did not change this frame. *)
 let maybe_apply_attrs el old_element new_element =
   let old_attrs = attrs_of old_element in
   let new_attrs = attrs_of new_element in
@@ -1294,7 +1337,9 @@ let maybe_apply_attrs el old_element new_element =
           Brr.El.set_at (Jstr.v k) None el)
       old_attrs;
     (* Set new/changed attrs *)
-    apply_attrs el new_attrs)
+    apply_attrs el new_attrs;
+    true)
+  else false
 
 (* [Box] is the only variant carrying focusability, and for every other variant
    the answer is not a default but the truth: it carries none. *)
@@ -1335,8 +1380,67 @@ let reconcile_focusable el ~declared_attrs ~old_focusable ~new_focusable =
       apply_focusable el new_focusable
   | true, false ->
       Brr.El.set_at (Jstr.v tab_order_attr)
-        (Option.map Jstr.v (List.assoc_opt tab_order_attr declared_attrs))
+        (Option.map Jstr.v (declared_attr tab_order_attr declared_attrs))
         el
+
+(* The [disabled] state the previous render declared, if that render was of a
+   variant that has one. A previous render of any other variant declared none,
+   which is why this is an option rather than a [bool] defaulting to [false]:
+   "there was no such field" and "the field said false" call for different
+   writes, and collapsing them would skip the write that installs the
+   attribute on the first frame after a variant swap. *)
+let previous_disabled (el : 'msg Nopal_element.Element.t) =
+  match el with
+  | Checkbox { disabled; _ }
+  | Radio { disabled; _ }
+  | Select { disabled; _ } ->
+      Some disabled
+  | Empty
+  | Text _
+  | Box _
+  | Row _
+  | Column _
+  | Button _
+  | Input _
+  | File_input _
+  | Image _
+  | Scroll _
+  | Keyed _
+  | Draw _
+  | Virtual_list _ ->
+      None
+
+(* The placeholder the previous render declared, on the same terms. *)
+let previous_placeholder (el : 'msg Nopal_element.Element.t) =
+  match el with
+  | Input { placeholder; _ } -> Some placeholder
+  | Empty
+  | Text _
+  | Box _
+  | Row _
+  | Column _
+  | Button _
+  | Checkbox _
+  | Radio _
+  | Select _
+  | File_input _
+  | Image _
+  | Scroll _
+  | Keyed _
+  | Draw _
+  | Virtual_list _ ->
+      None
+
+(* A derivation is re-asserted when its own value changed, and also when
+   [maybe_apply_attrs] re-applied the declared list — that pass writes every
+   declared pair, so a pair colliding with a derivation lands on the element
+   even on a frame where the derived value stood still. *)
+let needs_reassert ~attrs_written ~previous ~current ~equal =
+  attrs_written
+  ||
+  match previous with
+  | None -> true
+  | Some p -> not (equal p current)
 
 let style_of (el : 'msg Nopal_element.Element.t) =
   match el with
@@ -1738,7 +1842,11 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
         on_wheel;
         _;
       } ->
-      maybe_apply_attrs el old_n.element new_el;
+      (* [reconcile_focusable] re-asserts the tab order on every frame the flag
+         is set, and restores the declared pair on the frame it falls, so it
+         needs no [attrs_written] guard of its own — unlike the arms whose
+         derivation is written edge-triggered. *)
+      ignore (maybe_apply_attrs el old_n.element new_el : bool);
       reconcile_focusable el ~declared_attrs:attrs
         ~old_focusable:(focusable_of old_n.element)
         ~new_focusable:focusable;
@@ -1761,7 +1869,8 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
           ~old_parent_axis:old_children_axis ~parent_axis:children_axis el
           old_n.children children
   | Row { children; _ } ->
-      maybe_apply_attrs el old_n.element new_el;
+      (* Derives no attributes of its own, so nothing to re-assert. *)
+      ignore (maybe_apply_attrs el old_n.element new_el : bool);
       (* Re-assert hardcoded direction after style reconciliation. *)
       Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v "row") el;
       old_n.children <-
@@ -1769,7 +1878,8 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
           ~old_parent_axis:old_children_axis ~parent_axis:children_axis el
           old_n.children children
   | Column { children; _ } ->
-      maybe_apply_attrs el old_n.element new_el;
+      (* Derives no attributes of its own, so nothing to re-assert. *)
+      ignore (maybe_apply_attrs el old_n.element new_el : bool);
       (* Re-assert hardcoded direction after style reconciliation. *)
       Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v "column") el;
       old_n.children <-
@@ -1777,7 +1887,8 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
           ~old_parent_axis:old_children_axis ~parent_axis:children_axis el
           old_n.children children
   | Button { on_click; on_dblclick; child; _ } ->
-      maybe_apply_attrs el old_n.element new_el;
+      (* Derives no attributes of its own, so nothing to re-assert. *)
+      ignore (maybe_apply_attrs el old_n.element new_el : bool);
       unlisten_all old_n.listeners;
       old_n.listeners <-
         wire_click ~dispatch el on_click
@@ -1805,27 +1916,12 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
       let dom_value = Jv.Jstr.get (Brr.El.to_jv el) "value" |> Jstr.to_string in
       if not (String.equal dom_value value) then
         Jv.set (Brr.El.to_jv el) "value" (Jv.of_string value);
-      (match old_n.element with
-      | Input { placeholder = old_ph; _ } ->
-          if not (String.equal old_ph placeholder) then
-            Brr.El.set_at (Jstr.v "placeholder") (Some (Jstr.v placeholder)) el
-      | Empty
-      | Text _
-      | Box _
-      | Row _
-      | Column _
-      | Button _
-      | Checkbox _
-      | Radio _
-      | Select _
-      | File_input _
-      | Image _
-      | Scroll _
-      | Keyed _
-      | Draw _
-      | Virtual_list _ ->
-          Brr.El.set_at (Jstr.v "placeholder") (Some (Jstr.v placeholder)) el);
-      maybe_apply_attrs el old_n.element new_el;
+      let attrs_written = maybe_apply_attrs el old_n.element new_el in
+      if
+        needs_reassert ~attrs_written
+          ~previous:(previous_placeholder old_n.element)
+          ~current:placeholder ~equal:String.equal
+      then Brr.El.set_at (Jstr.v "placeholder") (Some (Jstr.v placeholder)) el;
       unlisten_all old_n.listeners;
       old_n.listeners <-
         wire_input_events ~dispatch el ~on_change ~on_submit ~on_focus ~on_blur
@@ -1857,7 +1953,8 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
           Brr.El.set_at (Jstr.v "src") (Some (Jstr.v src)) el;
           Brr.El.set_at (Jstr.v "alt") (Some (Jstr.v alt)) el)
   | Scroll { reveal; child; _ } ->
-      maybe_apply_attrs el old_n.element new_el;
+      (* Derives no attributes of its own, so nothing to re-assert. *)
+      ignore (maybe_apply_attrs el old_n.element new_el : bool);
       let previous =
         match old_n.element with
         | Scroll { reveal = previous; _ } -> previous
@@ -1919,13 +2016,22 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
           on_pointer_leave on_pointer_down on_pointer_up on_wheel
   | Checkbox { checked; disabled; on_toggle; _ } ->
       Jv.set (Brr.El.to_jv el) "checked" (Jv.of_bool checked);
-      (match (disabled, old_n.element) with
-      | true, Checkbox { disabled = false; _ } ->
-          Brr.El.set_at (Jstr.v "disabled") (Some (Jstr.v "")) el
-      | false, Checkbox { disabled = true; _ } ->
-          Brr.El.set_at (Jstr.v "disabled") None el
-      | _ -> ());
-      maybe_apply_attrs el old_n.element new_el;
+      let attrs_written = maybe_apply_attrs el old_n.element new_el in
+      (* A constant derivation still has to be re-asserted, and for the same
+         reason a changing one does: the declared list was just re-applied
+         wholesale, so a caller pair naming [type] is sitting on the element, and
+         a caller pair that went away took the key with it. Nothing about the
+         typed side changed, which is precisely why there is no other condition
+         to hang this on. *)
+      if attrs_written then
+        Brr.El.set_at (Jstr.v "type") (Some (Jstr.v "checkbox")) el;
+      if
+        needs_reassert ~attrs_written
+          ~previous:(previous_disabled old_n.element)
+          ~current:disabled ~equal:Bool.equal
+      then
+        set_derived el ~declared:(attrs_of new_el) "disabled"
+          (if disabled then Some "" else None);
       unlisten_all old_n.listeners;
       old_n.listeners <-
         (match (on_toggle, disabled) with
@@ -1939,15 +2045,18 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
             ]
         | _ -> [])
   | Radio { name; checked; disabled; on_select; _ } ->
-      Brr.El.set_at (Jstr.v "name") (Some (Jstr.v name)) el;
       Jv.set (Brr.El.to_jv el) "checked" (Jv.of_bool checked);
-      (match (disabled, old_n.element) with
-      | true, Radio { disabled = false; _ } ->
-          Brr.El.set_at (Jstr.v "disabled") (Some (Jstr.v "")) el
-      | false, Radio { disabled = true; _ } ->
-          Brr.El.set_at (Jstr.v "disabled") None el
-      | _ -> ());
-      maybe_apply_attrs el old_n.element new_el;
+      let attrs_written = maybe_apply_attrs el old_n.element new_el in
+      if attrs_written then
+        Brr.El.set_at (Jstr.v "type") (Some (Jstr.v "radio")) el;
+      Brr.El.set_at (Jstr.v "name") (Some (Jstr.v name)) el;
+      if
+        needs_reassert ~attrs_written
+          ~previous:(previous_disabled old_n.element)
+          ~current:disabled ~equal:Bool.equal
+      then
+        set_derived el ~declared:(attrs_of new_el) "disabled"
+          (if disabled then Some "" else None);
       unlisten_all old_n.listeners;
       old_n.listeners <-
         (match (on_select, disabled) with
@@ -1978,13 +2087,14 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
          select reflects no selection (selectedIndex = -1) rather than the
          browser's default first option (FR-4). *)
       Jv.set parent_jv "value" (Jv.of_string selected);
-      (match (disabled, old_n.element) with
-      | true, Select { disabled = false; _ } ->
-          Brr.El.set_at (Jstr.v "disabled") (Some (Jstr.v "")) el
-      | false, Select { disabled = true; _ } ->
-          Brr.El.set_at (Jstr.v "disabled") None el
-      | _ -> ());
-      maybe_apply_attrs el old_n.element new_el;
+      let attrs_written = maybe_apply_attrs el old_n.element new_el in
+      if
+        needs_reassert ~attrs_written
+          ~previous:(previous_disabled old_n.element)
+          ~current:disabled ~equal:Bool.equal
+      then
+        set_derived el ~declared:(attrs_of new_el) "disabled"
+          (if disabled then Some "" else None);
       unlisten_all old_n.listeners;
       old_n.listeners <-
         (match (on_change, disabled) with
@@ -2103,6 +2213,9 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
          [src]/[alt] — this runs on every reconcile, and an application that
          reconciles per keystroke would otherwise issue three DOM writes a
          frame for a picker that never changes. *)
+      let attrs_written = maybe_apply_attrs el old_n.element new_el in
+      if attrs_written then
+        Brr.El.set_at (Jstr.v "type") (Some (Jstr.v "file")) el;
       (match old_n.element with
       | File_input
           {
@@ -2111,8 +2224,9 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
             multiple = old_multiple;
             _;
           }
-        when equal_file_input_config ~old_accept ~old_capture ~old_multiple
-               ~accept ~capture ~multiple ->
+        when (not attrs_written)
+             && equal_file_input_config ~old_accept ~old_capture ~old_multiple
+                  ~accept ~capture ~multiple ->
           ()
       | Empty
       | Text _
@@ -2130,8 +2244,8 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
       | Keyed _
       | Draw _
       | Virtual_list _ ->
-          apply_file_input_config el ~accept ~capture ~multiple);
-      maybe_apply_attrs el old_n.element new_el;
+          apply_file_input_config el ~declared:(attrs_of new_el) ~accept
+            ~capture ~multiple);
       unlisten_all old_n.listeners;
       old_n.listeners <- wire_file_change ~dispatch el on_change
   | Empty

@@ -458,9 +458,11 @@ let serialized model = Sub.serialize_model model
    anchor the browser specs scope themselves to, so what has to be pinned here
    is that each control is rendered at all - and that the picker is configured
    the way this section says it is. Those three attributes are its whole
-   configuration: images only, the rear camera, and one photo at a time. None of
-   them reaches the model, so nothing else in either suite would notice a picker
-   that started asking for the front camera or taking a folder full of files. *)
+   configuration: images only, the rear camera, and one photo at a time - the
+   last of which the picker spells by carrying no [multiple] attribute at all,
+   in both renderers. None of them reaches the model, so nothing else in either
+   suite would notice a picker that started asking for the front camera or
+   taking a folder full of files. *)
 let test_section_renders_its_configured_picker () =
   let idle = model0 () in
   Alcotest.(check bool) "the picker is rendered" true (present picker idle);
@@ -479,9 +481,8 @@ let test_section_renders_its_configured_picker () =
       Alcotest.(check (option string))
         "the picker asks for the rear camera" (Some "environment")
         (attr "capture" node);
-      Alcotest.(check (option string))
-        "the picker takes one photo at a time" (Some "false")
-        (attr "multiple" node);
+      Alcotest.(check bool)
+        "the picker takes one photo at a time" false (has_attr "multiple" node);
       Alcotest.(check (option string))
         "and keeps its accessible name" (Some "Receipt photo")
         (attr "aria-label" node)

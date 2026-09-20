@@ -7,6 +7,10 @@
  (libraries nopal_element nopal_style alcotest))
 
 (test
+ (name test_attrs)
+ (libraries nopal_element alcotest))
+
+(test
  (name test_draw_element)
  (libraries nopal_element nopal_style nopal_scene alcotest))
 
