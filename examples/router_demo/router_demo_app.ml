@@ -75,6 +75,7 @@ let nav_button ~action ~msg label =
       attrs = [ ("data-action", action) ];
       disabled_style = None;
       loading_style = None;
+      button_type = E.Push;
     }
     (E.text label)
 

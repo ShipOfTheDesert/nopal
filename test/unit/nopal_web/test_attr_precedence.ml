@@ -18,7 +18,7 @@
    Some keys are spelled identically in both backends and carry the same value,
    so a case can assert the derived value itself: [placeholder], [name],
    [accept]/[capture] on a configured picker, and an input's [autocomplete],
-   [type] and [aria-required]. The rest are comparable only on *which side
+   [type] and [aria-required], and a button's [aria-disabled]. The rest are comparable only on *which side
    wins*, because the two backends deliberately spell them differently —
    [disabled] and an input's [required] are presence attributes in the DOM and
    ["true"] pairs in the structural tree, and in both they are absent rather
@@ -267,26 +267,46 @@ let test_bottom_tabs_aria_is_overridable_through_bar_attrs () =
   check_override ~marker:("data-case", "tabs") ~name:"role"
     ~expected:(Some "navigation") (Bottom_tabs.view config)
 
+(* Every field of each button fixture is written out: starting from
+   [Button.default] and modifying one would inherit behaviour the case never
+   asked for. *)
+let button_fixture ~disabled ~loading attrs : msg Button.config =
+  {
+    Button.variant = Button.Primary;
+    disabled;
+    loading;
+    on_click = None;
+    style = None;
+    interaction = None;
+    attrs;
+    disabled_style = None;
+    loading_style = None;
+    button_type = E.Push;
+  }
+
 let test_button_aria_is_overridable_through_config_attrs () =
-  (* button.mli:31-32, against the disabled button's [("aria-disabled",
-     "true")]. Every field is written out: starting from [Button.default] and
-     modifying one would inherit behaviour this case never asked for. *)
-  let config : msg Button.config =
-    {
-      Button.variant = Button.Primary;
-      disabled = true;
-      loading = false;
-      on_click = None;
-      style = None;
-      interaction = None;
-      attrs = [ ("data-case", "button"); ("aria-disabled", "false") ];
-      disabled_style = None;
-      loading_style = None;
-    }
-  in
-  check_override ~marker:("data-case", "button") ~name:"aria-disabled"
+  check_override ~marker:("data-case", "button") ~name:"aria-busy"
     ~expected:(Some "false")
-    (Button.view config (E.text "Save"))
+    (Button.view
+       (button_fixture ~disabled:false ~loading:true
+          [ ("data-case", "button"); ("aria-busy", "false") ])
+       (E.text "Save"))
+
+(* A disabled button's [aria-disabled] is derived from the element's typed
+   state, not contributed by the component, so it is the one ARIA key of the
+   button that a caller's pair does not replace. *)
+let test_button_aria_disabled_outranks_config_attrs () =
+  let marker = ("data-case", "button-disabled") in
+  let element =
+    Button.view
+      (button_fixture ~disabled:true ~loading:false
+         [ marker; ("aria-disabled", "false") ])
+      (E.text "Save")
+  in
+  check_opt "web keeps the derived aria-disabled" (Some "true")
+    (marked_web_attr ~marker element ~name:"aria-disabled");
+  check_opt "structural keeps the derived aria-disabled" (Some "true")
+    (marked_structural_attr ~marker element ~name:"aria-disabled")
 
 (* --- The two naming keys the labelled controls introduce.
 
@@ -586,6 +606,69 @@ let input_callers_pairs =
     ("type", "caller");
   ]
 
+(* A button's type has no absent form: it is derived on every render, so a
+   caller's pair of that key is replaced whichever way the typed field points. *)
+let test_typed_button_type_outranks_attrs_type_pair () =
+  let button ?button_type caller =
+    E.button ?button_type ~attrs:[ ("type", caller) ] (E.text "Go")
+  in
+  check_opt "structural: an untyped button overrules a caller's submit"
+    (Some "button")
+    (structural_attr (button "submit") "type");
+  check_opt "structural: a submit button overrules a caller's button"
+    (Some "submit")
+    (structural_attr (button ~button_type:E.Submit "button") "type")
+
+let test_typed_button_type_outranks_attrs_type_pair_web () =
+  let button ?button_type caller =
+    E.button ?button_type ~attrs:[ ("type", caller) ] (E.text "Go")
+  in
+  check_opt "web: an untyped button overrules a caller's submit" (Some "button")
+    (web_attr (button "submit") "type");
+  check_opt "web: a submit button overrules a caller's button" (Some "submit")
+    (web_attr (button ~button_type:E.Submit "button") "type");
+  check_opt "web: a type change on update reaches the node" (Some "submit")
+    (web_attr_after_update
+       ~first:(E.button (E.text "Go"))
+       ~second:(E.button ~button_type:E.Submit (E.text "Go"))
+       "type");
+  (* The typed field is held still, so only the re-assert on a re-applied
+     declared list keeps it standing. *)
+  check_opt "web: the type survives a caller's pair arriving on update"
+    (Some "submit")
+    (web_attr_after_update
+       ~first:(E.button ~button_type:E.Submit (E.text "Go"))
+       ~second:(button ~button_type:E.Submit "button")
+       "type")
+
+(* [disabled] is a bool, so [false] uncovers a caller's ["aria-disabled"] rather
+   than removing it, on create and on the frame it falls. *)
+let test_disabled_derives_aria_disabled_over_attrs_web () =
+  let button ?(attrs = []) ~disabled () =
+    E.button ~disabled ~attrs (E.text "Save")
+  in
+  let callers = [ ("aria-disabled", "false") ] in
+  check_opt "web: disabled overrules a caller's aria-disabled" (Some "true")
+    (web_attr (button ~attrs:callers ~disabled:true ()) "aria-disabled");
+  check_opt "web: enabled uncovers a caller's aria-disabled" (Some "false")
+    (web_attr (button ~attrs:callers ~disabled:false ()) "aria-disabled");
+  check_opt "web: enabled with no caller pair emits none" None
+    (web_attr (button ~disabled:false ()) "aria-disabled");
+  check_opt "web: disabled survives a caller's pair arriving on update"
+    (Some "true")
+    (web_attr_after_update ~first:(button ~disabled:true ())
+       ~second:(button ~attrs:callers ~disabled:true ())
+       "aria-disabled");
+  check_opt "web: falling uncovers the caller's pair" (Some "false")
+    (web_attr_after_update
+       ~first:(button ~attrs:callers ~disabled:true ())
+       ~second:(button ~attrs:callers ~disabled:false ())
+       "aria-disabled");
+  check_opt "web: falling with no caller pair removes it" None
+    (web_attr_after_update ~first:(button ~disabled:true ())
+       ~second:(button ~disabled:false ())
+       "aria-disabled")
+
 let authored_input ?(attrs = []) () =
   E.input ~attrs ~required:true ~autocomplete:"username" ~input_type:E.Email "v"
 
@@ -813,9 +896,9 @@ let check_submit_contract ~label ~keys ~dispatched ~prevented element =
    form's first submit button, and a submission nothing cancels is recorded as a
    navigation — so the form's message arriving there is the platform's
    submission reaching the renderer's listener, not a shortcut. The fixture
-   carries a typeless button for that reason: with three text fields and no
-   submit button a browser submits nothing on Enter. The structural renderer
-   does not model buttons at all for a keydown; it walks to the form. *)
+   carries a submit button for that reason: with three text fields and no
+   submit button a browser submits nothing on Enter, and the structural
+   renderer, which models that rule, answers the same. *)
 
 let form_fields = [ "bare"; "submitting"; "consuming" ]
 let field_marker name = ("data-field", name)
@@ -831,7 +914,7 @@ let three_path_form ?on_submit () =
         ~attrs:[ field_marker "consuming" ]
         ~on_keydown:(fun key -> Some ("key " ^ key))
         "v";
-      E.button (E.text "Sign in");
+      E.button ~button_type:E.Submit (E.text "Sign in");
     ]
 
 (* The same shape with no handler anywhere, for the reconcile path to patch. *)
@@ -841,7 +924,7 @@ let unhandled_three_path_form () =
       E.row [ E.input "v" ];
       E.input "v";
       E.input "v";
-      E.button (E.text "Sign in");
+      E.button ~button_type:E.Submit (E.text "Sign in");
     ]
 
 let navigations () =
@@ -968,6 +1051,8 @@ let () =
           Alcotest.test_case "file accept" `Quick test_accept_is_derived_in_both;
           Alcotest.test_case "file capture" `Quick
             test_capture_is_derived_in_both;
+          Alcotest.test_case "button aria-disabled" `Quick
+            test_button_aria_disabled_outranks_config_attrs;
         ] );
       ( "winner only",
         [
@@ -998,7 +1083,7 @@ let () =
             test_navigation_bar_aria_is_overridable_through_config_attrs;
           Alcotest.test_case "bottom tabs bar role" `Quick
             test_bottom_tabs_aria_is_overridable_through_bar_attrs;
-          Alcotest.test_case "button aria-disabled" `Quick
+          Alcotest.test_case "button aria-busy" `Quick
             test_button_aria_is_overridable_through_config_attrs;
         ] );
       ( "the naming keys in both backends",
@@ -1046,6 +1131,12 @@ let () =
           Alcotest.test_case
             "the_three_new_derivations_answer_alike_in_both_renderers" `Quick
             test_the_three_new_derivations_answer_alike_in_both_renderers;
+          Alcotest.test_case "typed_button_type_outranks_attrs_type_pair" `Quick
+            test_typed_button_type_outranks_attrs_type_pair;
+          Alcotest.test_case "typed_button_type_outranks_attrs_type_pair_web"
+            `Quick test_typed_button_type_outranks_attrs_type_pair_web;
+          Alcotest.test_case "disabled_derives_aria_disabled_over_attrs_web"
+            `Quick test_disabled_derives_aria_disabled_over_attrs_web;
         ] );
       ( "the submit contract",
         [

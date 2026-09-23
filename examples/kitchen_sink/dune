@@ -28,6 +28,7 @@
   sub_fixed_size
   sub_min_size
   sub_auth_form
+  sub_button_semantics
   tauri_op)
  (libraries
   nopal_element

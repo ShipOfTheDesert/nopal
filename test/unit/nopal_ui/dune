@@ -77,4 +77,11 @@
 
 (test
  (name test_change_list)
- (libraries nopal_ui nopal_navigation nopal_test nopal_element alcotest))
+ (deps %{project_root}/llms.txt)
+ (libraries
+  nopal_ui
+  nopal_navigation
+  nopal_test
+  nopal_element
+  test_util
+  alcotest))

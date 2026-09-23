@@ -116,8 +116,8 @@ let view _vp model =
           (* No message of its own: the press submits the form, and the form
              carries the message, so a handler here would dispatch twice. *)
           Element.button
-            ~attrs:[ ("data-testid", "auth-submit"); ("type", "submit") ]
-            (Element.text "Sign in");
+            ~attrs:[ ("data-testid", "auth-submit") ]
+            ~button_type:Element.Submit (Element.text "Sign in");
         ];
       counter ~testid:"auth-submit-count" ~label:"Submitted" model.submits;
       counter ~testid:"auth-code-count" ~label:"Code confirmed"

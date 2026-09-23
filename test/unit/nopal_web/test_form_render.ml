@@ -15,22 +15,31 @@
 
 open Nopal_element.Element
 
-type msg = Form_submitted | Other_form_submitted | Field_submitted | Clicked
+type msg =
+  | Form_submitted
+  | Other_form_submitted
+  | Field_submitted
+  | Clicked
+  | Twin_clicked
 
 let msg_to_string = function
   | Form_submitted -> "Form_submitted"
   | Other_form_submitted -> "Other_form_submitted"
   | Field_submitted -> "Field_submitted"
   | Clicked -> "Clicked"
+  | Twin_clicked -> "Twin_clicked"
 
 let equal_msg a b =
   match (a, b) with
   | Form_submitted, Form_submitted
   | Other_form_submitted, Other_form_submitted
   | Field_submitted, Field_submitted
-  | Clicked, Clicked ->
+  | Clicked, Clicked
+  | Twin_clicked, Twin_clicked ->
       true
-  | (Form_submitted | Other_form_submitted | Field_submitted | Clicked), _ ->
+  | ( ( Form_submitted | Other_form_submitted | Field_submitted | Clicked
+      | Twin_clicked ),
+      _ ) ->
       false
 
 let msg_testable =
@@ -139,12 +148,14 @@ let input_with_value ~input_type value =
       input_type;
     }
 
-let button ~attrs ~on_click =
+let button ~button_type ~disabled ~attrs ~on_click =
   Button
     {
       style = no_layout;
       interaction = no_interaction;
       attrs;
+      button_type;
+      disabled;
       on_click;
       on_dblclick = None;
       child = Text { content = "Go"; text_style = None };
@@ -213,7 +224,10 @@ let test_renders_a_form_node_with_its_children () =
       (form ~style:padded ~interaction:no_interaction
          ~attrs:[ ("aria-label", "Sign in") ]
          ~on_submit:None ~autocomplete:None ~novalidate:false
-         [ bare_input (); button ~attrs:[] ~on_click:None ])
+         [
+           bare_input ();
+           button ~button_type:Push ~disabled:false ~attrs:[] ~on_click:None;
+         ])
   in
   Alcotest.(check string) "the node is a form" "FORM" (tag_of node);
   Alcotest.(check (list string))
@@ -250,7 +264,12 @@ let test_renders_a_form_node_with_its_children () =
 
 let test_an_unauthored_form_neither_dispatches_nor_navigates () =
   let _handle, node, msgs, _dispatch =
-    render (unauthored_form [ bare_input (); button ~attrs:[] ~on_click:None ])
+    render
+      (unauthored_form
+         [
+           bare_input ();
+           button ~button_type:Submit ~disabled:false ~attrs:[] ~on_click:None;
+         ])
   in
   Alcotest.(check (option string))
     "no autocomplete is emitted" None (attr node "autocomplete");
@@ -303,28 +322,134 @@ let test_submit_button_click_submits_once_and_does_not_navigate () =
       (submitting_form ~on_submit:Form_submitted
          [
            bare_input ();
-           button ~attrs:[] ~on_click:None;
-           button ~attrs:[] ~on_click:(Some Clicked);
-           button ~attrs:[ ("type", "button") ] ~on_click:(Some Clicked);
+           button ~button_type:Submit ~disabled:false ~attrs:[] ~on_click:None;
          ])
   in
   let before = navigations () in
   click (nth_child node 1);
   check_dispatched "a submit-button click dispatches the form's message once"
     [ Form_submitted ] msgs;
-  Alcotest.(check int) "and does not navigate" before (navigations ());
-  (* A button with no type is a submit button, so its own click and the form's
-     submission both dispatch — the button's first. *)
+  Alcotest.(check int) "and does not navigate" before (navigations ())
+
+let test_untyped_button_in_form_answers_its_own_click_only () =
+  let _handle, node, msgs, _dispatch =
+    render
+      (submitting_form ~on_submit:Form_submitted
+         [
+           bare_input ();
+           button ~button_type:Push ~disabled:false ~attrs:[]
+             ~on_click:(Some Clicked);
+           button ~button_type:Push ~disabled:false
+             ~attrs:[ ("type", "submit") ]
+             ~on_click:(Some Twin_clicked);
+           button ~button_type:Submit ~disabled:false ~attrs:[] ~on_click:None;
+         ])
+  in
+  let before = navigations () in
+  click (nth_child node 1);
+  check_dispatched "a button that names no type answers its own click only"
+    [ Clicked ] msgs;
   click (nth_child node 2);
-  check_dispatched "a typeless button with on_click also submits"
-    [ Form_submitted; Clicked; Form_submitted ]
-    msgs;
-  (* The documented escape: a button typed "button" does not submit. *)
+  check_dispatched "a caller's submit type pair does not make it submit"
+    [ Clicked; Twin_clicked ] msgs;
+  (* Affirmative arm on the same form: a button typed to submit does reach the
+     form's listener, so the silence above is the type answering. *)
   click (nth_child node 3);
-  check_dispatched "a button typed button answers its own click only"
-    [ Form_submitted; Clicked; Form_submitted; Clicked ]
+  check_dispatched "a submit-typed button in the same form submits it"
+    [ Clicked; Twin_clicked; Form_submitted ]
     msgs;
   Alcotest.(check int) "none of it navigated" before (navigations ())
+
+let test_submit_typed_button_click_dispatches_click_then_form () =
+  let _handle, node, msgs, _dispatch =
+    render
+      (submitting_form ~on_submit:Form_submitted
+         [
+           bare_input ();
+           button ~button_type:Submit ~disabled:false ~attrs:[]
+             ~on_click:(Some Clicked);
+         ])
+  in
+  let before = navigations () in
+  click (nth_child node 1);
+  check_dispatched "the button's own message, then the form's"
+    [ Clicked; Form_submitted ]
+    msgs;
+  Alcotest.(check int) "and does not navigate" before (navigations ())
+
+(* The disabled button and its enabled twin share one form, so the twin's
+   submission shows the form is listening and the disabled button's silence is
+   its own. *)
+let test_disabled_submit_button_click_dispatches_nothing_and_does_not_submit ()
+    =
+  let _handle, node, msgs, _dispatch =
+    render
+      (submitting_form ~on_submit:Form_submitted
+         [
+           bare_input ();
+           button ~button_type:Submit ~disabled:true ~attrs:[]
+             ~on_click:(Some Clicked);
+           button ~button_type:Submit ~disabled:false ~attrs:[]
+             ~on_click:(Some Twin_clicked);
+         ])
+  in
+  let before = navigations () in
+  click (nth_child node 1);
+  check_dispatched "a disabled submit button dispatches nothing" [] msgs;
+  click (nth_child node 2);
+  check_dispatched "its enabled twin dispatches its click, then the form's"
+    [ Twin_clicked; Form_submitted ]
+    msgs;
+  Alcotest.(check int) "and nothing navigated" before (navigations ())
+
+let one_field_form ~disabled =
+  submitting_form ~on_submit:Form_submitted
+    [
+      bare_input ();
+      button ~button_type:Submit ~disabled ~attrs:[] ~on_click:(Some Clicked);
+    ]
+
+let test_enter_in_field_with_disabled_default_button_submits_nothing () =
+  let _handle, node, msgs, _dispatch = render (one_field_form ~disabled:true) in
+  let before = navigations () in
+  press_enter (nth_child node 0);
+  check_dispatched "Enter clicks the disabled default button, which is inert" []
+    msgs;
+  Alcotest.(check int) "and nothing navigated" before (navigations ());
+  let _handle, enabled_node, enabled_msgs, _dispatch =
+    render (one_field_form ~disabled:false)
+  in
+  press_enter (nth_child enabled_node 0);
+  check_dispatched "with the button enabled, Enter clicks it and submits"
+    [ Clicked; Form_submitted ]
+    enabled_msgs
+
+(* The default button is the first submit button in tree order, so a disabled
+   one placed first blocks Enter even though an enabled one follows it. The
+   affirmative arm swaps the two and nothing else. *)
+let test_disabled_before_enabled_submit_button_blocks_enter () =
+  let two_buttons ~first_disabled =
+    submitting_form ~on_submit:Form_submitted
+      [
+        bare_input ();
+        button ~button_type:Submit ~disabled:first_disabled ~attrs:[]
+          ~on_click:(Some Clicked);
+        button ~button_type:Submit ~disabled:(not first_disabled) ~attrs:[]
+          ~on_click:(Some Twin_clicked);
+      ]
+  in
+  let _handle, node, msgs, _dispatch =
+    render (two_buttons ~first_disabled:true)
+  in
+  press_enter (nth_child node 0);
+  check_dispatched "a disabled default button blocks Enter" [] msgs;
+  let _handle, swapped, swapped_msgs, _dispatch =
+    render (two_buttons ~first_disabled:false)
+  in
+  press_enter (nth_child swapped 0);
+  check_dispatched "an enabled default button answers Enter"
+    [ Clicked; Form_submitted ]
+    swapped_msgs
 
 let test_input_on_submit_inside_a_form_dispatches_once () =
   (* The submit button is what lets Enter in a form of two text fields submit it
@@ -335,7 +460,7 @@ let test_input_on_submit_inside_a_form_dispatches_once () =
          [
            text_input ~on_submit:(Some Field_submitted) ~on_keydown:None;
            bare_input ();
-           button ~attrs:[] ~on_click:None;
+           button ~button_type:Submit ~disabled:false ~attrs:[] ~on_click:None;
          ])
   in
   let before = navigations () in
@@ -551,6 +676,21 @@ let () =
           Alcotest.test_case
             "submit_button_click_submits_once_and_does_not_navigate" `Quick
             test_submit_button_click_submits_once_and_does_not_navigate;
+          Alcotest.test_case "untyped_button_in_form_answers_its_own_click_only"
+            `Quick test_untyped_button_in_form_answers_its_own_click_only;
+          Alcotest.test_case
+            "submit_typed_button_click_dispatches_click_then_form" `Quick
+            test_submit_typed_button_click_dispatches_click_then_form;
+          Alcotest.test_case
+            "disabled_submit_button_click_dispatches_nothing_and_does_not_submit"
+            `Quick
+            test_disabled_submit_button_click_dispatches_nothing_and_does_not_submit;
+          Alcotest.test_case
+            "enter_in_field_with_disabled_default_button_submits_nothing" `Quick
+            test_enter_in_field_with_disabled_default_button_submits_nothing;
+          Alcotest.test_case
+            "disabled_before_enabled_submit_button_blocks_enter" `Quick
+            test_disabled_before_enabled_submit_button_blocks_enter;
           Alcotest.test_case "input_on_submit_inside_a_form_dispatches_once"
             `Quick test_input_on_submit_inside_a_form_dispatches_once;
           Alcotest.test_case "a_fixed_child_of_a_form_does_not_shrink" `Quick

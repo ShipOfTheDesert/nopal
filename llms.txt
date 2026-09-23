@@ -291,8 +291,9 @@ Only Ctrl and Shift are folded, so a subscription naming a bare key still matche
 a backend renders as an attribute — `placeholder`, a radio's `name`, a picker's
 `accept`/`capture`/`multiple`, `disabled`, a container's `focusable`, an
 input's `required`/`autocomplete`/`input_type`, a form's
-`autocomplete`/`novalidate` — the rule is: **typed-field derivations beat the
-`~attrs` list; within the list, the last pair wins.**
+`autocomplete`/`novalidate`, a button's `button_type`/`disabled` — the rule
+is: **typed-field derivations beat the `~attrs` list; within the list, the
+last pair wins.**
 
 Those are two tiers, and they are not the same tier. A typed field sits *above*
 the list, so `?attrs` is an escape hatch for keys the DSL does not model and
@@ -314,14 +315,15 @@ declines in one of two shapes:
 - **Bool** — `true` asserts the key and `false` emits nothing, so a `false`
   uncovers a caller's pair and cannot remove it: `disabled`, `multiple`, an
   input's `required` (with the `aria-required` it carries), a form's
-  `novalidate`.
+  `novalidate`, a button's `aria-disabled` (from its `disabled`).
 - **Option or empty list** — absent asserts nothing and uncovers the caller's
   pair: `accept`, `capture`, an input's `autocomplete`, an input's `type` (from
   `input_type`), a form's `autocomplete`.
 
 Some derivations have no absent form and are derived on every render, so a
 caller's pair of that key is always replaced: `placeholder`, a radio's `name`,
-and a checkbox's, radio's or file picker's `type`.
+a checkbox's, radio's or file picker's `type`, and a button's `type` (from
+`button_type`, which is `"button"` when the button names none).
 
 `nopal_web` and `nopal_test` are the two renderers that enforce this: the web
 backend applies `?attrs` before it writes any derivation, and the structural
@@ -330,11 +332,13 @@ renderer appends derived pairs after the view's own and resolves every lookup �
 resolves — to the last pair. The first tier is shared by the two on the keys the
 web backend writes as real attributes: `disabled`, `accept`, `capture`,
 `multiple`, `placeholder`, a radio's `name`, a control's `type`, an input's
-`required`, `aria-required` and `autocomplete`, and a form's `autocomplete` and
-`novalidate`. Every one of them carries the same value in both renderers except
-`disabled`, `multiple`, `required` and `novalidate`, which are a presence
-attribute (`""`) in the DOM and `"true"` in the structural tree — the two agree
-on which side wins, not on the value. `aria-required` is `"true"` in both. A
+`required`, `aria-required` and `autocomplete`, a form's `autocomplete` and
+`novalidate`, and a button's `type` and `aria-disabled`. Every one of them
+carries the same value in both renderers except `disabled`, `multiple`,
+`required` and `novalidate`, which are a presence attribute (`""`) in the DOM
+and `"true"` in the structural tree — the two agree on which side wins, not on
+the value. `aria-required` and a button's `aria-disabled` are `"true"` in both,
+and a button's `type` is `"button"` or `"submit"` in both. A
 checkbox's, radio's or file picker's `type` is the structural node's tag; an
 input's `type` is a pair in both renderers. A container's
 `focusable` is a first-tier derivation in both, but each spells it in its own
@@ -350,9 +354,12 @@ written is bound by a test nobody has written.
 
 **Submit contract.** An Enter in an `Element.input` can be answered by more
 than one handler, and one sentence chooses: **the nearest handler that accepts
-the Enter consumes it.** Nothing dispatches twice for one Enter, and a handler
-the application supplied is never silently dropped. Three handlers, nearest
-first:
+the Enter consumes it.** An Enter reaches at most one of the three handlers
+below, and a handler the application supplied is never silently dropped. One
+Enter can still dispatch two messages: an Enter deferred to the form is the
+platform's implicit submission, which clicks the form's default button, so that
+button's `on_click` comes first and the form's `on_submit` second (see below).
+Three handlers, nearest first:
 
 1. **The input's `on_keydown`** is consulted for every key. Its `'msg option`
    return is the consumption signal: `Some msg` dispatches `msg` and consumes
@@ -380,19 +387,37 @@ input — and do not mix the two.
 
 Both renderers take the route from `Submit_route.of_key`, one pure definition,
 so the web renderer and the structural test renderer answer every keydown alike.
-Two browser facts sit outside that route and the structural renderer models
-neither:
+What a deferred Enter and a button press then do is the platform's share, and
+both renderers answer it alike too: the web renderer leaves it to the browser,
+and `Test_renderer.click` and `Test_renderer.keydown` model it.
 
-- **Every `Element.button` inside a `Form` is a submit button** on the web,
-  because a `<button>` that names no type is one: clicking it submits the form,
-  so a form with `on_submit` dispatches that message as well as the button's own
-  `on_click`, the button's first. A button that must not submit — a "show
-  password" toggle, a cancel — passes `~attrs:[("type", "button")]`.
-- **A browser submits a form on Enter only when the form has a submit button or
-  holds a single text field.** A form with two fields and no button does not
-  submit on Enter in the browser, while `Test_renderer.keydown` defers every
-  unanswered Enter in a field to the form regardless. Give a form a submit
-  button, as the kitchen sink's auth section does, and the two agree.
+- **A button submits only when it says so.** `Element.button
+  ~button_type:Submit` is a submit button: clicking it inside a `Form`
+  dispatches its own `on_click` and then the form's `on_submit`. A button that
+  names no type is `Push`, renders `type="button"`, and dispatches its
+  `on_click` alone, inside a form or not, so a "show password" toggle or a
+  cancel needs nothing extra. A `("type", _)` pair in `~attrs` never takes
+  effect on a button.
+- **An unanswered Enter in a field clicks the form's default button**, the
+  first submit button in tree order. Enabled, it dispatches its `on_click` and
+  then the form's `on_submit`. Disabled, the Enter dispatches nothing, even
+  when an enabled submit button follows it.
+- **With no submit button, a form submits on Enter only when it holds a single
+  field that blocks implicit submission.** Every `Element.input` counts,
+  whatever its `input_type`; a checkbox, radio, select or file picker does not.
+  A form with two inputs and no submit button dispatches nothing on Enter, in
+  either renderer. An input whose type a caller overrides through `~attrs` to a
+  kind the browser does not count (`hidden`, say) is outside the structural
+  model.
+- **A disabled button is inert and stays focusable.** `~disabled:true` renders
+  `aria-disabled="true"`, not the native `disabled` attribute: the button stays
+  in the tab order, is announced as disabled, and cancels its own activation,
+  so neither a click nor an Enter it would answer dispatches or submits
+  anything. A focused button that becomes disabled keeps focus. A caller who
+  wants the native attribute can still spell it through `~attrs`, but that
+  route is outside the structural model: the browser treats such a button as
+  disabled, while the structural renderer answers it as enabled. `disabled`
+  changes no styling; pass a `~style` for the disabled look.
 
 A `Form` that authors no `on_submit` still cancels the platform's submission:
 its only submit listener calls `preventDefault`, so wrapping fields for the
@@ -444,19 +469,30 @@ Element.form : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * 
   -> 'msg Element.t list -> 'msg Element.t
   (* A container like Element.box, laying its children down the page unless
      [style] asks for the other direction. [on_submit] is dispatched once per
-     submission — an Enter a field deferred to the form, or a submit button
-     pressed — and a submission never navigates, whether or not [on_submit] is
-     authored. [autocomplete] asks the platform to offer, or not, remembered
+     submission — an Enter a field deferred to the form, or a button typed
+     Submit pressed — and a submission never navigates, whether or not
+     [on_submit] is authored. A button that names no type does not submit, and
+     a disabled one submits by no route. [autocomplete] asks the platform to offer, or not, remembered
      values for every field; absent, it asks for nothing. [novalidate] (default
      false) skips the platform's own constraint validation. On a backend with no
      native form the group is an ordinary container and the Enter routing still
      holds. *)
 
 (* Interactive elements *)
+type button_type = Submit | Push
+Element.button_type_to_string : button_type -> string   (* "submit" | "button" — sole producer *)
 Element.button : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
+  -> ?button_type:button_type -> ?disabled:bool
   -> ?on_click:'msg -> ?on_dblclick:'msg -> 'msg Element.t -> 'msg Element.t
-  (* Inside a Form this is a submit button on the web; pass
-     ~attrs:[("type", "button")] for one that must not submit. *)
+  (* [button_type] (default Push) says whether activating the button submits the
+     enclosing Form: Submit dispatches on_click and then the form's on_submit;
+     Push dispatches on_click alone. [disabled] (default false) keeps the button
+     focusable and makes it inert: a click, or an Enter in a field for which it
+     is the form's default button, dispatches nothing and submits nothing.
+     It renders aria-disabled="true", not the native disabled attribute that
+     Element.checkbox, radio and select use, so the button stays in the tab
+     order. Both are typed: a ("type", _) pair in [attrs] never takes effect,
+     and an ("aria-disabled", _) pair only while [disabled] is false. *)
 type input_type = Plain | Password | Email | Tel | Url | Number | Search
 Element.input_type_to_string : input_type -> string
   (* "text" | "password" | "email" | "tel" | "url" | "number" | "search" — sole producer *)
@@ -1595,7 +1631,8 @@ let view model =
 
 #### Button
 
-Button with variants (Primary, Secondary, Destructive, Ghost, Icon), loading and disabled states.
+Button with variants (Primary, Secondary, Destructive, Ghost, Icon), loading
+and disabled states.
 
 ```ocaml
 (* Variants *)
@@ -1612,17 +1649,26 @@ type 'msg config = {
   attrs : (string * string) list;
   disabled_style : Style.t option;
   loading_style : Style.t option;
+  button_type : Element.button_type;
 }
+(* A complete record literal must now supply button_type (Push keeps the
+   non-submitting default); the supported route is with_button_type. *)
 
 val default : variant -> 'msg config
 (* [default v] returns a config for variant [v] with disabled=false,
-   loading=false, on_click=None, default style/interaction, empty attrs and
-   no disabled or loading style. *)
+   loading=false, on_click=None, default style/interaction, empty attrs,
+   no disabled or loading style, and button_type=Push: the button submits the
+   form it sits in only when it is given Submit. *)
+
+val with_button_type : Element.button_type -> 'msg config -> 'msg config
+(* With Submit, activating the button inside an Element.form dispatches its
+   on_click and then submits the form; with Push, its on_click alone. *)
 
 val with_disabled_style : Style.t -> 'msg config -> 'msg config
 (* The treatment while disabled. The component makes no visual distinction of
-   its own — it emits aria-disabled and nothing else — so this INTRODUCES the
-   decision, and with both setters unset the rendering is unchanged. *)
+   its own — it renders aria-disabled, element-derived, and nothing else — so
+   this INTRODUCES the decision, and with both setters unset the rendering is
+   unchanged. It does not touch aria-disabled or the inert state. *)
 
 val with_loading_style : Style.t -> 'msg config -> 'msg config
 (* The treatment while loading. When both states hold, the DISABLED style
@@ -1630,13 +1676,22 @@ val with_loading_style : Style.t -> 'msg config -> 'msg config
    to a disabled-and-loading button whose disabled style is unset. *)
 
 val view : 'msg config -> 'msg Element.t -> 'msg Element.t
-(* [view config child] renders a button element.
-   When disabled: includes aria-disabled="true", click suppressed.
-   When loading: includes aria-busy="true", click suppressed.
+(* [view config child] renders a button element of type config.button_type.
+   While disabled or loading the button is inert: a click dispatches nothing
+   and submits nothing, and an Enter in a field of its form does not submit
+   through it — when it is the form's first submit button, that Enter
+   dispatches nothing at all, even if an enabled submit button follows it. It
+   stays focusable and in the tab order, and a focused button keeps focus when
+   it becomes inert. Both states carry aria-disabled="true"; loading also
+   carries aria-busy="true".
    The style is disabled_style while disabled, else loading_style while
    loading, else config.style, else the variant default; interaction likewise
    falls back to the variant default.
-   User attrs merged with ARIA attrs (user attrs take precedence). *)
+   User attrs merged with ARIA attrs (user attrs take precedence), except
+   "type" and "aria-disabled": those are derived from button_type and the
+   inert state, so a caller's "type" pair never takes effect and a caller's
+   "aria-disabled" pair only while the button is neither disabled nor
+   loading. *)
 
 val variant_to_string : variant -> string
 (* Lowercase string name for test/debug. *)
@@ -3378,7 +3433,9 @@ Canvas_ffi.read_pixels : context -> Brr.Tarray.uint8_clamped
 
 ### Test Renderer (`nopal_test`)
 
-Pure OCaml structural testing without a browser:
+Pure OCaml structural testing without a browser. The implicit-submission model
+that backs the button/form rules below lives in `Implicit_submission`, in the
+`nopal_test.internal` library: it is not API and carries no stability promise.
 
 ```ocaml
 (* Render and inspect *)
@@ -3409,6 +3466,11 @@ type selector = By_tag of string | By_text of string | By_attr of string * strin
 
 (* Simulate events *)
 Test_renderer.click        : selector -> 'msg rendered -> (unit, error) result
+  (* A button is answered as a browser answers it: a disabled one appends
+     nothing; an enabled button typed Submit inside a form appends its own
+     on_click, when it has one, and then the form's on_submit, so one click can
+     append two messages; a Push button appends its on_click alone. No_handler
+     exactly when the click would append nothing. *)
 Test_renderer.input        : selector -> string -> 'msg rendered -> (unit, error) result
 Test_renderer.select_files : selector -> Element.file_info list -> 'msg rendered -> (unit, error) result
   (* File input node renders under tag "file_input", carrying accept/capture/
@@ -3428,17 +3490,21 @@ Test_renderer.keydown      : selector -> string -> 'msg rendered -> (unit, error
        non-form or a form with no on_submit. It consults no field's handlers.
      - keydown is the one that carries the submit contract: it presses a key in
        a field and follows Submit_route.of_key through the field's on_keydown,
-       then its on_submit, then the nearest enclosing form's on_submit,
-       appending at most one message. An input with on_submit but no
-       on_keydown, or a bare input in a form with on_submit, answers Ok ()
-       rather than No_handler — the message appended for Enter, nothing for
-       any other key. A test asserting which handler answers an Enter uses
-       keydown; the two pokes cannot answer that.
-     None models the platform's own share: a structural click on a button in a
-     form reaches the button's on_click only, and keydown defers every
-     unanswered Enter to the form where a browser would submit only a form with
-     a submit button or a single text field. *)
+       then its on_submit, then the nearest enclosing form. An Enter deferred
+       to the form appends what the browser's implicit submission dispatches:
+       with a submit button, the first in tree order is clicked — its on_click
+       and then the form's on_submit, or nothing when it is disabled; with
+       none, the form's on_submit when the form holds at most one input, and
+       nothing when it holds more. One call appends at most two messages, and
+       two only through a default button. An input with on_submit but no
+       on_keydown answers Ok () rather than No_handler — the message appended
+       for Enter, nothing for any other key. A test asserting which handler
+       answers an Enter uses keydown; the two pokes cannot answer that.
+     The platform's own share in a submission is modelled by click and
+     keydown, the two simulators that press something, and by neither poke. *)
 Test_renderer.dblclick     : selector -> 'msg rendered -> (unit, error) result
+  (* A disabled button has no dblclick handler, so it returns No_handler and
+     dispatches nothing. *)
 Test_renderer.focus        : selector -> 'msg rendered -> (unit, error) result
 Test_renderer.blur         : selector -> 'msg rendered -> (unit, error) result
   (* These two resolve against an input's focus edges. The box equivalents are
@@ -3532,7 +3598,7 @@ not move, fails it.
 | # | Key | When | Before | Now |
 |---|---|---|---|---|
 | 1 | `enter-declined-by-on-keydown-reaches-on-submit` | Enter in an input carrying **both** `on_keydown` and `on_submit`, where `on_keydown` returns `None` for Enter | browser: nothing dispatched — supplying `on_keydown` installed no `on_submit` listener at all; `Test_renderer.keydown`: `Ok ()`, nothing appended | `on_submit` is dispatched, in both renderers |
-| 2 | `enter-consumed-by-on-keydown-prevents-default` | Enter in an input whose `on_keydown` returns `Some msg` for it | `msg` dispatched; the key's default left alone | `msg` dispatched and the default prevented, so an enclosing form does not also submit (browser only; the structural renderer models no default) |
+| 2 | `enter-consumed-by-on-keydown-prevents-default` | Enter in an input whose `on_keydown` returns `Some msg` for it | `msg` dispatched; the key's default left alone | `msg` dispatched and the default prevented, so an enclosing form does not also submit (browser only; the structural renderer models no default at `1fd1cad`; implicit submission is now modelled, see Button answers that moved) |
 | 3 | `enter-answered-by-on-submit-prevents-default` | Enter in an input whose own `on_submit` answers it | `on_submit` dispatched; the default left alone | `on_submit` dispatched and the default prevented (browser only) |
 | 4 | `keydown-enter-on-an-input-with-only-on-submit` | `Test_renderer.keydown sel "Enter"` on an input with `on_submit` and no `on_keydown` | `Error (No_handler _)` | `Ok ()`, `on_submit` appended |
 | 5 | `keydown-other-key-on-an-input-with-only-on-submit` | `Test_renderer.keydown sel k`, `k` not Enter, on the same input | `Error (No_handler _)` | `Ok ()`, nothing appended |
@@ -3561,6 +3627,75 @@ that authors none of the three new arguments — its `("required", _)`,
 For a consumer that deliberately supplied only `on_submit` because supplying
 `on_keydown` suppressed it, that workaround stops being necessary: both
 handlers can now be supplied together, and row 1 is what changes when they are.
+
+**Button answers that moved — read this on a pin bump.**
+**Every complete `Nopal_ui.Button.config` record literal stops compiling.** The
+record gains a `button_type` field (row 1), and the compiler says `Error: Some
+record fields are undefined: button_type`. Add `button_type = Push` to keep the
+button from submitting, or `button_type = Submit` for the one button that
+should submit its form. A config built with `Button.default` and the `with_*`
+setters compiles untouched; `Button.with_button_type` is the supported route.
+
+`Element.button` gains a typed `button_type` and a typed `disabled`, and a
+button that names no type no longer submits its form. That moves the fourteen
+answers below. Rows 1–2 are compile-visible; rows 3–14 are silent, so a
+downstream suite or app meets them with no compiler help. "Before" is the tree
+at commit `80ec712`. The Where column names the renderer whose answer moved:
+the browser, the structural `Test_renderer`, or both. The pins are `change_list`
+in `test/unit/nopal_test/test_test_renderer.ml`, for every row whose key does
+not start `ui-button-`, and `test/unit/nopal_ui/test_change_list.ml`, for the
+rows whose key does. Each reads this table, and within its candidate keys a key
+that moved and is not a row, or a row whose answer did not move, fails it. A
+browser row is read through the structural renderer, which
+`test/e2e/fixtures/button-submit-matrix.tsv` holds equal to Chromium cell by
+cell.
+
+| # | Key | Visible | Where | When | Before | Now |
+|---|---|---|---|---|---|---|
+| 1 | `ui-button-config-gains-button_type` | compile | both | a complete `Nopal_ui.Button.config` record literal | compiles | fails to compile until it supplies `button_type` |
+| 2 | `element-button-record-gains-fields` | compile | both | a `Button { … }` pattern listing its fields without `; _`, or code building that record directly | compiles | fails to compile until it handles `button_type` and `disabled` |
+| 3 | `button-renders-type-button` | silent | both | an `Element.button` or `Nopal_ui.Button` that names no type, including `Navigation_bar`'s tab buttons, `Bottom_tabs`'s back affordance, `Data_table`'s sort controls, and `Toast`'s dismiss button, all of which render `E.button` and now stop submitting an enclosing `Form` | no `type` attribute; `attr "type"` is `None` | `type="button"` in the DOM; `attr "type"` is `Some "button"` |
+| 4 | `untyped-button-in-form-does-not-submit` | silent | browser | clicking a button that names no type inside a `Form` with `on_submit` | its `on_click`, then the form's `on_submit` | its `on_click` alone (the structural renderer already answered this) |
+| 5 | `enter-with-only-untyped-buttons` | silent | browser | Enter in a field of a form whose only buttons name no type | the first button's `on_click`, then the form's `on_submit` | two or more inputs: nothing; one input: the form's `on_submit` alone |
+| 6 | `attrs-type-pair-on-button-overruled` | silent | both | a `("type", _)` pair in a button's `~attrs`, or in `Nopal_ui.Button`'s `attrs` | the pair's value, so `("type", "submit")` made the button submit | the typed `button_type` wins: `"button"` unless the button is typed `Submit`, so a `("type", "submit")` pair stops submitting |
+| 7 | `click-submit-button-reaches-form` | silent | structural | `Test_renderer.click` on an enabled submit button inside a form with `on_submit` | the button's `on_click` alone, or `Error (No_handler _)` with no `on_click` | its `on_click`, then the form's `on_submit`; with no `on_click`, `Ok ()` and the form's `on_submit` alone |
+| 8 | `keydown-enter-multi-field-no-submit-button` | silent | structural | `Test_renderer.keydown sel "Enter"` on a bare input in a form with two or more inputs and no submit button | `Ok ()`, the form's `on_submit` appended | `Error (No_handler _)`, nothing appended |
+| 9 | `keydown-enter-enabled-default-button` | silent | structural | the same Enter in a form whose first submit button is enabled | the form's `on_submit` | the button's `on_click`, then the form's `on_submit`: one `keydown` can now append two messages |
+| 10 | `keydown-enter-disabled-default-button` | silent | structural | the same Enter in a form whose first submit button is disabled | the form's `on_submit` | `Error (No_handler _)`, nothing appended, even when an enabled submit button follows |
+| 11 | `ui-button-disabled-or-loading-in-form` | silent | both | a disabled or loading `Nopal_ui.Button` that is its form's submit button (at `80ec712`, any `Button` in a form): a click on it, or an Enter in a field | the form's `on_submit`, for both | nothing, for both |
+| 12 | `ui-button-loading-gains-aria-disabled` | silent | both | a loading `Nopal_ui.Button` that is not disabled | no `aria-disabled` | `aria-disabled="true"`, beside `aria-busy="true"` |
+| 13 | `ui-button-aria-disabled-pair-overruled` | silent | both | a disabled or loading `Nopal_ui.Button` with an `("aria-disabled", _)` pair in `config.attrs` | the caller's value | `"true"`: the derived value wins while the button is inert |
+| 14 | `disabled-button-dblclick-dispatches-nothing` | silent | both | `dblclick` (browser or `Test_renderer.dblclick`) on a disabled button carrying `on_dblclick` | — (no disabled state existed) | `Error No_handler`, nothing dispatched — a disabled button is inert on every route, dblclick included |
+
+To keep a button submitting its form, type it: `~button_type:Submit` on
+`Element.button`, or `Button.with_button_type Submit`. A `("type", "submit")`
+pair no longer does it, and nothing reports that it stopped. A disabled
+`Element.button` (`~disabled:true`, new) renders `aria-disabled="true"` and not
+the native `disabled` attribute, so it stays focusable and in the tab order; a
+caller who wants the native attribute can still spell it through `~attrs`, but
+that route is outside the structural model: the browser treats such a button
+as disabled, while the structural renderer answers it as enabled. An
+`open Nopal_element.Element` brings the new constructors `Submit` and `Push`
+into scope, where they can shadow a message constructor of the same name.
+
+What did **not** move, recorded so a reader does not go looking — the two pins
+hold each as unchanged. Existing `Element.button` call sites compile untouched.
+Outside a form a button's type has no effect: clicking an enabled button
+dispatches its `on_click`, and one with no `on_click` answers `No_handler`,
+exactly as before. A `("type", "button")` pair reads `"button"`, as it did. An
+enabled button leaves a caller's `("aria-disabled", _)` pair standing. Enter in
+a form holding a single input and no button submits it, and Enter that the
+input's own `on_submit` answers dispatches that message alone, even with a
+submit button in the form. `Test_renderer.submit_form` pokes the form's
+`on_submit` as before. On `Nopal_ui.Button`: a disabled button carries
+`aria-disabled="true"` and a loading one `aria-busy="true"`, as before; a
+caller's `("aria-busy", _)` pair on a loading button still wins; an enabled
+button's click outside a form dispatches its `on_click` and a disabled one's
+dispatches nothing; and an enabled `Button` given `with_button_type Submit`
+answers a click and an Enter in its form exactly as an untyped one did at
+`80ec712` — its `on_click`, then the form's `on_submit`. The `disabled` of
+`Element.checkbox`, `radio` and `select` is untouched and is still the native
+attribute.
 
 #### Telemetry harness (`Nopal_test.Telemetry_test`)
 

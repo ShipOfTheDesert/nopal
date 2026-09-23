@@ -195,6 +195,58 @@ let test_button_child () =
     | Element.Virtual_list _ ->
         false)
 
+let button_type_t =
+  Alcotest.testable
+    (fun ppf (t : Element.button_type) ->
+      Format.pp_print_string ppf
+        (match t with
+        | Element.Submit -> "Submit"
+        | Element.Push -> "Push"))
+    Element.equal_button_type
+
+(* The typed type and disabled state a button carries, or [None] for any other
+   element, so a case compares both fields at once. *)
+let button_semantics (el : 'msg Element.t) =
+  match el with
+  | Element.Button { button_type; disabled; _ } -> Some (button_type, disabled)
+  | Element.Empty
+  | Element.Text _
+  | Element.Box _
+  | Element.Row _
+  | Element.Column _
+  | Element.Input _
+  | Element.Image _
+  | Element.Checkbox _
+  | Element.Radio _
+  | Element.Select _
+  | Element.File_input _
+  | Element.Scroll _
+  | Element.Keyed _
+  | Element.Draw _
+  | Element.Form _
+  | Element.Virtual_list _ ->
+      None
+
+let check_semantics = Alcotest.(check (option (pair button_type_t bool)))
+
+let test_button_without_button_type_is_push () =
+  check_semantics "a button that names no type does not submit, and is enabled"
+    (Some (Element.Push, false))
+    (button_semantics (Element.button ~on_click:Click (Element.text "ok")));
+  check_semantics "the same builder carries what a caller names"
+    (Some (Element.Submit, true))
+    (button_semantics
+       (Element.button ~button_type:Element.Submit ~disabled:true
+          ~on_click:Click (Element.text "ok")))
+
+let test_button_type_to_string_is_the_html_token () =
+  Alcotest.(check string)
+    "Submit" "submit"
+    (Element.button_type_to_string Element.Submit);
+  Alcotest.(check string)
+    "Push" "button"
+    (Element.button_type_to_string Element.Push)
+
 let test_input_defaults () =
   Alcotest.(check bool)
     "input defaults" true
@@ -596,6 +648,23 @@ let test_keyed_preserves_fields () =
 
 type wrapper = Wrapped of msg
 
+let test_map_preserves_button_type_and_disabled () =
+  (* The two fixtures cross the fields, so a map that pinned either one to a
+     constant — whichever constant — reads back wrong on one of them. *)
+  let mapped button_type disabled =
+    button_semantics
+      (Element.map
+         (fun m -> Wrapped m)
+         (Element.button ~button_type ~disabled ~on_click:Click
+            (Element.text "ok")))
+  in
+  check_semantics "a submit button that is enabled"
+    (Some (Element.Submit, false))
+    (mapped Element.Submit false);
+  check_semantics "a push button that is disabled"
+    (Some (Element.Push, true))
+    (mapped Element.Push true)
+
 let test_map_transforms_click () =
   let el = Element.button ~on_click:Click (Element.text "ok") in
   let mapped = Element.map (fun m -> Wrapped m) el in
@@ -988,6 +1057,24 @@ let test_equal_button_different_click () =
   let a = Element.button ~on_click:Click (Element.text "ok") in
   let b = Element.button ~on_click:Submit (Element.text "ok") in
   Alcotest.(check bool) "different on_click not equal" false (Element.equal a b)
+
+let test_equal_distinguishes_button_type_and_disabled () =
+  let make ?button_type ?disabled () =
+    Element.button ?button_type ?disabled ~on_click:Click (Element.text "ok")
+  in
+  Alcotest.(check bool)
+    "the same type and state, separately built, are equal" true
+    (Element.equal
+       (make ~button_type:Element.Submit ~disabled:true ())
+       (make ~button_type:Element.Submit ~disabled:true ()));
+  Alcotest.(check bool)
+    "a different type is not equal" false
+    (Element.equal
+       (make ~button_type:Element.Submit ())
+       (make ~button_type:Element.Push ()));
+  Alcotest.(check bool)
+    "a different disabled state is not equal" false
+    (Element.equal (make ~disabled:true ()) (make ~disabled:false ()))
 
 let test_equal_input_distinct () =
   let make () = Element.input ~on_submit:Submit ~placeholder:"p" "v" in
@@ -1513,6 +1600,10 @@ let () =
           Alcotest.test_case "button_with_handler" `Quick
             test_button_with_handler;
           Alcotest.test_case "button_child" `Quick test_button_child;
+          Alcotest.test_case "button_without_button_type_is_push" `Quick
+            test_button_without_button_type_is_push;
+          Alcotest.test_case "button_type_to_string_is_the_html_token" `Quick
+            test_button_type_to_string_is_the_html_token;
           Alcotest.test_case "input_defaults" `Quick test_input_defaults;
           Alcotest.test_case "input_placeholder" `Quick test_input_placeholder;
           Alcotest.test_case "input_on_change" `Quick test_input_on_change;
@@ -1551,6 +1642,8 @@ let () =
             test_scroll_reveal_roundtrip;
           Alcotest.test_case "map_preserves_scroll_attrs" `Quick
             test_map_preserves_scroll_attrs;
+          Alcotest.test_case "map_preserves_button_type_and_disabled" `Quick
+            test_map_preserves_button_type_and_disabled;
           Alcotest.test_case "map_keyed" `Quick test_map_keyed;
           Alcotest.test_case "map_empty_noop" `Quick test_map_empty_noop;
           Alcotest.test_case "map_text_noop" `Quick test_map_text_noop;
@@ -1569,6 +1662,8 @@ let () =
             test_equal_button_distinct;
           Alcotest.test_case "equal_button_different_click" `Quick
             test_equal_button_different_click;
+          Alcotest.test_case "equal_distinguishes_button_type_and_disabled"
+            `Quick test_equal_distinguishes_button_type_and_disabled;
           Alcotest.test_case "equal_input_distinct" `Quick
             test_equal_input_distinct;
           Alcotest.test_case "equal_input_different_value" `Quick

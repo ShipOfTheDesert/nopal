@@ -11,7 +11,9 @@ type node =
 
 type 'msg handler_entry = {
   path : int list;
-  on_click : 'msg option;
+  (* Every message a click dispatches, in order. For a button inside a form
+     this is the platform's answer, not only the button's own [on_click]. *)
+  click : 'msg list;
   on_dblclick : 'msg option;
   on_change : (string -> 'msg) option;
   on_submit : 'msg option;
@@ -20,14 +22,28 @@ type 'msg handler_entry = {
   on_keydown : (string -> 'msg option) option;
   on_toggle : (bool -> 'msg) option;
   on_files : (Nopal_element.Element.file_info list -> 'msg) option;
-  (* The [on_submit] of the nearest enclosing form, which an Enter nothing on
-     the node answered goes on to. Only an input carries one: it is the one
-     element the submit contract routes a keydown for, so every other entry
-     answers [None] whether or not a form encloses it. [None] too when no form
-     encloses the input, or when the nearest one authors no [on_submit] — both
-     dispatch nothing. *)
-  enclosing_form_submit : 'msg option;
+  (* Every message an Enter nothing on the node answered dispatches once it
+     goes on to the nearest enclosing form, in order. Only an input carries
+     any: it is the one element the submit contract routes a keydown for, so
+     every other entry answers [[]] whether or not a form encloses it. [[]] too
+     when no form encloses the input, or when the form's implicit submission
+     dispatches nothing. *)
+  deferred_enter : 'msg list;
 }
+
+(* The nearest enclosing form, as the render walk hands it down: its own
+   [on_submit], which a submit button's click reaches, and what an Enter a
+   field left to it dispatches. *)
+type 'msg enclosing_form = { submit : 'msg option; enter : 'msg list }
+
+let no_form = { submit = None; enter = [] }
+
+let enclosing ~on_submit children =
+  {
+    submit = on_submit;
+    enter =
+      Nopal_test_internal.Implicit_submission.deferred_enter ~on_submit children;
+  }
 
 (* A form's own submission, kept apart from [handler_entry] so that [submit],
    which pokes a node's [on_submit] there, cannot reach a form's, and
@@ -100,7 +116,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
   let form_handlers = ref [] in
   let draw_handlers = ref [] in
   let box_handlers = ref [] in
-  let rec go ~form_submit rev_path (el : 'msg Nopal_element.Element.t) : node =
+  let rec go ~form rev_path (el : 'msg Nopal_element.Element.t) : node =
     match el with
     | Empty -> Empty
     | Text { content; text_style } -> Text { content; text_style }
@@ -159,7 +175,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
                models no propagation, so the subtree scoping of a container's
                focus edges is not observable here at all. *)
             attrs = attrs @ derived_flag "focusable" focusable;
-            children = go_children ~form_submit rev_path children;
+            children = go_children ~form rev_path children;
             interaction;
           }
     | Row { style; interaction; attrs; children } ->
@@ -168,7 +184,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             tag = "row";
             style;
             attrs;
-            children = go_children ~form_submit rev_path children;
+            children = go_children ~form rev_path children;
             interaction;
           }
     | Column { style; interaction; attrs; children } ->
@@ -177,7 +193,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             tag = "column";
             style;
             attrs;
-            children = go_children ~form_submit rev_path children;
+            children = go_children ~form rev_path children;
             interaction;
           }
     | Form
@@ -214,18 +230,36 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             style;
             attrs = attrs @ form_config;
             (* This form is now the nearest enclosing one for everything below
-               it, so its [on_submit] — [None] included — replaces any outer
-               form's. Forms do not nest, so an outer one exists only in a view
-               that broke that rule. *)
-            children = go_children ~form_submit:on_submit rev_path children;
+               it, so its [on_submit] — [None] included — and its implicit
+               submission replace any outer form's. Forms do not nest, so an
+               outer one exists only in a view that broke that rule. *)
+            children =
+              go_children
+                ~form:(enclosing ~on_submit children)
+                rev_path children;
             interaction;
           }
-    | Button { style; interaction; attrs; on_click; on_dblclick; child } ->
+    | Button
+        {
+          style;
+          interaction;
+          attrs;
+          button_type;
+          disabled;
+          on_click;
+          on_dblclick;
+          child;
+        } ->
         handlers :=
           {
             path = List.rev rev_path;
-            on_click;
-            on_dblclick;
+            click =
+              Nopal_test_internal.Implicit_submission.click ~button_type
+                ~disabled ~on_click ~form_submit:form.submit;
+            on_dblclick =
+              (match disabled with
+              | true -> None
+              | false -> on_dblclick);
             on_change = None;
             on_submit = None;
             on_focus = None;
@@ -233,15 +267,24 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             on_keydown = None;
             on_toggle = None;
             on_files = None;
-            enclosing_form_submit = None;
+            deferred_enter = [];
           }
           :: !handlers;
+        (* The type has no absent form — a button that names none is a push
+           button, not an unconfigured one — so it is derived on every render
+           and a caller's ["type"] pair never stands. [disabled] is spelled by
+           absence, so an enabled button uncovers a caller's
+           ["aria-disabled"]. *)
+        let button_config =
+          ("type", Nopal_element.Element.button_type_to_string button_type)
+          :: derived_flag "aria-disabled" disabled
+        in
         Element
           {
             tag = "button";
             style;
-            attrs;
-            children = [ go ~form_submit (0 :: rev_path) child ];
+            attrs = attrs @ button_config;
+            children = [ go ~form (0 :: rev_path) child ];
             interaction;
           }
     | Input
@@ -263,7 +306,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
         handlers :=
           {
             path = List.rev rev_path;
-            on_click = None;
+            click = [];
             on_dblclick = None;
             on_change;
             on_submit;
@@ -272,7 +315,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             on_keydown;
             on_toggle = None;
             on_files = None;
-            enclosing_form_submit = form_submit;
+            deferred_enter = form.enter;
           }
           :: !handlers;
         (* The three typed fields are spelled by absence as the web renderer
@@ -305,7 +348,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
           handlers :=
             {
               path = List.rev rev_path;
-              on_click = None;
+              click = [];
               on_dblclick = None;
               on_change = None;
               on_submit = None;
@@ -314,7 +357,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
               on_keydown = None;
               on_toggle;
               on_files = None;
-              enclosing_form_submit = None;
+              deferred_enter = [];
             }
             :: !handlers;
         Element
@@ -333,7 +376,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
           handlers :=
             {
               path = List.rev rev_path;
-              on_click = on_select;
+              click = Option.to_list on_select;
               on_dblclick = None;
               on_change = None;
               on_submit = None;
@@ -342,7 +385,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
               on_keydown = None;
               on_toggle = None;
               on_files = None;
-              enclosing_form_submit = None;
+              deferred_enter = [];
             }
             :: !handlers;
         Element
@@ -363,7 +406,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
           handlers :=
             {
               path = List.rev rev_path;
-              on_click = None;
+              click = [];
               on_dblclick = None;
               on_change;
               on_submit = None;
@@ -372,7 +415,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
               on_keydown = None;
               on_toggle = None;
               on_files = None;
-              enclosing_form_submit = None;
+              deferred_enter = [];
             }
             :: !handlers;
         let option_children =
@@ -405,7 +448,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
         handlers :=
           {
             path = List.rev rev_path;
-            on_click = None;
+            click = [];
             on_dblclick = None;
             on_change = None;
             on_submit = None;
@@ -414,7 +457,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             on_keydown = None;
             on_toggle = None;
             on_files = on_change;
-            enclosing_form_submit = None;
+            deferred_enter = [];
           }
           :: !handlers;
         (* Picker configuration is surfaced as node attributes, appended so it
@@ -478,7 +521,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
                     ("reveal", key);
                     ("reveal-align", Nopal_element.Reveal.align_token align);
                   ]);
-            children = [ go ~form_submit (0 :: rev_path) child ];
+            children = [ go ~form (0 :: rev_path) child ];
             interaction = Nopal_style.Interaction.default;
           }
     | Keyed { key; child } ->
@@ -487,7 +530,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             tag = "keyed";
             style = Nopal_style.Style.default;
             attrs = [ ("key", key) ];
-            children = [ go ~form_submit (0 :: rev_path) child ];
+            children = [ go ~form (0 :: rev_path) child ];
             interaction = Nopal_style.Interaction.default;
           }
     | Draw
@@ -547,7 +590,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
           handlers :=
             {
               path = List.rev rev_path;
-              on_click = None;
+              click = [];
               on_dblclick = None;
               on_change = None;
               on_submit = None;
@@ -556,7 +599,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
               on_keydown = None;
               on_toggle = None;
               on_files = None;
-              enclosing_form_submit = None;
+              deferred_enter = [];
             }
             :: !handlers;
         let children =
@@ -567,7 +610,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
                absolute item index, but the path component is the positional slot
                within the visible window, so registration and resolution cannot
                disagree at a nonzero scroll offset. *)
-            go_children ~form_submit rev_path
+            go_children ~form rev_path
               (List.init
                  (range.last - range.first + 1)
                  (fun i -> render_item (range.first + i)))
@@ -590,10 +633,10 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             children;
             interaction = Nopal_style.Interaction.default;
           }
-  and go_children ~form_submit rev_path children =
-    List.mapi (fun i c -> go ~form_submit (i :: rev_path) c) children
+  and go_children ~form rev_path children =
+    List.mapi (fun i c -> go ~form (i :: rev_path) c) children
   in
-  let tree = go ~form_submit:None [] element in
+  let tree = go ~form:no_form [] element in
   {
     tree;
     msgs = ref [];
@@ -862,10 +905,10 @@ let click sel r =
     find_handler_by_path path r.handlers
     |> Option.to_result ~none:(No_handler { tag; event = "click" })
   in
-  match handler.on_click with
-  | None -> Error (No_handler { tag; event = "click" })
-  | Some msg ->
-      r.msgs := msg :: !(r.msgs);
+  match handler.click with
+  | [] -> Error (No_handler { tag; event = "click" })
+  | _ :: _ as msgs ->
+      r.msgs := List.rev_append msgs !(r.msgs);
       Ok ()
 
 let toggle sel r =
@@ -1009,18 +1052,18 @@ let keydown sel key r =
   in
   (* The route is [Submit_route]'s, the definition the web renderer answers
      from too, so an Enter [on_keydown] declines reaches [on_submit] here as it
-     does there, and an Enter neither answers reaches the nearest enclosing
-     form's [on_submit], recorded on the entry at render time. With none of the
-     three there is nothing a keydown can reach. This renderer models no
-     platform default action, so [prevent_default] has nothing here to
+     does there. An Enter neither answers goes on to the nearest enclosing
+     form, whose implicit submission was worked out at render time: the default
+     button's click and then the form's [on_submit], the form's [on_submit]
+     alone, or nothing. With none of the three there is nothing a keydown can
+     reach. [prevent_default] suppresses exactly that implicit submission, and
+     [Dispatch] never reaches it here, so there is nothing further to
      suppress. *)
-  match
-    (handler.on_keydown, handler.on_submit, handler.enclosing_form_submit)
-  with
-  | None, None, None -> Error (No_handler { tag; event = "keydown" })
+  match (handler.on_keydown, handler.on_submit, handler.deferred_enter) with
+  | None, None, [] -> Error (No_handler { tag; event = "keydown" })
   | Some _, _, _
   | None, Some _, _
-  | None, None, Some _ -> (
+  | None, None, _ :: _ -> (
       match
         Nopal_element.Submit_route.of_key ~key ~on_keydown:handler.on_keydown
           ~on_submit:handler.on_submit
@@ -1028,12 +1071,9 @@ let keydown sel key r =
       | Dispatch { msg; prevent_default = _ } ->
           r.msgs := msg :: !(r.msgs);
           Ok ()
-      | To_enclosing_form -> (
-          match handler.enclosing_form_submit with
-          | Some msg ->
-              r.msgs := msg :: !(r.msgs);
-              Ok ()
-          | None -> Ok ())
+      | To_enclosing_form ->
+          r.msgs := List.rev_append handler.deferred_enter !(r.msgs);
+          Ok ()
       | Nothing -> Ok ())
 
 let find_draw_handler_by_path path draw_handlers =

@@ -293,10 +293,27 @@ let wire_click ~dispatch el on_click =
       in
       [ listener ]
 
-let wire_dblclick ~dispatch el on_dblclick =
-  match on_dblclick with
-  | None -> []
-  | Some msg ->
+(* A disabled button stays a live, focusable [<button>], so the browser still
+   runs its activation: a click, and the synthetic click implicit submission
+   sends the form's default button on an Enter in a field. Cancelling that one
+   event blocks both routes to the form, which is why the listener is installed
+   whether or not the button authored an [on_click]. *)
+let wire_button_click ~dispatch el ~disabled on_click =
+  match disabled with
+  | false -> wire_click ~dispatch el on_click
+  | true ->
+      [
+        Brr.Ev.listen Brr.Ev.click Brr.Ev.prevent_default (Brr.El.as_target el);
+      ]
+
+(* A disabled button dispatches nothing on any route, dblclick included, so this
+   listener is skipped whether or not the button authored an [on_dblclick]. *)
+let wire_dblclick ~dispatch el ~disabled on_dblclick =
+  match (disabled, on_dblclick) with
+  | true, _
+  | false, None ->
+      []
+  | false, Some msg ->
       let listener =
         Brr.Ev.listen Brr.Ev.dblclick
           (fun _ev -> dispatch msg)
@@ -371,7 +388,7 @@ let wire_input_events ~dispatch el ~on_change ~on_submit ~on_focus ~on_blur
    the listener's first job is to cancel the platform's own submission, which
    navigates away and takes the application's model with it. A form with no
    [on_submit] is still a form to the browser — Enter in a lone field, or a click
-   on any [<button>] inside it, submits it — so leaving it unlistened would turn
+   on a submit [<button>] inside it, submits it — so leaving it unlistened would turn
    those into a page reload. Dispatch is the second job, and happens only when
    the form authored a message.
 
@@ -399,6 +416,18 @@ let apply_form_config el ~declared ~autocomplete ~novalidate =
   set "novalidate"
     (match novalidate with
     | true -> Some ""
+    | false -> None)
+
+(* A button's two derived attributes, on the same terms. [type] has no absent
+   form — a button that names none is a push button — so it is written on every
+   application; [aria-disabled] only when [true], uncovering a caller's pair
+   otherwise. *)
+let apply_button_config el ~declared ~button_type ~disabled =
+  let set = set_derived el ~declared in
+  set "type" (Some (Nopal_element.Element.button_type_to_string button_type));
+  set "aria-disabled"
+    (match disabled with
+    | true -> Some "true"
     | false -> None)
 
 (* An input's three derived configurations, on the same terms as a form's:
@@ -849,20 +878,31 @@ let rec create_live ~sheet ~reveals ~dispatch ~parent_axis
           base_id;
           interaction_id;
         }
-  | Button { style; interaction; attrs; on_click; on_dblclick; child } ->
+  | Button
+      {
+        style;
+        interaction;
+        attrs;
+        button_type;
+        disabled;
+        on_click;
+        on_dblclick;
+        child;
+      } ->
       let el = Brr.El.v (Jstr.v "button") [] in
       let base_id, interaction_id =
         apply_styles_for_element ~sheet ~parent_axis el style interaction
       in
       apply_attrs el attrs;
+      apply_button_config el ~declared:attrs ~button_type ~disabled;
       let children_axis = container_main_axis element in
       let live_child =
         create_and_append ~sheet ~reveals ~dispatch ~parent_axis:children_axis
           el child
       in
       let listeners =
-        wire_click ~dispatch el on_click
-        @ wire_dblclick ~dispatch el on_dblclick
+        wire_button_click ~dispatch el ~disabled on_click
+        @ wire_dblclick ~dispatch el ~disabled on_dblclick
       in
       Live_node
         {
@@ -2041,13 +2081,40 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
         reconcile_children ~sheet ~reveals ~dispatch
           ~old_parent_axis:old_children_axis ~parent_axis:children_axis el
           old_n.children children
-  | Button { on_click; on_dblclick; child; _ } ->
-      (* Derives no attributes of its own, so nothing to re-assert. *)
-      ignore (maybe_apply_attrs el old_n.element new_el : bool);
+  | Button { attrs; button_type; disabled; on_click; on_dblclick; child; _ } ->
+      let attrs_written = maybe_apply_attrs el old_n.element new_el in
+      (* Guarded on the previous render, as [Form]'s configuration is. A flip of
+         [disabled] is patched on this node and never re-creates it, so a
+         focused button that disables itself keeps the focus. *)
+      (match old_n.element with
+      | Button { button_type = old_button_type; disabled = old_disabled; _ }
+        when (not attrs_written)
+             && Nopal_element.Element.equal_button_type old_button_type
+                  button_type
+             && Bool.equal old_disabled disabled ->
+          ()
+      | Empty
+      | Text _
+      | Box _
+      | Row _
+      | Column _
+      | Form _
+      | Button _
+      | Input _
+      | Checkbox _
+      | Radio _
+      | Select _
+      | File_input _
+      | Image _
+      | Scroll _
+      | Keyed _
+      | Draw _
+      | Virtual_list _ ->
+          apply_button_config el ~declared:attrs ~button_type ~disabled);
       unlisten_all old_n.listeners;
       old_n.listeners <-
-        wire_click ~dispatch el on_click
-        @ wire_dblclick ~dispatch el on_dblclick;
+        wire_button_click ~dispatch el ~disabled on_click
+        @ wire_dblclick ~dispatch el ~disabled on_dblclick;
       old_n.children <-
         reconcile_children ~sheet ~reveals ~dispatch
           ~old_parent_axis:old_children_axis ~parent_axis:children_axis el

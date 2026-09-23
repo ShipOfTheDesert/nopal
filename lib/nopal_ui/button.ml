@@ -10,6 +10,7 @@ type 'msg config = {
   attrs : (string * string) list;
   disabled_style : Nopal_style.Style.t option;
   loading_style : Nopal_style.Style.t option;
+  button_type : Nopal_element.Element.button_type;
 }
 
 let default variant =
@@ -23,7 +24,10 @@ let default variant =
     attrs = [];
     disabled_style = None;
     loading_style = None;
+    button_type = Nopal_element.Element.Push;
   }
+
+let with_button_type button_type config = { config with button_type }
 
 let with_disabled_style style config =
   { config with disabled_style = Some style }
@@ -247,14 +251,12 @@ let view config child =
     | Some i -> i
     | None -> default_interaction_for config.variant
   in
-  let suppressed = config.disabled || config.loading in
-  let on_click = if suppressed then None else config.on_click in
-  let aria_attrs =
-    (if config.disabled then [ ("aria-disabled", "true") ] else [])
-    @ if config.loading then [ ("aria-busy", "true") ] else []
-  in
+  let aria_attrs = if config.loading then [ ("aria-busy", "true") ] else [] in
   let variant_attr = [ ("data-variant", variant_to_string config.variant) ] in
-  (* User attrs come last so they take precedence on key collision
-     (last-writer-wins when the renderer sets DOM attributes sequentially). *)
+  (* User attrs win among these list pairs on key collision, except [type]
+     and [aria-disabled], which the element derives from [button_type] and
+     [disabled]/[loading] and which outrank whatever [~attrs] supplies. *)
   let attrs = aria_attrs @ variant_attr @ config.attrs in
-  E.button ~style ~interaction ~attrs ?on_click child
+  E.button ~style ~interaction ~attrs ~button_type:config.button_type
+    ~disabled:(config.disabled || config.loading)
+    ?on_click:config.on_click child

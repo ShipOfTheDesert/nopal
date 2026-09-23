@@ -19,6 +19,7 @@ module Sub_reveal_list = Kitchen_sink_app.Sub_reveal_list
 module Sub_scroll_pane = Kitchen_sink_app.Sub_scroll_pane
 module Sub_focus_reveal = Kitchen_sink_app.Sub_focus_reveal
 module Sub_auth_form = Kitchen_sink_app.Sub_auth_form
+module Sub_button_semantics = Kitchen_sink_app.Sub_button_semantics
 
 (* Result-task chaining for the Tauri ops (RFC 0118, REQ-F5). See
    {!Kitchen_sink_app.Tauri_op} for the contract; instantiated here with the
@@ -445,6 +446,7 @@ let update model msg =
   | App.Fixed_size_msg _
   | App.Min_size_msg _
   | App.Auth_form_msg _
+  | App.Button_semantics_msg _
   | App.KeyboardHeightChanged _
   | App.Back_demo_push
   | App.Route_changed _
@@ -572,6 +574,12 @@ let serialize_msg : App.msg -> string = function
      fragments cannot drift apart, and every fragment is ';'-terminated for the
      same reason the file-input ones are. *)
   | App.Auth_form_msg af_msg -> Sub_auth_form.serialize_msg af_msg
+  (* Button semantics: each form dispatch is one of the matrix's tokens, so the
+     browser spec compares a cell's whole ordered dispatch list with the line
+     that states it. The section owns the wording so the tokens cannot drift
+     from its view, and every fragment is ';'-terminated for the same reason
+     the file-input ones are. *)
+  | App.Button_semantics_msg bs_msg -> Sub_button_semantics.serialize_msg bs_msg
   (* Mobile signals (RFC 0116): the keyboard-height readout (REQ-N2) and the
      back-demo route change the Tauri back-IPC e2e asserts on via the host
      [get_telemetry] mirror — [Route_changed] proves the hardware-back chain

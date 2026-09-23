@@ -223,6 +223,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     fixed_size : Sub_fixed_size.model;
     min_size : Sub_min_size.model;
     auth_form : Sub_auth_form.model;
+    button_semantics : Sub_button_semantics.model;
     keyboard_height : int;  (** soft-keyboard height in logical px (REQ-N2) *)
     back_route : back_route;  (** current route of the back-navigation demo *)
   }
@@ -266,6 +267,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | Fixed_size_msg of Sub_fixed_size.msg
     | Min_size_msg of Sub_min_size.msg
     | Auth_form_msg of Sub_auth_form.msg
+    | Button_semantics_msg of Sub_button_semantics.msg
     | KeyboardHeightChanged of int  (** native soft-keyboard height (REQ-F5) *)
     | Back_demo_push  (** push the back-demo one step deep (to [Back_detail]) *)
     | Route_changed of back_route  (** popstate-driven route update (REQ-F3) *)
@@ -401,6 +403,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     let fixed_size, fixed_size_cmd = Sub_fixed_size.init () in
     let min_size, min_size_cmd = Sub_min_size.init () in
     let auth_form, auth_form_cmd = Sub_auth_form.init () in
+    let button_semantics, button_semantics_cmd = Sub_button_semantics.init () in
     ( {
         button_clicks = 0;
         input_text = "";
@@ -473,6 +476,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         fixed_size;
         min_size;
         auth_form;
+        button_semantics;
         keyboard_height = 0;
         back_route = Back_home;
       },
@@ -500,6 +504,9 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           Nopal_mvu.Cmd.map (fun m -> Fixed_size_msg m) fixed_size_cmd;
           Nopal_mvu.Cmd.map (fun m -> Min_size_msg m) min_size_cmd;
           Nopal_mvu.Cmd.map (fun m -> Auth_form_msg m) auth_form_cmd;
+          Nopal_mvu.Cmd.map
+            (fun m -> Button_semantics_msg m)
+            button_semantics_cmd;
           (* Re-read the persisted demo value so a reload dispatches a
              [StorageRestored] message — the E2E persistence proof (REQ-F3). *)
           Nopal_mvu.Cmd.task
@@ -695,6 +702,12 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         let auth_form, af_cmd = Sub_auth_form.update model.auth_form af_msg in
         ( { model with auth_form },
           Nopal_mvu.Cmd.map (fun m -> Auth_form_msg m) af_cmd )
+    | Button_semantics_msg bs_msg ->
+        let button_semantics, bs_cmd =
+          Sub_button_semantics.update model.button_semantics bs_msg
+        in
+        ( { model with button_semantics },
+          Nopal_mvu.Cmd.map (fun m -> Button_semantics_msg m) bs_cmd )
     | DrawPointerMove (x, y) ->
         ({ model with draw_pointer = Some (x, y) }, Nopal_mvu.Cmd.none)
     | DrawPointerLeave ->
@@ -4010,6 +4023,14 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                  (Sub_auth_form.view vp model.auth_form);
              ];
            view_section
+             ~attrs:[ ("data-testid", "button-semantics-section") ]
+             "What a button inside a form dispatches"
+             [
+               Element.map
+                 (fun m -> Button_semantics_msg m)
+                 (Sub_button_semantics.view vp model.button_semantics);
+             ];
+           view_section
              ~attrs:[ ("data-testid", "file-input-section") ]
              "File Input"
              [
@@ -4233,4 +4254,5 @@ module Sub_reveal_list = Sub_reveal_list
 module Sub_scroll_pane = Sub_scroll_pane
 module Sub_focus_reveal = Sub_focus_reveal
 module Sub_auth_form = Sub_auth_form
+module Sub_button_semantics = Sub_button_semantics
 module Tauri_op = Tauri_op

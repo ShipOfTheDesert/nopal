@@ -103,3 +103,72 @@ let bold_label_style =
   Nopal_style.Style.default
   |> Nopal_style.Style.with_text (fun t ->
       { t with Nopal_style.Text.font_weight = Some Nopal_style.Font.Bold })
+
+let table_keys_under ~heading text =
+  let is_row line = String.starts_with ~prefix:"|" line in
+  let key_of_row line =
+    match String.split_on_char '|' line with
+    | "" :: _number :: key :: _rest -> (
+        match
+          String.trim key |> String.split_on_char '`' |> String.concat ""
+        with
+        | "Key" -> None
+        | k when String.starts_with ~prefix:"-" k -> None
+        | k -> Some k)
+    | _ -> None
+  in
+  let rec skip_to_table = function
+    | line :: _ as lines when is_row line -> lines
+    | _ :: rest -> skip_to_table rest
+    | [] -> []
+  in
+  let rec rows = function
+    | line :: rest when is_row line -> line :: rows rest
+    | _ -> []
+  in
+  let rec after_heading = function
+    | [] -> None
+    | line :: rest when String.equal line heading ->
+        Some (List.filter_map key_of_row (rows (skip_to_table rest)))
+    | _ :: rest -> after_heading rest
+  in
+  after_heading (String.split_on_char '\n' text)
+
+let does_not_compile = "does not compile"
+
+let simulated ~show_msg sim element =
+  let r = Nopal_test.Test_renderer.render element in
+  match sim r with
+  | Ok () ->
+      "Ok ["
+      ^ String.concat "; "
+          (List.map show_msg (Nopal_test.Test_renderer.messages r))
+      ^ "]"
+  | Error (Nopal_test.Test_renderer.No_handler _) -> "Error No_handler"
+  | Error (Nopal_test.Test_renderer.Not_found _) -> "Error Not_found"
+
+let check_change_list ~candidates ~published ~unchanged =
+  let moved, unmoved =
+    List.partition
+      (fun (_, before, now) -> not (String.equal (now ()) before))
+      candidates
+  in
+  let keys entries = List.map (fun (key, _, _) -> key) entries in
+  let key_list = Alcotest.(list string) in
+  Alcotest.check key_list "a published key whose answer did not move" []
+    (List.filter (fun k -> not (List.mem k (keys moved))) published);
+  Alcotest.check key_list "a key whose answer moved and was not published" []
+    (List.filter (fun k -> not (List.mem k published)) (keys moved));
+  Alcotest.check key_list "the published list is the moved keys, in order"
+    (keys moved) published;
+  Alcotest.check key_list
+    "and the keys recorded as unchanged were read, and are unchanged" unchanged
+    (keys unmoved)
+
+let llms_txt () =
+  let path =
+    Filename.concat (Filename.dirname Sys.executable_name) "../../../llms.txt"
+  in
+  match In_channel.with_open_text path In_channel.input_all with
+  | text -> text
+  | exception Sys_error e -> Alcotest.fail ("cannot read llms.txt: " ^ e)

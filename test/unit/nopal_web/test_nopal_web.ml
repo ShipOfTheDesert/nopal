@@ -3,6 +3,7 @@ open Nopal_style.Style
 
 type msg =
   | Click
+  | Dbl_click
   | Change of string
   | Submit
   | Toggled of bool
@@ -125,6 +126,8 @@ let test_button_creates_button () =
         style = default;
         interaction = Nopal_style.Interaction.default;
         attrs = [];
+        button_type = Push;
+        disabled = false;
         on_click = None;
         on_dblclick = None;
         child = Text { content = "ok"; text_style = None };
@@ -227,6 +230,8 @@ let test_button_click_dispatches () =
         style = default;
         interaction = Nopal_style.Interaction.default;
         attrs = [];
+        button_type = Push;
+        disabled = false;
         on_click = Some Click;
         on_dblclick = None;
         child = Text { content = "go"; text_style = None };
@@ -240,6 +245,73 @@ let test_button_click_dispatches () =
   match !msgs with
   | [ Click ] -> ()
   | _ -> Alcotest.fail "expected Click message"
+
+let dblclick_node node =
+  let ev = Jv.new' (Jv.get Jv.global "Event") [| Jv.of_string "dblclick" |] in
+  ignore (Jv.call node "dispatchEvent" [| ev |])
+
+let dblclick_button ~disabled =
+  Button
+    {
+      style = default;
+      interaction = Nopal_style.Interaction.default;
+      attrs = [];
+      button_type = Push;
+      disabled;
+      on_click = None;
+      on_dblclick = Some Dbl_click;
+      child = Text { content = "go"; text_style = None };
+    }
+
+(* Enabled affirmative twin for the disabled case below: the same fixture with
+   [disabled] false dispatches on a double-click. *)
+let test_button_dblclick_dispatches () =
+  let parent = fresh_parent () in
+  let dispatch, msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (dblclick_button ~disabled:false)
+  in
+  let node = Nopal_web.Renderer.dom_node handle in
+  dblclick_node node;
+  match !msgs with
+  | [ Dbl_click ] -> ()
+  | _ -> Alcotest.fail "expected Dbl_click message"
+
+(* A disabled button is created inert: a double-click must dispatch nothing,
+   not only a single click. *)
+let test_disabled_button_dblclick_dispatches_nothing () =
+  let parent = fresh_parent () in
+  let dispatch, msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent (dblclick_button ~disabled:true)
+  in
+  let node = Nopal_web.Renderer.dom_node handle in
+  dblclick_node node;
+  Alcotest.(check int) "no dispatch" 0 (List.length !msgs)
+
+(* A [disabled] flip patched on the reconcile path (no node replacement) must
+   also gate the dblclick listener, in both directions. *)
+let test_button_dblclick_disabled_flip_gates_listener () =
+  let parent = fresh_parent () in
+  let dispatch, msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (dblclick_button ~disabled:false)
+  in
+  let node = Nopal_web.Renderer.dom_node handle in
+  Nopal_web.Renderer.update ~dispatch handle (dblclick_button ~disabled:true);
+  Alcotest.(check bool)
+    "the same node is kept" true
+    (Nopal_web.Renderer.dom_node handle == node);
+  dblclick_node node;
+  Alcotest.(check int)
+    "disabled after flip dispatches nothing" 0 (List.length !msgs);
+  Nopal_web.Renderer.update ~dispatch handle (dblclick_button ~disabled:false);
+  dblclick_node node;
+  match !msgs with
+  | [ Dbl_click ] -> ()
+  | _ -> Alcotest.fail "expected exactly one Dbl_click after re-enabling"
 
 (* 29 *)
 let test_input_change_dispatches () =
@@ -796,6 +868,8 @@ let test_reconcile_different_variant_replaces () =
         style = default;
         interaction = Nopal_style.Interaction.default;
         attrs = [];
+        button_type = Push;
+        disabled = false;
         on_click = None;
         on_dblclick = None;
         child = Text { content = "b"; text_style = None };
@@ -1426,6 +1500,8 @@ let test_keyed_into_keyed_removes_old_nonkeyed () =
                 style = default;
                 interaction = Nopal_style.Interaction.default;
                 attrs = [];
+                button_type = Push;
+                disabled = false;
                 on_click = Some Click;
                 on_dblclick = None;
                 child = Text { content = "old"; text_style = None };
@@ -1981,6 +2057,8 @@ let test_reconcile_button_skips_unchanged_attrs () =
         style = default;
         interaction = Nopal_style.Interaction.default;
         attrs = [ ("data-id", "x") ];
+        button_type = Push;
+        disabled = false;
         on_click = Some Click;
         on_dblclick = None;
         child = Text { content = "a"; text_style = None };
@@ -1995,6 +2073,8 @@ let test_reconcile_button_skips_unchanged_attrs () =
         style = default;
         interaction = Nopal_style.Interaction.default;
         attrs = [ ("data-id", "x") ];
+        button_type = Push;
+        disabled = false;
         on_click = Some Click;
         on_dblclick = None;
         child = Text { content = "a"; text_style = None };
@@ -2579,6 +2659,8 @@ let test_reconcile_event_listener_update () =
         style = default;
         interaction = Nopal_style.Interaction.default;
         attrs = [];
+        button_type = Push;
+        disabled = false;
         on_click = Some Click;
         on_dblclick = None;
         child = Text { content = "a"; text_style = None };
@@ -2591,6 +2673,8 @@ let test_reconcile_event_listener_update () =
         style = default;
         interaction = Nopal_style.Interaction.default;
         attrs = [];
+        button_type = Push;
+        disabled = false;
         on_click = Some Submit;
         on_dblclick = None;
         child = Text { content = "a"; text_style = None };
@@ -2604,6 +2688,83 @@ let test_reconcile_event_listener_update () =
   match !msgs with
   | [ Submit ] -> ()
   | _ -> Alcotest.fail "expected Submit message (not old Click)"
+
+(* Rebuilt per frame, as a view does, so each update compares two distinct
+   values rather than one shared record. *)
+let flip_button ~disabled =
+  Button
+    {
+      style = default;
+      interaction = Nopal_style.Interaction.default;
+      attrs = [];
+      button_type = Submit;
+      disabled;
+      on_click = Some Click;
+      on_dblclick = None;
+      child = Text { content = "save"; text_style = None };
+    }
+
+let click_node node =
+  let ev =
+    Jv.new' (Jv.get Jv.global "Event")
+      [|
+        Jv.of_string "click";
+        Jv.obj [| ("bubbles", Jv.true'); ("cancelable", Jv.true') |];
+      |]
+  in
+  ignore (Jv.call node "dispatchEvent" [| ev |])
+
+let active_element () = Jv.get (Jv.get Jv.global "document") "activeElement"
+
+(* A save button that disables itself on its own click: the flip must patch the
+   node it is on, because a replaced node would take the focus with it. *)
+let test_button_disabled_flip_keeps_node_and_focus () =
+  let parent = fresh_parent () in
+  let dispatch, msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent (flip_button ~disabled:false)
+  in
+  let node = Nopal_web.Renderer.dom_node handle in
+  ignore (Jv.call node "focus" [||]);
+  click_node node;
+  Alcotest.(check int) "the enabled click dispatches" 1 (List.length !msgs);
+  Nopal_web.Renderer.update ~dispatch handle (flip_button ~disabled:true);
+  Alcotest.(check bool)
+    "the same node is kept" true
+    (Nopal_web.Renderer.dom_node handle == node);
+  Alcotest.(check bool)
+    "and it still holds focus" true
+    (active_element () == node);
+  Alcotest.(check (option string))
+    "it is announced as disabled" (Some "true")
+    (let v = Jv.call node "getAttribute" [| Jv.of_string "aria-disabled" |] in
+     if Jv.is_null v then None else Some (Jv.to_string v));
+  click_node node;
+  Alcotest.(check int)
+    "a click after the flip dispatches nothing" 1 (List.length !msgs)
+
+let test_button_enabled_after_flip_dispatches_again () =
+  let parent = fresh_parent () in
+  let dispatch, msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent (flip_button ~disabled:true)
+  in
+  let node = Nopal_web.Renderer.dom_node handle in
+  click_node node;
+  Alcotest.(check int)
+    "a disabled click dispatches nothing" 0 (List.length !msgs);
+  Nopal_web.Renderer.update ~dispatch handle (flip_button ~disabled:false);
+  Alcotest.(check bool)
+    "the same node is kept" true
+    (Nopal_web.Renderer.dom_node handle == node);
+  Alcotest.(check bool)
+    "aria-disabled is gone" true
+    (Jv.is_null
+       (Jv.call node "getAttribute" [| Jv.of_string "aria-disabled" |]));
+  click_node node;
+  match !msgs with
+  | [ Click ] -> ()
+  | _ -> Alcotest.fail "expected exactly one Click after re-enabling"
 
 (* C1: schedule_after dispatches delayed messages *)
 module Delayed_app = struct
@@ -2648,6 +2809,8 @@ let test_recursive_unlisten_on_remove () =
                 style = default;
                 interaction = Nopal_style.Interaction.default;
                 attrs = [];
+                button_type = Push;
+                disabled = false;
                 on_click = Some Click;
                 on_dblclick = None;
                 child = Text { content = "inner"; text_style = None };
@@ -4554,6 +4717,8 @@ let test_container_main_axis_non_container_is_none () =
          style = default;
          interaction = Nopal_style.Interaction.default;
          attrs = [];
+         button_type = Push;
+         disabled = false;
          on_click = None;
          on_dblclick = None;
          child = Empty;
@@ -5003,6 +5168,12 @@ let () =
         [
           Alcotest.test_case "button click dispatches" `Quick
             test_button_click_dispatches;
+          Alcotest.test_case "button dblclick dispatches" `Quick
+            test_button_dblclick_dispatches;
+          Alcotest.test_case "disabled button dblclick dispatches nothing"
+            `Quick test_disabled_button_dblclick_dispatches_nothing;
+          Alcotest.test_case "button dblclick disabled flip gates listener"
+            `Quick test_button_dblclick_disabled_flip_gates_listener;
           Alcotest.test_case "input change dispatches" `Quick
             test_input_change_dispatches;
           Alcotest.test_case "input submit dispatches on enter" `Quick
@@ -5057,6 +5228,10 @@ let () =
             test_reconcile_children_reuse_by_position;
           Alcotest.test_case "reconcile event listener update" `Quick
             test_reconcile_event_listener_update;
+          Alcotest.test_case "button_disabled_flip_keeps_node_and_focus" `Quick
+            test_button_disabled_flip_keeps_node_and_focus;
+          Alcotest.test_case "button_enabled_after_flip_dispatches_again" `Quick
+            test_button_enabled_after_flip_dispatches_again;
           Alcotest.test_case "reconcile image attributes" `Quick
             test_reconcile_image_attributes;
           Alcotest.test_case "reconcile image skips unchanged src/alt" `Quick

@@ -1,0 +1,67 @@
+# What a button inside a form dispatches, one cell per line, as Chromium
+# answers it (measured). Both the structural suite and the browser suite read
+# this file, and a renderer that answers any line differently fails its build.
+#
+# Columns, tab-separated: field set, button state, action, expected.
+#
+# Field sets: text | password | text-text | text-password. A field set names
+# the form's fields in tree order; field 1 is the first.
+# Button states: submit-enabled | submit-disabled | push-enabled | none |
+# disabled-submit-before-enabled-submit. Button 1 is the form's first button;
+# only the last state has a button 2, an enabled submit button after it.
+# Actions: click-button-N clicks button N; enter-field-N presses Enter in
+# field N.
+# Expected: the messages dispatched, in order and comma-separated, or - for
+# none. C1 and C2 are the on_click of button 1 and button 2, and S is the
+# form's on_submit.
+field_set	button_state	action	expected
+text	submit-enabled	click-button-1	C1,S
+text	submit-enabled	enter-field-1	C1,S
+text	submit-disabled	click-button-1	-
+text	submit-disabled	enter-field-1	-
+text	push-enabled	click-button-1	C1
+text	push-enabled	enter-field-1	S
+text	none	enter-field-1	S
+text	disabled-submit-before-enabled-submit	click-button-1	-
+text	disabled-submit-before-enabled-submit	click-button-2	C2,S
+text	disabled-submit-before-enabled-submit	enter-field-1	-
+password	submit-enabled	click-button-1	C1,S
+password	submit-enabled	enter-field-1	C1,S
+password	submit-disabled	click-button-1	-
+password	submit-disabled	enter-field-1	-
+password	push-enabled	click-button-1	C1
+password	push-enabled	enter-field-1	S
+password	none	enter-field-1	S
+password	disabled-submit-before-enabled-submit	click-button-1	-
+password	disabled-submit-before-enabled-submit	click-button-2	C2,S
+password	disabled-submit-before-enabled-submit	enter-field-1	-
+text-text	submit-enabled	click-button-1	C1,S
+text-text	submit-enabled	enter-field-1	C1,S
+text-text	submit-enabled	enter-field-2	C1,S
+text-text	submit-disabled	click-button-1	-
+text-text	submit-disabled	enter-field-1	-
+text-text	submit-disabled	enter-field-2	-
+text-text	push-enabled	click-button-1	C1
+text-text	push-enabled	enter-field-1	-
+text-text	push-enabled	enter-field-2	-
+text-text	none	enter-field-1	-
+text-text	none	enter-field-2	-
+text-text	disabled-submit-before-enabled-submit	click-button-1	-
+text-text	disabled-submit-before-enabled-submit	click-button-2	C2,S
+text-text	disabled-submit-before-enabled-submit	enter-field-1	-
+text-text	disabled-submit-before-enabled-submit	enter-field-2	-
+text-password	submit-enabled	click-button-1	C1,S
+text-password	submit-enabled	enter-field-1	C1,S
+text-password	submit-enabled	enter-field-2	C1,S
+text-password	submit-disabled	click-button-1	-
+text-password	submit-disabled	enter-field-1	-
+text-password	submit-disabled	enter-field-2	-
+text-password	push-enabled	click-button-1	C1
+text-password	push-enabled	enter-field-1	-
+text-password	push-enabled	enter-field-2	-
+text-password	none	enter-field-1	-
+text-password	none	enter-field-2	-
+text-password	disabled-submit-before-enabled-submit	click-button-1	-
+text-password	disabled-submit-before-enabled-submit	click-button-2	C2,S
+text-password	disabled-submit-before-enabled-submit	enter-field-1	-
+text-password	disabled-submit-before-enabled-submit	enter-field-2	-

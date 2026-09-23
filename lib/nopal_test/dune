@@ -1,4 +1,16 @@
 (library
+ (name nopal_test_internal)
+ (public_name nopal_test.internal)
+ (modules implicit_submission)
+ (libraries nopal_element))
+
+(library
  (name nopal_test)
  (public_name nopal_test)
- (libraries nopal_element nopal_style nopal_mvu nopal_runtime))
+ (modules nopal_test telemetry_test test_renderer)
+ (libraries
+  nopal_element
+  nopal_style
+  nopal_mvu
+  nopal_runtime
+  nopal_test_internal))

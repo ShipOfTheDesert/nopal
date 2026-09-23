@@ -95,19 +95,12 @@ let test_submit_button_is_inside_the_form () =
   Alcotest.(check (option string))
     "the button is a submit button, which is what makes a press submit its form"
     (Some "submit") (attr "type" button);
-  (match click submit_button rendered with
-  | Error (No_handler _) -> ()
-  | Ok () ->
-      Alcotest.fail
-        "the submit button dispatches a message of its own, so a press would \
-         dispatch twice: once from the button and once from the form"
-  | Error (Not_found _) -> Alcotest.fail "the submit button is not rendered");
+  fail_on_error "a press on the submit button" (click submit_button rendered);
+  (* A message of the button's own would come first, so a list of one also
+     pins that the press does not dispatch twice. *)
   Alcotest.(check (list string))
-    "a press dispatches nothing from the button itself" [] (dispatched rendered);
-  fail_on_error "the form's own submit" (submit_form form rendered);
-  Alcotest.(check (list string))
-    "the form a press submits answers with the section's submit" [ submitted ]
-    (dispatched rendered)
+    "a press submits the form, which answers with the section's submit, once"
+    [ submitted ] (dispatched rendered)
 
 let test_the_form_carries_an_accessible_name () =
   let rendered = rendered_for (after []) in

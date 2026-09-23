@@ -58,3 +58,54 @@ val bold_label_style : Nopal_style.Style.t
     font weight on its text component — the standard fixture for asserting that
     a label style override reaches both the label box and the text node inside
     it. *)
+
+val table_keys_under : heading:string -> string -> string list option
+(** [table_keys_under ~heading text] is the key column of every row of the first
+    Markdown table after the line of [text] that equals [heading], in table
+    order. The key column is the second one, the first being a row number;
+    backticks are stripped from it, and the header row (key [Key]) and the
+    separator row are dropped. Prose between the heading and the table is
+    skipped, and the table ends at the first line that does not start with
+    ["|"].
+
+    [None] when no line equals [heading], so a renamed heading fails as that
+    rather than as an empty list. *)
+
+val does_not_compile : string
+(** The before-column literal for a change-list candidate whose change is
+    compile-visible: no reading can equal it, so such a candidate lands in the
+    moved partition by construction. *)
+
+val simulated :
+  show_msg:('msg -> string) ->
+  ('msg Nopal_test.Test_renderer.rendered ->
+  (unit, Nopal_test.Test_renderer.error) result) ->
+  'msg Nopal_element.Element.t ->
+  string
+(** [simulated ~show_msg sim element] renders [element], runs [sim] on the
+    render, and reports what a simulator answers on it: [Ok] with every
+    dispatched message rendered through [show_msg], or which error arm [sim]
+    returned. Use [~show_msg:Fun.id] where the message type is already [string].
+*)
+
+val check_change_list :
+  candidates:(string * string * (unit -> string)) list ->
+  published:string list ->
+  unchanged:string list ->
+  unit
+(** [check_change_list ~candidates ~published ~unchanged] partitions
+    [candidates] — each a key, its before-column answer, and a thunk reading its
+    answer as the tree stands — into the keys whose answer moved and the keys
+    whose answer did not, and checks that partition against [published] and
+    [unchanged] in every direction: a published key whose answer did not move, a
+    moved key that is not published, the published list out of order with the
+    moved keys, and an unchanged key that in fact moved all fail. *)
+
+val llms_txt : unit -> string
+(** [llms_txt ()] is the repository's [llms.txt], read from the root of the
+    build tree, or an Alcotest failure when it cannot be read. The path is taken
+    from the running executable rather than the working directory, so it holds
+    under [dune exec] as well, once [dune build] has copied the file; it holds
+    only for a test executable in a directory directly under [test/unit/], and
+    that test's stanza must declare [(deps %{project_root}/llms.txt)] for dune
+    to copy the file there. *)

@@ -10,6 +10,7 @@ type select_option = { value : string; label : string; disabled : bool }
 type capture = User | Environment
 type autocomplete_mode = On | Off
 type input_type = Plain | Password | Email | Tel | Url | Number | Search
+type button_type = Submit | Push
 
 type file_info = {
   blob_id : string;
@@ -61,6 +62,8 @@ type 'msg t =
       style : Nopal_style.Style.t;
       interaction : Nopal_style.Interaction.t;
       attrs : (string * string) list;
+      button_type : button_type;
+      disabled : bool;
       on_click : 'msg option;
       on_dblclick : 'msg option;
       child : 'msg t;
@@ -188,9 +191,19 @@ let form ?(style = Nopal_style.Style.empty)
     { style; interaction; attrs; children; on_submit; autocomplete; novalidate }
 
 let button ?(style = Nopal_style.Style.empty)
-    ?(interaction = Nopal_style.Interaction.default) ?(attrs = []) ?on_click
-    ?on_dblclick child =
-  Button { style; interaction; attrs; on_click; on_dblclick; child }
+    ?(interaction = Nopal_style.Interaction.default) ?(attrs = [])
+    ?(button_type = Push) ?(disabled = false) ?on_click ?on_dblclick child =
+  Button
+    {
+      style;
+      interaction;
+      attrs;
+      button_type;
+      disabled;
+      on_click;
+      on_dblclick;
+      child;
+    }
 
 let input ?(style = Nopal_style.Style.empty)
     ?(interaction = Nopal_style.Interaction.default) ?(attrs = [])
@@ -247,6 +260,11 @@ let input_type_to_string (t : input_type) =
   | Url -> "url"
   | Number -> "number"
   | Search -> "search"
+
+let button_type_to_string (t : button_type) =
+  match t with
+  | Submit -> "submit"
+  | Push -> "button"
 
 let file_info ~blob_id ~name ~size ~mime ~last_modified =
   { blob_id; name; size; mime; last_modified }
@@ -352,12 +370,24 @@ let rec map f = function
           autocomplete;
           novalidate;
         }
-  | Button { style; interaction; attrs; on_click; on_dblclick; child } ->
+  | Button
+      {
+        style;
+        interaction;
+        attrs;
+        button_type;
+        disabled;
+        on_click;
+        on_dblclick;
+        child;
+      } ->
       Button
         {
           style;
           interaction;
           attrs;
+          button_type;
+          disabled;
           on_click = Option.map f on_click;
           on_dblclick = Option.map f on_dblclick;
           child = map f child;
@@ -543,6 +573,13 @@ let equal_input_type (t1 : input_type) (t2 : input_type) =
       true
   | (Plain | Password | Email | Tel | Url | Number | Search), _ -> false
 
+let equal_button_type (t1 : button_type) (t2 : button_type) =
+  match (t1, t2) with
+  | Submit, Submit
+  | Push, Push ->
+      true
+  | (Submit | Push), _ -> false
+
 (* Equality strategy for handler and message fields:
    Both function-typed handlers (on_click, on_toggle, on_change, ...) and plain
    'msg payloads (on_submit, on_focus, on_blur, on_select, ...) are compared by
@@ -649,6 +686,8 @@ let rec equal a b =
           style = s1;
           interaction = i1;
           attrs = a1;
+          button_type = bt1;
+          disabled = d1;
           on_click = oc1;
           on_dblclick = od1;
           child = ch1;
@@ -658,6 +697,8 @@ let rec equal a b =
           style = s2;
           interaction = i2;
           attrs = a2;
+          button_type = bt2;
+          disabled = d2;
           on_click = oc2;
           on_dblclick = od2;
           child = ch2;
@@ -665,6 +706,8 @@ let rec equal a b =
       Nopal_style.Style.equal s1 s2
       && Nopal_style.Interaction.equal i1 i2
       && equal_attrs a1 a2
+      && equal_button_type bt1 bt2
+      && Bool.equal d1 d2
       && Option.equal ( == ) oc1 oc2
       && Option.equal ( == ) od1 od2
       && equal ch1 ch2
