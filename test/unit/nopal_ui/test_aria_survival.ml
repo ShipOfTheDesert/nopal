@@ -470,6 +470,7 @@ let button_config () : msg B.config =
     attrs = [];
     disabled_style = Some red;
     loading_style = Some green;
+    button_type = E.Submit;
   }
 
 let test_button_aria_survives_every_style_override () =
@@ -484,6 +485,34 @@ let test_button_aria_survives_every_style_override () =
   check_style "the disabled style wins" (Some red) node;
   check_interaction "the interaction override reaches the button"
     (Some hover_blue) node
+
+(* A loading button that is not disabled, under every override and with a
+   caller's [aria-disabled] pair: the button's [aria-disabled] is derived from
+   its typed state rather than contributed by the component, so it sits after
+   the caller's list and the lookup answers it. *)
+let test_button_aria_disabled_survives_as_typed_derivation () =
+  let config =
+    {
+      (button_config ()) with
+      disabled = false;
+      attrs = [ ("data-case", "typed"); ("aria-disabled", "false") ];
+    }
+  in
+  let root = tree (render (B.view config (E.text "Delete"))) in
+  let node = find_or_fail "expected a button" (By_tag "button") root in
+  Alcotest.(check (list (pair string string)))
+    "component pairs, then the caller's list, then the derived pairs"
+    [
+      ("aria-busy", "true");
+      ("data-variant", "destructive");
+      ("data-case", "typed");
+      ("aria-disabled", "false");
+      ("type", "submit");
+      ("aria-disabled", "true");
+    ]
+    (attrs_of node);
+  check_key "and the lookup answers the derived pair" node "aria-disabled"
+    (Some "true")
 
 (* --- A node's attribute list order.
 
@@ -551,6 +580,8 @@ let () =
             test_toast_aria_survives_every_style_override;
           Alcotest.test_case "button" `Quick
             test_button_aria_survives_every_style_override;
+          Alcotest.test_case "button_aria_disabled_survives_as_typed_derivation"
+            `Quick test_button_aria_disabled_survives_as_typed_derivation;
         ] );
       ( "a node's attribute list order",
         [

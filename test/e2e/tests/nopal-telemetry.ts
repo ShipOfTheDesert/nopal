@@ -76,6 +76,41 @@ export class NopalTelemetry {
     );
   }
 
+  // Resolves once a Message containing `fragment` is recorded strictly after
+  // the last drain point (the last events()/sectionMessages() read this
+  // instance took), rather than anywhere in the whole undrained bridge log.
+  //
+  // Deliberately not interchangeable with `waitForMessage`, which matches
+  // against the whole log and so resolves immediately on a fragment a PRIOR
+  // interaction already left there — a caller that repeats the same token
+  // sequence on one page, without a fresh navigation between arms, would then
+  // assert before the second interaction's dispatch has actually happened.
+  // Scoping the check to `slice(consumed)` makes the wait produce-only: it can
+  // resolve solely on something the caller's own next interaction writes.
+  async waitForNewMessage(fragment: string, timeoutMs: number): Promise<void> {
+    const since = this.consumed;
+    await this.page.waitForFunction(
+      ([f, s]) => {
+        const bridge = (
+          window as unknown as {
+            __nopal_telemetry__?: {
+              getEvents(): { kind: string; value?: string }[];
+            };
+          }
+        ).__nopal_telemetry__;
+        if (bridge === undefined) return false;
+        return bridge
+          .getEvents()
+          .slice(s as number)
+          .some(
+            (e) => e.kind === "message" && (e.value ?? "").includes(f as string)
+          );
+      },
+      [fragment, since] as [string, number],
+      { timeout: timeoutMs }
+    );
+  }
+
   async assertDispatched(fragment: string): Promise<void> {
     const events = await this.current();
     const ok = events.some(

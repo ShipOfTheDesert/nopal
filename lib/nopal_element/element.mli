@@ -76,6 +76,20 @@ val equal_input_type : input_type -> input_type -> bool
     comparing [input_type option] values build on this with [Option.equal]
     rather than restating the match. *)
 
+(** What activating a {!button} does to the {!form} that encloses it. Outside a
+    form the two are the same. *)
+type button_type =
+  | Submit  (** Activating it submits the enclosing form. *)
+  | Push  (** Activating it does only what its [on_click] says. *)
+
+val button_type_to_string : button_type -> string
+(** [button_type_to_string t] is the wire token for [t]: ["submit"] or
+    ["button"]. The sole producer of that token — no call site spells it as a
+    bare string. *)
+
+val equal_button_type : button_type -> button_type -> bool
+(** Structural equality over the closed variant. The sole definition. *)
+
 type file_info = {
   blob_id : string;
       (** Opaque handle issued by the web blob store, valid for the page
@@ -149,6 +163,11 @@ type 'msg t =
       style : Nopal_style.Style.t;
       interaction : Nopal_style.Interaction.t;
       attrs : (string * string) list;
+      button_type : button_type;
+          (** [Push] dispatches [on_click] alone; [Submit] also submits the
+              enclosing form. *)
+      disabled : bool;
+          (** [true] keeps the button focusable and makes it inert. *)
       on_click : 'msg option;
       on_dblclick : 'msg option;
       child : 'msg t;
@@ -249,7 +268,8 @@ type 'msg t =
 
     Several builders take both an [?attrs] list and typed fields a backend turns
     into attributes of its own — an input's [placeholder], a radio's [name], a
-    picker's [accept], a container's [focusable]. The rule is:
+    picker's [accept], a container's [focusable], a button's [button_type] and
+    [disabled]. The rule is:
     {b typed-field derivations beat the [~attrs] list; within the list, the last
        pair wins.}
 
@@ -275,16 +295,18 @@ type 'msg t =
     [string] and not a [string option], so an input derives a pair for that key
     on every render and a ["placeholder"] pair in [attrs] is replaced rather
     than left standing, empty default included — as is a radio's required
-    [name], and a checkbox's, radio's or file picker's ["type"]. Uncovering is
-    the behaviour of the derivations that can decline, and they decline in one
-    of two shapes. A [bool] cannot say "no attribute": [true] asserts the key
-    and [false] emits nothing, so a [false] uncovers a caller's pair rather than
-    removing it — a control's ["disabled"], a file picker's ["multiple"], an
-    input's ["required"] together with the ["aria-required"] it carries, and a
-    form's ["novalidate"]. An option, or an empty list, asserts nothing when
-    absent and uncovers the caller's pair the same way — a file picker's
-    ["accept"] and ["capture"], an input's ["autocomplete"] and its ["type"]
-    from [input_type], and a form's ["autocomplete"].
+    [name], a checkbox's, radio's or file picker's ["type"], and a button's
+    ["type"], which [button_type] derives as ["button"] when the button names
+    none. Uncovering is the behaviour of the derivations that can decline, and
+    they decline in one of two shapes. A [bool] cannot say "no attribute":
+    [true] asserts the key and [false] emits nothing, so a [false] uncovers a
+    caller's pair rather than removing it — a control's ["disabled"], a file
+    picker's ["multiple"], an input's ["required"] together with the
+    ["aria-required"] it carries, a form's ["novalidate"], and a button's
+    ["aria-disabled"] from its [disabled]. An option, or an empty list, asserts
+    nothing when absent and uncovers the caller's pair the same way — a file
+    picker's ["accept"] and ["capture"], an input's ["autocomplete"] and its
+    ["type"] from [input_type], and a form's ["autocomplete"].
 
     Two renderers enforce this and no more than two, by two different
     mechanisms. The web backend applies the declared list before it writes any
@@ -300,12 +322,14 @@ type 'msg t =
     The first tier is a shared rule only for the keys the web backend writes as
     real attributes: ["disabled"], ["accept"], ["capture"], ["multiple"],
     ["placeholder"], a radio's ["name"], a control's ["type"], an input's
-    ["required"], ["aria-required"] and ["autocomplete"], and a form's
-    ["autocomplete"] and ["novalidate"]. Of those, ["disabled"], ["multiple"],
-    ["required"] and ["novalidate"] are spelled differently by the two — a
-    presence attribute in the browser, a ["true"] pair in the structural tree —
-    so they agree on which side wins and not on the value; the rest carry the
-    same value in both. A checkbox's, radio's or file picker's ["type"] is the
+    ["required"], ["aria-required"] and ["autocomplete"], a form's
+    ["autocomplete"] and ["novalidate"], and a button's ["type"] and
+    ["aria-disabled"]. Of those, ["disabled"], ["multiple"], ["required"] and
+    ["novalidate"] are spelled differently by the two — a presence attribute in
+    the browser, a ["true"] pair in the structural tree — so they agree on which
+    side wins and not on the value; the rest carry the same value in both, a
+    button's ["aria-disabled"] being ["true"] and its ["type"] ["button"] or
+    ["submit"]. A checkbox's, radio's or file picker's ["type"] is the
     structural node's tag rather than a pair, while an input's is a pair in
     both. A container's [focusable] is a first-tier derivation in both
     renderers, but each spells it in its own vocabulary — a tab-order attribute
@@ -322,9 +346,12 @@ type 'msg t =
 
     An Enter in an {!input} can be answered by more than one handler, and the
     rule that chooses among them is one sentence:
-    {b the nearest handler that accepts the Enter consumes it.} Nothing ever
-    dispatches twice for one Enter, and a handler the application supplied is
-    never silently dropped.
+    {b the nearest handler that accepts the Enter consumes it.} An Enter reaches
+    at most one of the three handlers below, and a handler the application
+    supplied is never silently dropped. One Enter can still dispatch two
+    messages: an Enter deferred to the form is the platform's implicit
+    submission, which clicks the form's default button, so that button's
+    [on_click] comes first and the form's [on_submit] second.
 
     The handlers are consulted nearest first. The input's [on_keydown] comes
     first and is consulted for every key; its ['msg option] return is the
@@ -342,13 +369,13 @@ type 'msg t =
     The nearest enclosing {!form}'s [on_submit] comes third. An Enter that
     neither of the input's handlers answered — an Enter on a bare input, or one
     its [on_keydown] declined with no [on_submit] behind it — is deferred to the
-    nearest enclosing form, which submits and dispatches its own [on_submit]. An
-    input with no enclosing form, or inside a form that authors no [on_submit],
-    dispatches nothing for that Enter. An input that carries its own [on_submit]
-    answers the Enter itself, so the enclosing form never sees it: one Enter in
-    that field dispatches the input's message and not the form's. "Nearest
-    enclosing" assumes forms do not nest; see {!form} for why nesting is
-    unsupported.
+    nearest enclosing form, whose implicit submission decides what it dispatches
+    (see below). An input with no enclosing form, or inside a form that authors
+    no [on_submit], dispatches nothing to the form for that Enter. An input that
+    carries its own [on_submit] answers the Enter itself, so the enclosing form
+    never sees it: one Enter in that field dispatches the input's message and
+    not the form's. "Nearest enclosing" assumes forms do not nest; see {!form}
+    for why nesting is unsupported.
 
     That last case is the cost of the rule, stated rather than hidden: in a form
     where one field carries its own [on_submit], Enter in that field dispatches
@@ -363,13 +390,22 @@ type 'msg t =
     keystroke does not stop its own input from receiving text.
 
     Both renderers take the route from {!Submit_route.of_key}, so the web
-    renderer and the structural test renderer answer every keydown alike.
-    Whether a deferred Enter then submits the form is the platform's own
-    decision, and it is outside the route: a browser submits a form on Enter
-    only when the form has a submit button — which every {!button} inside it is
-    — or holds a single text field. A form with several fields and no button
-    does not submit on Enter in the browser, although the structural renderer
-    defers the Enter to it all the same. *)
+    renderer and the structural test renderer answer every keydown alike. What a
+    deferred Enter then dispatches is the platform's implicit submission, which
+    is outside the route; the web renderer leaves it to the browser and the
+    structural renderer models it, so the two answer it alike as Chromium
+    answers it (measured). The form's default button is its first submit button
+    in tree order — a {!button} typed [Submit], never one that names no type.
+    When the form has one and it is enabled, the Enter clicks it: the button's
+    [on_click] and then the form's [on_submit] are dispatched. When it is
+    [disabled], the Enter dispatches nothing, even if an enabled submit button
+    follows it. When the form has no submit button, the Enter submits only a
+    form holding a single field that blocks implicit submission, dispatching the
+    form's [on_submit]; a form with two such fields dispatches nothing. Every
+    {!input} is such a field, whatever its [input_type]; a {!checkbox},
+    {!radio}, {!select} or {!file_input} is not. An input whose type a caller
+    overrides through [attrs] to a kind the browser does not count, [hidden] for
+    instance, is outside the structural renderer's model. *)
 
 val empty : 'msg t
 (** An element that renders nothing. *)
@@ -465,12 +501,12 @@ val form :
     absent, it asks for nothing. [novalidate] skips the platform's own
     constraint validation before a submission, and defaults to [false].
 
-    Every {!button} inside a form is a submit button on the web, because a
-    button that names no type is one there: clicking it submits the form, so a
-    form with [on_submit] dispatches that message as well as the button's own
-    [on_click], the button's first. A button that must not submit — a toggle
-    that reveals a password, a cancel — says so with
-    [~attrs:[("type", "button")]].
+    A {!button} inside a form submits it only when it says so with
+    [~button_type:Submit]: clicking it dispatches the button's own [on_click]
+    and then the form's [on_submit]. A button that names no type does not
+    submit, so a toggle that reveals a password, or a cancel, dispatches its
+    [on_click] and nothing else. A [disabled] button dispatches nothing and
+    submits nothing.
 
     A form is exposed to assistive technology as a landmark only once it has an
     accessible name, which travels through [attrs] — an ["aria-label"] pair, for
@@ -486,14 +522,26 @@ val button :
   ?style:Nopal_style.Style.t ->
   ?interaction:Nopal_style.Interaction.t ->
   ?attrs:(string * string) list ->
+  ?button_type:button_type ->
+  ?disabled:bool ->
   ?on_click:'msg ->
   ?on_dblclick:'msg ->
   'msg t ->
   'msg t
-(** A clickable button. The child element serves as the button label. Inside a
-    {!form} the web renders it as a submit button, so a click also dispatches
-    the form's [on_submit] after this button's own [on_click] unless it passes
-    [~attrs:[("type", "button")]]; see {!form} for the full rule. *)
+(** A clickable button. The child element serves as the button label.
+    [button_type] says whether activating it submits the enclosing {!form};
+    absent, it is [Push], so a button submits only when it says [Submit].
+    [disabled], [false] when absent, keeps the button focusable and makes it
+    inert: activating it dispatches nothing and submits nothing, and assistive
+    technology announces it as disabled. That differs from the [disabled] of
+    {!checkbox}, {!radio} and {!select}, which the web renders as the native
+    attribute and so also takes the control out of the tab order. Both fields
+    are typed, so a ["type"] pair in [attrs] never takes effect, and an
+    ["aria-disabled"] pair only while [disabled] is [false]; see {!form} for the
+    full rule. [disabled] changes no styling; pass a [~style] for the disabled
+    look. Known limitation on the web backend: a disabled button's click is
+    cancelled but still propagates to an ancestor's [on_click], unlike a native
+    [disabled] button, which fires no click event at all. *)
 
 val input :
   ?style:Nopal_style.Style.t ->

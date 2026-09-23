@@ -52,8 +52,8 @@ module NB = Nopal_ui.Navigation_bar
 module BT = Nopal_ui.Bottom_tabs
 module Nav_stack = Nopal_navigation.Nav_stack
 
-(* A plain string message: nothing below asserts on a dispatch, so no case needs
-   a message type richer than "something could be dispatched". *)
+(* A plain string message: the few cases below that assert on a dispatch read
+   the messages as they are, so no richer message type is needed. *)
 type msg = string
 
 let fail_missing where = Alcotest.fail ("no node found for " ^ where)
@@ -527,6 +527,171 @@ let the_derived_ids_are_not_unique_by_construction () =
     (RG.control_id collides ^ "-label")
     (RG.option_id collides ~value:"label")
 
+(* --- The button answers that moved. A later list than the one above, with
+   its own base: llms.txt publishes it as one table under its own heading,
+   shared with [test/unit/nopal_test/test_test_renderer.ml]. The rows whose key
+   starts [ui-button-] are this file's candidates and every other row is that
+   file's, so each holds its own part in both directions and together they hold
+   every row. The table is read out of llms.txt itself, so a row removed or
+   added there reddens this case without anything here being edited.
+
+   A candidate's before column is recorded data. For the in-form row it is the
+   browser's answer at that base, written in the vocabulary of [simulated],
+   because there the structural renderer disagreed with the browser; the
+   reading beside it is this renderer as it stands, which the button-submit
+   matrix holds equal to Chromium cell by cell. The config row is
+   compile-visible, so it lands in the moved partition by construction. --- *)
+
+let button_change_list_heading =
+  "**Button answers that moved — read this on a pin bump.**"
+
+(* Every behavioural field of the config is set, rather than inherited from
+   [default]: the rows below read [aria-disabled], [aria-busy], [type] and the
+   dispatches, and each of those follows one of these fields. *)
+let button_base : msg BU.config =
+  {
+    (BU.default BU.Primary) with
+    disabled = false;
+    loading = false;
+    on_click = Some "save";
+    attrs = [];
+    button_type = E.Push;
+  }
+
+let ui_button_attr key config =
+  match
+    attr key
+      (node_at "button" (By_tag "button") (BU.view config (E.text "Save")))
+  with
+  | Some v -> "Some " ^ v
+  | None -> "None"
+
+let simulated sim element = Test_util.simulated ~show_msg:Fun.id sim element
+
+(* A click on the button and an Enter in the one field, each on a fresh render
+   of a form holding that field and a submit [Button] built from [config]. *)
+let click_and_enter_in_a_form config =
+  let form () =
+    E.form ~on_submit:"submitted"
+      [
+        E.input "";
+        BU.view (BU.with_button_type E.Submit config) (E.text "Save");
+      ]
+  in
+  "click "
+  ^ simulated (click (By_tag "button")) (form ())
+  ^ ", Enter "
+  ^ simulated (keydown (By_tag "input") "Enter") (form ())
+
+let button_change_candidates : (string * string * (unit -> string)) list =
+  [
+    ( "ui-button-config-gains-button_type",
+      Test_util.does_not_compile,
+      fun () -> ui_button_attr "type" (BU.with_button_type E.Submit button_base)
+    );
+    ( "ui-button-disabled-or-loading-in-form",
+      "disabled: click Ok [submitted], Enter Ok [submitted]; loading: click Ok \
+       [submitted], Enter Ok [submitted]",
+      fun () ->
+        String.concat "; "
+          [
+            "disabled: "
+            ^ click_and_enter_in_a_form { button_base with disabled = true };
+            "loading: "
+            ^ click_and_enter_in_a_form { button_base with loading = true };
+          ] );
+    ( "ui-button-loading-gains-aria-disabled",
+      "None",
+      fun () ->
+        ui_button_attr "aria-disabled" { button_base with loading = true } );
+    ( "ui-button-aria-disabled-pair-overruled",
+      "Some false",
+      fun () ->
+        ui_button_attr "aria-disabled"
+          {
+            button_base with
+            disabled = true;
+            attrs = [ ("aria-disabled", "false") ];
+          } );
+    (* Unchanged. *)
+    ( "ui-button-disabled-carries-aria-disabled",
+      "Some true",
+      fun () ->
+        ui_button_attr "aria-disabled" { button_base with disabled = true } );
+    ( "ui-button-loading-carries-aria-busy",
+      "Some true",
+      fun () -> ui_button_attr "aria-busy" { button_base with loading = true }
+    );
+    ( "ui-button-caller-aria-busy-pair-on-a-loading-button",
+      "Some false",
+      fun () ->
+        ui_button_attr "aria-busy"
+          {
+            button_base with
+            loading = true;
+            attrs = [ ("aria-busy", "false") ];
+          } );
+    ( "ui-button-enabled-click-outside-a-form",
+      "Ok [save]",
+      fun () ->
+        simulated (click (By_tag "button"))
+          (BU.view button_base (E.text "Save")) );
+    ( "ui-button-disabled-click-outside-a-form",
+      "Error No_handler",
+      fun () ->
+        simulated (click (By_tag "button"))
+          (BU.view { button_base with disabled = true } (E.text "Save")) );
+    ( "ui-button-enabled-submit-button-in-form",
+      "click Ok [save; submitted], Enter Ok [save; submitted]",
+      fun () -> click_and_enter_in_a_form button_base );
+  ]
+
+let unchanged_button_keys =
+  [
+    "ui-button-disabled-carries-aria-disabled";
+    "ui-button-loading-carries-aria-busy";
+    "ui-button-caller-aria-busy-pair-on-a-loading-button";
+    "ui-button-enabled-click-outside-a-form";
+    "ui-button-disabled-click-outside-a-form";
+    "ui-button-enabled-submit-button-in-form";
+  ]
+
+let button_change_list_matches_the_keys_that_moved () =
+  let published =
+    match
+      Test_util.table_keys_under ~heading:button_change_list_heading
+        (Test_util.llms_txt ())
+    with
+    | Some keys -> List.filter (String.starts_with ~prefix:"ui-button-") keys
+    | None ->
+        Alcotest.fail
+          ("llms.txt has no line reading exactly " ^ button_change_list_heading)
+  in
+  Test_util.check_change_list ~candidates:button_change_candidates ~published
+    ~unchanged:unchanged_button_keys
+
+(* Each moved reading as it stands, so a row's Now column is held too. *)
+let each_moved_button_key_answers_as_published () =
+  let now_of key =
+    match
+      List.find_opt
+        (fun (k, _, _) -> String.equal k key)
+        button_change_candidates
+    with
+    | Some (_, _, now) -> now ()
+    | None -> Alcotest.fail ("no candidate " ^ key)
+  in
+  List.iter
+    (fun (key, expected) -> Alcotest.(check string) key expected (now_of key))
+    [
+      ("ui-button-config-gains-button_type", "Some submit");
+      ( "ui-button-disabled-or-loading-in-form",
+        "disabled: click Error No_handler, Enter Error No_handler; loading: \
+         click Error No_handler, Enter Error No_handler" );
+      ("ui-button-loading-gains-aria-disabled", "Some true");
+      ("ui-button-aria-disabled-pair-overruled", "Some true");
+    ]
+
 let () =
   Alcotest.run "nopal_ui_change_list"
     [
@@ -536,6 +701,13 @@ let () =
             change_list_matches_the_attributes_that_moved;
           Alcotest.test_case "tree changes" `Quick
             change_list_matches_the_tree_changes;
+        ] );
+      ( "the button answers that moved",
+        [
+          Alcotest.test_case "the ui-button keys that moved" `Quick
+            button_change_list_matches_the_keys_that_moved;
+          Alcotest.test_case "each moved key answers as published" `Quick
+            each_moved_button_key_answers_as_published;
         ] );
       ( "the cases the list names",
         [

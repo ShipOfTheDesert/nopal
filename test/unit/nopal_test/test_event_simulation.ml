@@ -394,7 +394,9 @@ let test_each_input_type_arm_emits_its_token () =
    defers Enter to the form; a field with its own [on_submit], which answers
    Enter itself; and a field whose [on_keydown] consumes every key. The bare
    field sits inside a row, so reaching the form is a walk up the ancestry and
-   not a look at the immediate parent. *)
+   not a look at the immediate parent. With three fields, the form submits on
+   Enter only through its submit button, which authors no [on_click] so that
+   the form's message is the whole answer. *)
 let three_path_form ?on_submit () =
   E.form ?on_submit
     [
@@ -404,6 +406,7 @@ let three_path_form ?on_submit () =
         ~attrs:[ ("data-field", "consuming") ]
         ~on_keydown:(fun key -> Some (KeyDown key))
         "v";
+      E.button ~button_type:E.Submit (E.text "Go");
     ]
 
 let field name = By_attr ("data-field", name)
@@ -451,11 +454,11 @@ let test_input_on_submit_inside_a_form_dispatches_once () =
     [ Submitted; FormSubmitted ]
     (messages r)
 
-(* Every container arm that threads [~form_submit] through to its descendants
-   must actually carry it down to a bare input, not just accept the label.
-   One table, one wrapper per arm, each wrapping the same bare input inside
-   the same form; a mutation that dropped the thread on any one arm (e.g.
-   passing [~form_submit:None] instead of [~form_submit]) would strand that
+(* Every container arm that threads the enclosing [~form] through to its
+   descendants must actually carry it down to a bare input, not just accept the
+   label. One table, one wrapper per arm, each wrapping the same bare input
+   inside the same form; a mutation that dropped the thread on any one arm (e.g.
+   passing [~form:no_form] instead of [~form]) would strand that
    arm's Enter with no form to answer it, and this table catches exactly
    that arm without disturbing the others. *)
 let test_container_arms_thread_form_submit_to_a_nested_input () =
@@ -546,6 +549,125 @@ let test_submit_form_on_a_form_without_on_submit_is_no_handler () =
     (submit_form submitting r);
   Alcotest.(check (list msg_testable))
     "and dispatches its message" [ FormSubmitted ] (messages r)
+
+(* ---- the platform's share: a button's click and an Enter left to the form ---- *)
+
+let button_in_form ?on_click ?(disabled = false) button_type =
+  render
+    (E.form ~on_submit:FormSubmitted
+       [ E.input "v"; E.button ~button_type ~disabled ?on_click (E.text "Go") ])
+
+let test_click_submit_button_in_form_appends_click_then_submit () =
+  let r = button_in_form ~on_click:Click E.Submit in
+  Alcotest.(check (result unit error_testable))
+    "click succeeds" (Ok ())
+    (click (By_tag "button") r);
+  Alcotest.(check (list msg_testable))
+    "the button's click, then the form's submit" [ Click; FormSubmitted ]
+    (messages r)
+
+let test_click_submit_button_without_on_click_appends_submit_only () =
+  let r = button_in_form E.Submit in
+  Alcotest.(check (result unit error_testable))
+    "click succeeds" (Ok ())
+    (click (By_tag "button") r);
+  Alcotest.(check (list msg_testable))
+    "the form's submit alone" [ FormSubmitted ] (messages r)
+
+let test_click_push_button_in_form_appends_click_only () =
+  let r = button_in_form ~on_click:Click E.Push in
+  Alcotest.(check (result unit error_testable))
+    "click succeeds" (Ok ())
+    (click (By_tag "button") r);
+  Alcotest.(check (list msg_testable))
+    "the button's click alone" [ Click ] (messages r)
+
+let test_click_disabled_submit_button_is_no_handler () =
+  let r = button_in_form ~on_click:Click ~disabled:true E.Submit in
+  Alcotest.(check (result unit error_testable))
+    "a disabled button answers no click"
+    (Error (No_handler { tag = "button"; event = "click" }))
+    (click (By_tag "button") r);
+  Alcotest.(check (list msg_testable)) "nothing dispatched" [] (messages r);
+  let enabled = button_in_form ~on_click:Click ~disabled:false E.Submit in
+  Alcotest.(check (result unit error_testable))
+    "its enabled twin answers" (Ok ())
+    (click (By_tag "button") enabled);
+  Alcotest.(check (list msg_testable))
+    "and dispatches its click, then the form's submit" [ Click; FormSubmitted ]
+    (messages enabled)
+
+(* A submit button with no enclosing form dispatches its own [on_click] alone:
+   there is no form to reach, so [Implicit_submission.click]'s [form_submit]
+   is [None] here, the same as it is for a push button. The affirmative twin
+   is the same button inside a form authoring [on_submit], which does reach
+   it: see test_click_submit_button_in_form_appends_click_then_submit. *)
+let test_click_submit_button_outside_a_form_appends_click_only () =
+  let r =
+    render (E.button ~button_type:E.Submit ~on_click:Click (E.text "Go"))
+  in
+  Alcotest.(check (result unit error_testable))
+    "click succeeds" (Ok ())
+    (click (By_tag "button") r);
+  Alcotest.(check (list msg_testable))
+    "the button's click alone, no form to reach" [ Click ] (messages r)
+
+(* A submit button inside a form that authors no [on_submit] dispatches its
+   own [on_click] alone: [form_submit] is [None] because the form has nothing
+   to contribute, not because no form encloses the button. *)
+let test_click_submit_button_in_form_without_on_submit_appends_click_only () =
+  let r =
+    render
+      (E.form
+         [
+           E.input "v";
+           E.button ~button_type:E.Submit ~on_click:Click (E.text "Go");
+         ])
+  in
+  Alcotest.(check (result unit error_testable))
+    "click succeeds" (Ok ())
+    (click (By_tag "button") r);
+  Alcotest.(check (list msg_testable))
+    "the button's click alone, the form authors no on_submit" [ Click ]
+    (messages r)
+
+let test_keydown_enter_multi_field_no_submit_button_appends_nothing () =
+  let form fields =
+    render
+      (E.form ~on_submit:FormSubmitted
+         (List.init fields (fun i ->
+              E.input ~attrs:[ ("data-field", string_of_int i) ] "v")))
+  in
+  let r = form 2 in
+  Alcotest.(check (result unit error_testable))
+    "nothing a keydown reaches answers the Enter"
+    (Error (No_handler { tag = "input"; event = "keydown" }))
+    (keydown (field "0") "Enter" r);
+  Alcotest.(check (list msg_testable)) "nothing dispatched" [] (messages r);
+  let one = form 1 in
+  Alcotest.(check (result unit error_testable))
+    "with one field, the Enter is answered" (Ok ())
+    (keydown (field "0") "Enter" one);
+  Alcotest.(check (list msg_testable))
+    "and the form submits" [ FormSubmitted ] (messages one)
+
+let test_keydown_enter_with_enabled_default_button_appends_click_then_submit ()
+    =
+  let r =
+    render
+      (E.form ~on_submit:FormSubmitted
+         [
+           E.input ~attrs:[ ("data-field", "first") ] "v";
+           E.input "v";
+           E.button ~button_type:E.Submit ~on_click:Click (E.text "Go");
+         ])
+  in
+  Alcotest.(check (result unit error_testable))
+    "keydown succeeds" (Ok ())
+    (keydown (field "first") "Enter" r);
+  Alcotest.(check (list msg_testable))
+    "the default button's click, then the form's submit"
+    [ Click; FormSubmitted ] (messages r)
 
 let test_toggle_checked_dispatches_false () =
   let r = render (E.checkbox ~on_toggle:(fun b -> Toggled b) true) in
@@ -678,6 +800,33 @@ let () =
           Alcotest.test_case
             "submit_form_on_a_form_without_on_submit_is_no_handler" `Quick
             test_submit_form_on_a_form_without_on_submit_is_no_handler;
+        ] );
+      ( "platform_submission",
+        [
+          Alcotest.test_case
+            "click_submit_button_in_form_appends_click_then_submit" `Quick
+            test_click_submit_button_in_form_appends_click_then_submit;
+          Alcotest.test_case
+            "click_submit_button_without_on_click_appends_submit_only" `Quick
+            test_click_submit_button_without_on_click_appends_submit_only;
+          Alcotest.test_case "click_push_button_in_form_appends_click_only"
+            `Quick test_click_push_button_in_form_appends_click_only;
+          Alcotest.test_case "click_disabled_submit_button_is_no_handler" `Quick
+            test_click_disabled_submit_button_is_no_handler;
+          Alcotest.test_case
+            "click_submit_button_outside_a_form_appends_click_only" `Quick
+            test_click_submit_button_outside_a_form_appends_click_only;
+          Alcotest.test_case
+            "click_submit_button_in_form_without_on_submit_appends_click_only"
+            `Quick
+            test_click_submit_button_in_form_without_on_submit_appends_click_only;
+          Alcotest.test_case
+            "keydown_enter_multi_field_no_submit_button_appends_nothing" `Quick
+            test_keydown_enter_multi_field_no_submit_button_appends_nothing;
+          Alcotest.test_case
+            "keydown_enter_with_enabled_default_button_appends_click_then_submit"
+            `Quick
+            test_keydown_enter_with_enabled_default_button_appends_click_then_submit;
         ] );
       ( "toggle",
         [

@@ -11,8 +11,13 @@
     {b the nearest handler that accepts the Enter consumes it.} Three handlers
     can accept an Enter, nearest first — the input's [on_keydown], then the
     input's [on_submit], then the enclosing form's [on_submit]. A handler that
-    accepts the Enter consumes it, and no handler further out sees it. Nothing
-    ever dispatches twice for one Enter.
+    accepts the Enter consumes it, and no handler further out sees it, so the
+    route picks at most one of the three. That is not the same as one message
+    per Enter: an Enter routed to the form is the platform's implicit
+    submission, which clicks the form's default button when it has one, so that
+    button's [on_click] is dispatched and then the form's [on_submit]. Which
+    button that is, and whether the form submits at all, is decided outside this
+    module.
 
     The cost of the rule is stated rather than hidden: in a form where one field
     carries its own [on_submit], Enter in that field dispatches a different
@@ -33,10 +38,12 @@ type 'msg t =
           default for the key, which for an Enter is the enclosing form's
           implicit submission. It is [true] exactly when the key is Enter. *)
   | To_enclosing_form
-      (** Nothing on this input answered an Enter. The enclosing form, if there
-          is one, submits and answers it with its own [on_submit]; with no
-          enclosing form, nothing happens. The renderer dispatches nothing here
-          on the input's behalf. *)
+      (** Nothing on this input answered an Enter. It is left to the enclosing
+          form's implicit submission, which clicks the form's first submit
+          button unless that button is disabled, and with no submit button
+          submits only a form holding a single field that blocks implicit
+          submission. With no enclosing form, nothing happens. The renderer
+          dispatches nothing here on the input's behalf. *)
   | Nothing
       (** Nothing on this input answered a key other than Enter, and nothing
           further out will: no key but Enter reaches a form. *)

@@ -961,6 +961,7 @@ let control ~variant ~field ~on_click label =
       attrs = [ ("data-field", field) ];
       disabled_style = None;
       loading_style = None;
+      button_type = Element.Push;
     }
     (Element.text label)
 

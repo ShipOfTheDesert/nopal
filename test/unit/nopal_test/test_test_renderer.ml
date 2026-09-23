@@ -69,7 +69,7 @@ let render_button () =
        {
          tag = "button";
          style = s0;
-         attrs = [];
+         attrs = [ ("type", "button") ];
          children = [ Text { content = "click me"; text_style = None } ];
          interaction = ix0;
        })
@@ -1342,6 +1342,49 @@ let absent_disabled_leaves_the_caller_pair_standing () =
   Alcotest.(check (option string))
     "both ways" (Some "true") (select_disabled true)
 
+let button_attr key element =
+  match find (By_tag "button") (tree (render element)) with
+  | Some node -> attr key node
+  | None -> Alcotest.fail "no button node rendered"
+
+let untyped_button_reports_type_button () =
+  Alcotest.(check (option string))
+    "a button that names no type reads back as a push button" (Some "button")
+    (button_attr "type" (E.button ~on_click:Click (E.text "Cancel")))
+
+let submit_button_reports_type_submit () =
+  Alcotest.(check (option string))
+    "a submit button reads back as one" (Some "submit")
+    (button_attr "type"
+       (E.button ~button_type:E.Submit ~on_click:Click (E.text "Save")))
+
+(* The enabled twin on the same fixture is the arm that proves the absence is
+   the declining derivation, not a node the lookup never reached. *)
+let disabled_button_reports_aria_disabled () =
+  let aria_disabled disabled =
+    button_attr "aria-disabled"
+      (E.button ~disabled ~on_click:Click (E.text "Save"))
+  in
+  Alcotest.(check (option string))
+    "a disabled button is announced as disabled" (Some "true")
+    (aria_disabled true);
+  Alcotest.(check (option string))
+    "an enabled one carries no such pair" None (aria_disabled false)
+
+let enabled_button_leaves_callers_aria_disabled_pair_standing () =
+  let aria_disabled disabled =
+    button_attr "aria-disabled"
+      (E.button
+         ~attrs:[ ("aria-disabled", "caller-said-so") ]
+         ~disabled ~on_click:Click (E.text "Save"))
+  in
+  Alcotest.(check (option string))
+    "the caller's pair stands where the typed state declines"
+    (Some "caller-said-so") (aria_disabled false);
+  Alcotest.(check (option string))
+    "and loses to the same state once it asserts" (Some "true")
+    (aria_disabled true)
+
 (* A picker that configures no capture mode carries no such key, the way the
    DOM carries none, rather than an empty string that reads as a configured
    value of "". The configured picker beside it is the affirmative arm: it
@@ -1520,12 +1563,7 @@ let show_msg = function
   | Submit -> "Submit"
 
 (* What a simulator answers on the element, and every message it appended. *)
-let simulated sim element =
-  let r = render element in
-  match sim r with
-  | Ok () -> "Ok [" ^ String.concat "; " (List.map show_msg (messages r)) ^ "]"
-  | Error (No_handler _) -> "Error No_handler"
-  | Error (Not_found _) -> "Error Not_found"
+let simulated sim element = Test_util.simulated ~show_msg sim element
 
 (* Whether an input carrying these handlers suppresses the key's default. *)
 let default_answer ~key ~on_keydown ~on_submit =
@@ -1544,7 +1582,7 @@ let input_attr key element =
       | None -> "None")
   | None -> "no input node"
 
-let does_not_compile = "does not compile"
+let does_not_compile = Test_util.does_not_compile
 
 let submit_change_candidates : (string * string * (unit -> string)) list =
   let consume key = Some (Changed key) in
@@ -1646,76 +1684,19 @@ let unchanged_submit_keys =
     "caller-type-pair-without-input_type";
   ]
 
-(* The key column of every row of the first table after the heading, in table
-   order: the prose between the heading and the table is skipped, and the
-   table is the run of lines starting with "|" that follows, less its header
-   and separator rows. [None] when the heading is absent, so a renamed heading
-   fails as that rather than as an empty list. *)
-let published_submit_keys text =
-  let is_row line = String.starts_with ~prefix:"|" line in
-  let key_of_row line =
-    match String.split_on_char '|' line with
-    | "" :: _number :: key :: _rest -> (
-        match
-          String.trim key |> String.split_on_char '`' |> String.concat ""
-        with
-        | "Key" -> None
-        | k when String.starts_with ~prefix:"-" k -> None
-        | k -> Some k)
-    | _ -> None
-  in
-  let rec skip_to_table = function
-    | line :: _ as lines when is_row line -> lines
-    | _ :: rest -> skip_to_table rest
-    | [] -> []
-  in
-  let rec rows = function
-    | line :: rest when is_row line -> line :: rows rest
-    | _ -> []
-  in
-  let rec after_heading = function
-    | [] -> None
-    | line :: rest when String.equal line submit_change_list_heading ->
-        Some (List.filter_map key_of_row (rows (skip_to_table rest)))
-    | _ :: rest -> after_heading rest
-  in
-  after_heading (String.split_on_char '\n' text)
-
-(* llms.txt is a dependency of this test's runtest action, copied to the root
-   of the build tree; the path is taken from the executable so it holds under
-   [dune exec] as well, once [dune build] has copied the file. *)
-let llms_txt () =
-  let path =
-    Filename.concat (Filename.dirname Sys.executable_name) "../../../llms.txt"
-  in
-  match In_channel.with_open_text path In_channel.input_all with
-  | text -> text
-  | exception Sys_error e -> Alcotest.fail ("cannot read llms.txt: " ^ e)
-
 let submit_answer_change_list_matches_the_keys_that_moved () =
   let published =
-    match published_submit_keys (llms_txt ()) with
+    match
+      Test_util.table_keys_under ~heading:submit_change_list_heading
+        (Test_util.llms_txt ())
+    with
     | Some keys -> keys
     | None ->
         Alcotest.fail
           ("llms.txt has no line reading exactly " ^ submit_change_list_heading)
   in
-  let moved, unmoved =
-    List.partition
-      (fun (_, before, now) -> not (String.equal (now ()) before))
-      submit_change_candidates
-  in
-  let keys entries = List.map (fun (key, _, _) -> key) entries in
-  let key_list = Alcotest.(list string) in
-  Alcotest.check key_list "a published key whose answer did not move" []
-    (List.filter (fun k -> not (List.mem k (keys moved))) published);
-  Alcotest.check key_list "a key whose answer moved and was not published" []
-    (List.filter (fun k -> not (List.mem k published)) (keys moved));
-  Alcotest.check key_list "the published list is the moved keys, in order"
-    (keys moved) published;
-  Alcotest.check key_list
-    "and the keys recorded as unchanged were read, and are unchanged"
-    unchanged_submit_keys (keys unmoved)
+  Test_util.check_change_list ~candidates:submit_change_candidates ~published
+    ~unchanged:unchanged_submit_keys
 
 (* Each reading as it stands, so the rows' Now column is held too and not only
    which keys moved: a reading that changed shape again reddens here. *)
@@ -1743,12 +1724,246 @@ let submit_answer_change_readings () =
       ("input-gains-input_type", "Some password");
     ]
 
+(* The button answer-change list, pinned against llms.txt the same way.
+
+   That table is shared with [test/unit/nopal_ui/test_change_list.ml]: its
+   rows whose key starts [ui-button-] are that file's candidates, and every
+   other row is one of these. Each file holds its own part of the table in both
+   directions, so together they hold every row.
+
+   The before column is the answer at the tree this change is measured
+   against, and it is recorded data. Where a row names a structural move it is
+   what this renderer answered there. Where a row names a browser move, the
+   structural renderer answered differently from the browser there, and the
+   before column is the browser's answer, written in the vocabulary of
+   [simulated]. The reading beside it is this renderer as it stands, which the
+   button-submit matrix holds equal to Chromium cell by cell; that parity is
+   what makes a structural reading evidence about the browser here, and this
+   case does not re-establish it.
+
+   The row for the [Button] record's new fields is compile-visible; its before
+   column is "does not compile", so it lands in the moved partition by
+   construction. *)
+let button_change_list_heading =
+  "**Button answers that moved — read this on a pin bump.**"
+
+let button_attr_value key element =
+  match find (By_tag "button") (tree (render element)) with
+  | Some node -> (
+      match attr key node with
+      | Some v -> "Some " ^ v
+      | None -> "None")
+  | None -> "no button node"
+
+let button_record_fields = function
+  | E.Button { button_type; disabled; _ } ->
+      String.concat ", "
+        [
+          E.button_type_to_string button_type;
+          (match disabled with
+          | true -> "disabled"
+          | false -> "enabled");
+        ]
+  | E.Empty
+  | E.Text _
+  | E.Box _
+  | E.Row _
+  | E.Column _
+  | E.Form _
+  | E.Input _
+  | E.Checkbox _
+  | E.Radio _
+  | E.Select _
+  | E.File_input _
+  | E.Image _
+  | E.Scroll _
+  | E.Keyed _
+  | E.Draw _
+  | E.Virtual_list _ ->
+      "not a button"
+
+let is_ui_button_key key = String.starts_with ~prefix:"ui-button-" key
+
+let button_change_candidates : (string * string * (unit -> string)) list =
+  let enter = simulated (keydown (By_tag "input") "Enter") in
+  let press = simulated (click (By_tag "button")) in
+  let dbl = simulated (dblclick (By_tag "button")) in
+  let label = E.text "Save" in
+  let in_form children = E.form ~on_submit:Submit children in
+  [
+    ( "element-button-record-gains-fields",
+      does_not_compile,
+      fun () ->
+        button_record_fields
+          (E.button ~button_type:E.Submit ~disabled:true label) );
+    ( "button-renders-type-button",
+      "None",
+      fun () -> button_attr_value "type" (E.button label) );
+    ( "untyped-button-in-form-does-not-submit",
+      "Ok [Click; Submit]",
+      fun () -> press (in_form [ E.input ""; E.button ~on_click:Click label ])
+    );
+    ( "enter-with-only-untyped-buttons",
+      "two fields: Ok [Click; Submit]; one field: Ok [Click; Submit]",
+      fun () ->
+        String.concat "; "
+          [
+            "two fields: "
+            ^ enter
+                (in_form
+                   [ E.input ""; E.input ""; E.button ~on_click:Click label ]);
+            "one field: "
+            ^ enter (in_form [ E.input ""; E.button ~on_click:Click label ]);
+          ] );
+    ( "attrs-type-pair-on-button-overruled",
+      "Some submit",
+      fun () ->
+        button_attr_value "type" (E.button ~attrs:[ ("type", "submit") ] label)
+    );
+    ( "click-submit-button-reaches-form",
+      "with on_click: Ok [Click]; without: Error No_handler",
+      fun () ->
+        String.concat "; "
+          [
+            "with on_click: "
+            ^ press
+                (in_form
+                   [
+                     E.input "";
+                     E.button ~button_type:E.Submit ~on_click:Click label;
+                   ]);
+            "without: "
+            ^ press
+                (in_form [ E.input ""; E.button ~button_type:E.Submit label ]);
+          ] );
+    ( "keydown-enter-multi-field-no-submit-button",
+      "Ok [Submit]",
+      fun () -> enter (in_form [ E.input ""; E.input "" ]) );
+    ( "keydown-enter-enabled-default-button",
+      "Ok [Submit]",
+      fun () ->
+        enter
+          (in_form
+             [
+               E.input ""; E.button ~button_type:E.Submit ~on_click:Click label;
+             ]) );
+    ( "keydown-enter-disabled-default-button",
+      "Ok [Submit]",
+      fun () ->
+        enter
+          (in_form
+             [
+               E.input "";
+               E.button ~button_type:E.Submit ~disabled:true ~on_click:Click
+                 label;
+             ]) );
+    (* Unchanged. *)
+    ( "click-a-button-outside-a-form",
+      "Ok [Click]",
+      fun () -> press (E.button ~on_click:Click label) );
+    ( "click-a-button-with-no-on-click",
+      "Error No_handler",
+      fun () -> press (E.button label) );
+    ( "caller-type-button-pair",
+      "Some button",
+      fun () ->
+        button_attr_value "type" (E.button ~attrs:[ ("type", "button") ] label)
+    );
+    ( "caller-aria-disabled-pair-on-an-enabled-button",
+      "Some true",
+      fun () ->
+        button_attr_value "aria-disabled"
+          (E.button ~attrs:[ ("aria-disabled", "true") ] label) );
+    ( "enter-in-a-single-field-form-with-no-button",
+      "Ok [Submit]",
+      fun () -> enter (in_form [ E.input "" ]) );
+    ( "enter-answered-by-the-field-in-a-form-with-a-submit-button",
+      "Ok [Changed own]",
+      fun () ->
+        enter
+          (in_form
+             [
+               E.input ~on_submit:(Changed "own") "";
+               E.button ~button_type:E.Submit ~on_click:Click label;
+             ]) );
+    ( "submit-form-on-a-form-with-a-submit-button",
+      "Ok [Submit]",
+      fun () ->
+        simulated
+          (submit_form (By_tag "form"))
+          (in_form [ E.input ""; E.button ~button_type:E.Submit label ]) );
+    ( "disabled-button-dblclick-dispatches-nothing",
+      "Ok [Click]",
+      fun () -> dbl (E.button ~disabled:true ~on_dblclick:Click label) );
+    (* Unchanged. *)
+    ( "enabled-button-dblclick-dispatches",
+      "Ok [Click]",
+      fun () -> dbl (E.button ~disabled:false ~on_dblclick:Click label) );
+  ]
+
+let unchanged_button_keys =
+  [
+    "click-a-button-outside-a-form";
+    "click-a-button-with-no-on-click";
+    "caller-type-button-pair";
+    "caller-aria-disabled-pair-on-an-enabled-button";
+    "enter-in-a-single-field-form-with-no-button";
+    "enter-answered-by-the-field-in-a-form-with-a-submit-button";
+    "submit-form-on-a-form-with-a-submit-button";
+    "enabled-button-dblclick-dispatches";
+  ]
+
+let button_answer_change_list_matches_the_keys_that_moved () =
+  let published =
+    match
+      Test_util.table_keys_under ~heading:button_change_list_heading
+        (Test_util.llms_txt ())
+    with
+    | Some keys -> List.filter (fun k -> not (is_ui_button_key k)) keys
+    | None ->
+        Alcotest.fail
+          ("llms.txt has no line reading exactly " ^ button_change_list_heading)
+  in
+  Test_util.check_change_list ~candidates:button_change_candidates ~published
+    ~unchanged:unchanged_button_keys
+
+let button_answer_change_readings () =
+  let now_of key =
+    match
+      List.find_opt
+        (fun (k, _, _) -> String.equal k key)
+        button_change_candidates
+    with
+    | Some (_, _, now) -> now ()
+    | None -> Alcotest.fail ("no candidate " ^ key)
+  in
+  List.iter
+    (fun (key, expected) -> Alcotest.(check string) key expected (now_of key))
+    [
+      ("element-button-record-gains-fields", "submit, disabled");
+      ("button-renders-type-button", "Some button");
+      ("untyped-button-in-form-does-not-submit", "Ok [Click]");
+      ( "enter-with-only-untyped-buttons",
+        "two fields: Error No_handler; one field: Ok [Submit]" );
+      ("attrs-type-pair-on-button-overruled", "Some button");
+      ( "click-submit-button-reaches-form",
+        "with on_click: Ok [Click; Submit]; without: Ok [Submit]" );
+      ("keydown-enter-multi-field-no-submit-button", "Error No_handler");
+      ("keydown-enter-enabled-default-button", "Ok [Click; Submit]");
+      ("keydown-enter-disabled-default-button", "Error No_handler");
+      ("disabled-button-dblclick-dispatches-nothing", "Error No_handler");
+    ]
+
 let change_list_tests =
   [
     Alcotest.test_case "answer_change_list_matches_the_keys_that_moved" `Quick
       submit_answer_change_list_matches_the_keys_that_moved;
     Alcotest.test_case "each_moved_key_answers_as_published" `Quick
       submit_answer_change_readings;
+    Alcotest.test_case "button_answer_change_list_matches_the_keys_that_moved"
+      `Quick button_answer_change_list_matches_the_keys_that_moved;
+    Alcotest.test_case "each_moved_button_key_answers_as_published" `Quick
+      button_answer_change_readings;
   ]
 
 let attr_precedence_tests =
@@ -1759,6 +1974,15 @@ let attr_precedence_tests =
       derived_pair_beats_a_caller_pair_of_the_same_key;
     Alcotest.test_case "absent_disabled_leaves_the_caller_pair_standing" `Quick
       absent_disabled_leaves_the_caller_pair_standing;
+    Alcotest.test_case "untyped_button_reports_type_button" `Quick
+      untyped_button_reports_type_button;
+    Alcotest.test_case "submit_button_reports_type_submit" `Quick
+      submit_button_reports_type_submit;
+    Alcotest.test_case "disabled_button_reports_aria_disabled" `Quick
+      disabled_button_reports_aria_disabled;
+    Alcotest.test_case
+      "enabled_button_leaves_callers_aria_disabled_pair_standing" `Quick
+      enabled_button_leaves_callers_aria_disabled_pair_standing;
     Alcotest.test_case "absent_capture_reports_no_pair" `Quick
       absent_capture_reports_no_pair;
     Alcotest.test_case "by_attr_matches_the_resolved_value" `Quick

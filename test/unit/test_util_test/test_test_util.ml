@@ -84,9 +84,94 @@ let test_fragment_does_not_right_alias_a_longer_value () =
     "a shorter value, which the trailing ';' already bounds" false
     (Test_util.contains_fragment record ~fragment:"byte_size=409;")
 
+(* A document shaped like llms.txt: a heading line, prose, a table, then a
+   second table that belongs to nothing the heading introduces. *)
+let document =
+  String.concat "\n"
+    [
+      "**Some earlier list.**";
+      "";
+      "| # | Key | Now |";
+      "|---|---|---|";
+      "| 1 | `earlier-key` | x |";
+      "";
+      "**The list under test.**";
+      "Prose between the heading and its table,";
+      "which is skipped.";
+      "";
+      "| # | Key | When | Now |";
+      "|---|---|---|---|";
+      "| 1 | `first-key` | a | b |";
+      "| 2 | second-key | c | d |";
+      "";
+      "| # | Key | Now |";
+      "|---|---|---|";
+      "| 1 | `a-later-table` | x |";
+    ]
+
+(* [check_change_list] raises (via [Alcotest.check]) on a mismatch in either
+   direction; there is no existing idiom in this suite for catching that, so
+   we catch broadly and assert that something was raised. *)
+let raises f =
+  match f () with
+  | () -> false
+  | exception _ -> true
+
+let test_check_change_list_agrees () =
+  Test_util.check_change_list
+    ~candidates:
+      [
+        ("moved-key", "before", fun () -> "after");
+        ("unmoved-key", "same", fun () -> "same");
+      ]
+    ~published:[ "moved-key" ] ~unchanged:[ "unmoved-key" ]
+
+let test_check_change_list_published_key_did_not_move () =
+  Alcotest.(check bool)
+    "a key published as moved that in fact did not move fails the check" true
+    (raises (fun () ->
+         Test_util.check_change_list
+           ~candidates:[ ("unmoved-key", "same", fun () -> "same") ]
+           ~published:[ "unmoved-key" ] ~unchanged:[]))
+
+let test_check_change_list_moved_key_not_published () =
+  Alcotest.(check bool)
+    "a key that moved but was not published fails the check" true
+    (raises (fun () ->
+         Test_util.check_change_list
+           ~candidates:[ ("moved-key", "before", fun () -> "after") ]
+           ~published:[] ~unchanged:[]))
+
+let key_list = Alcotest.(option (list string))
+
+let test_table_keys_are_the_first_table_after_the_heading () =
+  Alcotest.check key_list
+    "the key column, in row order, backticks stripped, header and separator \
+     dropped, and nothing from the table before the heading or after it"
+    (Some [ "first-key"; "second-key" ])
+    (Test_util.table_keys_under ~heading:"**The list under test.**" document)
+
+let test_table_keys_under_the_earlier_heading () =
+  Alcotest.check key_list "the same reading from a different heading"
+    (Some [ "earlier-key" ])
+    (Test_util.table_keys_under ~heading:"**Some earlier list.**" document)
+
+let test_table_keys_heading_absent () =
+  Alcotest.check key_list "a heading that is not a whole line of the text" None
+    (Test_util.table_keys_under ~heading:"**The list under" document)
+
 let () =
   Alcotest.run "test_util"
     [
+      ( "table_keys_under",
+        [
+          Alcotest.test_case "the first table after the heading" `Quick
+            test_table_keys_are_the_first_table_after_the_heading;
+          Alcotest.test_case "another heading reads its own table" `Quick
+            test_table_keys_under_the_earlier_heading;
+          Alcotest.test_case "an absent heading" `Quick
+            test_table_keys_heading_absent;
+        ] );
       ( "contains_fragment",
         [
           Alcotest.test_case "after a separator" `Quick
@@ -98,6 +183,15 @@ let () =
             test_fragment_does_not_left_alias_a_longer_field;
           Alcotest.test_case "does not right-alias a longer value" `Quick
             test_fragment_does_not_right_alias_a_longer_value;
+        ] );
+      ( "check_change_list",
+        [
+          Alcotest.test_case "a moved and an unmoved key agree with the lists"
+            `Quick test_check_change_list_agrees;
+          Alcotest.test_case "a published key that did not move" `Quick
+            test_check_change_list_published_key_did_not_move;
+          Alcotest.test_case "a moved key that is not published" `Quick
+            test_check_change_list_moved_key_not_published;
         ] );
       ( "string_contains",
         [

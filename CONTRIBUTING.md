@@ -93,7 +93,7 @@ disagreeing with its argument rather than by waiting for the change that would
 close it.
 
 Each record lives beside the rule it defers, so the next reader of that rule
-sees the exception: D-1, D-2, D-6 and D-10 under
+sees the exception: D-1, D-2, D-6, D-10 and D-16 under
 [E2E tests](#e2e-tests-playwright), D-3 under [Performance](#performance), D-4
 and D-12 under [Kitchen Sink](#kitchen-sink), D-5 and D-7 under
 [VIII. Bug-Class Prevention](#viii-bug-class-prevention), D-8, D-9, D-11,
@@ -215,8 +215,8 @@ and `touch ~/.cache/ms-playwright/<browser>-<rev>/INSTALLATION_COMPLETE`.
 Deferring a browser case is allowed; leaving it unrecorded is not — see
 [Deferrals and decisions not to cover](#deferrals-and-decisions-not-to-cover)
 for the `D-n` scheme these records follow.
-**There is one current deferral (D-1) and three decisions not to cover
-(D-2, D-6 and D-10).**
+**There is one current deferral (D-1) and four decisions not to cover
+(D-2, D-6, D-10 and D-16).**
 
 #### Open deferral D-1 — a relative-scroll request naming a container the frame removed
 
@@ -393,6 +393,50 @@ horizontal declaration to the kitchen-sink section and the browser case that
 measures it, and deletes this record. Nothing mechanical is waiting meanwhile —
 `just check-e2e-wired` already matches the existing spec to a CI-run Playwright
 project, and a new case inside it wires nothing new.
+
+#### Decision not to cover D-16 — no browser case renders an untyped or a loading button in a form
+
+**Owner: whoever makes a renderer read a button's submit behaviour or its
+inertness from anything but the `Button` node's `button_type` and `disabled`
+fields, in the change that does it.**
+
+Two mutations leave `test/e2e/tests/kitchen-sink-button-semantics.spec.ts`
+green (observed 2026-09-23: the browser spec exits 0 under each mutation), and
+that is a decision, not an oversight. Flipping `Element.button`'s
+default `button_type` from `Push` to `Submit` passes every browser case, and so
+does passing a `Nopal_ui.Button`'s `disabled` alone, so that `loading` no longer
+makes the button inert. Every button in the kitchen-sink section
+(`examples/kitchen_sink/sub_button_semantics.ml`) names its type, and none is
+loading, so neither mutated line reaches the browser.
+
+Both lines are pure OCaml upstream of either renderer. Each one only chooses
+the value of a field on the `Button` node, and both renderers read that node
+identically. A browser case for either would re-test a value the structural
+suite already pins:
+
+- **The default type.** It is pinned by `test/unit/nopal_element/test_element.ml`
+  `button_without_button_type_is_push` and by
+  `test/unit/nopal_test/test_test_renderer.ml`
+  `untyped_button_reports_type_button`. Both go red under the flip (observed
+  2026-09-23: `dune runtest` exits 1).
+- **Loading makes the button inert.** It is pinned by
+  `test/unit/nopal_ui/test_button.ml`: "suppresses click" in the loading group
+  and `loading_button_in_form_dispatches_nothing_on_click_or_enter` go red when
+  `loading` stops reaching `disabled` (observed 2026-09-23: `dune runtest`
+  exits 1).
+
+What the browser does with those fields is covered in the browser. The
+spec's `submit-enabled` and `push-enabled` cells measure both values of
+`button_type`. Its disabled cells measure an inert button on the click route
+and on the Enter route alike, and they go red if the disabled listener stops
+cancelling the click.
+
+What that leaves uncovered, stated so the paragraph above cannot be read as more
+than it is: no browser case shows that a `Button` built without a type, or one
+that is loading, answers as the matrix states. A renderer that derived either
+answer from something other than those two fields would pass every browser gate
+here. The owner above names that change, and it adds the untyped and loading
+cells to the section and the spec, and deletes this record.
 
 ### Desktop Development (Tauri)
 
@@ -673,9 +717,10 @@ No class hierarchies.
 Where an element builder takes both an `~attrs` list and a typed field a backend
 renders as an attribute — `placeholder`, a radio's `name`, a picker's
 `accept`/`capture`/`multiple`, `disabled`, a container's `focusable`, an input's
-`required`/`autocomplete`/`input_type`, a form's `autocomplete`/`novalidate` —
-the rule is: **typed-field derivations beat the `~attrs` list; within the list,
-the last pair wins.** Those are two tiers and they are not the same tier. A typed field
+`required`/`autocomplete`/`input_type`, a form's `autocomplete`/`novalidate`, a
+button's `button_type`/`disabled` — the rule is: **typed-field derivations
+beat the `~attrs` list; within the list, the last pair wins.** Those are two
+tiers and they are not the same tier. A typed field
 sits above the list, so `~attrs` is an escape hatch for keys the DSL does not
 model and cannot overrule the ones it does. A pair a component puts into that
 list sits inside it, so a caller's later pair of the same name replaces it.
@@ -695,12 +740,14 @@ saying nothing is not the same as it saying "no attribute". A derivation decline
 in one of two shapes. A `bool` cannot say "no attribute": `true` asserts the key
 and `false` emits nothing, so a `false` uncovers a caller's pair rather than
 removing it — `disabled`, `multiple`, an input's `required` (with the
-`aria-required` it carries) and a form's `novalidate`. An option or an empty
+`aria-required` it carries), a form's `novalidate` and a button's
+`aria-disabled` (from its `disabled`). An option or an empty
 list asserts nothing when absent and uncovers the pair the same way — `accept`,
 `capture`, an input's `autocomplete` and its `type` from `input_type`, and a
 form's `autocomplete`. Some derivations have no absent form and are derived on
 every render, so a caller's pair of that key is always replaced: `placeholder`,
-a radio's `name`, and a checkbox's, radio's or file picker's `type`.
+a radio's `name`, a checkbox's, radio's or file picker's `type`, and a button's
+`type` (from `button_type`, `"button"` when the button names none).
 
 Two renderers enforce this and no more than two, by two different mechanisms:
 `nopal_web` applies the declared list before it writes any derivation, and
@@ -714,11 +761,13 @@ is bound by nothing here — a rule holds where a test holds it.
 The first tier is a rule both renderers hold on the keys `nopal_web` writes as
 real attributes: `disabled`, `accept`, `capture`, `multiple`, `placeholder`, a
 radio's `name`, a control's `type`, an input's `required`, `aria-required` and
-`autocomplete`, and a form's `autocomplete` and `novalidate`. Every one carries
-the same value in both renderers except `disabled`, `multiple`, `required` and
-`novalidate`, which are a presence attribute (`""`) in the DOM and `"true"` in
-the structural tree, so the two agree on which side wins and not on the value;
-`aria-required` is `"true"` in both. A checkbox's, radio's or file picker's
+`autocomplete`, a form's `autocomplete` and `novalidate`, and a button's `type`
+and `aria-disabled`. Every one carries the same value in both renderers except
+`disabled`, `multiple`, `required` and `novalidate`, which are a presence
+attribute (`""`) in the DOM and `"true"` in the structural tree, so the two
+agree on which side wins and not on the value; `aria-required` and a button's
+`aria-disabled` are `"true"` in both, and a button's `type` is `"button"` or
+`"submit"` in both. A checkbox's, radio's or file picker's
 `type` is the structural node's tag, while an input's is a pair in both
 renderers. A container's `focusable` is a first-tier
 derivation in both, but each spells it in its own vocabulary — a tab-order
@@ -743,8 +792,11 @@ dispatches and consumes, `None` declines. The input's `on_submit` comes second
 and answers an Enter that `on_keydown` declined or that no `on_keydown` saw; it
 answers no other key. The nearest enclosing `Element.form`'s `on_submit` comes
 third and answers an Enter neither of the input's handlers did. A handler that
-accepts the Enter consumes it, so nothing dispatches twice for one Enter and no
-handler the application supplied is silently dropped.
+accepts the Enter consumes it, so an Enter reaches at most one of the three and
+no handler the application supplied is silently dropped. That is not one
+message per Enter: an Enter deferred to the form is the platform's implicit
+submission, which clicks the form's default button, so that button's
+`on_click` is dispatched before the form's `on_submit`.
 
 The rule exists because three paths deciding independently is how the defect it
 replaced arose: supplying `on_keydown` once made the web renderer install no
@@ -764,13 +816,28 @@ stop its own input receiving text.
 The rule has a cost, and it is stated rather than hidden: in a form where one
 field carries its own `on_submit`, Enter in that field dispatches a different
 message than Enter anywhere else in the form. Author submission at one level —
-the form, or each input — and do not mix the two. Two browser facts sit outside
-the route and the structural renderer models neither: every `Element.button`
-inside a form is a submit button on the web unless it passes
-`~attrs:[("type", "button")]`, and a browser submits a form on Enter only when
-the form has a submit button or holds a single text field. A structural test of
-either is not evidence about the browser; a browser-level test is where they
-are observed.
+the form, or each input — and do not mix the two.
+
+What a deferred Enter and a button press then do is the platform's share, and
+it sits outside the route. The web renderer leaves it to the browser;
+`Test_renderer.click` and `Test_renderer.keydown` model it, so the two
+renderers answer it alike. A button submits its form only when it is typed
+`Submit`; one that names no type renders `type="button"` and dispatches its
+`on_click` alone, and a `("type", _)` pair in `~attrs` never takes effect on a
+button. An unanswered Enter in a field clicks the form's first submit button in
+tree order, dispatching its `on_click` and then the form's `on_submit`, or
+nothing when that button is disabled, even if an enabled submit button follows
+it. With no submit button, a form submits on Enter only when it holds a single
+field that blocks implicit submission; structurally every `Element.input` is
+one and no checkbox, radio, select or file picker is. A disabled button renders
+`aria-disabled` rather than the native attribute, stays focusable, and cancels
+its own activation, so it dispatches and submits nothing by any route. Because
+the structural renderer now models these rules, its answer is only as good as
+the model: `test/e2e/fixtures/button-submit-matrix.tsv` is asserted against
+both it and Chromium, and a change to either rule changes that matrix first.
+Constraint validation is not part of the model: the browser's own validation
+(`required`, `pattern`, and the like, on a form without `novalidate`) can block
+a submission that the structural renderer reports as dispatched.
 
 **Every Visual Decision a Component Makes Is Overridable**
 Every visual decision a `nopal_ui` component makes must be overridable without
