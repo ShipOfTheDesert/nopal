@@ -1,5 +1,6 @@
 (test
  (name test_test_renderer)
+ (deps %{project_root}/llms.txt)
  (libraries
   nopal_test
   nopal_element

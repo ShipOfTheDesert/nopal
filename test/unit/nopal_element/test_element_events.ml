@@ -23,6 +23,7 @@ let test_button_dblclick_some () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -46,6 +47,7 @@ let test_input_blur_some () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -75,6 +77,7 @@ let test_input_keydown_some () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -103,6 +106,7 @@ let test_box_focus_handlers_some () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -126,6 +130,7 @@ let test_input_focus_some () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -163,6 +168,7 @@ let test_map_preserves_box_focus () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -188,6 +194,7 @@ let test_map_preserves_dblclick () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -213,6 +220,7 @@ let test_map_preserves_blur () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -244,6 +252,7 @@ let test_map_preserves_keydown () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -283,6 +292,7 @@ let test_map_rewrites_file_input_handler () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -327,6 +337,7 @@ let test_map_preserves_handlerless_file_input () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 

@@ -96,8 +96,8 @@ Each record lives beside the rule it defers, so the next reader of that rule
 sees the exception: D-1, D-2, D-6 and D-10 under
 [E2E tests](#e2e-tests-playwright), D-3 under [Performance](#performance), D-4
 and D-12 under [Kitchen Sink](#kitchen-sink), D-5 and D-7 under
-[VIII. Bug-Class Prevention](#viii-bug-class-prevention), D-8, D-9, D-11 and
-D-13 under [V. Functional Patterns](#v-functional-patterns). D-11 is
+[VIII. Bug-Class Prevention](#viii-bug-class-prevention), D-8, D-9, D-11,
+D-13, D-14 and D-15 under [V. Functional Patterns](#v-functional-patterns). D-11 is
 discharged; its record stays where it was, because an id is assigned once and
 never reused and a reader who meets the id in an older commit message has to be
 able to find it.
@@ -672,9 +672,10 @@ No class hierarchies.
 **A Typed Field Outranks the `~attrs` List**
 Where an element builder takes both an `~attrs` list and a typed field a backend
 renders as an attribute — `placeholder`, a radio's `name`, a picker's
-`accept`/`capture`/`multiple`, `disabled`, a container's `focusable` — the rule
-is: **typed-field derivations beat the `~attrs` list; within the list, the last
-pair wins.** Those are two tiers and they are not the same tier. A typed field
+`accept`/`capture`/`multiple`, `disabled`, a container's `focusable`, an input's
+`required`/`autocomplete`/`input_type`, a form's `autocomplete`/`novalidate` —
+the rule is: **typed-field derivations beat the `~attrs` list; within the list,
+the last pair wins.** Those are two tiers and they are not the same tier. A typed field
 sits above the list, so `~attrs` is an escape hatch for keys the DSL does not
 model and cannot overrule the ones it does. A pair a component puts into that
 list sits inside it, so a caller's later pair of the same name replaces it.
@@ -690,7 +691,16 @@ replace needs a typed field, not a list pair.
 
 A derivation that is absent uncovers rather than erases: a picker with no
 `capture` leaves a `capture` the caller declared standing, because a typed field
-saying nothing is not the same as it saying "no attribute".
+saying nothing is not the same as it saying "no attribute". A derivation declines
+in one of two shapes. A `bool` cannot say "no attribute": `true` asserts the key
+and `false` emits nothing, so a `false` uncovers a caller's pair rather than
+removing it — `disabled`, `multiple`, an input's `required` (with the
+`aria-required` it carries) and a form's `novalidate`. An option or an empty
+list asserts nothing when absent and uncovers the pair the same way — `accept`,
+`capture`, an input's `autocomplete` and its `type` from `input_type`, and a
+form's `autocomplete`. Some derivations have no absent form and are derived on
+every render, so a caller's pair of that key is always replaced: `placeholder`,
+a radio's `name`, and a checkbox's, radio's or file picker's `type`.
 
 Two renderers enforce this and no more than two, by two different mechanisms:
 `nopal_web` applies the declared list before it writes any derivation, and
@@ -703,7 +713,14 @@ is bound by nothing here — a rule holds where a test holds it.
 
 The first tier is a rule both renderers hold on the keys `nopal_web` writes as
 real attributes: `disabled`, `accept`, `capture`, `multiple`, `placeholder`, a
-radio's `name` and a control's `type`. A container's `focusable` is a first-tier
+radio's `name`, a control's `type`, an input's `required`, `aria-required` and
+`autocomplete`, and a form's `autocomplete` and `novalidate`. Every one carries
+the same value in both renderers except `disabled`, `multiple`, `required` and
+`novalidate`, which are a presence attribute (`""`) in the DOM and `"true"` in
+the structural tree, so the two agree on which side wins and not on the value;
+`aria-required` is `"true"` in both. A checkbox's, radio's or file picker's
+`type` is the structural node's tag, while an input's is a pair in both
+renderers. A container's `focusable` is a first-tier
 derivation in both, but each spells it in its own vocabulary — a tab-order
 attribute in the browser, `focusable` in the structural tree — so there is no
 shared key to compare. `checked`, `value` and `selected` are outside it. The browser carries those three as JS properties and never as
@@ -717,6 +734,43 @@ Deferring part of the rule is allowed; leaving it unrecorded is not — see
 [Deferrals and decisions not to cover](#deferrals-and-decisions-not-to-cover)
 for the `D-n` scheme. **One record sits under this rule and it is discharged: the
 position a derived pair takes in a node's `attrs` list (D-11).**
+
+**One Submit Contract: the Nearest Handler That Accepts an Enter Consumes It**
+An Enter in an `Element.input` can be answered by three handlers, and they are
+consulted nearest first. The input's `on_keydown` comes first and is consulted
+for every key; its `'msg option` return is the consumption signal — `Some`
+dispatches and consumes, `None` declines. The input's `on_submit` comes second
+and answers an Enter that `on_keydown` declined or that no `on_keydown` saw; it
+answers no other key. The nearest enclosing `Element.form`'s `on_submit` comes
+third and answers an Enter neither of the input's handlers did. A handler that
+accepts the Enter consumes it, so nothing dispatches twice for one Enter and no
+handler the application supplied is silently dropped.
+
+The rule exists because three paths deciding independently is how the defect it
+replaced arose: supplying `on_keydown` once made the web renderer install no
+`on_submit` listener at all, so a handler the application wrote fired never and
+reported nothing. The contract is therefore one pure definition,
+`Nopal_element.Submit_route.of_key`, which both renderers call and neither
+restates; a renderer that routes an Enter by its own logic is the defect coming
+back. `element.mli` states the contract once, under *Submit contract*, and
+`llms.txt` carries the same text.
+
+Suppression of the platform default is narrower than consumption. Only an Enter
+answered by one of the input's own handlers prevents the default, because Enter
+is the only key that submits a form implicitly; a consuming `on_keydown` on any
+other key leaves that key's default in place, so a keystroke recorder does not
+stop its own input receiving text.
+
+The rule has a cost, and it is stated rather than hidden: in a form where one
+field carries its own `on_submit`, Enter in that field dispatches a different
+message than Enter anywhere else in the form. Author submission at one level —
+the form, or each input — and do not mix the two. Two browser facts sit outside
+the route and the structural renderer models neither: every `Element.button`
+inside a form is a submit button on the web unless it passes
+`~attrs:[("type", "button")]`, and a browser submits a form on Enter only when
+the form has a submit button or holds a single text field. A structural test of
+either is not evidence about the browser; a browser-level test is where they
+are observed.
 
 **Every Visual Decision a Component Makes Is Overridable**
 Every visual decision a `nopal_ui` component makes must be overridable without
@@ -777,9 +831,10 @@ the fork above.
 
 Deferring part of the rule is allowed; leaving it unrecorded is not — see
 [Deferrals and decisions not to cover](#deferrals-and-decisions-not-to-cover)
-for the `D-n` scheme. **One record sits under this rule: a decision not to
+for the `D-n` scheme. **Two records sit under this rule: a decision not to
 cover a toast's message typography and the `llms.txt` prose no test reads
-(D-13).**
+(D-13), and a decision not to cover the invalid appearance of a `required`
+input (D-14).**
 
 #### Discharged deferral D-11 — the node `attrs` list order
 
@@ -848,6 +903,44 @@ by a count. What discharges the typography row is a report of a toast message
 whose typography did not follow its style; what discharges the prose is the next
 edit to the audit summary, which either brings the text under a test or restates
 here why it still is not.
+
+#### Decision not to cover D-14 — a `required` input's invalid appearance
+
+**Owner: the change that adds an `invalid` state to
+`Nopal_style.Interaction`, in that change, taken together with an `outline`
+field on `Style.paint`.**
+
+`Element.input ~required:true` ships with the browser's own invalid appearance
+and nothing else, and no caller can restyle it. It is unreachable rather than
+merely unwired: `Nopal_style.Interaction.t` has exactly three states — `hover`,
+`pressed`, `focused` — so there is no state for an invalid style to hang on, and
+`Style.paint` carries no `outline`; neither an invalid state nor an outline is
+spelled anywhere in `nopal_style` or `nopal_web`.
+
+Why this is a decision rather than a violation of the rule above: the rule is
+about decisions a *component* makes, and this appearance is the browser's, not a
+`nopal_ui` component's. Withholding `required` would not hand a consumer the
+styling either — it would only withhold the semantics, the constraint validation
+and the `aria-required` exposure, all of which work today. Adding the state here
+would widen a form feature into `nopal_style` and the interaction pipeline,
+which is a feature of its own and is already owed for `outline`, a gap with no
+record of its own until this one. The record is discharged by the change that
+gives `Interaction` an `invalid` state and `Style.paint` an `outline`, together,
+and demonstrates the override on a `required` input set to a non-default value.
+
+#### Decision not to cover D-15 — `nopal_ui.Text_input` pass-through of the three typed fields
+
+**Owner: whoever next touches `Text_input`, or a follow-up feature, in that
+change — routed through 0142's `with_*` convention.**
+
+`lib/nopal_ui/text_input.ml:78` builds its `Element.input` without
+`?required`, `?autocomplete` or `?input_type`, so a `Text_input` caller cannot
+reach any of the three typed fields that `Element.input` added. This was Part 1
+of 0143, which is frozen; the pass-through is Part 2 scope and is recorded here
+rather than by editing the frozen Part 1 requirements. The record is discharged
+by the change that adds `with_required`, `with_autocomplete` and
+`with_input_type` (or equivalents) to `Text_input`, following the `with_*`
+convention `Nopal_ui` established in 0142.
 
 **A Typed Size Is a Guarantee, Not a Hint**
 `Style.size` states what a dimension of an element is, and a backend has to
@@ -962,9 +1055,9 @@ change that adds it.**
 
 One thing this record does not defer is the tie between the guard's domain and
 the set of variants the backend lays out as flex containers.
-`Renderer.container_main_axis` answers `Some` for exactly the three variants
+`Renderer.container_main_axis` answers `Some` for exactly the four variants
 that call `apply_container_base_style`, and a comment at each end says so; a
-fourth flex container added without a matching arm would un-guard that variant's
+fifth flex container added without a matching arm would un-guard that variant's
 children with the whole suite green, so the two are changed together rather than
 watched.
 

@@ -27,6 +27,7 @@
   sub_scroll_pane
   sub_fixed_size
   sub_min_size
+  sub_auth_form
   tauri_op)
  (libraries
   nopal_element

@@ -161,3 +161,7 @@
   nopal_mvu
   nopal_style
   alcotest))
+
+(test
+ (name test_auth_form_section)
+ (libraries kitchen_sink_app nopal_test nopal_element alcotest))

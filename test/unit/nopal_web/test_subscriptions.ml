@@ -60,6 +60,7 @@ let fire_key event_type ~key ~ctrl ~shift =
         ("key", Jv.of_string key);
         ("ctrlKey", Jv.of_bool ctrl);
         ("shiftKey", Jv.of_bool shift);
+        ("cancelable", Jv.of_bool true);
       |]
   in
   let ev =

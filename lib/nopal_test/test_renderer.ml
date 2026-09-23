@@ -20,6 +20,21 @@ type 'msg handler_entry = {
   on_keydown : (string -> 'msg option) option;
   on_toggle : (bool -> 'msg) option;
   on_files : (Nopal_element.Element.file_info list -> 'msg) option;
+  (* The [on_submit] of the nearest enclosing form, which an Enter nothing on
+     the node answered goes on to. Only an input carries one: it is the one
+     element the submit contract routes a keydown for, so every other entry
+     answers [None] whether or not a form encloses it. [None] too when no form
+     encloses the input, or when the nearest one authors no [on_submit] — both
+     dispatch nothing. *)
+  enclosing_form_submit : 'msg option;
+}
+
+(* A form's own submission, kept apart from [handler_entry] so that [submit],
+   which pokes a node's [on_submit] there, cannot reach a form's, and
+   [submit_form] reaches nothing else. *)
+type 'msg form_handler_entry = {
+  form_path : int list;
+  form_on_submit : 'msg option;
 }
 
 type 'msg draw_handler_entry = {
@@ -47,8 +62,9 @@ type 'msg rendered = {
   tree : node;
   msgs : 'msg list ref;
   (* mutable — justified: accumulates messages across event simulations
-     in multi-step interaction tests (PRD Decision 2) *)
+     in multi-step interaction tests *)
   handlers : 'msg handler_entry list;
+  form_handlers : 'msg form_handler_entry list;
   draw_handlers : 'msg draw_handler_entry list;
   box_handlers : 'msg box_handler_entry list;
 }
@@ -58,13 +74,15 @@ type 'msg rendered = {
    a duplicate key to the last pair — answers with the derivation wherever the
    two collide, and with the view's own pair everywhere else.
 
-   A derivation asserts a value and never denies one. For the four keys the web
+   A derivation asserts a value and never denies one. For the keys the web
    renderer spells as real DOM attributes and whose absence it spells as
-   removal — ["disabled"], ["accept"], ["capture"] and ["multiple"] — a typed
-   field that declines contributes no pair at all, so whatever [attrs] declared
-   for that name is uncovered rather than erased and the two renderers cannot
-   disagree about who won. [derived_flag] is the boolean spelling of the same
-   rule and also carries ["focusable"], whose conditional shape predates it.
+   removal — ["disabled"], ["accept"], ["capture"], ["multiple"], an input's
+   ["required"], ["aria-required"], ["autocomplete"] and ["type"], and a form's
+   ["autocomplete"] and ["novalidate"] — a typed field that declines
+   contributes no pair at all, so whatever [attrs] declared for that name is
+   uncovered rather than erased and the two renderers cannot disagree about who
+   won. [derived_flag] is the boolean spelling of the same rule and also
+   carries ["focusable"], whose conditional shape predates it.
 
    Each arm builds its overlay once and appends it once. *)
 let derived_pair name value =
@@ -79,9 +97,10 @@ let derived_flag name flag =
 
 let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
   let handlers = ref [] in
+  let form_handlers = ref [] in
   let draw_handlers = ref [] in
   let box_handlers = ref [] in
-  let rec go rev_path (el : 'msg Nopal_element.Element.t) : node =
+  let rec go ~form_submit rev_path (el : 'msg Nopal_element.Element.t) : node =
     match el with
     | Empty -> Empty
     | Text { content; text_style } -> Text { content; text_style }
@@ -140,7 +159,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
                models no propagation, so the subtree scoping of a container's
                focus edges is not observable here at all. *)
             attrs = attrs @ derived_flag "focusable" focusable;
-            children = go_children rev_path children;
+            children = go_children ~form_submit rev_path children;
             interaction;
           }
     | Row { style; interaction; attrs; children } ->
@@ -149,7 +168,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             tag = "row";
             style;
             attrs;
-            children = go_children rev_path children;
+            children = go_children ~form_submit rev_path children;
             interaction;
           }
     | Column { style; interaction; attrs; children } ->
@@ -158,7 +177,47 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             tag = "column";
             style;
             attrs;
-            children = go_children rev_path children;
+            children = go_children ~form_submit rev_path children;
+            interaction;
+          }
+    | Form
+        {
+          style;
+          interaction;
+          attrs;
+          children;
+          on_submit;
+          autocomplete;
+          novalidate;
+        } ->
+        (* Every form is registered with the [on_submit] it authored, [None]
+           included; [submit_form] answers a [None] with [No_handler], as it
+           answers a node that is no form at all. *)
+        form_handlers :=
+          { form_path = List.rev rev_path; form_on_submit = on_submit }
+          :: !form_handlers;
+        (* The two derivations are spelled by absence as the web renderer
+           spells them: [autocomplete] only when authored, [novalidate] only
+           when [true], so a form that says nothing about either uncovers
+           whatever [attrs] declared under that key. [novalidate] carries
+           ["true"] here where the DOM carries a presence attribute, the same
+           split [disabled] has. *)
+        let form_config =
+          derived_pair "autocomplete"
+            (Option.map Nopal_element.Element.autocomplete_mode_to_string
+               autocomplete)
+          @ derived_flag "novalidate" novalidate
+        in
+        Element
+          {
+            tag = "form";
+            style;
+            attrs = attrs @ form_config;
+            (* This form is now the nearest enclosing one for everything below
+               it, so its [on_submit] — [None] included — replaces any outer
+               form's. Forms do not nest, so an outer one exists only in a view
+               that broke that rule. *)
+            children = go_children ~form_submit:on_submit rev_path children;
             interaction;
           }
     | Button { style; interaction; attrs; on_click; on_dblclick; child } ->
@@ -174,6 +233,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             on_keydown = None;
             on_toggle = None;
             on_files = None;
+            enclosing_form_submit = None;
           }
           :: !handlers;
         Element
@@ -181,7 +241,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             tag = "button";
             style;
             attrs;
-            children = [ go (0 :: rev_path) child ];
+            children = [ go ~form_submit (0 :: rev_path) child ];
             interaction;
           }
     | Input
@@ -196,6 +256,9 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
           on_focus;
           on_blur;
           on_keydown;
+          required;
+          autocomplete;
+          input_type;
         } ->
         handlers :=
           {
@@ -209,13 +272,31 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             on_keydown;
             on_toggle = None;
             on_files = None;
+            enclosing_form_submit = form_submit;
           }
           :: !handlers;
+        (* The three typed fields are spelled by absence as the web renderer
+           spells them: [required] only when [true], carrying ["aria-required"]
+           with it; [autocomplete] and [input_type] only when authored. A field
+           that says nothing uncovers whatever [attrs] declared under its key.
+           [required] carries ["true"] here where the DOM carries a presence
+           attribute, the same split [disabled] has. *)
+        let input_config =
+          derived_flag "required" required
+          @ derived_flag "aria-required" required
+          @ derived_pair "autocomplete" autocomplete
+          @ derived_pair "type"
+              (Option.map Nopal_element.Element.input_type_to_string input_type)
+        in
         Element
           {
             tag = "input";
             style;
-            attrs = attrs @ [ ("value", value); ("placeholder", placeholder) ];
+            attrs =
+              attrs
+              @ ("value", value)
+                :: ("placeholder", placeholder)
+                :: input_config;
             children = [];
             interaction;
           }
@@ -233,6 +314,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
               on_keydown = None;
               on_toggle;
               on_files = None;
+              enclosing_form_submit = None;
             }
             :: !handlers;
         Element
@@ -260,6 +342,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
               on_keydown = None;
               on_toggle = None;
               on_files = None;
+              enclosing_form_submit = None;
             }
             :: !handlers;
         Element
@@ -289,6 +372,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
               on_keydown = None;
               on_toggle = None;
               on_files = None;
+              enclosing_form_submit = None;
             }
             :: !handlers;
         let option_children =
@@ -330,6 +414,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             on_keydown = None;
             on_toggle = None;
             on_files = on_change;
+            enclosing_form_submit = None;
           }
           :: !handlers;
         (* Picker configuration is surfaced as node attributes, appended so it
@@ -393,7 +478,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
                     ("reveal", key);
                     ("reveal-align", Nopal_element.Reveal.align_token align);
                   ]);
-            children = [ go (0 :: rev_path) child ];
+            children = [ go ~form_submit (0 :: rev_path) child ];
             interaction = Nopal_style.Interaction.default;
           }
     | Keyed { key; child } ->
@@ -402,7 +487,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             tag = "keyed";
             style = Nopal_style.Style.default;
             attrs = [ ("key", key) ];
-            children = [ go (0 :: rev_path) child ];
+            children = [ go ~form_submit (0 :: rev_path) child ];
             interaction = Nopal_style.Interaction.default;
           }
     | Draw
@@ -471,6 +556,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
               on_keydown = None;
               on_toggle = None;
               on_files = None;
+              enclosing_form_submit = None;
             }
             :: !handlers;
         let children =
@@ -480,8 +566,8 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
                walk that [resolve_path] mirrors. [render_item] still receives the
                absolute item index, but the path component is the positional slot
                within the visible window, so registration and resolution cannot
-               disagree at a nonzero scroll offset (FR-5). *)
-            go_children rev_path
+               disagree at a nonzero scroll offset. *)
+            go_children ~form_submit rev_path
               (List.init
                  (range.last - range.first + 1)
                  (fun i -> render_item (range.first + i)))
@@ -504,14 +590,15 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             children;
             interaction = Nopal_style.Interaction.default;
           }
-  and go_children rev_path children =
-    List.mapi (fun i c -> go (i :: rev_path) c) children
+  and go_children ~form_submit rev_path children =
+    List.mapi (fun i c -> go ~form_submit (i :: rev_path) c) children
   in
-  let tree = go [] element in
+  let tree = go ~form_submit:None [] element in
   {
     tree;
     msgs = ref [];
     handlers = !handlers;
+    form_handlers = !form_handlers;
     draw_handlers = !draw_handlers;
     box_handlers = !box_handlers;
   }
@@ -848,6 +935,24 @@ let submit sel r =
       r.msgs := msg :: !(r.msgs);
       Ok ()
 
+let find_form_handler_by_path path form_handlers =
+  List.find_opt (fun h -> h.form_path = path) form_handlers
+
+let submit_form sel r =
+  let* path, found =
+    resolve_path sel r.tree |> Option.to_result ~none:(Not_found sel)
+  in
+  let tag = tag_of_node found in
+  let* handler =
+    find_form_handler_by_path path r.form_handlers
+    |> Option.to_result ~none:(No_handler { tag; event = "submit" })
+  in
+  match handler.form_on_submit with
+  | None -> Error (No_handler { tag; event = "submit" })
+  | Some msg ->
+      r.msgs := msg :: !(r.msgs);
+      Ok ()
+
 let dblclick sel r =
   let* path, found =
     resolve_path sel r.tree |> Option.to_result ~none:(Not_found sel)
@@ -902,14 +1007,34 @@ let keydown sel key r =
     find_handler_by_path path r.handlers
     |> Option.to_result ~none:(No_handler { tag; event = "keydown" })
   in
-  match handler.on_keydown with
-  | None -> Error (No_handler { tag; event = "keydown" })
-  | Some f -> (
-      match f key with
-      | None -> Ok ()
-      | Some msg ->
+  (* The route is [Submit_route]'s, the definition the web renderer answers
+     from too, so an Enter [on_keydown] declines reaches [on_submit] here as it
+     does there, and an Enter neither answers reaches the nearest enclosing
+     form's [on_submit], recorded on the entry at render time. With none of the
+     three there is nothing a keydown can reach. This renderer models no
+     platform default action, so [prevent_default] has nothing here to
+     suppress. *)
+  match
+    (handler.on_keydown, handler.on_submit, handler.enclosing_form_submit)
+  with
+  | None, None, None -> Error (No_handler { tag; event = "keydown" })
+  | Some _, _, _
+  | None, Some _, _
+  | None, None, Some _ -> (
+      match
+        Nopal_element.Submit_route.of_key ~key ~on_keydown:handler.on_keydown
+          ~on_submit:handler.on_submit
+      with
+      | Dispatch { msg; prevent_default = _ } ->
           r.msgs := msg :: !(r.msgs);
-          Ok ())
+          Ok ()
+      | To_enclosing_form -> (
+          match handler.enclosing_form_submit with
+          | Some msg ->
+              r.msgs := msg :: !(r.msgs);
+              Ok ()
+          | None -> Ok ())
+      | Nothing -> Ok ())
 
 let find_draw_handler_by_path path draw_handlers =
   List.find_opt (fun h -> h.draw_path = path) draw_handlers

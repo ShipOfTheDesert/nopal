@@ -8,6 +8,8 @@ type pointer_event = {
 type wheel_event = { delta_y : float; x : float; y : float }
 type select_option = { value : string; label : string; disabled : bool }
 type capture = User | Environment
+type autocomplete_mode = On | Off
+type input_type = Plain | Password | Email | Tel | Url | Number | Search
 
 type file_info = {
   blob_id : string;
@@ -46,6 +48,15 @@ type 'msg t =
       attrs : (string * string) list;
       children : 'msg t list;
     }
+  | Form of {
+      style : Nopal_style.Style.t;
+      interaction : Nopal_style.Interaction.t;
+      attrs : (string * string) list;
+      children : 'msg t list;
+      on_submit : 'msg option;
+      autocomplete : autocomplete_mode option;
+      novalidate : bool;
+    }
   | Button of {
       style : Nopal_style.Style.t;
       interaction : Nopal_style.Interaction.t;
@@ -65,6 +76,9 @@ type 'msg t =
       on_focus : 'msg option;
       on_blur : 'msg option;
       on_keydown : (string -> 'msg option) option;
+      required : bool;
+      autocomplete : string option;
+      input_type : input_type option;
     }
   | Checkbox of {
       style : Nopal_style.Style.t;
@@ -167,6 +181,12 @@ let column ?(style = Nopal_style.Style.empty)
     ?(interaction = Nopal_style.Interaction.default) ?(attrs = []) children =
   Column { style; interaction; attrs; children }
 
+let form ?(style = Nopal_style.Style.empty)
+    ?(interaction = Nopal_style.Interaction.default) ?(attrs = []) ?on_submit
+    ?autocomplete ?(novalidate = false) children =
+  Form
+    { style; interaction; attrs; children; on_submit; autocomplete; novalidate }
+
 let button ?(style = Nopal_style.Style.empty)
     ?(interaction = Nopal_style.Interaction.default) ?(attrs = []) ?on_click
     ?on_dblclick child =
@@ -175,7 +195,7 @@ let button ?(style = Nopal_style.Style.empty)
 let input ?(style = Nopal_style.Style.empty)
     ?(interaction = Nopal_style.Interaction.default) ?(attrs = [])
     ?(placeholder = "") ?on_change ?on_submit ?on_focus ?on_blur ?on_keydown
-    value =
+    ?(required = false) ?autocomplete ?input_type value =
   Input
     {
       style;
@@ -188,6 +208,9 @@ let input ?(style = Nopal_style.Style.empty)
       on_focus;
       on_blur;
       on_keydown;
+      required;
+      autocomplete;
+      input_type;
     }
 
 let checkbox ?(style = Nopal_style.Style.empty)
@@ -210,6 +233,20 @@ let select_option ?(disabled = false) ~value label = { value; label; disabled }
 let capture_to_string = function
   | User -> "user"
   | Environment -> "environment"
+
+let autocomplete_mode_to_string = function
+  | On -> "on"
+  | Off -> "off"
+
+let input_type_to_string (t : input_type) =
+  match t with
+  | Plain -> "text"
+  | Password -> "password"
+  | Email -> "email"
+  | Tel -> "tel"
+  | Url -> "url"
+  | Number -> "number"
+  | Search -> "search"
 
 let file_info ~blob_id ~name ~size ~mime ~last_modified =
   { blob_id; name; size; mime; last_modified }
@@ -295,6 +332,26 @@ let rec map f = function
       Row { style; interaction; attrs; children = List.map (map f) children }
   | Column { style; interaction; attrs; children } ->
       Column { style; interaction; attrs; children = List.map (map f) children }
+  | Form
+      {
+        style;
+        interaction;
+        attrs;
+        children;
+        on_submit;
+        autocomplete;
+        novalidate;
+      } ->
+      Form
+        {
+          style;
+          interaction;
+          attrs;
+          children = List.map (map f) children;
+          on_submit = Option.map f on_submit;
+          autocomplete;
+          novalidate;
+        }
   | Button { style; interaction; attrs; on_click; on_dblclick; child } ->
       Button
         {
@@ -317,6 +374,9 @@ let rec map f = function
         on_focus;
         on_blur;
         on_keydown;
+        required;
+        autocomplete;
+        input_type;
       } ->
       Input
         {
@@ -330,6 +390,9 @@ let rec map f = function
           on_focus = Option.map f on_focus;
           on_blur = Option.map f on_blur;
           on_keydown = Option.map (fun g s -> Option.map f (g s)) on_keydown;
+          required;
+          autocomplete;
+          input_type;
         }
   | Checkbox { style; interaction; attrs; checked; disabled; on_toggle } ->
       Checkbox
@@ -461,6 +524,25 @@ let equal_capture c1 c2 =
       true
   | (User | Environment), _ -> false
 
+let equal_autocomplete_mode m1 m2 =
+  match (m1, m2) with
+  | On, On
+  | Off, Off ->
+      true
+  | (On | Off), _ -> false
+
+let equal_input_type (t1 : input_type) (t2 : input_type) =
+  match (t1, t2) with
+  | Plain, Plain
+  | Password, Password
+  | Email, Email
+  | Tel, Tel
+  | Url, Url
+  | Number, Number
+  | Search, Search ->
+      true
+  | (Plain | Password | Email | Tel | Url | Number | Search), _ -> false
+
 (* Equality strategy for handler and message fields:
    Both function-typed handlers (on_click, on_toggle, on_change, ...) and plain
    'msg payloads (on_submit, on_focus, on_blur, on_select, ...) are compared by
@@ -535,6 +617,33 @@ let rec equal a b =
       && Nopal_style.Interaction.equal i1 i2
       && equal_attrs a1 a2
       && equal_children c1 c2
+  | ( Form
+        {
+          style = s1;
+          interaction = i1;
+          attrs = a1;
+          children = c1;
+          on_submit = os1;
+          autocomplete = ac1;
+          novalidate = nv1;
+        },
+      Form
+        {
+          style = s2;
+          interaction = i2;
+          attrs = a2;
+          children = c2;
+          on_submit = os2;
+          autocomplete = ac2;
+          novalidate = nv2;
+        } ) ->
+      Nopal_style.Style.equal s1 s2
+      && Nopal_style.Interaction.equal i1 i2
+      && equal_attrs a1 a2
+      && equal_children c1 c2
+      && Option.equal ( == ) os1 os2
+      && Option.equal equal_autocomplete_mode ac1 ac2
+      && Bool.equal nv1 nv2
   | ( Button
         {
           style = s1;
@@ -571,6 +680,9 @@ let rec equal a b =
           on_focus = ofo1;
           on_blur = ob1;
           on_keydown = ok1;
+          required = r1;
+          autocomplete = ac1;
+          input_type = it1;
         },
       Input
         {
@@ -584,6 +696,9 @@ let rec equal a b =
           on_focus = ofo2;
           on_blur = ob2;
           on_keydown = ok2;
+          required = r2;
+          autocomplete = ac2;
+          input_type = it2;
         } ) ->
       Nopal_style.Style.equal s1 s2
       && Nopal_style.Interaction.equal i1 i2
@@ -595,6 +710,9 @@ let rec equal a b =
       && Option.equal ( == ) ofo1 ofo2
       && Option.equal ( == ) ob1 ob2
       && Option.equal ( == ) ok1 ok2
+      && Bool.equal r1 r2
+      && Option.equal String.equal ac1 ac2
+      && Option.equal equal_input_type it1 it2
   | ( Image { style = s1; src = src1; alt = alt1 },
       Image { style = s2; src = src2; alt = alt2 } ) ->
       Nopal_style.Style.equal s1 s2
@@ -791,7 +909,7 @@ let rec equal a b =
       && Option.equal equal_capture cap1 cap2
       && Bool.equal m1 m2
       && Option.equal ( == ) oc1 oc2
-  | ( ( Empty | Text _ | Box _ | Row _ | Column _ | Button _ | Input _
+  | ( ( Empty | Text _ | Box _ | Row _ | Column _ | Form _ | Button _ | Input _
       | Checkbox _ | Radio _ | Select _ | File_input _ | Image _ | Scroll _
       | Keyed _ | Draw _ | Virtual_list _ ),
       _ ) ->

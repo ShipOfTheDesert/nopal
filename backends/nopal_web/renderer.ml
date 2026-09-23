@@ -103,7 +103,7 @@ let apply_text_style el text_style =
 (* This function and the [Some] arms of [container_main_axis] below must name
    the same set of variants: calling this is what makes a variant a flex
    container, and being a flex container is what puts a child's declared size at
-   risk. A fourth call site added without a matching arm there un-guards that
+   risk. A fifth call site added without a matching arm there un-guards that
    variant's children with nothing failing, so the two change together. *)
 let apply_container_base_style el =
   Brr.El.set_inline_style (Jstr.v "display") (Jstr.v "flex") el
@@ -116,14 +116,14 @@ let apply_container_base_style el =
    element's own direction is emitted as its own flex-direction and governs the
    level below it.
 
-   Only these three variants are laid out as flex containers by this backend, so
+   Only these four variants are laid out as flex containers by this backend, so
    every other variant answers [None] — including the ones that hold a child,
    which are ordinary block boxes their child cannot be squeezed inside.
 
    [Row] and [Column] answer from the constructor, not from the style: both
    write their direction inline after the style is applied, so a style asking
-   for the opposite axis loses and this must lose with it. [Box] has no
-   constructor answer and reads the field, whose absence means down the page
+   for the opposite axis loses and this must lose with it. [Box] and [Form] have
+   no constructor answer and read the field, whose absence means down the page
    here even though CSS reads an absent flex-direction as across.
 
    Call sites bind the result as [children_axis]. It is the axis the element
@@ -135,7 +135,8 @@ let container_main_axis (el : 'msg Nopal_element.Element.t) :
   match el with
   | Row _ -> Some Style_css.Horizontal
   | Column _ -> Some Style_css.Vertical
-  | Box { style; _ } -> (
+  | Box { style; _ }
+  | Form { style; _ } -> (
       match style.Nopal_style.Style.layout.direction with
       | Some Nopal_style.Style.Row_dir -> Some Style_css.Horizontal
       | Some Nopal_style.Style.Column_dir
@@ -227,7 +228,8 @@ let interaction_of (el : 'msg Nopal_element.Element.t) =
   | Checkbox { interaction; _ }
   | Radio { interaction; _ }
   | Select { interaction; _ }
-  | File_input { interaction; _ } ->
+  | File_input { interaction; _ }
+  | Form { interaction; _ } ->
       Some interaction
   | Empty
   | Text _
@@ -270,7 +272,7 @@ let apply_styles_for_element ~sheet ~parent_axis el
     let bid =
       match css_props with
       | [] -> None
-      | _ -> inject_base_class sheet el css_props
+      | _ :: _ -> inject_base_class sheet el css_props
     in
     let iid = inject_interaction_class sheet el interaction in
     (bid, iid)
@@ -318,23 +320,6 @@ let wire_input_events ~dispatch el ~on_change ~on_submit ~on_focus ~on_blur
             (Brr.El.as_target el);
         ]
   in
-  let submit_l =
-    match (on_submit, on_keydown) with
-    | None, _
-    | _, Some _ ->
-        (* When on_keydown is present it receives all key events including
-           Enter, so we skip the on_submit keydown listener to avoid
-           double-dispatch. Handle Enter in the on_keydown handler instead. *)
-        []
-    | Some msg, None ->
-        [
-          Brr.Ev.listen Brr.Ev.keydown
-            (fun ev ->
-              let key = Jv.Jstr.get (Brr.Ev.to_jv ev) "key" |> Jstr.to_string in
-              if String.equal key "Enter" then dispatch msg)
-            (Brr.El.as_target el);
-        ]
-  in
   let focus_l =
     match on_focus with
     | None -> []
@@ -355,21 +340,110 @@ let wire_input_events ~dispatch el ~on_change ~on_submit ~on_focus ~on_blur
             (Brr.El.as_target el);
         ]
   in
+  (* One keydown listener answers both [on_keydown] and [on_submit], and the
+     route it takes is [Submit_route]'s, the definition the structural renderer
+     answers from too. An input carrying neither handler gets no listener: every
+     route it could take dispatches nothing. *)
   let keydown_l =
-    match on_keydown with
-    | None -> []
-    | Some f ->
+    match (on_keydown, on_submit) with
+    | None, None -> []
+    | Some _, (Some _ | None)
+    | None, Some _ ->
         [
           Brr.Ev.listen Brr.Ev.keydown
             (fun ev ->
               let key = Jv.Jstr.get (Brr.Ev.to_jv ev) "key" |> Jstr.to_string in
-              match f key with
-              | None -> ()
-              | Some msg -> dispatch msg)
+              match
+                Nopal_element.Submit_route.of_key ~key ~on_keydown ~on_submit
+              with
+              | Dispatch { msg; prevent_default } ->
+                  if prevent_default then Brr.Ev.prevent_default ev;
+                  dispatch msg
+              | To_enclosing_form
+              | Nothing ->
+                  ())
             (Brr.El.as_target el);
         ]
   in
-  change_l @ submit_l @ focus_l @ blur_l @ keydown_l
+  change_l @ focus_l @ blur_l @ keydown_l
+
+(* Every form gets a submit listener, including one that authors no [on_submit]:
+   the listener's first job is to cancel the platform's own submission, which
+   navigates away and takes the application's model with it. A form with no
+   [on_submit] is still a form to the browser — Enter in a lone field, or a click
+   on any [<button>] inside it, submits it — so leaving it unlistened would turn
+   those into a page reload. Dispatch is the second job, and happens only when
+   the form authored a message.
+
+   An Enter an input answered itself never gets here: the input's keydown
+   listener cancelled the key, so the platform never submits. *)
+let wire_form_submit ~dispatch el on_submit =
+  [
+    Brr.Ev.listen Brr_io.Form.Ev.submit
+      (fun ev ->
+        Brr.Ev.prevent_default ev;
+        match on_submit with
+        | Some msg -> dispatch msg
+        | None -> ())
+      (Brr.El.as_target el);
+  ]
+
+(* A form's two derived attributes, written over the declared list and
+   uncovering it when absent (see [set_derived]). [autocomplete] asserts a value
+   only when authored; [novalidate] only when [true], so a form that says
+   nothing about either renders the markup a caller's [~attrs] spelled. *)
+let apply_form_config el ~declared ~autocomplete ~novalidate =
+  let set = set_derived el ~declared in
+  set "autocomplete"
+    (Option.map Nopal_element.Element.autocomplete_mode_to_string autocomplete);
+  set "novalidate"
+    (match novalidate with
+    | true -> Some ""
+    | false -> None)
+
+(* An input's three derived configurations, on the same terms as a form's:
+   written over the declared list and uncovering it when absent. [required]
+   asserts both keys only when [true]; [autocomplete] and [input_type] only
+   when authored, so an input that says nothing about any of them renders the
+   markup a caller's [~attrs] spelled. [input_type_to_string] is the sole
+   producer of the type token, and the structural renderer calls it too. *)
+let apply_input_config el ~declared ~required ~autocomplete ~input_type =
+  let set = set_derived el ~declared in
+  set "required"
+    (match required with
+    | true -> Some ""
+    | false -> None);
+  set "aria-required"
+    (match required with
+    | true -> Some "true"
+    | false -> None);
+  set "autocomplete" autocomplete;
+  set "type" (Option.map Nopal_element.Element.input_type_to_string input_type)
+
+let equal_input_type_opt (a : Nopal_element.Element.input_type option)
+    (b : Nopal_element.Element.input_type option) =
+  Option.equal Nopal_element.Element.equal_input_type a b
+
+let equal_input_config ~old_required ~old_autocomplete ~old_input_type ~required
+    ~autocomplete ~input_type =
+  Bool.equal old_required required
+  && Option.equal String.equal old_autocomplete autocomplete
+  && equal_input_type_opt old_input_type input_type
+
+let equal_autocomplete_mode_opt
+    (a : Nopal_element.Element.autocomplete_mode option)
+    (b : Nopal_element.Element.autocomplete_mode option) =
+  Option.equal Nopal_element.Element.equal_autocomplete_mode a b
+
+(* The flex-direction a column-by-default container writes inline. CSS reads an
+   absent flex-direction as a row, and this backend's default is a column, so
+   both [Box] and [Form] write it on every frame rather than leaving it absent. *)
+let column_default_flex_direction (style : Nopal_style.Style.t) =
+  match style.layout.direction with
+  | Some Nopal_style.Style.Row_dir -> "row"
+  | Some Nopal_style.Style.Column_dir
+  | None ->
+      "column"
 
 (* Set-or-remove, so create and reconciliation share one definition of the
    rendered picker configuration. Every arm answers for the absent case as well
@@ -621,7 +695,7 @@ let apply_focusable el focusable =
 (* JS expando property carrying a keyed child's key on its comment node. Comment
    nodes (used for [Empty]) can't hold a data-key attribute, so the key
    round-trips through this property instead. Single-sourced so the create-time
-   set, [set_data_key], and [get_data_key] always agree (FR-4). *)
+   set, [set_data_key], and [get_data_key] always agree. *)
 let comment_key_prop = "__nopal_key"
 
 let rec create_live ~sheet ~reveals ~dispatch ~parent_axis
@@ -657,14 +731,9 @@ let rec create_live ~sheet ~reveals ~dispatch ~parent_axis
          default is Column_dir.  Row and Column already set direction inline;
          Box needs the same treatment so the style's direction is honoured
          even when the rest of the layout matches the Nopal default. *)
-      let dir =
-        match style.layout.direction with
-        | Some Nopal_style.Style.Row_dir -> "row"
-        | Some Nopal_style.Style.Column_dir
-        | None ->
-            "column"
-      in
-      Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v dir) el;
+      Brr.El.set_inline_style (Jstr.v "flex-direction")
+        (Jstr.v (column_default_flex_direction style))
+        el;
       let base_id, interaction_id =
         apply_styles_for_element ~sheet ~parent_axis el style interaction
       in
@@ -743,6 +812,43 @@ let rec create_live ~sheet ~reveals ~dispatch ~parent_axis
           base_id;
           interaction_id;
         }
+  | Form
+      {
+        style;
+        interaction;
+        attrs;
+        children;
+        on_submit;
+        autocomplete;
+        novalidate;
+      } ->
+      let el = Brr.El.v (Jstr.v "form") [] in
+      apply_container_base_style el;
+      (* Laid out like [Box]: the style's direction, down the page when absent. *)
+      Brr.El.set_inline_style (Jstr.v "flex-direction")
+        (Jstr.v (column_default_flex_direction style))
+        el;
+      let base_id, interaction_id =
+        apply_styles_for_element ~sheet ~parent_axis el style interaction
+      in
+      apply_attrs el attrs;
+      apply_form_config el ~declared:attrs ~autocomplete ~novalidate;
+      let children_axis = container_main_axis element in
+      let live_children =
+        List.map
+          (create_and_append ~sheet ~reveals ~dispatch
+             ~parent_axis:children_axis el)
+          children
+      in
+      Live_node
+        {
+          dom = el;
+          element;
+          children = live_children;
+          listeners = wire_form_submit ~dispatch el on_submit;
+          base_id;
+          interaction_id;
+        }
   | Button { style; interaction; attrs; on_click; on_dblclick; child } ->
       let el = Brr.El.v (Jstr.v "button") [] in
       let base_id, interaction_id =
@@ -779,14 +885,18 @@ let rec create_live ~sheet ~reveals ~dispatch ~parent_axis
         on_focus;
         on_blur;
         on_keydown;
+        required;
+        autocomplete;
+        input_type;
       } ->
       let el = Brr.El.v (Jstr.v "input") [] in
       let base_id, interaction_id =
         apply_styles_for_element ~sheet ~parent_axis el style interaction
       in
-      Jv.set (Brr.El.to_jv el) "value" (Jv.of_string value);
       apply_attrs el attrs;
       Brr.El.set_at (Jstr.v "placeholder") (Some (Jstr.v placeholder)) el;
+      apply_input_config el ~declared:attrs ~required ~autocomplete ~input_type;
+      Jv.set (Brr.El.to_jv el) "value" (Jv.of_string value);
       let listeners =
         wire_input_events ~dispatch el ~on_change ~on_submit ~on_focus ~on_blur
           ~on_keydown
@@ -813,7 +923,9 @@ let rec create_live ~sheet ~reveals ~dispatch ~parent_axis
                   dispatch (f is_checked))
                 (Brr.El.as_target el);
             ]
-        | _ -> []
+        | Some _, true
+        | None, (true | false) ->
+            []
       in
       Live_node
         { dom = el; element; children = []; listeners; base_id; interaction_id }
@@ -836,7 +948,9 @@ let rec create_live ~sheet ~reveals ~dispatch ~parent_axis
                 (fun _ev -> dispatch msg)
                 (Brr.El.as_target el);
             ]
-        | _ -> []
+        | Some _, true
+        | None, (true | false) ->
+            []
       in
       Live_node
         { dom = el; element; children = []; listeners; base_id; interaction_id }
@@ -858,7 +972,7 @@ let rec create_live ~sheet ~reveals ~dispatch ~parent_axis
         options;
       (* Force the control to the model value. When no option matches, the
          select reflects no selection (selectedIndex = -1) rather than the
-         browser's default first option (FR-4). *)
+         browser's default first option. *)
       Jv.set (Brr.El.to_jv el) "value" (Jv.of_string selected);
       let base_id, interaction_id =
         apply_styles_for_element ~sheet ~parent_axis el style interaction
@@ -878,7 +992,9 @@ let rec create_live ~sheet ~reveals ~dispatch ~parent_axis
                   dispatch (f value))
                 (Brr.El.as_target el);
             ]
-        | _ -> []
+        | Some _, true
+        | None, (true | false) ->
+            []
       in
       Live_node
         { dom = el; element; children = []; listeners; base_id; interaction_id }
@@ -941,7 +1057,7 @@ let rec create_live ~sheet ~reveals ~dispatch ~parent_axis
       in
       (* Set the key on the rendered node so it round-trips across reconciles.
          Elements/text carry it in a data-key attribute; comment nodes can't,
-         so they carry it in [comment_key_prop] instead (FR-4). *)
+         so they carry it in [comment_key_prop] instead. *)
       (match live_child with
       | Live_node n ->
           Brr.El.set_at (Jstr.v "data-key") (Some (Jstr.v key)) n.dom
@@ -1253,6 +1369,7 @@ let same_variant (a : 'msg Nopal_element.Element.t)
   | Box _, Box _
   | Row _, Row _
   | Column _, Column _
+  | Form _, Form _
   | Button _, Button _
   | Input _, Input _
   | Image _, Image _
@@ -1265,7 +1382,7 @@ let same_variant (a : 'msg Nopal_element.Element.t)
   | File_input _, File_input _
   | Virtual_list _, Virtual_list _ ->
       true
-  | ( ( Empty | Text _ | Box _ | Row _ | Column _ | Button _ | Input _
+  | ( ( Empty | Text _ | Box _ | Row _ | Column _ | Form _ | Button _ | Input _
       | Checkbox _ | Radio _ | Select _ | File_input _ | Image _ | Scroll _
       | Keyed _ | Draw _ | Virtual_list _ ),
       _ ) ->
@@ -1275,7 +1392,7 @@ let extract_keyed_pairs elements =
   let rec go acc = function
     | [] -> Some (List.rev acc)
     | Keyed { key; child } :: rest -> go ((key, child) :: acc) rest
-    | ( Empty | Text _ | Box _ | Row _ | Column _ | Button _ | Input _
+    | ( Empty | Text _ | Box _ | Row _ | Column _ | Form _ | Button _ | Input _
       | Checkbox _ | Radio _ | Select _ | File_input _ | Image _ | Scroll _
       | Draw _ | Virtual_list _ )
       :: _ ->
@@ -1283,7 +1400,7 @@ let extract_keyed_pairs elements =
   in
   match elements with
   | [] -> None
-  | _ -> go [] elements
+  | _ :: _ -> go [] elements
 
 let set_data_key live key =
   match live with
@@ -1312,7 +1429,8 @@ let attrs_of (el : 'msg Nopal_element.Element.t) =
   | Radio { attrs; _ }
   | Select { attrs; _ }
   | File_input { attrs; _ }
-  | Scroll { attrs; _ } ->
+  | Scroll { attrs; _ }
+  | Form { attrs; _ } ->
       attrs
   | Empty
   | Text _
@@ -1350,6 +1468,7 @@ let focusable_of (el : 'msg Nopal_element.Element.t) =
   | Text _
   | Row _
   | Column _
+  | Form _
   | Button _
   | Input _
   | Checkbox _
@@ -1400,6 +1519,7 @@ let previous_disabled (el : 'msg Nopal_element.Element.t) =
   | Box _
   | Row _
   | Column _
+  | Form _
   | Button _
   | Input _
   | File_input _
@@ -1419,6 +1539,7 @@ let previous_placeholder (el : 'msg Nopal_element.Element.t) =
   | Box _
   | Row _
   | Column _
+  | Form _
   | Button _
   | Checkbox _
   | Radio _
@@ -1455,7 +1576,8 @@ let style_of (el : 'msg Nopal_element.Element.t) =
   | Radio { style; _ }
   | Select { style; _ }
   | File_input { style; _ }
-  | Virtual_list { style; _ } ->
+  | Virtual_list { style; _ }
+  | Form { style; _ } ->
       Some style
   | Empty
   | Text _
@@ -1490,7 +1612,7 @@ let maybe_apply_style ~old_parent_axis ~parent_axis dom old_el new_el =
         let old_props = Style_css.of_style ~parent_axis:old_parent_axis os in
         let new_props = Style_css.of_style ~parent_axis ns in
         (* Remove inline props present last render but absent now so the painted
-           result matches the model (FR-1). *)
+           result matches the model. *)
         List.iter
           (fun { Style_css.property; _ } ->
             if
@@ -1531,7 +1653,7 @@ let rec reconcile_keyed_children ~sheet ~reveals ~dispatch ~old_parent_axis
             (* On a variant change reconcile_live replaces the DOM node with a
                freshly-created one that does not carry the key, so re-establish
                it; otherwise the replacement loses its identity and is removed
-               and recreated (or duplicated) on the next reconcile (FR-2). A
+               and recreated (or duplicated) on the next reconcile. A
                reused node keeps the same DOM node and its existing key, so
                skip the write to leave the order-unchanged hot path untouched. *)
             if not (jv_of_live updated == jv_of_live old_live) then
@@ -1565,7 +1687,7 @@ let rec reconcile_keyed_children ~sheet ~reveals ~dispatch ~old_parent_axis
      already in its correct position (its parent is [parent_el] and its
      nextSibling is [next]) is left untouched, so a key-stable update with
      unchanged order performs zero DOM moves and preserves focus, scroll,
-     selection, and IME state on rows that did not move (FR-3, NFR-3). *)
+     selection, and IME state on rows that did not move. *)
   let rec reorder next = function
     | [] -> ()
     | (_key, live) :: rest_to_left ->
@@ -1612,7 +1734,7 @@ and reconcile_children ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
                 (* A child with no recoverable key cannot be carried forward by
                    the keyed reconcile, so remove it and release its listeners
                    now — otherwise the orphaned non-keyed node and its handlers
-                   leak forever on a non-keyed-to-keyed transition (FR-1). *)
+                   leak forever on a non-keyed-to-keyed transition. *)
                 let old_jv = jv_of_live old_live in
                 unlisten_tree ~sheet old_live;
                 ignore (Jv.call parent_jv "removeChild" [| old_jv |]);
@@ -1679,13 +1801,13 @@ and reconcile_live ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
         old_n new_el;
       Live_node old_n
   | ( Live_text _,
-      ( Empty | Box _ | Row _ | Column _ | Button _ | Input _ | Checkbox _
-      | Radio _ | Select _ | File_input _ | Image _ | Scroll _ | Keyed _
-      | Draw _ | Virtual_list _ ) )
+      ( Empty | Box _ | Row _ | Column _ | Form _ | Button _ | Input _
+      | Checkbox _ | Radio _ | Select _ | File_input _ | Image _ | Scroll _
+      | Keyed _ | Draw _ | Virtual_list _ ) )
   | ( Live_comment _,
-      ( Text _ | Box _ | Row _ | Column _ | Button _ | Input _ | Checkbox _
-      | Radio _ | Select _ | File_input _ | Image _ | Scroll _ | Keyed _
-      | Draw _ | Virtual_list _ ) )
+      ( Text _ | Box _ | Row _ | Column _ | Form _ | Button _ | Input _
+      | Checkbox _ | Radio _ | Select _ | File_input _ | Image _ | Scroll _
+      | Keyed _ | Draw _ | Virtual_list _ ) )
   | Live_node _, _ ->
       (* Different variant or same_variant returned false — replace *)
       let new_live =
@@ -1726,7 +1848,7 @@ and maybe_reconcile_styles ~sheet ~old_parent_axis ~parent_axis
         match (old_style, new_style) with
         (* Structural, not physical, equality: the view rebuilds the style each
            frame, so [os == ns] almost never holds and the base class would be
-           released and re-injected every frame, churning the CSSOM (FR-2/NFR-1).
+           released and re-injected every frame, churning the CSSOM.
            Mirrors the interaction diff below, which already uses [equal]. *)
         | Some os, Some ns -> not (Nopal_style.Style.equal os ns)
         | None, None -> false
@@ -1749,7 +1871,7 @@ and maybe_reconcile_styles ~sheet ~old_parent_axis ~parent_axis
             old_n.base_id <-
               (match css_props with
               | [] -> None
-              | _ -> inject_base_class sheet old_n.dom css_props)
+              | _ :: _ -> inject_base_class sheet old_n.dom css_props)
         | None -> old_n.base_id <- None
       end;
       let ix_changed =
@@ -1787,7 +1909,7 @@ and maybe_reconcile_styles ~sheet ~old_parent_axis ~parent_axis
           old_n.base_id <-
             (match css_props with
             | [] -> None
-            | _ -> inject_base_class sheet old_n.dom css_props)
+            | _ :: _ -> inject_base_class sheet old_n.dom css_props)
       | None -> old_n.base_id <- None);
       match new_ix with
       | Some ix ->
@@ -1851,14 +1973,9 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
         ~old_focusable:(focusable_of old_n.element)
         ~new_focusable:focusable;
       (* Keep inline flex-direction in sync with the style's direction. *)
-      let dir =
-        match style.layout.direction with
-        | Some Nopal_style.Style.Row_dir -> "row"
-        | Some Nopal_style.Style.Column_dir
-        | None ->
-            "column"
-      in
-      Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v dir) el;
+      Brr.El.set_inline_style (Jstr.v "flex-direction")
+        (Jstr.v (column_default_flex_direction style))
+        el;
       unlisten_all old_n.listeners;
       old_n.listeners <-
         wire_box_pointer_events ~dispatch el on_pointer_move on_pointer_leave
@@ -1886,6 +2003,44 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
         reconcile_children ~sheet ~reveals ~dispatch
           ~old_parent_axis:old_children_axis ~parent_axis:children_axis el
           old_n.children children
+  | Form { style; attrs; children; on_submit; autocomplete; novalidate; _ } ->
+      let attrs_written = maybe_apply_attrs el old_n.element new_el in
+      (* Guarded on the previous render, as [File_input]'s configuration is: the
+         derivations are rewritten when they changed, or when the declared list
+         was just re-applied over them. *)
+      (match old_n.element with
+      | Form { autocomplete = old_autocomplete; novalidate = old_novalidate; _ }
+        when (not attrs_written)
+             && equal_autocomplete_mode_opt old_autocomplete autocomplete
+             && Bool.equal old_novalidate novalidate ->
+          ()
+      | Empty
+      | Text _
+      | Box _
+      | Row _
+      | Column _
+      | Form _
+      | Button _
+      | Input _
+      | Checkbox _
+      | Radio _
+      | Select _
+      | File_input _
+      | Image _
+      | Scroll _
+      | Keyed _
+      | Draw _
+      | Virtual_list _ ->
+          apply_form_config el ~declared:attrs ~autocomplete ~novalidate);
+      Brr.El.set_inline_style (Jstr.v "flex-direction")
+        (Jstr.v (column_default_flex_direction style))
+        el;
+      unlisten_all old_n.listeners;
+      old_n.listeners <- wire_form_submit ~dispatch el on_submit;
+      old_n.children <-
+        reconcile_children ~sheet ~reveals ~dispatch
+          ~old_parent_axis:old_children_axis ~parent_axis:children_axis el
+          old_n.children children
   | Button { on_click; on_dblclick; child; _ } ->
       (* Derives no attributes of its own, so nothing to re-assert. *)
       ignore (maybe_apply_attrs el old_n.element new_el : bool);
@@ -1899,6 +2054,7 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
           old_n.children [ child ]
   | Input
       {
+        attrs;
         value;
         placeholder;
         on_change;
@@ -1906,22 +2062,66 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
         on_focus;
         on_blur;
         on_keydown;
+        required;
+        autocomplete;
+        input_type;
         _;
       } ->
-      (* Controlled input: reflect the model, but only write when the DOM value
-         actually differs. A redundant write collapses the caret/selection and
-         resets IME composition; with the global keydown subscription turning
-         each keystroke into a reconcile, an unconditional write heals the DOM
-         back to the model mid-edit and clobbers in-progress typing (NFR-3). *)
-      let dom_value = Jv.Jstr.get (Brr.El.to_jv el) "value" |> Jstr.to_string in
-      if not (String.equal dom_value value) then
-        Jv.set (Brr.El.to_jv el) "value" (Jv.of_string value);
       let attrs_written = maybe_apply_attrs el old_n.element new_el in
       if
         needs_reassert ~attrs_written
           ~previous:(previous_placeholder old_n.element)
           ~current:placeholder ~equal:String.equal
       then Brr.El.set_at (Jstr.v "placeholder") (Some (Jstr.v placeholder)) el;
+      (* Guarded on the previous render, as [Form]'s configuration is: the
+         derivations are rewritten when they changed, or when the declared list
+         was just re-applied over them. *)
+      (match old_n.element with
+      | Input
+          {
+            required = old_required;
+            autocomplete = old_autocomplete;
+            input_type = old_input_type;
+            _;
+          }
+        when (not attrs_written)
+             && equal_input_config ~old_required ~old_autocomplete
+                  ~old_input_type ~required ~autocomplete ~input_type ->
+          ()
+      | Empty
+      | Text _
+      | Box _
+      | Row _
+      | Column _
+      | Form _
+      | Button _
+      | Input _
+      | Checkbox _
+      | Radio _
+      | Select _
+      | File_input _
+      | Image _
+      | Scroll _
+      | Keyed _
+      | Draw _
+      | Virtual_list _ ->
+          apply_input_config el ~declared:attrs ~required ~autocomplete
+            ~input_type);
+      (* Controlled input: reflect the model, but only write when the DOM
+         value actually differs. A redundant write collapses the
+         caret/selection and resets IME composition; with the global keydown
+         subscription turning each keystroke into a reconcile, an
+         unconditional write heals the DOM back to the model mid-edit and
+         clobbers in-progress typing. Read only now, after
+         [apply_input_config]: a type change can sanitise the DOM's value
+         against the new type (e.g. Plain -> Number clears a non-numeric
+         value), and a read taken before that would compare against a value
+         the sanitisation has already invalidated, letting a value that needs
+         restoring look unchanged. *)
+      let dom_value = Jv.Jstr.get (Brr.El.to_jv el) "value" |> Jstr.to_string in
+      let value_needs_write = not (String.equal dom_value value) in
+      if value_needs_write then
+        Jv.set (Brr.El.to_jv el) "value" (Jv.of_string value);
       unlisten_all old_n.listeners;
       old_n.listeners <-
         wire_input_events ~dispatch el ~on_change ~on_submit ~on_focus ~on_blur
@@ -1938,6 +2138,7 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
       | Box _
       | Row _
       | Column _
+      | Form _
       | Button _
       | Input _
       | Checkbox _
@@ -1963,6 +2164,7 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
         | Box _
         | Row _
         | Column _
+        | Form _
         | Button _
         | Input _
         | Checkbox _
@@ -2002,7 +2204,7 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
       let ctx = Brr_canvas.C2d.get_context canvas in
       (* Re-run hidpi setup when the backing store no longer matches the logical
          size scaled by the current devicePixelRatio — this covers a logical
-         resize and a dpr change (FR-7), and is a no-op otherwise. *)
+         resize and a dpr change, and is a no-op otherwise. *)
       Canvas_renderer.resize_if_needed el ctx ~width ~height;
       Style_css.apply_cursor el cursor;
       (match aria_label with
@@ -2043,7 +2245,9 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
                   dispatch (f is_checked))
                 (Brr.El.as_target el);
             ]
-        | _ -> [])
+        | Some _, true
+        | None, (true | false) ->
+            [])
   | Radio { name; checked; disabled; on_select; _ } ->
       Jv.set (Brr.El.to_jv el) "checked" (Jv.of_bool checked);
       let attrs_written = maybe_apply_attrs el old_n.element new_el in
@@ -2066,7 +2270,9 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
                 (fun _ev -> dispatch msg)
                 (Brr.El.as_target el);
             ]
-        | _ -> [])
+        | Some _, true
+        | None, (true | false) ->
+            [])
   | Select { options; selected; disabled; on_change; _ } ->
       (* Rebuild option children — simple and correct for typical select sizes *)
       let parent_jv = Brr.El.to_jv el in
@@ -2085,7 +2291,7 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
         options;
       (* Force the control to the model value. When no option matches, the
          select reflects no selection (selectedIndex = -1) rather than the
-         browser's default first option (FR-4). *)
+         browser's default first option. *)
       Jv.set parent_jv "value" (Jv.of_string selected);
       let attrs_written = maybe_apply_attrs el old_n.element new_el in
       if
@@ -2108,7 +2314,9 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
                   dispatch (f value))
                 (Brr.El.as_target el);
             ]
-        | _ -> [])
+        | Some _, true
+        | None, (true | false) ->
+            [])
   | Virtual_list
       {
         style = _;
@@ -2233,6 +2441,7 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
       | Box _
       | Row _
       | Column _
+      | Form _
       | Button _
       | Input _
       | Checkbox _

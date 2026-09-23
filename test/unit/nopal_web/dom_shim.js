@@ -158,6 +158,47 @@
 // the two directions are not symmetric here and the write direction is the one
 // to rely on.
 //
+// ## Form submission
+//
+// A `<form>` navigates away when it is submitted, and that default is what a
+// renderer's submit listener exists to cancel. So the shim reproduces it: a
+// shim that never fired `submit` would leave `preventDefault` untested, and a
+// renderer that forgot it would go green here and reload the page in a browser.
+//
+// After `dispatchEvent` has run an event's listeners, and only when none of
+// them called `preventDefault`, the shim runs the two default actions that
+// submit a form, both against the nearest `<form>` ancestor:
+//
+//   - Implicit submission: an Enter `keydown` on an `<input>` whose type blocks
+//     implicit submission (text, search, url, tel, email, password, number and
+//     the date/time types; a missing or unknown type is text). If the form has
+//     a submit button, the first one is clicked, which submits through the rule
+//     below — the platform's own route. With no submit button the form is
+//     submitted directly, but only when it holds exactly one such field: two or
+//     more text fields and no button submit nothing, which is also the
+//     platform's rule.
+//   - Submit-button activation: a `click` on a `<button>` whose type is
+//     missing, `submit`, or anything other than `button`/`reset` (a `<button>`
+//     with no type IS a submit button), or on an `<input type="submit">`.
+//
+// Submitting fires a cancelable `submit` event on the form. If no listener
+// cancels it, the shim records a navigation in `document._navigations` (one
+// entry per navigation, the form node as `form`), which is what a test reads
+// to assert that nothing navigated — compare the length before and after.
+//
+// Divergences, stated rather than relied on:
+//
+//   - A browser runs these defaults only for trusted, user-generated events; a
+//     script-dispatched `keydown` submits nothing there. Here every dispatched
+//     event counts, because the test's `dispatchEvent` stands in for the user.
+//     A test that dispatches `submit` itself runs the listeners and no default,
+//     which matches the browser: a synthetic `submit` event never navigates.
+//   - Constraint validation is not modelled. `required` never blocks a
+//     submission and `novalidate` changes nothing here; the browser suites
+//     cover both.
+//   - The form owner is the nearest `<form>` ancestor only; the `form`
+//     attribute that re-associates a control elsewhere is not read.
+//
 // ## Maintenance Checklist (run when upgrading Brr)
 //
 // When Brr is upgraded to a new version, verify this shim still covers its
@@ -199,7 +240,7 @@
     const classes = new Set();
     // _writes counts class assignments (add/remove), mirroring the inline-style
     // _writes counter below. Lets renderer tests assert that an unchanged
-    // interactive re-render performs zero classList mutations (FR-2/NFR-1).
+    // interactive re-render performs zero classList mutations.
     const cl = {
       _writes: 0,
       add(c) { classes.add(c); cl._writes++; },
@@ -214,7 +255,7 @@
     const props = {};
     // Inline-style write counter, mirroring the input `_valueWrites` pattern.
     // Lets renderer tests assert that an unchanged-style reconcile performs zero
-    // inline-style writes (NFR-1). Brr's set_inline_style always routes through
+    // inline-style writes. Brr's set_inline_style always routes through
     // setProperty (even for clears), so counting here covers every renderer
     // write. Kept off `props` so it never leaks into cssText/length.
     let writes = 0;
@@ -399,6 +440,87 @@
     };
   }
 
+  // --- Form submission: see "Form submission" in the header block. ---
+
+  // Input types that block implicit submission. A missing or unrecognised type
+  // is the text state, so it blocks too.
+  const nonBlockingInputTypes = new Set([
+    "hidden", "checkbox", "radio", "file", "submit", "image", "reset",
+    "button", "range", "color",
+  ]);
+
+  function inputType(el) {
+    const t = el.getAttribute("type");
+    return t === null ? "text" : String(t).toLowerCase();
+  }
+
+  function blocksImplicitSubmission(el) {
+    return el.nodeType === 1 && el.tagName === "INPUT" &&
+      !nonBlockingInputTypes.has(inputType(el));
+  }
+
+  function isSubmitButton(el) {
+    if (el.nodeType !== 1) return false;
+    if (el.tagName === "BUTTON") {
+      const t = el.getAttribute("type");
+      const lowered = t === null ? "submit" : String(t).toLowerCase();
+      return lowered !== "button" && lowered !== "reset";
+    }
+    if (el.tagName === "INPUT") {
+      const t = inputType(el);
+      return t === "submit" || t === "image";
+    }
+    return false;
+  }
+
+  function enclosingForm(el) {
+    let n = el.parentNode;
+    while (n) {
+      if (n.nodeType === 1 && n.tagName === "FORM") return n;
+      n = n.parentNode;
+    }
+    return null;
+  }
+
+  function descendants(root) {
+    const found = [];
+    const walk = function (parent) {
+      for (const child of parent.childNodes) {
+        found.push(child);
+        walk(child);
+      }
+    };
+    walk(root);
+    return found;
+  }
+
+  function submitForm(form) {
+    const ev = makeEvent("submit", { bubbles: true, cancelable: true });
+    if (form.dispatchEvent(ev)) {
+      globalThis.document._navigations.push({ form: form });
+    }
+  }
+
+  function runFormDefault(node, ev) {
+    if (ev.type === "keydown" && ev.key === "Enter" &&
+        blocksImplicitSubmission(node)) {
+      const form = enclosingForm(node);
+      if (!form) return;
+      const all = descendants(form);
+      const button = all.find(isSubmitButton);
+      if (button) {
+        button.dispatchEvent(makeEvent("click", { bubbles: true, cancelable: true }));
+        return;
+      }
+      if (all.filter(blocksImplicitSubmission).length === 1) submitForm(form);
+      return;
+    }
+    if (ev.type === "click" && isSubmitButton(node)) {
+      const form = enclosingForm(node);
+      if (form) submitForm(form);
+    }
+  }
+
   function makeNode(nodeType, nodeName) {
     const node = {
       _id: ++idCounter,
@@ -553,6 +675,7 @@
       if (arr) {
         for (const fn of [...arr]) fn(ev);
       }
+      if (!ev.defaultPrevented) runFormDefault(node, ev);
       return !ev.defaultPrevented;
     };
 
@@ -643,6 +766,21 @@
       // reason — see "Inline style and the `style` attribute" in the header.
       if (name === "style") el.style.cssText = String(value);
       if (name === "value") el.value = String(value);
+      // Minimal HTML value-sanitisation algorithm: a `number` input clears a
+      // current value that is not a valid floating-point number rather than
+      // keeping it, the one rule the renderer's type-before-value ordering
+      // (`apply_input_config` before the `value` write) depends on. Every
+      // other type is left unmodeled — this is not a general sanitiser.
+      if (
+        name === "type" &&
+        el.tagName === "INPUT" &&
+        String(value).toLowerCase() === "number" &&
+        el._value !== undefined &&
+        el._value !== "" &&
+        !/^-?\d+(\.\d+)?([eE][-+]?\d+)?$/.test(el._value)
+      ) {
+        el._value = "";
+      }
     };
     el.getAttribute = function (name) {
       return el._attributes[name] !== undefined
@@ -750,7 +888,7 @@
     // `selected` flag. Until selection is set explicitly (via value or
     // selectedIndex), the browser auto-selects the first option
     // (selectedIndex 0) — exactly the default the renderer must override when
-    // the model value matches no option (FR-4).
+    // the model value matches no option.
     if (tag.toLowerCase() === "select") {
       el._selectionExplicit = false;
       Object.defineProperty(el, "selectedIndex", {
@@ -787,7 +925,7 @@
     } else if (tag.toLowerCase() === "input" || tag.toLowerCase() === "textarea") {
       // Back `value` with a write counter so renderer tests can assert that a
       // controlled input skips the redundant write when the value is unchanged
-      // (a no-op write would collapse the caret/selection/IME — NFR-3).
+      // (a no-op write would collapse the caret/selection/IME).
       el._value = "";
       el._valueWrites = 0;
       Object.defineProperty(el, "value", {
@@ -830,7 +968,7 @@
       stopPropagation() {},
       stopImmediatePropagation() {},
       preventDefault() {
-        this.defaultPrevented = true;
+        if (this.cancelable) this.defaultPrevented = true;
       },
       ...(opts || {}),
     };
@@ -882,6 +1020,9 @@
       return null;
     },
     getElementsByName: function (_name) { return []; },
+    // One entry per form submission no listener cancelled. See "Form
+    // submission" in the header block.
+    _navigations: [],
   };
 
   body.ownerDocument = doc;

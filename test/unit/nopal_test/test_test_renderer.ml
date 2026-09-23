@@ -1480,6 +1480,277 @@ let answer_change_list_matches_the_keys_that_moved () =
     "and the keys recorded as unchanged were read, and are unchanged"
     unchanged_answer_keys (keys unmoved)
 
+(* The submit and form answer-change list, pinned against llms.txt itself.
+
+   The list above is duplicated here by hand and edited together with its
+   table. This one is read out of llms.txt, from the table under the heading
+   [submit_change_list_heading], so removing a row from that table or adding
+   one reddens this case without anything here being edited.
+
+   Each candidate is a key, the answer at the tree this change is measured
+   against, and a reading of the answer as the tree stands. The before column
+   is recorded data — no code in this tree can produce it. A candidate whose
+   two columns differ is a key whose answer moved, and the published keys must
+   be exactly those, in both directions.
+
+   What the readings reach, and what they do not:
+   - The simulator rows are read through [keydown] and [submit] on a rendered
+     input, so they are this renderer's answers.
+   - The two default rows are read from [Submit_route.of_key], the definition
+     the web renderer answers from. No browser is reached here; that the web
+     renderer carries out what [of_key] returns is held by the web backend's
+     own suites, not by this case.
+   - The four rows for the new [Form] arm and the three new [Input] arguments
+     are compile-visible. Their before column is "does not compile", which no
+     reading can equal, so they land in the moved partition by construction;
+     what this case holds for them is that llms.txt publishes them and that
+     each argument outranks a caller's pair of its key, as the rows say.
+   - The prose around the table is read by nothing.
+
+   The unchanged candidates are the affirmative arm. Without them a defect
+   that made every reading equal its before column would read as "nothing
+   moved" and fail only on the published side; with them, a key that quietly
+   starts moving lands in the moved partition and has to be published. *)
+let submit_change_list_heading =
+  "**Submit and form answers that moved — read this on a pin bump.**"
+
+let show_msg = function
+  | Click -> "Click"
+  | Changed s -> "Changed " ^ s
+  | Submit -> "Submit"
+
+(* What a simulator answers on the element, and every message it appended. *)
+let simulated sim element =
+  let r = render element in
+  match sim r with
+  | Ok () -> "Ok [" ^ String.concat "; " (List.map show_msg (messages r)) ^ "]"
+  | Error (No_handler _) -> "Error No_handler"
+  | Error (Not_found _) -> "Error Not_found"
+
+(* Whether an input carrying these handlers suppresses the key's default. *)
+let default_answer ~key ~on_keydown ~on_submit =
+  match Nopal_element.Submit_route.of_key ~key ~on_keydown ~on_submit with
+  | Dispatch { prevent_default = true; msg = _ } -> "prevents default"
+  | Dispatch { prevent_default = false; msg = _ }
+  | To_enclosing_form
+  | Nothing ->
+      "keeps default"
+
+let input_attr key element =
+  match find (By_tag "input") (tree (render element)) with
+  | Some node -> (
+      match attr key node with
+      | Some v -> "Some " ^ v
+      | None -> "None")
+  | None -> "no input node"
+
+let does_not_compile = "does not compile"
+
+let submit_change_candidates : (string * string * (unit -> string)) list =
+  let consume key = Some (Changed key) in
+  let decline _ = None in
+  let enter = simulated (keydown (By_tag "input") "Enter") in
+  [
+    ( "enter-declined-by-on-keydown-reaches-on-submit",
+      "Ok []",
+      fun () -> enter (E.input ~on_keydown:decline ~on_submit:Submit "") );
+    ( "enter-consumed-by-on-keydown-prevents-default",
+      "keeps default",
+      fun () ->
+        default_answer ~key:"Enter" ~on_keydown:(Some consume) ~on_submit:None
+    );
+    ( "enter-answered-by-on-submit-prevents-default",
+      "keeps default",
+      fun () ->
+        default_answer ~key:"Enter" ~on_keydown:None ~on_submit:(Some Submit) );
+    ( "keydown-enter-on-an-input-with-only-on-submit",
+      "Error No_handler",
+      fun () -> enter (E.input ~on_submit:Submit "") );
+    ( "keydown-other-key-on-an-input-with-only-on-submit",
+      "Error No_handler",
+      fun () ->
+        simulated (keydown (By_tag "input") "a") (E.input ~on_submit:Submit "")
+    );
+    ( "element-t-gains-form",
+      does_not_compile,
+      fun () ->
+        match find (By_tag "form") (tree (render (E.form [ E.input "" ]))) with
+        | Some _ -> "a form node"
+        | None -> "no form node" );
+    ( "input-gains-required",
+      does_not_compile,
+      fun () ->
+        input_attr "required"
+          (E.input ~attrs:[ ("required", "caller") ] ~required:true "") );
+    ( "input-gains-autocomplete",
+      does_not_compile,
+      fun () ->
+        input_attr "autocomplete"
+          (E.input
+             ~attrs:[ ("autocomplete", "off") ]
+             ~autocomplete:"username" "") );
+    ( "input-gains-input_type",
+      does_not_compile,
+      fun () ->
+        input_attr "type"
+          (E.input ~attrs:[ ("type", "email") ] ~input_type:E.Password "") );
+    (* Unchanged. *)
+    ( "enter-consumed-by-on-keydown-with-on-submit",
+      "Ok [Changed Enter]",
+      fun () -> enter (E.input ~on_keydown:consume ~on_submit:Submit "") );
+    ( "enter-declined-by-on-keydown-alone",
+      "Ok []",
+      fun () -> enter (E.input ~on_keydown:decline "") );
+    ( "other-key-consumed-by-on-keydown",
+      "Ok [Changed a]",
+      fun () ->
+        simulated
+          (keydown (By_tag "input") "a")
+          (E.input ~on_keydown:consume "") );
+    ( "other-key-consumed-keeps-default",
+      "keeps default",
+      fun () ->
+        default_answer ~key:"a" ~on_keydown:(Some consume)
+          ~on_submit:(Some Submit) );
+    ( "keydown-on-an-input-with-no-handler",
+      "Error No_handler",
+      fun () -> enter (E.input "") );
+    ( "submit-on-an-input-with-on-submit",
+      "Ok [Submit]",
+      fun () ->
+        simulated (submit (By_tag "input")) (E.input ~on_submit:Submit "") );
+    ( "caller-required-pair-without-required",
+      "Some caller",
+      fun () ->
+        input_attr "required" (E.input ~attrs:[ ("required", "caller") ] "") );
+    ( "caller-autocomplete-pair-without-autocomplete",
+      "Some off",
+      fun () ->
+        input_attr "autocomplete"
+          (E.input ~attrs:[ ("autocomplete", "off") ] "") );
+    ( "caller-type-pair-without-input_type",
+      "Some email",
+      fun () -> input_attr "type" (E.input ~attrs:[ ("type", "email") ] "") );
+  ]
+
+let unchanged_submit_keys =
+  [
+    "enter-consumed-by-on-keydown-with-on-submit";
+    "enter-declined-by-on-keydown-alone";
+    "other-key-consumed-by-on-keydown";
+    "other-key-consumed-keeps-default";
+    "keydown-on-an-input-with-no-handler";
+    "submit-on-an-input-with-on-submit";
+    "caller-required-pair-without-required";
+    "caller-autocomplete-pair-without-autocomplete";
+    "caller-type-pair-without-input_type";
+  ]
+
+(* The key column of every row of the first table after the heading, in table
+   order: the prose between the heading and the table is skipped, and the
+   table is the run of lines starting with "|" that follows, less its header
+   and separator rows. [None] when the heading is absent, so a renamed heading
+   fails as that rather than as an empty list. *)
+let published_submit_keys text =
+  let is_row line = String.starts_with ~prefix:"|" line in
+  let key_of_row line =
+    match String.split_on_char '|' line with
+    | "" :: _number :: key :: _rest -> (
+        match
+          String.trim key |> String.split_on_char '`' |> String.concat ""
+        with
+        | "Key" -> None
+        | k when String.starts_with ~prefix:"-" k -> None
+        | k -> Some k)
+    | _ -> None
+  in
+  let rec skip_to_table = function
+    | line :: _ as lines when is_row line -> lines
+    | _ :: rest -> skip_to_table rest
+    | [] -> []
+  in
+  let rec rows = function
+    | line :: rest when is_row line -> line :: rows rest
+    | _ -> []
+  in
+  let rec after_heading = function
+    | [] -> None
+    | line :: rest when String.equal line submit_change_list_heading ->
+        Some (List.filter_map key_of_row (rows (skip_to_table rest)))
+    | _ :: rest -> after_heading rest
+  in
+  after_heading (String.split_on_char '\n' text)
+
+(* llms.txt is a dependency of this test's runtest action, copied to the root
+   of the build tree; the path is taken from the executable so it holds under
+   [dune exec] as well, once [dune build] has copied the file. *)
+let llms_txt () =
+  let path =
+    Filename.concat (Filename.dirname Sys.executable_name) "../../../llms.txt"
+  in
+  match In_channel.with_open_text path In_channel.input_all with
+  | text -> text
+  | exception Sys_error e -> Alcotest.fail ("cannot read llms.txt: " ^ e)
+
+let submit_answer_change_list_matches_the_keys_that_moved () =
+  let published =
+    match published_submit_keys (llms_txt ()) with
+    | Some keys -> keys
+    | None ->
+        Alcotest.fail
+          ("llms.txt has no line reading exactly " ^ submit_change_list_heading)
+  in
+  let moved, unmoved =
+    List.partition
+      (fun (_, before, now) -> not (String.equal (now ()) before))
+      submit_change_candidates
+  in
+  let keys entries = List.map (fun (key, _, _) -> key) entries in
+  let key_list = Alcotest.(list string) in
+  Alcotest.check key_list "a published key whose answer did not move" []
+    (List.filter (fun k -> not (List.mem k (keys moved))) published);
+  Alcotest.check key_list "a key whose answer moved and was not published" []
+    (List.filter (fun k -> not (List.mem k published)) (keys moved));
+  Alcotest.check key_list "the published list is the moved keys, in order"
+    (keys moved) published;
+  Alcotest.check key_list
+    "and the keys recorded as unchanged were read, and are unchanged"
+    unchanged_submit_keys (keys unmoved)
+
+(* Each reading as it stands, so the rows' Now column is held too and not only
+   which keys moved: a reading that changed shape again reddens here. *)
+let submit_answer_change_readings () =
+  let now_of key =
+    match
+      List.find_opt
+        (fun (k, _, _) -> String.equal k key)
+        submit_change_candidates
+    with
+    | Some (_, _, now) -> now ()
+    | None -> Alcotest.fail ("no candidate " ^ key)
+  in
+  List.iter
+    (fun (key, expected) -> Alcotest.(check string) key expected (now_of key))
+    [
+      ("enter-declined-by-on-keydown-reaches-on-submit", "Ok [Submit]");
+      ("enter-consumed-by-on-keydown-prevents-default", "prevents default");
+      ("enter-answered-by-on-submit-prevents-default", "prevents default");
+      ("keydown-enter-on-an-input-with-only-on-submit", "Ok [Submit]");
+      ("keydown-other-key-on-an-input-with-only-on-submit", "Ok []");
+      ("element-t-gains-form", "a form node");
+      ("input-gains-required", "Some true");
+      ("input-gains-autocomplete", "Some username");
+      ("input-gains-input_type", "Some password");
+    ]
+
+let change_list_tests =
+  [
+    Alcotest.test_case "answer_change_list_matches_the_keys_that_moved" `Quick
+      submit_answer_change_list_matches_the_keys_that_moved;
+    Alcotest.test_case "each_moved_key_answers_as_published" `Quick
+      submit_answer_change_readings;
+  ]
+
 let attr_precedence_tests =
   [
     Alcotest.test_case "caller_duplicate_resolves_to_the_last_pair" `Quick
@@ -1512,4 +1783,5 @@ let () =
       ("reveal", reveal_tests);
       ("focusable", focusable_tests);
       ("attr_precedence", attr_precedence_tests);
+      ("change_list", change_list_tests);
     ]

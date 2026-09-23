@@ -182,6 +182,7 @@ let msg_pp fmt msg =
   | Focus_reveal_msg _ -> Format.fprintf fmt "Focus_reveal_msg _"
   | Fixed_size_msg _ -> Format.fprintf fmt "Fixed_size_msg _"
   | Min_size_msg _ -> Format.fprintf fmt "Min_size_msg _"
+  | Auth_form_msg _ -> Format.fprintf fmt "Auth_form_msg _"
   | KeyboardHeightChanged _ -> Format.fprintf fmt "KeyboardHeightChanged _"
   | Back_demo_push -> Format.fprintf fmt "Back_demo_push"
   | Route_changed _ -> Format.fprintf fmt "Route_changed _"

@@ -49,6 +49,7 @@ let app_module_roundtrip () =
     | Nopal_element.Element.Scroll _
     | Nopal_element.Element.Keyed _
     | Nopal_element.Element.Draw _
+    | Nopal_element.Element.Form _
     | Nopal_element.Element.Virtual_list _ ->
         false);
   let sub = Counter.subscriptions model in
