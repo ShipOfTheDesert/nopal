@@ -289,9 +289,10 @@ Only Ctrl and Shift are folded, so a subscription naming a bare key still matche
 
 **Attribute precedence.** Where a builder takes both `?attrs` and a typed field
 a backend renders as an attribute — `placeholder`, a radio's `name`, a picker's
-`accept`/`capture`/`multiple`, `disabled`, a container's `focusable` — the rule
-is: **typed-field derivations beat the `~attrs` list; within the list, the last
-pair wins.**
+`accept`/`capture`/`multiple`, `disabled`, a container's `focusable`, an
+input's `required`/`autocomplete`/`input_type`, a form's
+`autocomplete`/`novalidate` — the rule is: **typed-field derivations beat the
+`~attrs` list; within the list, the last pair wins.**
 
 Those are two tiers, and they are not the same tier. A typed field sits *above*
 the list, so `?attrs` is an escape hatch for keys the DSL does not model and
@@ -307,15 +308,35 @@ for instead of abandoning the component.
 
 A derivation that is *absent* leaves the caller's pair standing — a picker with
 no `capture` does not erase a `capture` the caller declared, because the typed
-field saying nothing is not the same as it saying "no attribute".
+field saying nothing is not the same as it saying "no attribute". A derivation
+declines in one of two shapes:
+
+- **Bool** — `true` asserts the key and `false` emits nothing, so a `false`
+  uncovers a caller's pair and cannot remove it: `disabled`, `multiple`, an
+  input's `required` (with the `aria-required` it carries), a form's
+  `novalidate`.
+- **Option or empty list** — absent asserts nothing and uncovers the caller's
+  pair: `accept`, `capture`, an input's `autocomplete`, an input's `type` (from
+  `input_type`), a form's `autocomplete`.
+
+Some derivations have no absent form and are derived on every render, so a
+caller's pair of that key is always replaced: `placeholder`, a radio's `name`,
+and a checkbox's, radio's or file picker's `type`.
 
 `nopal_web` and `nopal_test` are the two renderers that enforce this: the web
 backend applies `?attrs` before it writes any derivation, and the structural
 renderer appends derived pairs after the view's own and resolves every lookup —
 `attr`, a `By_attr` selector, and the selector an event simulation
-resolves — to the last pair. They answer identically on the keys the web backend
-writes as real attributes: `disabled`, `accept`, `capture`, `multiple`,
-`placeholder`, a radio's `name` and a control's `type`. A container's
+resolves — to the last pair. The first tier is shared by the two on the keys the
+web backend writes as real attributes: `disabled`, `accept`, `capture`,
+`multiple`, `placeholder`, a radio's `name`, a control's `type`, an input's
+`required`, `aria-required` and `autocomplete`, and a form's `autocomplete` and
+`novalidate`. Every one of them carries the same value in both renderers except
+`disabled`, `multiple`, `required` and `novalidate`, which are a presence
+attribute (`""`) in the DOM and `"true"` in the structural tree — the two agree
+on which side wins, not on the value. `aria-required` is `"true"` in both. A
+checkbox's, radio's or file picker's `type` is the structural node's tag; an
+input's `type` is a pair in both renderers. A container's
 `focusable` is a first-tier derivation in both, but each spells it in its own
 vocabulary — a tab-order attribute in the browser, `focusable` in the structural
 tree — so there is no shared key to compare. `checked`, `value` and `selected`
@@ -326,6 +347,61 @@ assertion on one of the three states what that renderer answers and is not
 evidence about the browser. `Element.draw` carries neither a `Style.t` nor an
 `attrs` list and is structurally outside the rule. No backend that has not been
 written is bound by a test nobody has written.
+
+**Submit contract.** An Enter in an `Element.input` can be answered by more
+than one handler, and one sentence chooses: **the nearest handler that accepts
+the Enter consumes it.** Nothing dispatches twice for one Enter, and a handler
+the application supplied is never silently dropped. Three handlers, nearest
+first:
+
+1. **The input's `on_keydown`** is consulted for every key. Its `'msg option`
+   return is the consumption signal: `Some msg` dispatches `msg` and consumes
+   the key; `None` declines it.
+2. **The input's `on_submit`** answers an Enter that `on_keydown` declined, or
+   any Enter on an input with no `on_keydown`. It answers Enter and no other
+   key. Supplying both handlers is meaningful: `on_keydown` answers the keys it
+   cares about and returns `None` for the rest, and an Enter it declines still
+   submits.
+3. **The nearest enclosing `Element.form`'s `on_submit`** answers an Enter
+   neither of the input's handlers answered. An input with no enclosing form, or
+   in a form that authors no `on_submit`, dispatches nothing for it.
+
+**Only Enter suppresses the platform default.** An Enter answered by either of
+the input's own handlers prevents the default, so the enclosing form does not
+also submit. A consuming `on_keydown` on any other key leaves that key's default
+alone, so a handler that records every keystroke does not stop its own input
+receiving text.
+
+**The cost of mixing levels.** An input carrying its own `on_submit` answers the
+Enter itself, so the enclosing form never sees it: in a form where one field has
+`on_submit`, Enter in that field dispatches a different message than Enter
+anywhere else in the form. Author submission at one level — the form, or each
+input — and do not mix the two.
+
+Both renderers take the route from `Submit_route.of_key`, one pure definition,
+so the web renderer and the structural test renderer answer every keydown alike.
+Two browser facts sit outside that route and the structural renderer models
+neither:
+
+- **Every `Element.button` inside a `Form` is a submit button** on the web,
+  because a `<button>` that names no type is one: clicking it submits the form,
+  so a form with `on_submit` dispatches that message as well as the button's own
+  `on_click`, the button's first. A button that must not submit — a "show
+  password" toggle, a cancel — passes `~attrs:[("type", "button")]`.
+- **A browser submits a form on Enter only when the form has a submit button or
+  holds a single text field.** A form with two fields and no button does not
+  submit on Enter in the browser, while `Test_renderer.keydown` defers every
+  unanswered Enter in a field to the form regardless. Give a form a submit
+  button, as the kitchen sink's auth section does, and the two agree.
+
+A `Form` that authors no `on_submit` still cancels the platform's submission:
+its only submit listener calls `preventDefault`, so wrapping fields for the
+landmark or `autocomplete` alone never turns Enter or a button press into a page
+reload. Do not nest one form inside another — nested forms are invalid HTML
+whose recovery each browser decides for itself; nothing rejects one, and
+"nearest enclosing form" assumes there is at most one. A form becomes a landmark
+for assistive technology only once it has an accessible name, which travels
+through `~attrs` (an `("aria-label", …)` pair, for instance).
 
 ```ocaml
 Element.empty                                                    (* renders nothing *)
@@ -359,16 +435,49 @@ Element.box    : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string 
 Element.row    : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list -> 'msg Element.t list -> 'msg Element.t
 Element.column : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list -> 'msg Element.t list -> 'msg Element.t
 
+(* Forms — a submission group. See "Submit contract" above for how an Enter in
+   a field reaches the form. *)
+type autocomplete_mode = On | Off
+Element.autocomplete_mode_to_string : autocomplete_mode -> string   (* "on" | "off" — sole producer *)
+Element.form : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
+  -> ?on_submit:'msg -> ?autocomplete:autocomplete_mode -> ?novalidate:bool
+  -> 'msg Element.t list -> 'msg Element.t
+  (* A container like Element.box, laying its children down the page unless
+     [style] asks for the other direction. [on_submit] is dispatched once per
+     submission — an Enter a field deferred to the form, or a submit button
+     pressed — and a submission never navigates, whether or not [on_submit] is
+     authored. [autocomplete] asks the platform to offer, or not, remembered
+     values for every field; absent, it asks for nothing. [novalidate] (default
+     false) skips the platform's own constraint validation. On a backend with no
+     native form the group is an ordinary container and the Enter routing still
+     holds. *)
+
 (* Interactive elements *)
 Element.button : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
   -> ?on_click:'msg -> ?on_dblclick:'msg -> 'msg Element.t -> 'msg Element.t
+  (* Inside a Form this is a submit button on the web; pass
+     ~attrs:[("type", "button")] for one that must not submit. *)
+type input_type = Plain | Password | Email | Tel | Url | Number | Search
+Element.input_type_to_string : input_type -> string
+  (* "text" | "password" | "email" | "tel" | "url" | "number" | "search" — sole producer *)
 Element.input : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
   -> ?placeholder:string -> ?on_change:(string -> 'msg) -> ?on_submit:'msg
-  -> ?on_focus:'msg -> ?on_blur:'msg -> ?on_keydown:(string -> 'msg option) -> string
+  -> ?on_focus:'msg -> ?on_blur:'msg -> ?on_keydown:(string -> 'msg option)
+  -> ?required:bool -> ?autocomplete:string -> ?input_type:input_type -> string
   -> 'msg Element.t
   (* [on_focus] fires when the input takes focus and [on_blur] when it loses it.
      An input holds no children, so neither edge has a subtree to account for —
-     unlike the same-named arguments on Element.box. *)
+     unlike the same-named arguments on Element.box.
+     [required] (default false) marks the field as one a submission needs, to
+     the platform's constraint validation and to assistive technology
+     (aria-required). Its invalid appearance is the browser's own and is not
+     stylable: Interaction has no invalid state. [autocomplete] is the per-field
+     token — "username", "current-password", "email", … — passed through as
+     written. [input_type] is closed on purpose: a checkbox, radio or file
+     picker has its own element; any other kind stays reachable through a
+     ("type", …) pair in [attrs], which an input authoring no [input_type]
+     leaves standing. Each of the three outranks an [attrs] pair of its key, so
+     adopting one makes that pair stop taking effect. *)
 Element.checkbox : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
   -> ?disabled:bool -> ?on_toggle:(bool -> 'msg) -> bool -> 'msg Element.t
 Element.radio : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
@@ -464,6 +573,21 @@ end
      the offset the container already holds or that a measurement is not
      finite. A child taller than [viewport_height] falls back to showing its
      top edge under every alignment. *)
+
+(* Which handler answers a keydown on an input — the submit contract as one
+   pure, native-compiling definition both renderers call; references nothing
+   else in the package *)
+module Submit_route : sig
+  type 'msg t =
+    | Dispatch of { msg : 'msg; prevent_default : bool }
+        (* a handler on the input answered; prevent_default is true exactly
+           when the key is Enter *)
+    | To_enclosing_form   (* an Enter nothing on the input answered *)
+    | Nothing             (* any other key nothing answered; never reaches a form *)
+  val of_key :
+    key:string -> on_keydown:(string -> 'msg option) option ->
+    on_submit:'msg option -> 'msg t   (* total *)
+end
 
 (* Moving a scroll container by an amount relative to its own visible height —
    pure, native-compiling, references nothing else in the package. The command
@@ -3293,6 +3417,27 @@ Test_renderer.select_files : selector -> Element.file_info list -> 'msg rendered
      Passing [[]] simulates clearing the picker: the handler still fires, with
      an empty list. *)
 Test_renderer.submit       : selector -> 'msg rendered -> (unit, error) result
+Test_renderer.submit_form  : selector -> 'msg rendered -> (unit, error) result
+Test_renderer.keydown      : selector -> string -> 'msg rendered -> (unit, error) result
+  (* Three simulators can reach a submit, and they are not synonyms:
+     - submit pokes the selected element's own on_submit — an input's —
+       directly. No on_keydown is consulted and no form is reached.
+     - submit_form pokes the selected form's on_submit directly (a form renders
+       under tag "form"), standing for a submission however it arose. It never
+       walks: a field inside a form is not the form, and [No_handler] answers a
+       non-form or a form with no on_submit. It consults no field's handlers.
+     - keydown is the one that carries the submit contract: it presses a key in
+       a field and follows Submit_route.of_key through the field's on_keydown,
+       then its on_submit, then the nearest enclosing form's on_submit,
+       appending at most one message. An input with on_submit but no
+       on_keydown, or a bare input in a form with on_submit, answers Ok ()
+       rather than No_handler — the message appended for Enter, nothing for
+       any other key. A test asserting which handler answers an Enter uses
+       keydown; the two pokes cannot answer that.
+     None models the platform's own share: a structural click on a button in a
+     form reaches the button's on_click only, and keydown defers every
+     unanswered Enter to the form where a browser would submit only a form with
+     a submit button or a single text field. *)
 Test_renderer.dblclick     : selector -> 'msg rendered -> (unit, error) result
 Test_renderer.focus        : selector -> 'msg rendered -> (unit, error) result
 Test_renderer.blur         : selector -> 'msg rendered -> (unit, error) result
@@ -3370,6 +3515,52 @@ Two further changes travel with the seven and move no key's answer:
    `scroll` (`reveal`, `reveal-align`). `node` exposes `attrs` publicly, so a
    whole-list equality on a node sees a different list even where every lookup
    on it answers the same.
+
+**Submit and form answers that moved — read this on a pin bump.**
+The submit contract (under *Element DSL*) and the new `Form` arm move nine
+answers a downstream consumer can meet. Rows 1–5 compile unchanged, so a
+downstream suite or app meets them with no compiler help; rows 6–9 are
+compile-visible. "Before" is the tree at commit `1fd1cad`. The pin in
+`test/unit/nopal_test/test_test_renderer.ml` (`change_list`) covers the
+candidate keys the test lists, not this whole table: rows 6–9 are
+compile-visible and pinned by construction (their "before" is "does not
+compile"); rows 2–3 are read from `Submit_route.of_key` rather than the web
+renderer, since exercising the web half needs a browser. Within that
+candidate set, a key that moved and is not a row, or a row whose answer did
+not move, fails it.
+
+| # | Key | When | Before | Now |
+|---|---|---|---|---|
+| 1 | `enter-declined-by-on-keydown-reaches-on-submit` | Enter in an input carrying **both** `on_keydown` and `on_submit`, where `on_keydown` returns `None` for Enter | browser: nothing dispatched — supplying `on_keydown` installed no `on_submit` listener at all; `Test_renderer.keydown`: `Ok ()`, nothing appended | `on_submit` is dispatched, in both renderers |
+| 2 | `enter-consumed-by-on-keydown-prevents-default` | Enter in an input whose `on_keydown` returns `Some msg` for it | `msg` dispatched; the key's default left alone | `msg` dispatched and the default prevented, so an enclosing form does not also submit (browser only; the structural renderer models no default) |
+| 3 | `enter-answered-by-on-submit-prevents-default` | Enter in an input whose own `on_submit` answers it | `on_submit` dispatched; the default left alone | `on_submit` dispatched and the default prevented (browser only) |
+| 4 | `keydown-enter-on-an-input-with-only-on-submit` | `Test_renderer.keydown sel "Enter"` on an input with `on_submit` and no `on_keydown` | `Error (No_handler _)` | `Ok ()`, `on_submit` appended |
+| 5 | `keydown-other-key-on-an-input-with-only-on-submit` | `Test_renderer.keydown sel k`, `k` not Enter, on the same input | `Error (No_handler _)` | `Ok ()`, nothing appended |
+| 6 | `element-t-gains-form` | any exhaustive `match` on `Element.t` | compiles | fails to compile until it handles `Form { … }` — the new arm, rendered under tag `"form"` |
+| 7 | `input-gains-required` | an input passing `~required:true` beside an `("required", _)` pair in `~attrs` | the argument does not exist | the typed field wins: the pair stops taking effect (`"true"` structurally, a presence attribute in the DOM), with `aria-required` alongside |
+| 8 | `input-gains-autocomplete` | an input passing `~autocomplete` beside an `("autocomplete", _)` pair | the argument does not exist | the typed field wins; the pair stops taking effect |
+| 9 | `input-gains-input_type` | an input passing `~input_type` beside a `("type", _)` pair | the argument does not exist | the typed field wins; the pair stops taking effect |
+
+Rows 6–9 also break code that builds or destructures the `Input` record
+directly: it gains `required`, `autocomplete` and `input_type` fields, so an
+`Input { … }` pattern listing its fields without `; _` stops compiling. An
+`open Nopal_element.Element` brings the new constructors `On`, `Off`,
+`Password`, `Email`, `Tel`, `Url`, `Number`, `Search` and `Plain` into scope
+(see `Element.input`).
+
+What did **not** move, recorded so a reader does not go looking — the test pins
+each as unchanged: an `on_keydown` consuming Enter beside an `on_submit` (the
+keydown's message, and only it); an Enter an `on_keydown` declines with no
+`on_submit` and no form (nothing); a consuming `on_keydown` on any other key
+(dispatched, default kept); `keydown` on an input with no handler
+(`No_handler`); `Test_renderer.submit` on an input's `on_submit`; and an input
+that authors none of the three new arguments — its `("required", _)`,
+`("autocomplete", _)` and `("type", _)` pairs stand exactly as before. Existing
+`Element.input` call sites compile untouched.
+
+For a consumer that deliberately supplied only `on_submit` because supplying
+`on_keydown` suppressed it, that workaround stops being necessary: both
+handlers can now be supplied together, and row 1 is what changes when they are.
 
 #### Telemetry harness (`Nopal_test.Telemetry_test`)
 
@@ -3740,7 +3931,7 @@ would let the same assertion spec run against web and Tauri) is tracked in
 lib/
   nopal_mvu/         — Cmd, Sub, App, Task, Key_chord — depends on nopal_element
                        for the types they carry; zero platform deps
-  nopal_element/     — Element.t DSL + Virtual_list + Reveal + Scroll_delta — zero platform deps
+  nopal_element/     — Element.t DSL + Virtual_list + Reveal + Scroll_delta + Submit_route — zero platform deps
   nopal_style/       — Style.t, Text.t, Interaction.t, Cursor.t, Font, Color
                        (Color is the CSS-authoring colour type; distinct from
                        nopal_scene/'s float-RGBA Color)

@@ -201,7 +201,12 @@ let map_transforms_checkbox_msg () =
         Wrapped_toggle
           (match m with
           | Toggled b -> b
-          | _ -> false))
+          | Selected
+          | Changed _
+          | Wrapped_toggle _
+          | Wrapped_selected
+          | Wrapped_changed _ ->
+              false))
       el
   in
   let r = render mapped in
@@ -228,7 +233,12 @@ let map_transforms_select_msg () =
       (fun m ->
         match m with
         | Changed v -> Wrapped_changed v
-        | _ -> Wrapped_changed "?")
+        | Toggled _
+        | Selected
+        | Wrapped_toggle _
+        | Wrapped_selected
+        | Wrapped_changed _ ->
+            Wrapped_changed "?")
       el
   in
   let r = render mapped in
@@ -253,6 +263,348 @@ let equal_select_different_options () =
       [ E.select_option ~value:"a" "Alpha"; E.select_option ~value:"b" "Beta" ]
   in
   Alcotest.(check bool) "different options not equal" false (E.equal a b)
+
+(* --- Form (4) --- *)
+
+type form_msg =
+  | Signed_in
+  | Field_entered
+  | Carrying of (unit -> unit)
+  | Wrapped of form_msg
+
+(* A form's fields, lifted out of the inline record so each case can assert on
+   them by name. Every other variant fails the case: these cases are about a
+   form, so anything else reaching here is the defect. *)
+type form_fields = {
+  f_style : Nopal_style.Style.t;
+  f_interaction : Ix.t;
+  f_attrs : (string * string) list;
+  f_children : form_msg E.t list;
+  f_on_submit : form_msg option;
+  f_autocomplete : E.autocomplete_mode option;
+  f_novalidate : bool;
+}
+
+let form_fields label (el : form_msg E.t) =
+  match el with
+  | E.Form
+      {
+        style;
+        interaction;
+        attrs;
+        children;
+        on_submit;
+        autocomplete;
+        novalidate;
+      } ->
+      {
+        f_style = style;
+        f_interaction = interaction;
+        f_attrs = attrs;
+        f_children = children;
+        f_on_submit = on_submit;
+        f_autocomplete = autocomplete;
+        f_novalidate = novalidate;
+      }
+  | E.Empty
+  | E.Text _
+  | E.Box _
+  | E.Row _
+  | E.Column _
+  | E.Button _
+  | E.Input _
+  | E.Checkbox _
+  | E.Radio _
+  | E.Select _
+  | E.File_input _
+  | E.Image _
+  | E.Scroll _
+  | E.Keyed _
+  | E.Draw _
+  | E.Virtual_list _ ->
+      Alcotest.fail (label ^ ": expected a Form")
+
+(* An input's three typed fields and its submission handler, lifted out of the
+   inline record the same way [form_fields] lifts a form's. Every other variant
+   fails the case. *)
+type input_fields = {
+  i_required : bool;
+  i_autocomplete : string option;
+  i_input_type : E.input_type option;
+  i_on_submit : form_msg option;
+}
+
+let input_fields label (el : form_msg E.t) =
+  match el with
+  | E.Input { required; autocomplete; input_type; on_submit; _ } ->
+      {
+        i_required = required;
+        i_autocomplete = autocomplete;
+        i_input_type = input_type;
+        i_on_submit = on_submit;
+      }
+  | E.Empty
+  | E.Text _
+  | E.Box _
+  | E.Row _
+  | E.Column _
+  | E.Form _
+  | E.Button _
+  | E.Checkbox _
+  | E.Radio _
+  | E.Select _
+  | E.File_input _
+  | E.Image _
+  | E.Scroll _
+  | E.Keyed _
+  | E.Draw _
+  | E.Virtual_list _ ->
+      Alcotest.fail (label ^ ": expected an Input")
+
+let input_type_name (t : E.input_type) =
+  match t with
+  | E.Plain -> "Plain"
+  | E.Password -> "Password"
+  | E.Email -> "Email"
+  | E.Tel -> "Tel"
+  | E.Url -> "Url"
+  | E.Number -> "Number"
+  | E.Search -> "Search"
+
+(* By name rather than by polymorphic compare, so the testable states its own
+   notion of equality. *)
+let input_type_testable =
+  Alcotest.testable
+    (fun ppf t -> Format.pp_print_string ppf (input_type_name t))
+    (fun a b -> String.equal (input_type_name a) (input_type_name b))
+
+let equal_autocomplete_mode (a : E.autocomplete_mode) (b : E.autocomplete_mode)
+    =
+  match (a, b) with
+  | E.On, E.On
+  | E.Off, E.Off ->
+      true
+  | (E.On | E.Off), _ -> false
+
+let autocomplete_mode_testable =
+  Alcotest.testable
+    (fun ppf (m : E.autocomplete_mode) ->
+      Format.pp_print_string ppf
+        (match m with
+        | E.On -> "On"
+        | E.Off -> "Off"))
+    equal_autocomplete_mode
+
+let padded =
+  Nopal_style.Style.with_layout
+    (Nopal_style.Style.padding_all 8.0)
+    Nopal_style.Style.empty
+
+let hovered : Ix.t =
+  { hover = Some Nopal_style.Style.empty; pressed = None; focused = None }
+
+let form_builder_defaults_author_nothing () =
+  let f = form_fields "defaults" (E.form [ E.text "a" ]) in
+  Alcotest.(check bool)
+    "style defaults to Style.empty" true
+    (Nopal_style.Style.equal f.f_style Nopal_style.Style.empty);
+  Alcotest.(check bool)
+    "interaction defaults to Interaction.default" true
+    (Ix.equal f.f_interaction Ix.default);
+  Alcotest.(check (list (pair string string))) "no attrs" [] f.f_attrs;
+  Alcotest.(check int) "the one child is kept" 1 (List.length f.f_children);
+  Alcotest.(check bool)
+    "no on_submit is authored" true
+    (Option.is_none f.f_on_submit);
+  Alcotest.(check (option autocomplete_mode_testable))
+    "no autocomplete is authored" None f.f_autocomplete;
+  Alcotest.(check bool) "novalidate defaults to false" false f.f_novalidate
+
+let form_builder_carries_every_authored_field () =
+  let child = E.text "a" in
+  let f =
+    form_fields "authored"
+      (E.form ~style:padded ~interaction:hovered
+         ~attrs:[ ("aria-label", "Sign in") ]
+         ~on_submit:Signed_in ~autocomplete:E.Off ~novalidate:true [ child ])
+  in
+  Alcotest.(check bool)
+    "style is carried" true
+    (Nopal_style.Style.equal f.f_style padded);
+  Alcotest.(check bool)
+    "interaction is carried" true
+    (Ix.equal f.f_interaction hovered);
+  Alcotest.(check (list (pair string string)))
+    "attrs are carried"
+    [ ("aria-label", "Sign in") ]
+    f.f_attrs;
+  Alcotest.(check bool)
+    "children are carried" true
+    (List.equal E.equal f.f_children [ child ]);
+  (match f.f_on_submit with
+  | Some Signed_in -> ()
+  | Some (Field_entered | Carrying _ | Wrapped _)
+  | None ->
+      Alcotest.fail "expected on_submit = Some Signed_in");
+  Alcotest.(check (option autocomplete_mode_testable))
+    "autocomplete is carried" (Some E.Off) f.f_autocomplete;
+  Alcotest.(check bool) "novalidate is carried" true f.f_novalidate;
+  (* The other arm of the mode, so a builder that answered one constant would
+     not pass. *)
+  let on = form_fields "autocomplete on" (E.form ~autocomplete:E.On []) in
+  Alcotest.(check (option autocomplete_mode_testable))
+    "autocomplete On is carried" (Some E.On) on.f_autocomplete
+
+let form_map_transforms_on_submit_and_children () =
+  let el =
+    E.form ~style:padded
+      ~attrs:[ ("aria-label", "Sign in") ]
+      ~on_submit:Signed_in ~autocomplete:E.Off ~novalidate:true
+      [ E.input ~on_submit:Field_entered "" ]
+  in
+  let f = form_fields "mapped" (E.map (fun m -> Wrapped m) el) in
+  (match f.f_on_submit with
+  | Some (Wrapped Signed_in) -> ()
+  | Some (Signed_in | Field_entered | Carrying _ | Wrapped _)
+  | None ->
+      Alcotest.fail "expected on_submit = Some (Wrapped Signed_in)");
+  (match f.f_children with
+  | [ child ] -> (
+      match (input_fields "mapped child" child).i_on_submit with
+      | Some (Wrapped Field_entered) -> ()
+      | Some (Signed_in | Field_entered | Carrying _ | Wrapped _)
+      | None ->
+          Alcotest.fail "expected the child input's on_submit to be mapped")
+  | []
+  | _ :: _ :: _ ->
+      Alcotest.fail "expected exactly one child");
+  Alcotest.(check bool)
+    "style survives map" true
+    (Nopal_style.Style.equal f.f_style padded);
+  Alcotest.(check (list (pair string string)))
+    "attrs survive map"
+    [ ("aria-label", "Sign in") ]
+    f.f_attrs;
+  Alcotest.(check (option autocomplete_mode_testable))
+    "autocomplete survives map" (Some E.Off) f.f_autocomplete;
+  Alcotest.(check bool) "novalidate survives map" true f.f_novalidate
+
+let form_equal_distinguishes_each_field () =
+  (* [equal] gates reconciliation skipping, so every field it compares needs a
+     case here: a dropped conjunct reports two differing forms equal. *)
+  let child = E.text "a" in
+  let base ?(style = Nopal_style.Style.empty) ?(interaction = Ix.default)
+      ?(attrs = [ ("aria-label", "Sign in") ]) ?(children = [ child ])
+      ?(on_submit = Some Signed_in) ?(autocomplete = Some E.On)
+      ?(novalidate = false) () =
+    E.Form
+      {
+        style;
+        interaction;
+        attrs;
+        children;
+        on_submit;
+        autocomplete;
+        novalidate;
+      }
+  in
+  Alcotest.(check bool)
+    "a fresh but equal form is equal" true
+    (E.equal (base ()) (base ()));
+  let differs label other =
+    Alcotest.(check bool) label false (E.equal (base ()) other)
+  in
+  differs "a different style is not equal" (base ~style:padded ());
+  differs "a different interaction is not equal" (base ~interaction:hovered ());
+  differs "different attrs are not equal"
+    (base ~attrs:[ ("aria-label", "Register") ] ());
+  differs "different children are not equal" (base ~children:[ E.text "b" ] ());
+  differs "a different on_submit is not equal"
+    (base ~on_submit:(Some Field_entered) ());
+  differs "an absent on_submit is not equal" (base ~on_submit:None ());
+  differs "a different autocomplete is not equal"
+    (base ~autocomplete:(Some E.Off) ());
+  differs "an absent autocomplete is not equal" (base ~autocomplete:None ());
+  differs "a different novalidate is not equal" (base ~novalidate:true ());
+  differs "a column holding the same children is not equal"
+    (E.column ~attrs:[ ("aria-label", "Sign in") ] [ child ]);
+  (* Totality: a 'msg payload carrying a closure must not make equal raise. *)
+  let carrying = Some (Carrying (fun () -> ())) in
+  Alcotest.(check bool)
+    "the same closure-carrying on_submit is equal" true
+    (E.equal (base ~on_submit:carrying ()) (base ~on_submit:carrying ()))
+
+(* --- Input's typed fields (2) --- *)
+
+let input_defaults_author_none_of_the_three () =
+  let i = input_fields "defaults" (E.input "v") in
+  Alcotest.(check bool) "required defaults to false" false i.i_required;
+  Alcotest.(check (option string))
+    "no autocomplete is authored" None i.i_autocomplete;
+  Alcotest.(check (option input_type_testable))
+    "no input type is authored" None i.i_input_type;
+  (* The affirmative arm: the builder does carry each field when authored, so
+     the three absences above are the defaults and not a dropped argument. *)
+  let a =
+    input_fields "authored"
+      (E.input ~required:true ~autocomplete:"username" ~input_type:E.Email "v")
+  in
+  Alcotest.(check bool) "an authored required is carried" true a.i_required;
+  Alcotest.(check (option string))
+    "an authored autocomplete is carried" (Some "username") a.i_autocomplete;
+  Alcotest.(check (option input_type_testable))
+    "an authored input type is carried" (Some E.Email) a.i_input_type
+
+let input_map_and_equal_carry_the_three_fields () =
+  let el =
+    E.input ~required:true ~autocomplete:"current-password"
+      ~input_type:E.Password ~on_submit:Signed_in ""
+  in
+  let m = input_fields "mapped" (E.map (fun msg -> Wrapped msg) el) in
+  Alcotest.(check bool) "required survives map" true m.i_required;
+  Alcotest.(check (option string))
+    "autocomplete survives map" (Some "current-password") m.i_autocomplete;
+  Alcotest.(check (option input_type_testable))
+    "input type survives map" (Some E.Password) m.i_input_type;
+  (match m.i_on_submit with
+  | Some (Wrapped Signed_in) -> ()
+  | Some (Signed_in | Field_entered | Carrying _ | Wrapped _)
+  | None ->
+      Alcotest.fail "expected on_submit = Some (Wrapped Signed_in)");
+  (* [equal] gates reconciliation skipping, so each new field needs its own
+     conjunct: a dropped one reports two differing inputs equal. *)
+  let base ?(required = true) ?(autocomplete = Some "username")
+      ?(input_type = Some E.Email) () =
+    E.Input
+      {
+        style = Nopal_style.Style.empty;
+        interaction = Ix.default;
+        attrs = [];
+        value = "v";
+        placeholder = "";
+        on_change = None;
+        on_submit = None;
+        on_focus = None;
+        on_blur = None;
+        on_keydown = None;
+        required;
+        autocomplete;
+        input_type;
+      }
+  in
+  Alcotest.(check bool)
+    "a fresh but equal input is equal" true
+    (E.equal (base ()) (base ()));
+  let differs label other =
+    Alcotest.(check bool) label false (E.equal (base ()) other)
+  in
+  differs "a different required is not equal" (base ~required:false ());
+  differs "a different autocomplete is not equal"
+    (base ~autocomplete:(Some "email") ());
+  differs "an absent autocomplete is not equal" (base ~autocomplete:None ());
+  differs "a different input type is not equal"
+    (base ~input_type:(Some E.Tel) ());
+  differs "an absent input type is not equal" (base ~input_type:None ())
 
 (* --- Test runner --- *)
 
@@ -309,5 +661,23 @@ let () =
             equal_checkbox_same_fields;
           Alcotest.test_case "equal_select_different_options" `Quick
             equal_select_different_options;
+        ] );
+      ( "form",
+        [
+          Alcotest.test_case "form_builder_defaults_author_nothing" `Quick
+            form_builder_defaults_author_nothing;
+          Alcotest.test_case "form_builder_carries_every_authored_field" `Quick
+            form_builder_carries_every_authored_field;
+          Alcotest.test_case "form_map_transforms_on_submit_and_children" `Quick
+            form_map_transforms_on_submit_and_children;
+          Alcotest.test_case "form_equal_distinguishes_each_field" `Quick
+            form_equal_distinguishes_each_field;
+        ] );
+      ( "input_fields",
+        [
+          Alcotest.test_case "defaults_author_none_of_the_three" `Quick
+            input_defaults_author_none_of_the_three;
+          Alcotest.test_case "map_and_equal_carry_the_three_fields" `Quick
+            input_map_and_equal_carry_the_three_fields;
         ] );
     ]

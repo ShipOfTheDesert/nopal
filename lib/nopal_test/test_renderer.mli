@@ -49,32 +49,46 @@ val render : 'msg Nopal_element.Element.t -> 'msg rendered
     same name while every other pair the view declared is left where it was.
     Within [attrs] itself the same resolution applies: the last pair the view
     wrote is the one {!attr}, a {!By_attr} selector, and the selector {!click},
-    {!input}, {!submit} and {!select_files} resolve, all answer with.
+    {!input}, {!submit}, {!submit_form}, {!keydown} and {!select_files} resolve,
+    all answer with.
 
     The web backend carries the same rule by a different mechanism — it applies
     the declared list before it writes any derivation — so on the keys it writes
     as real attributes the two renderers answer identically, which is the whole
     value of asserting on this one. Those keys are ["disabled"], ["accept"],
-    ["capture"], ["multiple"], ["placeholder"], a radio's ["name"] and a
-    control's ["type"]. A box's [focusable] is a first-tier derivation in both,
-    but each renderer spells it in its own vocabulary — a tab-order attribute
-    there, ["focusable"] here — so there is no shared key to compare.
-    ["checked"], ["value"] and ["selected"] are {e not} among them: the browser
-    carries all three as JS properties and never as attributes, so a caller's
-    pair of one of those names is not overruled there. This renderer still
-    overlays them, as a faithful read-out of the typed field, and an assertion
-    on one of the three is a statement about this renderer alone. [Element.draw]
-    carries neither a style nor an attribute list, so it is structurally outside
-    the rule, and a backend nobody has written is bound by nothing here: a rule
-    holds where a test holds it.
+    ["capture"], ["multiple"], ["placeholder"], a radio's ["name"], a control's
+    ["type"], an input's ["required"], ["aria-required"] and ["autocomplete"],
+    and a form's ["autocomplete"] and ["novalidate"]. On ["disabled"],
+    ["multiple"], ["required"] and ["novalidate"] the two agree on which side
+    wins and not on the value: this renderer carries ["true"] where the browser
+    carries a presence attribute. A checkbox's, radio's or file picker's
+    ["type"] is this renderer's tag rather than a pair; an input's [input_type]
+    is a ["type"] pair here as there. A box's [focusable] is a first-tier
+    derivation in both, but each renderer spells it in its own vocabulary — a
+    tab-order attribute there, ["focusable"] here — so there is no shared key to
+    compare. ["checked"], ["value"] and ["selected"] are {e not} among them: the
+    browser carries all three as JS properties and never as attributes, so a
+    caller's pair of one of those names is not overruled there. This renderer
+    still overlays them, as a faithful read-out of the typed field, and an
+    assertion on one of the three is a statement about this renderer alone.
+    [Element.draw] carries neither a style nor an attribute list, so it is
+    structurally outside the rule, and a backend nobody has written is bound by
+    nothing here: a rule holds where a test holds it.
 
     A derivation asserts a value and never denies one. Where a typed field
     declines — a picker configuring no [capture], a control that is not
     [disabled] — no pair is contributed for that key, so a pair [attrs] declared
     under the same name is uncovered rather than erased, and {!attr} reads back
-    [None] where neither spoke. This holds for ["disabled"], ["accept"],
-    ["capture"] and ["multiple"], the keys a browser spells as real attributes
-    and whose absence it spells as removal.
+    [None] where neither spoke. This holds for every declining derivation, the
+    keys a browser spells as real attributes and whose absence it spells as
+    removal, in one of two shapes. A [bool] asserts its key when [true] and
+    contributes nothing when [false], so a [false] uncovers a caller's pair and
+    cannot remove it: ["disabled"], ["multiple"], an input's ["required"] with
+    the ["aria-required"] it carries, and a form's ["novalidate"]. An option, or
+    an empty list, contributes nothing when absent: ["accept"], ["capture"], an
+    input's ["autocomplete"] and its ["type"], and a form's ["autocomplete"]. An
+    input's ["placeholder"] and a radio's ["name"] have no absent form and are
+    contributed on every render.
 
     A scroll container's [reveal] declaration is surfaced for inspection as the
     derived attribute pairs ["reveal"] and ["reveal-align"], carried exactly as
@@ -203,7 +217,41 @@ val submit : selector -> 'msg rendered -> (unit, error) result
 (** [submit selector rendered] finds the first element matching [selector],
     invokes its [on_submit] handler, and appends the resulting message. Returns
     [Error (Not_found selector)] if no element matches, [Error (No_handler ...)]
-    if the element has no submit handler. *)
+    if the element has no submit handler. A form's [on_submit] is not such a
+    handler: [submit] on a form is [No_handler], and {!submit_form} is the
+    simulator that reaches it. *)
+
+val submit_form : selector -> 'msg rendered -> (unit, error) result
+(** [submit_form selector rendered] finds the first element matching [selector],
+    invokes the [on_submit] of the form it is, and appends the resulting
+    message. Returns [Error (Not_found selector)] if no element matches, and
+    [Error (No_handler { event = "submit"; _ })] if the element is not a form or
+    is a form that authors no [on_submit]. It never walks: a field selected
+    inside a form is not the form.
+
+    Three simulators can reach a submit, and they are not synonyms.
+
+    - {!submit} pokes the selected element's own [on_submit] — an input's —
+      directly. It states what that handler dispatches once reached, not that a
+      key reaches it: no [on_keydown] is consulted, and no form is reached.
+    - {!submit_form} pokes the selected form's [on_submit] directly, standing
+      for a submission however it arose — an Enter the form was deferred, or a
+      submit button pressed. It consults no field's handlers, so it cannot show
+      that an Enter in some field would have reached the form rather than been
+      consumed on the way.
+    - {!keydown} is the one that carries the submit contract: it presses a key
+      in a field and follows {!Nopal_element.Submit_route.of_key} through the
+      field's [on_keydown], then its [on_submit], then the nearest enclosing
+      form's [on_submit]. A test asserting which handler answers an Enter uses
+      [keydown]; the two pokes above cannot answer that question.
+
+    None of the three models the platform's own share in a submission. A button
+    inside a form submits it on the web — a button that names no type is a
+    submit button there — but a structural {!click} reaches the button's own
+    [on_click] only. And a browser submits a form on Enter only when the form
+    has a submit button or holds a single text field, while [keydown] defers
+    every unanswered Enter in a field to the form. Both are browser facts, and a
+    browser-level test is where they are observed. *)
 
 val dblclick : selector -> 'msg rendered -> (unit, error) result
 (** [dblclick selector rendered] finds the first element matching [selector],
@@ -225,10 +273,30 @@ val blur : selector -> 'msg rendered -> (unit, error) result
 
 val keydown : selector -> string -> 'msg rendered -> (unit, error) result
 (** [keydown selector key rendered] finds the first element matching [selector]
-    and invokes its [on_keydown] handler with [key]. If the handler returns
-    [Some msg], the message is appended; if [None], no message is dispatched.
-    Returns [Error (Not_found selector)] if no element matches,
-    [Error (No_handler ...)] if the element has no keydown handler. *)
+    and answers a keydown of [key] on it by the submit contract that
+    {!Nopal_element.Element} states and {!Nopal_element.Submit_route.of_key}
+    decides, the same definition the web renderer answers from. The element's
+    [on_keydown] is consulted first: [Some msg] appends [msg] and consumes the
+    key. An Enter it declines, or an Enter on an element with no [on_keydown],
+    goes on to the element's [on_submit] and appends that message. An Enter
+    neither answers goes on to the nearest enclosing form and appends that
+    form's [on_submit], or nothing when the form authors none. Any other key
+    [on_keydown] declines appends nothing, and never reaches a form. At most one
+    message is appended per call.
+
+    Only an input defers to its form. An Enter on any other element inside a
+    form reaches no form here, and a platform's own route from a key to a
+    submission — a focused submit button activated by Enter, for one — is not
+    modelled.
+
+    An element carrying [on_submit] but no [on_keydown], or a bare input inside
+    a form that authors [on_submit], therefore answers a keydown rather than
+    returning [No_handler]: [Ok ()] with the answering message appended for
+    Enter, and [Ok ()] with nothing appended for any other key.
+
+    Returns [Error (Not_found selector)] if no element matches, and
+    [Error (No_handler ...)] if the element has neither an [on_keydown] nor an
+    [on_submit] handler and no enclosing form's [on_submit] stands behind it. *)
 
 val pointer_move :
   selector -> x:float -> y:float -> 'msg rendered -> (unit, error) result

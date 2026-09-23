@@ -15,13 +15,14 @@
    why [Modal], [Navigation_bar], [Bottom_tabs] and [Button] can each promise in
    their [.mli] that a caller's attributes beat it.
 
-   Three keys are spelled identically in both backends and carry the same value,
-   so a case can assert the derived value itself: [placeholder], [name] and
-   [accept]/[capture] on a configured picker. The rest are comparable only on
-   *which side wins*, because the two backends deliberately spell them
-   differently — [disabled] is a presence attribute in the DOM and a ["true"]
-   pair in the structural tree, and in both it is absent rather than false when
-   the derivation declines, while a container's focusability is [tabindex] in one
+   Some keys are spelled identically in both backends and carry the same value,
+   so a case can assert the derived value itself: [placeholder], [name],
+   [accept]/[capture] on a configured picker, and an input's [autocomplete],
+   [type] and [aria-required]. The rest are comparable only on *which side
+   wins*, because the two backends deliberately spell them differently —
+   [disabled] and an input's [required] are presence attributes in the DOM and
+   ["true"] pairs in the structural tree, and in both they are absent rather
+   than false when the derivation declines, while a container's focusability is [tabindex] in one
    and the DSL's own word [focusable] in the other (test_renderer.ml, Box arm).
    Those cases assert that the caller's value is not what is read back, which is
    the whole of what parity can mean there. *)
@@ -164,8 +165,9 @@ let test_disabled_caller_value_never_wins () =
        (Some "hijacked"))
 
 let test_type_is_derived_on_the_web_side () =
-  (* [type] has no structural counterpart — the tag carries it there — so this
-     one is a web-side case by construction, not an omission. *)
+  (* A checkbox's [type] has no structural counterpart — the tag carries it
+     there — so this one is a web-side case by construction, not an omission.
+     An input's [input_type] does have one, and is compared in both below. *)
   let el = E.checkbox ~attrs:[ ("type", "text") ] false in
   check_opt "web keeps the derived input type" (Some "checkbox")
     (web_attr el "type")
@@ -568,6 +570,392 @@ let test_fallen_focusable_uncovers_the_last_caller_pair () =
     (Some "2")
     (web_attr_after_update ~first ~second "tabindex")
 
+(* An input's typed [required], [autocomplete] and [input_type]. Every key they
+   derive but one is spelled identically in both backends, so the value itself
+   is compared; [required] is a presence attribute in the DOM and a ["true"]
+   pair in the structural tree, the split [disabled] has, so each spelling is
+   named for what it is. [aria-required] is an ordinary ["true"] string in both.
+   The caller's pairs carry a value no derivation produces, so reading one back
+   names its source. *)
+
+let input_callers_pairs =
+  [
+    ("required", "caller");
+    ("aria-required", "caller");
+    ("autocomplete", "caller");
+    ("type", "caller");
+  ]
+
+let authored_input ?(attrs = []) () =
+  E.input ~attrs ~required:true ~autocomplete:"username" ~input_type:E.Email "v"
+
+let test_the_three_new_derivations_answer_alike_in_both_renderers () =
+  let authored = authored_input ~attrs:input_callers_pairs () in
+  check_opt "web emits the derived required as a presence attribute" (Some "")
+    (web_attr authored "required");
+  check_opt "structural emits the derived required" (Some "true")
+    (structural_attr authored "required");
+  List.iter
+    (fun (key, expected) ->
+      check_opt
+        (Printf.sprintf "web keeps the derived %s" key)
+        (Some expected) (web_attr authored key);
+      check_opt
+        (Printf.sprintf "structural keeps the derived %s" key)
+        (Some expected)
+        (structural_attr authored key))
+    [
+      ("aria-required", "true"); ("autocomplete", "username"); ("type", "email");
+    ];
+  (* Absent, each field uncovers the caller's pair in both. *)
+  let absent = E.input ~attrs:input_callers_pairs "v" in
+  List.iter
+    (fun (key, value) ->
+      check_opt
+        (Printf.sprintf "web uncovers the caller's %s" key)
+        (Some value) (web_attr absent key);
+      check_opt
+        (Printf.sprintf "structural uncovers the caller's %s" key)
+        (Some value)
+        (structural_attr absent key))
+    input_callers_pairs;
+  (* Every arm of the type, against one literal token per arm, in both. *)
+  List.iter
+    (fun (input_type, token) ->
+      let el = E.input ~input_type "v" in
+      check_opt
+        (Printf.sprintf "web writes type=%s" token)
+        (Some token) (web_attr el "type");
+      check_opt
+        (Printf.sprintf "structural writes type=%s" token)
+        (Some token)
+        (structural_attr el "type"))
+    [
+      (E.Plain, "text");
+      (E.Password, "password");
+      (E.Email, "email");
+      (E.Tel, "tel");
+      (E.Url, "url");
+      (E.Number, "number");
+      (E.Search, "search");
+    ]
+
+(* The input's re-assert guard, held still across the two frames for the reason
+   the cases above it give: only a still field can tell the guard apart from its
+   absence. *)
+let test_input_typed_fields_survive_caller_pairs_arriving_on_update () =
+  let first = authored_input () in
+  let second = authored_input ~attrs:input_callers_pairs () in
+  List.iter
+    (fun (key, expected) ->
+      check_opt
+        (Printf.sprintf "the input's derived %s is re-asserted" key)
+        (Some expected)
+        (web_attr_after_update ~first ~second key))
+    [
+      ("required", "");
+      ("aria-required", "true");
+      ("autocomplete", "username");
+      ("type", "email");
+    ]
+
+(* A field that falls away between frames: where the caller declared the key,
+   the pair is uncovered; where nobody did, the attribute is removed rather
+   than left over from the previous render. Each field falls on its own, so a
+   reconcile guard that overlooked one field could not be carried by another
+   field changing in the same frame. *)
+let test_input_typed_fields_that_fall_uncover_or_remove () =
+  (* Each builder authors one field and nothing else; the caller's pairs all
+     carry ["caller"]. *)
+  let authoring_one =
+    [
+      ( (fun attrs -> E.input ~attrs ~required:true "v"),
+        [ "required"; "aria-required" ] );
+      ( (fun attrs -> E.input ~attrs ~autocomplete:"username" "v"),
+        [ "autocomplete" ] );
+      ((fun attrs -> E.input ~attrs ~input_type:E.Email "v"), [ "type" ]);
+    ]
+  in
+  List.iter
+    (fun (authored, keys) ->
+      List.iter
+        (fun key ->
+          check_opt
+            (Printf.sprintf "a fallen field uncovers the caller's %s" key)
+            (Some "caller")
+            (web_attr_after_update
+               ~first:(authored input_callers_pairs)
+               ~second:(E.input ~attrs:input_callers_pairs "v")
+               key);
+          check_opt
+            (Printf.sprintf "a fallen field removes an undeclared %s" key)
+            None
+            (web_attr_after_update ~first:(authored []) ~second:(E.input "v")
+               key))
+        keys)
+    authoring_one
+
+(* A form's typed [autocomplete] and [novalidate], on the same terms as an
+   input's typed fields above: both are spelled identically in both backends
+   ([autocomplete] as its wire token, [novalidate] as a presence attribute),
+   so the derived value itself is compared, the caller's pair is uncovered
+   when the field is absent, and the derivation is re-asserted across an
+   update rather than only on first render. *)
+
+let form_callers_pairs =
+  [ ("autocomplete", "caller"); ("novalidate", "caller") ]
+
+let authored_form ?(attrs = []) () =
+  E.form ~attrs ~autocomplete:E.Off ~novalidate:true []
+
+let test_form_typed_fields_answer_alike_in_both_renderers () =
+  let authored = authored_form ~attrs:form_callers_pairs () in
+  check_opt "web keeps the derived autocomplete" (Some "off")
+    (web_attr authored "autocomplete");
+  check_opt "structural keeps the derived autocomplete" (Some "off")
+    (structural_attr authored "autocomplete");
+  check_opt "web emits the derived novalidate as a presence attribute" (Some "")
+    (web_attr authored "novalidate");
+  check_opt "structural emits the derived novalidate" (Some "true")
+    (structural_attr authored "novalidate");
+  (* Absent, each field uncovers the caller's pair in both. *)
+  let absent = E.form ~attrs:form_callers_pairs [] in
+  List.iter
+    (fun key ->
+      check_opt
+        (Printf.sprintf "web uncovers the caller's %s" key)
+        (Some "caller") (web_attr absent key);
+      check_opt
+        (Printf.sprintf "structural uncovers the caller's %s" key)
+        (Some "caller")
+        (structural_attr absent key))
+    [ "autocomplete"; "novalidate" ]
+
+let test_form_typed_fields_survive_caller_pairs_arriving_on_update () =
+  let first = authored_form () in
+  let second = authored_form ~attrs:form_callers_pairs () in
+  check_opt "the form's derived autocomplete is re-asserted" (Some "off")
+    (web_attr_after_update ~first ~second "autocomplete");
+  check_opt "the form's derived novalidate is re-asserted" (Some "")
+    (web_attr_after_update ~first ~second "novalidate")
+
+(* The submit contract: which handler answers a keydown on an input. Both
+   renderers take the answer from [Nopal_element.Submit_route], and this case
+   drives the same inputs through each and compares the ordered dispatch lists
+   against one literal expectation, so the two cannot agree on a wrong answer
+   any more than they can disagree. The web side fires a real [keydown] through
+   dom_shim, whose events start with [defaultPrevented] false as a browser's do,
+   so the per-key suppression read back is the renderer's own doing. The web
+   side is driven twice — through [create] and through reconciliation onto a
+   handler-less input — because the two paths wire the listener separately. *)
+
+let fire_keydown node key =
+  let ev =
+    Jv.new'
+      (Jv.get Jv.global "KeyboardEvent")
+      [|
+        Jv.of_string "keydown";
+        Jv.obj [| ("key", Jv.of_string key); ("cancelable", Jv.of_bool true) |];
+      |]
+  in
+  ignore (Jv.call node "dispatchEvent" [| ev |]);
+  Jv.to_bool (Jv.get ev "defaultPrevented")
+
+let mount_created element ~dispatch ~parent =
+  Nopal_web.Renderer.create ~dispatch ~parent element
+
+let mount_reconciled element ~dispatch ~parent =
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent (E.input "v") in
+  Nopal_web.Renderer.update ~dispatch handle element;
+  handle
+
+let web_keydown_answers ~mount keys =
+  let sent = ref [] in
+  let dispatch msg = sent := msg :: !sent in
+  let handle = mount ~dispatch ~parent:(fresh_parent ()) in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let prevented = List.map (fire_keydown node) keys in
+  (List.rev !sent, prevented)
+
+let structural_keydown_answers element keys =
+  let rendered = TR.render element in
+  let results =
+    List.map (fun key -> TR.keydown (TR.By_tag "input") key rendered) keys
+  in
+  (TR.messages rendered, results)
+
+let check_submit_contract ~label ~keys ~dispatched ~prevented element =
+  let web_via label' mount =
+    let sent, suppressed = web_keydown_answers ~mount:(mount element) keys in
+    Alcotest.(check (list string))
+      (Printf.sprintf "%s: web dispatches, %s" label label')
+      dispatched sent;
+    Alcotest.(check (list bool))
+      (Printf.sprintf "%s: web suppresses the default, per key, %s" label label')
+      prevented suppressed
+  in
+  web_via "created" mount_created;
+  web_via "reconciled" mount_reconciled;
+  let sent, results = structural_keydown_answers element keys in
+  Alcotest.(check (list string))
+    (Printf.sprintf "%s: structural dispatches" label)
+    dispatched sent;
+  Alcotest.(check (list (result unit Test_util.error_testable)))
+    (Printf.sprintf "%s: structural answers every key" label)
+    (List.map (fun _ -> Ok ()) keys)
+    results
+
+(* The form path: one form holding a bare field, a field with its own
+   [on_submit] and a field whose [on_keydown] consumes every key, each found by
+   a marker of its own. Enter is pressed in each in turn and the whole ordered
+   dispatch list compared against one literal. The web side leans on dom_shim's
+   model of the platform default — a text field's uncancelled Enter clicks the
+   form's first submit button, and a submission nothing cancels is recorded as a
+   navigation — so the form's message arriving there is the platform's
+   submission reaching the renderer's listener, not a shortcut. The fixture
+   carries a typeless button for that reason: with three text fields and no
+   submit button a browser submits nothing on Enter. The structural renderer
+   does not model buttons at all for a keydown; it walks to the form. *)
+
+let form_fields = [ "bare"; "submitting"; "consuming" ]
+let field_marker name = ("data-field", name)
+
+let three_path_form ?on_submit () =
+  E.form ?on_submit
+    [
+      E.row [ E.input ~attrs:[ field_marker "bare" ] "v" ];
+      E.input
+        ~attrs:[ field_marker "submitting" ]
+        ~on_submit:"field submitted" "v";
+      E.input
+        ~attrs:[ field_marker "consuming" ]
+        ~on_keydown:(fun key -> Some ("key " ^ key))
+        "v";
+      E.button (E.text "Sign in");
+    ]
+
+(* The same shape with no handler anywhere, for the reconcile path to patch. *)
+let unhandled_three_path_form () =
+  E.form
+    [
+      E.row [ E.input "v" ];
+      E.input "v";
+      E.input "v";
+      E.button (E.text "Sign in");
+    ]
+
+let navigations () =
+  Jv.Int.get (Jv.get (Jv.get Jv.global "document") "_navigations") "length"
+
+let web_form_answers ~reconcile element =
+  let sent = ref [] in
+  let dispatch msg = sent := msg :: !sent in
+  let parent = fresh_parent () in
+  let handle =
+    match reconcile with
+    | false -> Nopal_web.Renderer.create ~dispatch ~parent element
+    | true ->
+        let handle =
+          Nopal_web.Renderer.create ~dispatch ~parent
+            (unhandled_three_path_form ())
+        in
+        Nopal_web.Renderer.update ~dispatch handle element;
+        handle
+  in
+  let root = Nopal_web.Renderer.dom_node handle in
+  let before = navigations () in
+  let prevented =
+    List.map
+      (fun name ->
+        let key, value = field_marker name in
+        let node =
+          Jv.call root "querySelector"
+            [| Jv.of_string (Printf.sprintf "[%s=%s]" key value) |]
+        in
+        fire_keydown node "Enter")
+      form_fields
+  in
+  (List.rev !sent, navigations () - before, prevented)
+
+let structural_form_answers element =
+  let rendered = TR.render element in
+  let results =
+    List.map
+      (fun name ->
+        let key, value = field_marker name in
+        TR.keydown (TR.By_attr (key, value)) "Enter" rendered)
+      form_fields
+  in
+  (TR.messages rendered, results)
+
+let check_form_submit_contract ~label ~dispatched ~prevented ~results element =
+  let web_via label' ~reconcile =
+    let sent, navigated, prevented' = web_form_answers ~reconcile element in
+    Alcotest.(check (list string))
+      (Printf.sprintf "%s: web dispatches, %s" label label')
+      dispatched sent;
+    Alcotest.(check int)
+      (Printf.sprintf "%s: web never navigates, %s" label label')
+      0 navigated;
+    Alcotest.(check (list bool))
+      (Printf.sprintf "%s: web suppresses the default, per field, %s" label
+         label')
+      prevented prevented'
+  in
+  web_via "created" ~reconcile:false;
+  web_via "reconciled" ~reconcile:true;
+  let sent, results' = structural_form_answers element in
+  Alcotest.(check (list string))
+    (Printf.sprintf "%s: structural dispatches" label)
+    dispatched sent;
+  Alcotest.(check (list (result unit Test_util.error_testable)))
+    (Printf.sprintf "%s: structural answers every field" label)
+    results results'
+
+let test_the_submit_contract_answers_alike_in_both_renderers () =
+  (* The form path: the nearest handler that accepts each Enter answers it,
+     once, and the default is suppressed for every field either way it is
+     answered. *)
+  check_form_submit_contract ~label:"three paths in a submitting form"
+    ~dispatched:[ "form submitted"; "field submitted"; "key Enter" ]
+    ~prevented:[ false; true; true ] ~results:[ Ok (); Ok (); Ok () ]
+    (three_path_form ~on_submit:"form submitted" ());
+  (* A form that authors no [on_submit] still cancels its submission and
+     dispatches nothing for the bare field; the other two fields answer as
+     before, which is the affirmative arm for that silence. The bare field's
+     Enter reaches no handler in the structural tree — there is no form
+     [on_submit] to defer to — while the web platform still submits and
+     cancels the form itself, so only the structural side sees the miss. *)
+  check_form_submit_contract ~label:"three paths in a form without on_submit"
+    ~dispatched:[ "field submitted"; "key Enter" ]
+    ~prevented:[ false; true; true ]
+    ~results:
+      [
+        Error (TR.No_handler { tag = "input"; event = "keydown" }); Ok (); Ok ();
+      ]
+    (three_path_form ());
+  (* An [on_keydown] that declines Enter no longer silences [on_submit]. *)
+  check_submit_contract ~label:"declining on_keydown beside on_submit"
+    ~keys:[ "Enter"; "Escape"; "a" ] ~dispatched:[ "submitted"; "escaped" ]
+    ~prevented:[ true; false; false ]
+    (E.input ~on_submit:"submitted"
+       ~on_keydown:(function
+         | "Escape" -> Some "escaped"
+         | _ -> None)
+       "v");
+  (* A consuming [on_keydown] answers the Enter, and [on_submit] does not;
+     consumption suppresses the default for the Enter alone. *)
+  check_submit_contract ~label:"consuming on_keydown beside on_submit"
+    ~keys:[ "Enter"; "a" ] ~dispatched:[ "key Enter"; "key a" ]
+    ~prevented:[ true; false ]
+    (E.input ~on_submit:"submitted"
+       ~on_keydown:(fun key -> Some ("key " ^ key))
+       "v");
+  (* [on_submit] alone answers Enter and no other key. *)
+  check_submit_contract ~label:"on_submit alone" ~keys:[ "a"; "Enter" ]
+    ~dispatched:[ "submitted" ] ~prevented:[ false; true ]
+    (E.input ~on_submit:"submitted" "v")
+
 let () =
   Alcotest.run "attr precedence"
     [
@@ -644,5 +1032,25 @@ let () =
             test_checkbox_type_survives_a_caller_pair_removed_on_update;
           Alcotest.test_case "fallen focusable uncovers the last pair" `Quick
             test_fallen_focusable_uncovers_the_last_caller_pair;
+          Alcotest.test_case "input typed fields re-asserted" `Quick
+            test_input_typed_fields_survive_caller_pairs_arriving_on_update;
+          Alcotest.test_case "input typed fields fall, uncover or remove" `Quick
+            test_input_typed_fields_that_fall_uncover_or_remove;
+          Alcotest.test_case "form typed fields answer alike in both" `Quick
+            test_form_typed_fields_answer_alike_in_both_renderers;
+          Alcotest.test_case "form typed fields re-asserted" `Quick
+            test_form_typed_fields_survive_caller_pairs_arriving_on_update;
+        ] );
+      ( "attr_precedence",
+        [
+          Alcotest.test_case
+            "the_three_new_derivations_answer_alike_in_both_renderers" `Quick
+            test_the_three_new_derivations_answer_alike_in_both_renderers;
+        ] );
+      ( "the submit contract",
+        [
+          Alcotest.test_case
+            "the_submit_contract_answers_alike_in_both_renderers" `Quick
+            test_the_submit_contract_answers_alike_in_both_renderers;
         ] );
     ]

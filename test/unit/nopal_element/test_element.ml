@@ -25,6 +25,7 @@ let test_empty_builder () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -48,6 +49,7 @@ let test_text_builder () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -70,6 +72,7 @@ let test_default_styles () =
       | Element.Input _
       | Element.Keyed _
       | Element.Draw _
+      | Element.Form _
       | Element.Virtual_list _ ->
           Alcotest.fail (label ^ ": unexpected variant")
     in
@@ -114,6 +117,7 @@ let test_box_preserves_children () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -137,6 +141,7 @@ let test_button_no_handler () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -160,6 +165,7 @@ let test_button_with_handler () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -185,6 +191,7 @@ let test_button_child () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -219,6 +226,7 @@ let test_input_defaults () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -242,6 +250,7 @@ let test_input_placeholder () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -272,6 +281,7 @@ let test_input_on_change () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -295,6 +305,7 @@ let test_input_on_submit () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -318,6 +329,7 @@ let test_image_required_fields () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -342,6 +354,7 @@ let test_scroll_child () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -365,6 +378,7 @@ let test_scroll_without_reveal_unchanged () =
     | Element.File_input _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false);
   (* Affirmative arm on the same fixture. Without it the absence above goes
@@ -391,6 +405,7 @@ let test_scroll_without_reveal_unchanged () =
     | Element.File_input _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -415,6 +430,7 @@ let scroll_attrs el =
   | Element.File_input _
   | Element.Keyed _
   | Element.Draw _
+  | Element.Form _
   | Element.Virtual_list _ ->
       None
 
@@ -459,6 +475,7 @@ let test_scroll_carries_attrs () =
     | Element.File_input _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -551,6 +568,7 @@ let test_keyed_preserves_fields () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false);
   Alcotest.(check bool)
@@ -572,6 +590,7 @@ let test_keyed_preserves_fields () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -599,6 +618,7 @@ let test_map_transforms_click () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -629,6 +649,7 @@ let test_map_transforms_input () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -674,6 +695,7 @@ let test_map_recursive () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -706,6 +728,7 @@ let test_map_column () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -731,6 +754,7 @@ let test_map_image () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -758,6 +782,7 @@ let test_map_scroll () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -795,6 +820,7 @@ let test_map_preserves_scroll_attrs () =
     | Element.File_input _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -832,6 +858,7 @@ let test_scroll_reveal_roundtrip () =
     | Element.File_input _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -864,6 +891,7 @@ let test_map_keyed () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -887,6 +915,7 @@ let test_map_empty_noop () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -911,6 +940,7 @@ let test_map_text_noop () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -1096,6 +1126,7 @@ let test_box_default_interaction () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -1125,6 +1156,7 @@ let test_button_with_interaction () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -1149,6 +1181,7 @@ let test_input_with_interaction () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -1172,6 +1205,7 @@ let test_map_preserves_interaction () =
       | Element.Scroll _
       | Element.Keyed _
       | Element.Draw _
+      | Element.Form _
       | Element.Virtual_list _ ->
           Alcotest.fail (label ^ ": unexpected variant")
     in
@@ -1232,6 +1266,7 @@ let test_styled_text_carries_style () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -1256,6 +1291,7 @@ let test_styled_text_with_default_is_some () =
     | Element.Scroll _
     | Element.Keyed _
     | Element.Draw _
+    | Element.Form _
     | Element.Virtual_list _ ->
         false)
 
@@ -1285,6 +1321,7 @@ let test_file_input_carries_accept_capture_multiple () =
   | Element.Scroll _
   | Element.Keyed _
   | Element.Draw _
+  | Element.Form _
   | Element.Virtual_list _ ->
       Alcotest.fail "defaults: expected File_input");
   let handler (_ : Element.file_info list) = Click in
@@ -1333,6 +1370,7 @@ let test_file_input_carries_accept_capture_multiple () =
   | Element.Scroll _
   | Element.Keyed _
   | Element.Draw _
+  | Element.Form _
   | Element.Virtual_list _ ->
       Alcotest.fail "configured: expected File_input"
 
@@ -1341,6 +1379,14 @@ let test_capture_to_string_covers_both_arms () =
   Alcotest.(check string)
     "Environment" "environment"
     (Element.capture_to_string Element.Environment)
+
+let test_autocomplete_mode_to_string_covers_both_arms () =
+  Alcotest.(check string)
+    "On" "on"
+    (Element.autocomplete_mode_to_string Element.On);
+  Alcotest.(check string)
+    "Off" "off"
+    (Element.autocomplete_mode_to_string Element.Off)
 
 let test_file_info_carries_every_field () =
   let info =
@@ -1354,6 +1400,36 @@ let test_file_info_carries_every_field () =
   Alcotest.(check bool)
     "last_modified" true
     (Float.equal info.Element.last_modified 1_700_000_000_000.0)
+
+let test_equal_input_type_exported () =
+  Alcotest.(check bool)
+    "same constructor is equal" true
+    (Element.equal_input_type Element.Plain Element.Plain);
+  Alcotest.(check bool)
+    "different constructors are not equal" false
+    (Element.equal_input_type Element.Plain Element.Password);
+  List.iter
+    (fun t ->
+      Alcotest.(check bool)
+        "every constructor equals itself" true
+        (Element.equal_input_type t t))
+    [
+      Element.Plain;
+      Element.Password;
+      Element.Email;
+      Element.Tel;
+      Element.Url;
+      Element.Number;
+      Element.Search;
+    ]
+
+let test_equal_autocomplete_mode_exported () =
+  Alcotest.(check bool)
+    "same constructor is equal" true
+    (Element.equal_autocomplete_mode Element.On Element.On);
+  Alcotest.(check bool)
+    "different constructors are not equal" false
+    (Element.equal_autocomplete_mode Element.On Element.Off)
 
 let test_equal_distinguishes_file_input_config () =
   let handler (_ : Element.file_info list) = Click in
@@ -1456,6 +1532,8 @@ let () =
             test_file_input_carries_accept_capture_multiple;
           Alcotest.test_case "capture_to_string covers both arms" `Quick
             test_capture_to_string_covers_both_arms;
+          Alcotest.test_case "autocomplete_mode_to_string covers both arms"
+            `Quick test_autocomplete_mode_to_string_covers_both_arms;
           Alcotest.test_case "file_info carries every field" `Quick
             test_file_info_carries_every_field;
         ] );
@@ -1521,6 +1599,10 @@ let () =
             test_element_equal_distinguishes_draw_handlers;
           Alcotest.test_case "equal distinguishes file_input config" `Quick
             test_equal_distinguishes_file_input_config;
+          Alcotest.test_case "equal_input_type_exported" `Quick
+            test_equal_input_type_exported;
+          Alcotest.test_case "equal_autocomplete_mode_exported" `Quick
+            test_equal_autocomplete_mode_exported;
         ] );
       ( "interaction",
         [

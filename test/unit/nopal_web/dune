@@ -36,7 +36,7 @@
   (javascript_files dom_shim.js stylesheet_shim.js)))
 
 ; canvas_shim.js layers a fake <canvas> + recording 2D context on top of
-; dom_shim.js so the canvas renderer's clear/hidpi logic (FR-7) can be tested
+; dom_shim.js so the canvas renderer's clear/hidpi logic can be tested
 ; under Node.js without a real browser. See canvas_shim.js for the rationale.
 
 (test
@@ -123,6 +123,20 @@
  (js_of_ocaml
   (javascript_files dom_shim.js stylesheet_shim.js)))
 
+; test_form_render drives the form create/reconcile paths and its submit
+; listener. dom_shim reproduces the platform's form-submission default (Enter in
+; a text field and a submit-button click submit the nearest form, and an
+; uncancelled submission records a navigation); stylesheet_shim is needed
+; because the interactive case injects CSS rules through Style_sheet.
+
+(test
+ (name test_form_render)
+ (package nopal_web)
+ (libraries nopal_web nopal_element nopal_style alcotest brr)
+ (modes js)
+ (js_of_ocaml
+  (javascript_files dom_shim.js stylesheet_shim.js)))
+
 (test
  (name test_mount_unmount)
  (package nopal_web)
@@ -149,7 +163,9 @@
 ; reads the same element through each. nopal_ui (and nopal_navigation, which
 ; Bottom_tabs' tabs are built from) is linked because the four published
 ; override contracts on Modal, Navigation_bar, Bottom_tabs and Button are
-; verified here. dom_shim covers element creation and attribute get/set;
+; verified here. The submit contract is compared across the same two backends,
+; so test_util is linked for the structural simulator's error testable. dom_shim
+; covers element creation, attribute get/set and keydown dispatch;
 ; stylesheet_shim is needed because every arm under test goes through
 ; apply_styles_for_element.
 
@@ -162,6 +178,7 @@
   nopal_test
   nopal_ui
   nopal_navigation
+  test_util
   alcotest
   brr)
  (modes js)

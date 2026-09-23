@@ -151,6 +151,9 @@ let test_input_creates_input () =
         on_focus = None;
         on_blur = None;
         on_keydown = None;
+        required = false;
+        autocomplete = None;
+        input_type = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
@@ -255,6 +258,9 @@ let test_input_change_dispatches () =
         on_focus = None;
         on_blur = None;
         on_keydown = None;
+        required = false;
+        autocomplete = None;
+        input_type = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
@@ -285,6 +291,9 @@ let test_input_submit_dispatches_on_enter () =
         on_focus = None;
         on_blur = None;
         on_keydown = None;
+        required = false;
+        autocomplete = None;
+        input_type = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
@@ -317,6 +326,9 @@ let test_input_submit_ignores_non_enter () =
         on_focus = None;
         on_blur = None;
         on_keydown = None;
+        required = false;
+        autocomplete = None;
+        input_type = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
@@ -483,6 +495,9 @@ let focus_input ~on_focus =
       on_focus;
       on_blur = None;
       on_keydown = None;
+      required = false;
+      autocomplete = None;
+      input_type = None;
     }
 
 (* Each of these renders one element and reconciles against a second,
@@ -660,6 +675,9 @@ let test_input_focus_dispatches () =
         on_focus = Some Input_focused;
         on_blur = None;
         on_keydown = None;
+        required = false;
+        autocomplete = None;
+        input_type = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
@@ -1165,6 +1183,9 @@ let test_keyed_stable_node_identity () =
                       on_focus = None;
                       on_blur = None;
                       on_keydown = None;
+                      required = false;
+                      autocomplete = None;
+                      input_type = None;
                     };
               };
             Keyed
@@ -1211,6 +1232,9 @@ let test_keyed_stable_node_identity () =
                       on_focus = None;
                       on_blur = None;
                       on_keydown = None;
+                      required = false;
+                      autocomplete = None;
+                      input_type = None;
                     };
               };
           ];
@@ -1289,7 +1313,7 @@ let test_keyed_reorder_moves_only_displaced () =
   let n_b = Jv.get children0 "1" in
   let n_c = Jv.get children0 "2" in
   (* Key-stable update with unchanged order must perform no DOM moves, so a
-     focused/scrolled row survives an unrelated model update (FR-3, NFR-3). *)
+     focused/scrolled row survives an unrelated model update. *)
   let moves = spy_dom_moves node in
   Nopal_web.Renderer.update ~dispatch handle (keyed_text_box [ "a"; "b"; "c" ]);
   Alcotest.(check int) "no DOM moves on key-stable update" 0 !moves;
@@ -1355,7 +1379,7 @@ let test_keyed_reorder_full_permutation () =
         perm)
     permutations
 
-(* FR-3, NFR-3: a real reorder must move only the displaced node, not re-insert
+(* A real reorder must move only the displaced node, not re-insert
    the whole list. The permutation test above pins order and node identity, but
    a naive re-append-everything implementation preserves both too — so it would
    pass while silently doing N moves and blurring every focused row. This test
@@ -1383,7 +1407,7 @@ let test_keyed_reorder_minimal_move_count () =
   Alcotest.(check bool) "a now at 1" true (n_a == Jv.get children1 "1");
   Alcotest.(check bool) "c still at 2" true (n_c == Jv.get children1 "2")
 
-(* FR-1: switching a parent's children from non-keyed to all-keyed must remove
+(* Switching a parent's children from non-keyed to all-keyed must remove
    every old child not carried forward by key from the DOM and release its
    listeners — today the orphaned non-keyed node lingers forever. *)
 let test_keyed_into_keyed_removes_old_nonkeyed () =
@@ -1504,7 +1528,7 @@ let inner_box =
 
 let inner_text = Text { content = "t"; text_style = None }
 
-(* FR-2: when a keyed child's root variant changes (Box->Text) its DOM node is
+(* When a keyed child's root variant changes (Box->Text) its DOM node is
    replaced; the replacement must remain identifiable by the same key so the
    next reconcile reuses it instead of destroying-and-recreating (or
    duplicating) it. *)
@@ -1537,7 +1561,7 @@ let test_keyed_variant_change_no_duplicate () =
   in
   Alcotest.(check string) "data-key intact after replacement" "k" dk
 
-(* FR-4: a keyed child that renders to a comment node (Empty) must be matched
+(* A keyed child that renders to a comment node (Empty) must be matched
    and reused across reconciles by its key, like any other keyed child. A
    comment node can't carry a data-key attribute, so its key round-trips via a
    JS expando property; repeated reconciles of the identical tree must reuse
@@ -1574,7 +1598,7 @@ let test_keyed_empty_no_leak () =
   reconcile_and_check "reconcile 2";
   reconcile_and_check "reconcile 3"
 
-(* FR-2/FR-4: a variant change that crosses the comment-node boundary under a
+(* A variant change that crosses the comment-node boundary under a
    stable key must re-key the replacement through *both* representations —
    data-key on the element side, the [comment_key_prop] expando on the comment
    side. [test_keyed_variant_change_no_duplicate] only exercises Box->Text
@@ -1636,7 +1660,7 @@ let spy_set_attr node =
   Jv.set node "setAttribute" spy;
   count
 
-(* FR-2 guard / NFR-3: the key-carry write in reconcile_keyed_children is guarded
+(* The key-carry write in reconcile_keyed_children is guarded
    so it fires only when a node was replaced. A reused, same-variant keyed node
    keeps its existing key, so the order-unchanged hot path must skip the
    set_data_key write entirely — no redundant setAttribute. Spying setAttribute
@@ -1996,6 +2020,9 @@ let test_reconcile_input_skips_unchanged_placeholder () =
         on_focus = None;
         on_blur = None;
         on_keydown = None;
+        required = false;
+        autocomplete = None;
+        input_type = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -2014,6 +2041,9 @@ let test_reconcile_input_skips_unchanged_placeholder () =
         on_focus = None;
         on_blur = None;
         on_keydown = None;
+        required = false;
+        autocomplete = None;
+        input_type = None;
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
@@ -2037,6 +2067,9 @@ let test_reconcile_input_updates_changed_placeholder () =
         on_focus = None;
         on_blur = None;
         on_keydown = None;
+        required = false;
+        autocomplete = None;
+        input_type = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -2055,6 +2088,9 @@ let test_reconcile_input_updates_changed_placeholder () =
         on_focus = None;
         on_blur = None;
         on_keydown = None;
+        required = false;
+        autocomplete = None;
+        input_type = None;
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
@@ -2065,7 +2101,7 @@ let test_reconcile_input_updates_changed_placeholder () =
   in
   Alcotest.(check string) "placeholder updated" "new" ph
 
-(* NFR-3: a controlled input reflects the model, but reconciling with an
+(* A controlled input reflects the model, but reconciling with an
    unchanged value must NOT re-write the DOM `value`. A redundant write
    collapses the caret/selection and resets IME composition; combined with the
    global keydown subscription (a reconcile per keystroke), an unconditional
@@ -2087,6 +2123,9 @@ let test_reconcile_input_skips_unchanged_value () =
         on_focus = None;
         on_blur = None;
         on_keydown = None;
+        required = false;
+        autocomplete = None;
+        input_type = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent (mk "v") in
@@ -2114,6 +2153,9 @@ let test_reconcile_input_updates_changed_value () =
         on_focus = None;
         on_blur = None;
         on_keydown = None;
+        required = false;
+        autocomplete = None;
+        input_type = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent (mk "v") in
@@ -2125,7 +2167,7 @@ let test_reconcile_input_updates_changed_value () =
   let value = Jv.Jstr.get node "value" |> Jstr.to_string in
   Alcotest.(check string) "value updated" "v2" value
 
-(* FR-1: a style prop present last render but absent now must be cleared from
+(* A style prop present last render but absent now must be cleared from
    the element so the painted result matches the model. Image is non-interactive,
    so it exercises the inline-style reconcile path directly. *)
 let test_reconcile_removes_dropped_inline_style () =
@@ -2458,7 +2500,7 @@ let test_restyle_on_spread_change () =
     "a return to zero shortens the declaration back to three lengths"
     "0px 0px 0px rgba(0,0,0,0.5)" (painted ())
 
-(* NFR-1: an identical re-render performs zero inline-style writes. The style is
+(* An identical re-render performs zero inline-style writes. The style is
    reconstructed each frame (physically distinct, structurally equal), as a real
    view function would, so this fails unless the guard uses structural equality. *)
 let test_reconcile_unchanged_style_no_write () =
@@ -2498,6 +2540,9 @@ let test_reconcile_input_skips_unchanged_attrs () =
         on_focus = None;
         on_blur = None;
         on_keydown = None;
+        required = false;
+        autocomplete = None;
+        input_type = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -2516,6 +2561,9 @@ let test_reconcile_input_skips_unchanged_attrs () =
         on_focus = None;
         on_blur = None;
         on_keydown = None;
+        required = false;
+        autocomplete = None;
+        input_type = None;
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
@@ -2844,7 +2892,7 @@ let test_reconcile_interaction_skips_unchanged () =
 (* The single <style data-nopal> element the renderer's Style_sheet appends to
    document.head on create; the most recently created one belongs to the handle
    under test. Used to read the CSSOM mutation counters the stylesheet_shim
-   records (FR-2/NFR-1). *)
+   records. *)
 let current_nopal_sheet () =
   let head = Jv.get (Jv.get Jv.global "document") "head" in
   let children = Jv.get head "childNodes" in
@@ -2901,7 +2949,7 @@ let interactive_box ~style ~interaction =
       on_wheel = None;
     }
 
-(* FR-2/NFR-1: re-rendering an interactive element whose base style and
+(* Re-rendering an interactive element whose base style and
    interaction are unchanged (rebuilt fresh, as a view does) must not mutate the
    stylesheet or the classList. The base-class diff used physical equality, so a
    fresh-but-equal style churned the base rule every frame; this pins zero CSSOM
@@ -2933,10 +2981,10 @@ let test_reconcile_interaction_unchanged_no_cssom () =
     "no class assignment on unchanged interactive reconcile" 0
     (classlist_writes node - classes_before)
 
-(* FR-2: a changed interaction must release the rules it replaces. Changing only
+(* A changed interaction must release the rules it replaces. Changing only
    the interaction (base style structurally equal) must delete exactly one rule
    (the superseded interaction) and insert exactly one (its replacement) — not
-   two, which would mean the unchanged base rule was needlessly churned (NFR-1). *)
+   two, which would mean the unchanged base rule was needlessly churned. *)
 let test_reconcile_interaction_change_releases_prior () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
@@ -3641,7 +3689,7 @@ let test_reconcile_select_disabled_to_enabled () =
   Alcotest.(check int) "message dispatched when enabled" 1 (List.length !msgs)
 
 (* Select: a model value matching no option reflects the model (nothing
-   selected), not the browser's default first option (FR-4). *)
+   selected), not the browser's default first option. *)
 let test_select_no_match_reflects_model () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
@@ -3689,7 +3737,7 @@ let test_select_no_match_reflects_model () =
     "no-match after reconcile clears selection (selectedIndex = -1)" (-1)
     (Jv.Int.get node "selectedIndex")
 
-(* FR-3 focus-queue drain. [Nopal_web.drain_focus] focuses each queued id in
+(* Focus-queue drain. [Nopal_web.drain_focus] focuses each queued id in
    FIFO order, so batched [Cmd.focus] requests (via [Cmd.batch]) all fire and the
    last one wins. The dom_shim records every focus() call into [document._focusLog]
    for registered targets. *)
@@ -4486,8 +4534,8 @@ let virtual_list_fixture () =
     }
 
 let test_container_main_axis_non_container_is_none () =
-  (* Only Box, Row and Column are given display:flex, so nothing else hands its
-     children a main axis. Scroll is the case worth stating: it is a container
+  (* Only Box, Row, Column and Form are given display:flex, so nothing else
+     hands its children a main axis. Scroll is the case worth stating: it is a container
      by name, holds exactly one child, and is a block box. Keyed and
      Virtual_list are the two whose "no axis" is load-bearing elsewhere in the
      renderer — the create path deliberately hands a keyed child the axis that

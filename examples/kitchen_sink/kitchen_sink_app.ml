@@ -222,6 +222,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     focus_reveal : Sub_focus_reveal.model;
     fixed_size : Sub_fixed_size.model;
     min_size : Sub_min_size.model;
+    auth_form : Sub_auth_form.model;
     keyboard_height : int;  (** soft-keyboard height in logical px (REQ-N2) *)
     back_route : back_route;  (** current route of the back-navigation demo *)
   }
@@ -264,6 +265,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | Focus_reveal_msg of Sub_focus_reveal.msg
     | Fixed_size_msg of Sub_fixed_size.msg
     | Min_size_msg of Sub_min_size.msg
+    | Auth_form_msg of Sub_auth_form.msg
     | KeyboardHeightChanged of int  (** native soft-keyboard height (REQ-F5) *)
     | Back_demo_push  (** push the back-demo one step deep (to [Back_detail]) *)
     | Route_changed of back_route  (** popstate-driven route update (REQ-F3) *)
@@ -398,6 +400,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     let focus_reveal, focus_reveal_cmd = Sub_focus_reveal.init () in
     let fixed_size, fixed_size_cmd = Sub_fixed_size.init () in
     let min_size, min_size_cmd = Sub_min_size.init () in
+    let auth_form, auth_form_cmd = Sub_auth_form.init () in
     ( {
         button_clicks = 0;
         input_text = "";
@@ -469,6 +472,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         focus_reveal;
         fixed_size;
         min_size;
+        auth_form;
         keyboard_height = 0;
         back_route = Back_home;
       },
@@ -495,6 +499,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           Nopal_mvu.Cmd.map (fun m -> Focus_reveal_msg m) focus_reveal_cmd;
           Nopal_mvu.Cmd.map (fun m -> Fixed_size_msg m) fixed_size_cmd;
           Nopal_mvu.Cmd.map (fun m -> Min_size_msg m) min_size_cmd;
+          Nopal_mvu.Cmd.map (fun m -> Auth_form_msg m) auth_form_cmd;
           (* Re-read the persisted demo value so a reload dispatches a
              [StorageRestored] message — the E2E persistence proof (REQ-F3). *)
           Nopal_mvu.Cmd.task
@@ -686,6 +691,10 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         let min_size, ms_cmd = Sub_min_size.update model.min_size ms_msg in
         ( { model with min_size },
           Nopal_mvu.Cmd.map (fun m -> Min_size_msg m) ms_cmd )
+    | Auth_form_msg af_msg ->
+        let auth_form, af_cmd = Sub_auth_form.update model.auth_form af_msg in
+        ( { model with auth_form },
+          Nopal_mvu.Cmd.map (fun m -> Auth_form_msg m) af_cmd )
     | DrawPointerMove (x, y) ->
         ({ model with draw_pointer = Some (x, y) }, Nopal_mvu.Cmd.none)
     | DrawPointerLeave ->
@@ -3989,6 +3998,17 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                  (fun m -> Text_input_msg m)
                  (Kitchen_sink_text_input.view vp model.text_input);
              ];
+           (* After the single text input on purpose: that section submits one
+              field on Enter, and this one shows what changes once several
+              fields are one form — Enter in any of them submits it, once. *)
+           view_section
+             ~attrs:[ ("data-testid", "auth-form-section") ]
+             "A form: Enter from any field submits it once"
+             [
+               Element.map
+                 (fun m -> Auth_form_msg m)
+                 (Sub_auth_form.view vp model.auth_form);
+             ];
            view_section
              ~attrs:[ ("data-testid", "file-input-section") ]
              "File Input"
@@ -4212,4 +4232,5 @@ module Sub_receipt_flow = Sub_receipt_flow
 module Sub_reveal_list = Sub_reveal_list
 module Sub_scroll_pane = Sub_scroll_pane
 module Sub_focus_reveal = Sub_focus_reveal
+module Sub_auth_form = Sub_auth_form
 module Tauri_op = Tauri_op
