@@ -125,6 +125,7 @@
     :with-test))
   ocaml
   nopal_mvu
+  nopal_element
   nopal_storage))
 
 (package
@@ -238,7 +239,8 @@
   nopal_runtime
   nopal_storage
   nopal_storage_tauri
-  nopal_telemetry_wire))
+  nopal_telemetry_wire
+  nopal_web))
 
 (package
  (name nopal_telemetry_wire)

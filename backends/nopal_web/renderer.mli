@@ -8,14 +8,42 @@ type 'msg t
 (** Opaque handle to a rendered DOM subtree. Holds the live node tree for
     reconciliation on the next update. *)
 
+type opener =
+  Nopal_element.Url.t ->
+  ((unit, Nopal_element.Link.open_error) result -> unit) ->
+  unit
+(** [open_external url resolve] shows [url] outside the app, in the system
+    browser, and calls [resolve] with the outcome. *)
+
+(** Where links are rendered, which decides what a click on one does
+    ({!Nopal_element.Link.decide}). *)
+type link_host =
+  | Browser
+      (** A web browser. A click the link does not take over is left to the
+          browser, which follows the link itself. *)
+  | Webview of { open_external : opener }
+      (** An application webview. A click on an external link is handed to
+          [open_external], so the webview never navigates away from the app; the
+          first answer settles the outcome: if it is [Error], the link's
+          [on_open_failed] message is dispatched once; later answers are
+          absorbed. An exception raised by [open_external] before it answers is
+          that failure too, as [Failed] with a reason naming the exception's
+          constructor only, since its message may carry the URL. *)
+
 val create :
+  ?link_host:link_host ->
   dispatch:('msg -> unit) ->
   parent:Brr.El.t ->
   'msg Nopal_element.Element.t ->
   'msg t
-(** [create ~dispatch ~parent element] renders [element] into fresh DOM nodes,
-    appends them to [parent], and returns a handle for future reconciliation.
-    Event listeners dispatch messages via [dispatch]. *)
+(** [create ?link_host ~dispatch ~parent element] renders [element] into fresh
+    DOM nodes, appends them to [parent], and returns a handle for future
+    reconciliation. Event listeners dispatch messages via [dispatch].
+
+    [link_host] is where the links in the tree are rendered, for the life of the
+    handle: every {!update} keeps it. A click on a link prevents the platform
+    default only when the link takes the click over. Omitted, it is [Browser].
+*)
 
 val update :
   dispatch:('msg -> unit) -> 'msg t -> 'msg Nopal_element.Element.t -> unit

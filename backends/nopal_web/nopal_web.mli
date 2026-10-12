@@ -32,6 +32,10 @@ val mount :
   ?on_error:(string -> unit) ->
   ?write_clipboard:
     (string -> ((unit, Nopal_mvu.Clipboard.error) result -> unit) -> unit) ->
+  ?open_external:
+    (Nopal_element.Url.t ->
+    ((unit, Nopal_element.Link.open_error) result -> unit) ->
+    unit) ->
   (module Nopal_mvu.App.S with type model = 'model and type msg = 'msg) ->
   Brr.El.t ->
   mounted
@@ -99,8 +103,32 @@ val mount :
     browser grants it. An absent API resolves [Error Unavailable], a
     [NotAllowedError] rejection [Error Not_permitted], and any other rejection
     or throw [Error (Failed reason)] with the platform's message. A Tauri entry
-    point passes [Nopal_tauri.Clipboard.write] here; [nopal_web] stays
-    Tauri-agnostic, as with [~safe_area_source].
+    point passes [Nopal_tauri.Clipboard.write] here.
+
+    [~open_external url resolve] shows [url] outside the app and calls [resolve]
+    with the outcome. Given, links are rendered for a webview: a primary or
+    middle click on an [External] link, modified or not, is handed to it and the
+    click does not navigate the page (the context menu's "Open Link" and a
+    dragged link are not guarded), and a click on a [Route] link with either
+    button dispatches the link's message whatever modifiers are held. The first
+    answer settles the outcome: if it is [Error], the link's [on_open_failed]
+    message is dispatched once; later answers are absorbed; a raise before any
+    answer is [Failed], with a reason naming the exception's constructor and
+    never its message, which may carry the URL. Omitted, links are rendered for
+    a browser, which follows every click a link does not take over itself
+    ({!Nopal_element.Link}).
+
+    Omitting it is refused on a page that runs in a Tauri webview, where a
+    followed link would take the webview away from the app with no way back.
+    When the page defines [__TAURI_INTERNALS__] and [~open_external] is omitted,
+    [mount] creates no runtime and renders no app: it writes a fault into
+    [target] that names the missing [~open_external] and the entry point that
+    supplies one, [Nopal_tauri_mount], and sends the same text to [~on_error].
+    The returned [unmount] is then inert. A Tauri entry point passes
+    [Nopal_tauri.Opener.open_url] here. Reading that one global is all
+    [nopal_web] knows of Tauri: it depends on no Tauri package, and every
+    Tauri-specific behaviour, as with [~safe_area_source] and
+    [~write_clipboard], is an opaque function the entry point supplies.
 
     This wires everything together: runtime creation, Lwd root subscription, DOM
     rendering, and event dispatch. It records no telemetry and installs no
@@ -116,6 +144,10 @@ val mount_with_telemetry :
   ?on_error:(string -> unit) ->
   ?write_clipboard:
     (string -> ((unit, Nopal_mvu.Clipboard.error) result -> unit) -> unit) ->
+  ?open_external:
+    (Nopal_element.Url.t ->
+    ((unit, Nopal_element.Link.open_error) result -> unit) ->
+    unit) ->
   (module Nopal_mvu.App.S with type model = 'model and type msg = 'msg) ->
   ?serialize_msg:('msg -> string) ->
   ?serialize_model:('model -> string) ->
@@ -123,12 +155,15 @@ val mount_with_telemetry :
   mounted_with_telemetry
 (** [mount_with_telemetry (module MyApp) ?serialize_msg ?serialize_model target]
     is the telemetry sibling of {!mount} (and accepts the same
-    [~safe_area_source], [~on_error] and [~write_clipboard] hooks): it builds
-    the runtime via {!Nopal_runtime.Runtime.Make.create_with_telemetry}, drives
-    it exactly as {!mount} does, installs the [window.__nopal_telemetry__]
-    browser bridge over its handle, and returns that handle as the [telemetry]
-    field of a {!mounted_with_telemetry} — paired with the same [unmount]
-    teardown {!mount} yields.
+    [~safe_area_source], [~on_error], [~write_clipboard] and [~open_external]
+    hooks, refusing to mount where {!mount} does): it builds the runtime via
+    {!Nopal_runtime.Runtime.Make.create_with_telemetry}, drives it exactly as
+    {!mount} does, installs the [window.__nopal_telemetry__] browser bridge over
+    its handle, and returns that handle as the [telemetry] field of a
+    {!mounted_with_telemetry} — paired with the same [unmount] teardown {!mount}
+    yields. A refused mount installs no bridge, and its [telemetry] handle comes
+    from a runtime that is created, so the app's [init] runs, and never started,
+    so the handle records nothing.
 
     The on/off distinction is the function name and the [handle] return type —
     not an optional argument — mirroring the [create] / [create_with_telemetry]

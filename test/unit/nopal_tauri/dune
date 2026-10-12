@@ -28,6 +28,30 @@
  (js_of_ocaml
   (javascript_files tauri_shim.js)))
 
+(test
+ (name test_nopal_tauri_opener)
+ (package nopal_tauri)
+ (modules test_nopal_tauri_opener)
+ (libraries nopal_tauri nopal_element test_util qcheck-alcotest alcotest brr)
+ (modes js)
+ (js_of_ocaml
+  (javascript_files tauri_shim.js)))
+
+; test_nopal_tauri_mount mounts a whole app, so over tauri_shim it needs the
+; nopal_web suite's dom_shim and mount_shim (captured rAF, so no frame runs).
+
+(test
+ (name test_nopal_tauri_mount)
+ (package nopal_tauri)
+ (modules test_nopal_tauri_mount)
+ (libraries nopal_tauri.mount nopal_web nopal_element nopal_mvu alcotest brr)
+ (modes js)
+ (js_of_ocaml
+  (javascript_files
+   ../nopal_web/dom_shim.js
+   ../nopal_web/mount_shim.js
+   tauri_shim.js)))
+
 ; tauri_shim.js stubs __TAURI_INTERNALS__ so the Event.listen-backed
 ; subscription/back-button setups run under Node without a Tauri host.
 

@@ -16,6 +16,7 @@ let test_empty_builder () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -40,6 +41,7 @@ let test_text_builder () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -69,6 +71,7 @@ let test_default_styles () =
       | Element.Text _
       | Element.File_input _
       | Element.Button _
+      | Element.Link _
       | Element.Input _
       | Element.Keyed _
       | Element.Draw _
@@ -108,6 +111,7 @@ let test_box_preserves_children () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -132,6 +136,7 @@ let test_button_no_handler () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -156,6 +161,7 @@ let test_button_with_handler () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -182,6 +188,7 @@ let test_button_child () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -214,6 +221,7 @@ let button_semantics (el : 'msg Element.t) =
   | Element.Box _
   | Element.Row _
   | Element.Column _
+  | Element.Link _
   | Element.Input _
   | Element.Image _
   | Element.Checkbox _
@@ -269,6 +277,7 @@ let test_input_defaults () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -293,6 +302,7 @@ let test_input_placeholder () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -324,6 +334,7 @@ let test_input_on_change () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -348,6 +359,7 @@ let test_input_on_submit () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -372,6 +384,7 @@ let test_image_required_fields () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -397,6 +410,7 @@ let test_scroll_child () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -422,6 +436,7 @@ let test_scroll_without_reveal_unchanged () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -449,6 +464,7 @@ let test_scroll_without_reveal_unchanged () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -474,6 +490,7 @@ let scroll_attrs el =
   | Element.Row _
   | Element.Column _
   | Element.Button _
+  | Element.Link _
   | Element.Input _
   | Element.Image _
   | Element.Checkbox _
@@ -519,6 +536,7 @@ let test_scroll_carries_attrs () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -611,6 +629,7 @@ let test_keyed_preserves_fields () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -633,6 +652,7 @@ let test_keyed_preserves_fields () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -678,6 +698,7 @@ let test_map_transforms_click () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -709,6 +730,7 @@ let test_map_transforms_input () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -755,6 +777,7 @@ let test_map_recursive () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -788,6 +811,7 @@ let test_map_column () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -814,6 +838,7 @@ let test_map_image () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -842,6 +867,7 @@ let test_map_scroll () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -881,6 +907,7 @@ let test_map_preserves_scroll_attrs () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -919,6 +946,7 @@ let test_scroll_reveal_roundtrip () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -951,6 +979,7 @@ let test_map_keyed () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -975,6 +1004,7 @@ let test_map_empty_noop () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -1000,6 +1030,7 @@ let test_map_text_noop () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -1204,6 +1235,7 @@ let test_box_default_interaction () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -1234,6 +1266,7 @@ let test_button_with_interaction () =
     | Element.Box _
     | Element.Row _
     | Element.Column _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -1260,6 +1293,7 @@ let test_input_with_interaction () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Image _
     | Element.Checkbox _
     | Element.Radio _
@@ -1287,6 +1321,7 @@ let test_map_preserves_interaction () =
       | Element.Select { interaction; _ } -> interaction
       | Element.Empty
       | Element.Text _
+      | Element.Link _
       | Element.File_input _
       | Element.Image _
       | Element.Scroll _
@@ -1344,6 +1379,7 @@ let test_styled_text_carries_style () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -1369,6 +1405,7 @@ let test_styled_text_with_default_is_some () =
     | Element.Row _
     | Element.Column _
     | Element.Button _
+    | Element.Link _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -1400,6 +1437,7 @@ let test_file_input_carries_accept_capture_multiple () =
   | Element.Row _
   | Element.Column _
   | Element.Button _
+  | Element.Link _
   | Element.Input _
   | Element.Image _
   | Element.Checkbox _
@@ -1449,6 +1487,7 @@ let test_file_input_carries_accept_capture_multiple () =
   | Element.Row _
   | Element.Column _
   | Element.Button _
+  | Element.Link _
   | Element.Input _
   | Element.Image _
   | Element.Checkbox _
@@ -1586,6 +1625,162 @@ let test_equal_distinguishes_file_input_config () =
        (Element.file_input ~on_change:closure_handler ())
        (Element.file_input ~on_change:closure_handler ()))
 
+(* Each call parses afresh, so two links built from the same text hold distinct
+   [Route_path.t] and [Url.t] values: equality has to look at what they spell,
+   not at which value they are. *)
+let route_path text =
+  match Route_path.of_string text with
+  | Ok path -> path
+  | Error
+      ( Route_path.Not_absolute _ | Route_path.Protocol_relative _
+      | Route_path.Control_character _ ) ->
+      Alcotest.fail ("fixture path is refused: " ^ text)
+
+let url text =
+  match Url.of_string text with
+  | Ok url -> url
+  | Error
+      (Url.Missing_scheme _ | Url.Unsupported_scheme _ | Url.Control_character _)
+    ->
+      Alcotest.fail ("fixture URL is refused: " ^ text)
+
+let link_destination_parts (el : 'msg Element.t) =
+  match el with
+  | Element.Link
+      { destination = Link.Route { path; on_follow }; attrs; child; _ } ->
+      Some (`Route (Route_path.to_string path, on_follow), attrs, child)
+  | Element.Link
+      { destination = Link.External { url; on_open_failed }; attrs; child; _ }
+    ->
+      Some
+        ( `External (Url.to_string url, on_open_failed Link.Not_permitted),
+          attrs,
+          child )
+  | Element.Empty
+  | Element.Text _
+  | Element.Box _
+  | Element.Row _
+  | Element.Column _
+  | Element.Button _
+  | Element.Input _
+  | Element.Image _
+  | Element.Checkbox _
+  | Element.Radio _
+  | Element.Select _
+  | Element.File_input _
+  | Element.Scroll _
+  | Element.Keyed _
+  | Element.Draw _
+  | Element.Form _
+  | Element.Virtual_list _ ->
+      None
+
+let test_link_map_maps_destination_and_child () =
+  let attrs = [ ("data-testid", "inbox") ] in
+  let mapped_route =
+    Element.map
+      (fun m -> Wrapped m)
+      (Element.link ~attrs
+         (Link.Route { path = route_path "/inbox"; on_follow = Click })
+         (Element.button ~on_click:Submit (Element.text "Inbox")))
+  in
+  (match link_destination_parts mapped_route with
+  | Some
+      ( `Route (path, Wrapped Click),
+        mapped_attrs,
+        Element.Button { on_click = Some (Wrapped Submit); _ } ) ->
+      Alcotest.(check string) "the path is unchanged" "/inbox" path;
+      Alcotest.(check (list (pair string string)))
+        "the attributes are unchanged" attrs mapped_attrs
+  | Some _
+  | None ->
+      Alcotest.fail
+        "a mapped Route link carries the wrapped on_follow and a mapped child");
+  let mapped_external =
+    Element.map
+      (fun m -> Wrapped m)
+      (Element.link
+         (Link.External
+            {
+              url = url "https://nopal-test-7Q2.example/";
+              on_open_failed = (fun _ -> Changed "open failed");
+            })
+         (Element.text "Docs"))
+  in
+  match link_destination_parts mapped_external with
+  | Some
+      ( `External (shown, Wrapped (Changed "open failed")),
+        [],
+        Element.Text { content = "Docs"; _ } ) ->
+      Alcotest.(check string)
+        "the URL is unchanged" "https://nopal-test-7Q2.example/" shown
+  | Some _
+  | None ->
+      Alcotest.fail
+        "a mapped External link wraps what on_open_failed produces and keeps \
+         its child"
+
+(* [equal] gates reconciliation skipping, so each field it compares needs a
+   case that differs in that field alone, beside one that rebuilds the same
+   link and must stay equal — the arm that keeps the rest from passing
+   vacuously. *)
+let test_link_equal_compares_destination_closure_safely () =
+  let on_open_failed (_ : Link.open_error) = Changed "open failed" in
+  let route ?(style = Nopal_style.Style.empty)
+      ?(interaction = Nopal_style.Interaction.default) ?(attrs = [])
+      ?(path = "/inbox") ?(on_follow = Click) ?(label = "Inbox") () =
+    Element.link ~style ~interaction ~attrs
+      (Link.Route { path = route_path path; on_follow })
+      (Element.text label)
+  in
+  let external_ ?(text = "https://nopal-test-7Q2.example/") handler =
+    Element.link
+      (Link.External { url = url text; on_open_failed = handler })
+      (Element.text "Docs")
+  in
+  let check = Alcotest.(check bool) in
+  check "the same Route link, separately built, is equal" true
+    (Element.equal (route ()) (route ()));
+  check "a different path is not equal" false
+    (Element.equal (route ()) (route ~path:"/outbox" ()));
+  check "a different on_follow is not equal" false
+    (Element.equal (route ()) (route ~on_follow:Submit ()));
+  check "a different child is not equal" false
+    (Element.equal (route ()) (route ~label:"Outbox" ()));
+  check "different attrs are not equal" false
+    (Element.equal (route ()) (route ~attrs:[ ("data-testid", "inbox") ] ()));
+  check "a different style is not equal" false
+    (Element.equal (route ())
+       (route
+          ~style:
+            (Nopal_style.Style.with_layout
+               (Nopal_style.Style.padding_all 8.0)
+               Nopal_style.Style.empty)
+          ()));
+  check "a different interaction is not equal" false
+    (Element.equal (route ()) (route ~interaction:test_interaction ()));
+  check "the same External link, separately built, is equal" true
+    (Element.equal (external_ on_open_failed) (external_ on_open_failed));
+  check "a different URL is not equal" false
+    (Element.equal (external_ on_open_failed)
+       (external_ ~text:"https://other.example/" on_open_failed));
+  check "a Route link is not equal to an External one" false
+    (Element.equal (route ()) (external_ on_open_failed));
+  (* Totality: neither a functional [on_open_failed] nor a closure-valued
+     [on_follow] may make equal raise. *)
+  check "distinct on_open_failed functions compare unequal (no raise)" false
+    (Element.equal
+       (external_ (fun _ -> Changed "open failed"))
+       (external_ (fun _ -> Changed "open failed")));
+  let closure_link =
+    Element.link
+      (Link.Route
+         { path = route_path "/inbox"; on_follow = Handler (fun () -> ()) })
+      (Element.text "Inbox")
+  in
+  check "equal is reflexive on a closure-valued on_follow (no raise)" true
+    (Element.equal closure_link closure_link)
+
 let () =
   Alcotest.run "nopal_element"
     [
@@ -1645,6 +1840,8 @@ let () =
           Alcotest.test_case "map_preserves_button_type_and_disabled" `Quick
             test_map_preserves_button_type_and_disabled;
           Alcotest.test_case "map_keyed" `Quick test_map_keyed;
+          Alcotest.test_case "link_map_maps_destination_and_child" `Quick
+            test_link_map_maps_destination_and_child;
           Alcotest.test_case "map_empty_noop" `Quick test_map_empty_noop;
           Alcotest.test_case "map_text_noop" `Quick test_map_text_noop;
         ] );
@@ -1688,6 +1885,8 @@ let () =
             test_equal_keyed_distinct;
           Alcotest.test_case "equal_keyed_different_fields" `Quick
             test_equal_keyed_different_fields;
+          Alcotest.test_case "link_equal_compares_destination_closure_safely"
+            `Quick test_link_equal_compares_destination_closure_safely;
           Alcotest.test_case "equal_no_raise_on_closures" `Quick
             test_element_equal_no_raise_on_closures;
           Alcotest.test_case "equal_distinguishes_draw_handlers" `Quick

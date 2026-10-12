@@ -1769,6 +1769,7 @@ let button_record_fields = function
   | E.Box _
   | E.Row _
   | E.Column _
+  | E.Link _
   | E.Form _
   | E.Input _
   | E.Checkbox _

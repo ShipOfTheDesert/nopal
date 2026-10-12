@@ -15,7 +15,7 @@ nopal_mvu       ← MVU core (Cmd, Sub, App, Task, Key_chord, Clipboard) — dep
 nopal_element   ← Element.t DSL — no platform deps
 nopal_style     ← Typed layout/paint — no platform deps
 nopal_storage   ← Backend-agnostic async key-value storage contract (module type S, In_memory, With_codec) — no platform deps
-nopal_platform  ← Type-safe bidirectional routing + platform-capability signatures (Platform.NAV, Platform.S) — depends on nopal_storage; no platform deps (renamed from nopal_router)
+nopal_platform  ← Type-safe bidirectional routing + platform-capability signatures (Platform.NAV, Platform.S) — depends on nopal_storage, and on nopal_element for Router.destination's Link.destination; no platform deps (renamed from nopal_router)
 nopal_scene     ← Pure scene types (Color, Paint, Transform, Path segments, Scene) — no platform deps
 nopal_draw      ← 2D drawing DSL (Scale + higher-level Path algorithms) — depends on nopal_scene
 nopal_svg       ← Pure SVG 1.1 string renderer for nopal_scene — no platform deps
@@ -34,7 +34,9 @@ nopal_blob_web  ← Session-local handle ⇄ Brr.Blob.t registry + displayable o
 nopal_image_web ← Browser canvas pipeline implementing Nopal_image.Processing, and the browser side of Nopal_image.Preview and Nopal_image.Retention — depends on nopal_image + nopal_mvu + nopal_blob_web; js_of_ocaml + Brr, never nopal_web/nopal_runtime/lwd
 nopal_storage_web   ← IndexedDB backend implementing Nopal_storage.S — js_of_ocaml + Brr
 nopal_storage_tauri ← Filesystem (tauri-plugin-fs) backend implementing Nopal_storage.S — js_of_ocaml + Brr
-nopal_tauri     ← Tauri desktop/mobile bindings — depends on nopal_mvu (for Task.t), nopal_platform (for Platform.S)
+nopal_tauri     ← Tauri desktop/mobile bindings — depends on nopal_mvu (for Task.t), nopal_platform (for Platform.S); no UI package.
+                   Its sub-library nopal_tauri.mount (module Nopal_tauri_mount) is the Tauri mount entry point and
+                   depends on nopal_web, so the nopal_tauri opam package now depends on nopal_web
 nopal_telemetry_wire ← Shared telemetry event ⇄ JS wire codec for nopal_web + nopal_tauri — js_of_ocaml + Brr
 ```
 
@@ -293,10 +295,13 @@ match Cmd.extract_clipboard_writes cmd with
 
 **Backends.** `Nopal_web.mount` and `mount_with_telemetry` write with the
 browser's asynchronous Clipboard API unless given `?write_clipboard`. A Tauri
-app passes `Nopal_tauri.Clipboard.write` there, which writes through the
-official `tauri-plugin-clipboard-manager`. The desktop manual check is pending
-(not yet run) and mobile — plain text only, per the plugin's documentation — is
-not verified by Nopal:
+app mounts through `Nopal_tauri_mount` (library `nopal_tauri.mount`), which
+passes `Nopal_tauri.Clipboard.write` there; it writes through the official
+`tauri-plugin-clipboard-manager`. `Nopal_web.mount` on a Tauri page without
+`~open_external` refuses to mount (see Tauri Bindings → Links and the Tauri
+mount), so a Tauri app no longer selects the clipboard handler itself. The
+desktop manual check is pending (not yet run) and mobile — plain text only, per
+the plugin's documentation — is not verified by Nopal:
 
 ```ocaml
 (* main.ml — the one place that knows the platform. Nopal ships no Tauri
@@ -305,10 +310,8 @@ let has_tauri () =
   not (Jv.is_undefined (Jv.get Jv.global "__TAURI_INTERNALS__"))
 
 let () =
-  let write_clipboard =
-    if has_tauri () then Some Nopal_tauri.Clipboard.write else None
-  in
-  ignore (Nopal_web.mount ?write_clipboard (module App) root)
+  if has_tauri () then ignore (Nopal_tauri_mount.mount (module App) root)
+  else ignore (Nopal_web.mount (module App) root)
 ```
 
 The Tauri host needs three edits:
@@ -427,8 +430,8 @@ Only Ctrl and Shift are folded, so a subscription naming a bare key still matche
 a backend renders as an attribute — `placeholder`, a radio's `name`, a picker's
 `accept`/`capture`/`multiple`, `disabled`, a container's `focusable`, an
 input's `required`/`autocomplete`/`input_type`, a form's
-`autocomplete`/`novalidate`, a button's `button_type`/`disabled` — the rule
-is: **typed-field derivations beat the `~attrs` list; within the list, the
+`autocomplete`/`novalidate`, a button's `button_type`/`disabled`, a link's
+`destination` (its `href` and `rel`) — the rule is: **typed-field derivations beat the `~attrs` list; within the list, the
 last pair wins.**
 
 Those are two tiers, and they are not the same tier. A typed field sits *above*
@@ -455,11 +458,15 @@ declines in one of two shapes:
 - **Option or empty list** — absent asserts nothing and uncovers the caller's
   pair: `accept`, `capture`, an input's `autocomplete`, an input's `type` (from
   `input_type`), a form's `autocomplete`.
+- **By destination** — a link's `rel` is `"noopener noreferrer"` on an
+  `External` link and absent on a `Route` link, so a caller's `rel` pair stands
+  on a `Route` link only.
 
 Some derivations have no absent form and are derived on every render, so a
 caller's pair of that key is always replaced: `placeholder`, a radio's `name`,
-a checkbox's, radio's or file picker's `type`, and a button's `type` (from
-`button_type`, which is `"button"` when the button names none).
+a checkbox's, radio's or file picker's `type`, a button's `type` (from
+`button_type`, which is `"button"` when the button names none), and a link's
+`href` (the `Route` path or the `External` URL).
 
 `nopal_web` and `nopal_test` are the two renderers that enforce this: the web
 backend applies `?attrs` before it writes any derivation, and the structural
@@ -469,12 +476,14 @@ resolves — to the last pair. The first tier is shared by the two on the keys t
 web backend writes as real attributes: `disabled`, `accept`, `capture`,
 `multiple`, `placeholder`, a radio's `name`, a control's `type`, an input's
 `required`, `aria-required` and `autocomplete`, a form's `autocomplete` and
-`novalidate`, and a button's `type` and `aria-disabled`. Every one of them
+`novalidate`, a button's `type` and `aria-disabled`, and a link's `href` and
+`rel`. Every one of them
 carries the same value in both renderers except `disabled`, `multiple`,
 `required` and `novalidate`, which are a presence attribute (`""`) in the DOM
 and `"true"` in the structural tree — the two agree on which side wins, not on
 the value. `aria-required` and a button's `aria-disabled` are `"true"` in both,
-and a button's `type` is `"button"` or `"submit"` in both. A
+a button's `type` is `"button"` or `"submit"` in both, and a link's `rel` is
+`"noopener noreferrer"` in both. A
 checkbox's, radio's or file picker's `type` is the structural node's tag; an
 input's `type` is a pair in both renderers. A container's
 `focusable` is a first-tier derivation in both, but each spells it in its own
@@ -563,6 +572,67 @@ whose recovery each browser decides for itself; nothing rejects one, and
 "nearest enclosing form" assumes there is at most one. A form becomes a landmark
 for assistive technology only once it has an accessible name, which travels
 through `~attrs` (an `("aria-label", …)` pair, for instance).
+
+**Link children.** Give a link no interactive children (Button, Checkbox,
+Input): the child dispatches its own message and then the link's. An ancestor's
+`on_click` also fires, since the click propagates. The web anchor is
+`display: inline`, so under Button or Scroll its width, height and vertical
+padding have no effect; wrap it in a Box to size it.
+
+**Links.** `Element.link` is a real link wherever the platform has one: a
+native `<a>` in a browser or webview, so the link role, the URL on hover,
+middle- and modified-click, "Open in new tab" and "Copy link address" all come
+from the platform. A link never takes a raw `href`. Its destination is one of:
+
+- `Link.Route { path; on_follow }` — in-app. `path` is a `Route_path.t` and
+  `on_follow` is required: a followed link dispatches it, and the
+  application's `update` answers with `Router.push`. Build both from one route
+  with `Router.destination` (see Routing) so the address and the navigation
+  cannot drift apart. The link itself never touches history.
+- `Link.External { url; on_open_failed }` — outside the app. `url` is a
+  `Url.t`, and `on_open_failed` is required: it is dispatched with a typed
+  `Link.open_error` when a host's opener cannot show the URL. A browser follows
+  an external link itself and never dispatches it. An external anchor carries
+  `rel="noopener noreferrer"`, so the opened page cannot reach back.
+
+Both are checked at construction and neither has an unchecked constructor, so
+`javascript:`, `data:` and protocol-relative paths are unconstructible:
+
+- `Url.of_string` accepts a scheme of `http`, `https`, `mailto` or `tel`
+  (any case) followed by `:`, and examines nothing after it. It refuses
+  `Missing_scheme` (no scheme, or none a browser reads as one),
+  `Unsupported_scheme` (with the scheme as written) and `Control_character`.
+- `Route_path.of_string` accepts a string starting with exactly one `/` not
+  followed by `/` or `\` — `"/"` and `"/a/b?q=1#h"` pass. It refuses
+  `Not_absolute` (no leading `/`, which covers `"javascript:…"` and `""`),
+  `Protocol_relative` (`"//host"`, `"/\host"`, both of which a browser resolves
+  to another host) and `Control_character`.
+- Both refuse a control character (U+0000–U+001F, U+007F) anywhere and a space
+  at either end, checked first, because browsers strip those before reading a
+  URL. Every error case carries the refused `input`, and `to_string` returns
+  the accepted input unchanged.
+
+What a click does is `Link.decide ~host click destination`, one pure, native
+function every renderer calls, so the browser, the webview and the structural
+renderer cannot answer differently:
+
+| Host | Click | `Route` | `External` |
+|---|---|---|---|
+| `Browser` | `Primary`, no modifier | `Navigate on_follow` | `Leave_to_platform` |
+| `Browser` | `Primary` with Ctrl, Meta, Shift or Alt; `Middle`; `Other` | `Leave_to_platform` | `Leave_to_platform` |
+| `Webview` | `Primary` or `Middle`, any modifiers | `Navigate on_follow` | `Open_externally url` |
+| `Webview` | `Other` | `Leave_to_platform` | `Leave_to_platform` |
+
+`Navigate` prevents the platform default and dispatches the message once;
+`Leave_to_platform` neither prevents nor dispatches, so the browser opens a
+tab, window or page as it decides; `Open_externally` prevents the default and
+hands the URL to the host's opener, dispatching `on_open_failed` when that
+fails. A webview has no tabs, so a modified or middle click on a `Route` link
+is a plain click there, and a click on an external link never navigates the webview off
+the app (the context menu's "Open Link" and a dragged link are not guarded). Keyboard Enter on a focused link reaches `decide` as an unmodified
+primary click, and a link is in the tab order natively. Which host a link is
+rendered for is the mount's choice: `Nopal_web.mount` renders for `Browser`,
+and for `Webview` when given `~open_external` (Tauri apps: `Nopal_tauri_mount`).
 
 ```ocaml
 Element.empty                                                    (* renders nothing *)
@@ -659,6 +729,53 @@ Element.select_option : ?disabled:bool -> value:string -> string -> select_optio
 Element.select : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
   -> ?disabled:bool -> ?on_change:(string -> 'msg) -> selected:string
   -> select_option list -> 'msg Element.t
+
+(* Links — see "Links" above for the destination, the checks and the decide
+   table. *)
+Element.link : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
+  -> 'msg Link.destination -> 'msg Element.t -> 'msg Element.t
+  (* Renders an anchor (tag "a" in both renderers) whose href is the Route path
+     or the External URL, with rel="noopener noreferrer" on External only. Both
+     keys are typed: an ("href", _) pair in [attrs] never takes effect, and a
+     ("rel", _) pair only on a Route link. *)
+
+module Url : sig                       (* Nopal_element.Url — pure, native *)
+  type t                               (* abstract: only of_string makes one *)
+  type error =
+    | Missing_scheme of { input : string }
+    | Unsupported_scheme of { input : string; scheme : string }  (* scheme as written *)
+    | Control_character of { input : string }   (* also a space at either end *)
+  val of_string : string -> (t, error) result   (* http | https | mailto | tel, any case *)
+  val to_string : t -> string                   (* the accepted input, unchanged *)
+end
+
+module Route_path : sig                (* Nopal_element.Route_path — pure, native *)
+  type t                               (* abstract: only of_string makes one *)
+  type error =
+    | Not_absolute of { input : string }        (* no leading "/", incl. "javascript:…" and "" *)
+    | Protocol_relative of { input : string }   (* second character "/" or "\" *)
+    | Control_character of { input : string }   (* also a space at either end *)
+  val of_string : string -> (t, error) result
+  val to_string : t -> string                   (* the accepted input, unchanged *)
+end
+
+module Link : sig                      (* Nopal_element.Link — pure, native *)
+  type open_error =
+    | Not_permitted       (* the host refused: no permission, or none for this URL *)
+    | Failed of string    (* the opener failed; a human-readable reason that never carries the URL *)
+  type 'msg destination =
+    | Route of { path : Route_path.t; on_follow : 'msg }
+    | External of { url : Url.t; on_open_failed : open_error -> 'msg }
+  type button = Primary | Middle | Other
+  type click = { button : button; ctrl : bool; meta : bool; shift : bool; alt : bool }
+  type host = Browser | Webview
+  type 'msg action =
+    | Navigate of 'msg            (* prevent the default, dispatch once *)
+    | Leave_to_platform           (* no prevent, no dispatch *)
+    | Open_externally of Url.t    (* prevent the default, hand the URL to the opener *)
+  val decide : host:host -> click -> 'msg destination -> 'msg action   (* total *)
+  val map_destination : ('a -> 'b) -> 'a destination -> 'b destination
+end
 
 (* File selection. Bytes never cross into OCaml: [blob_id] is an opaque handle
    only a _web backend can resolve, via Nopal_blob_web.Blob_store.lookup. *)
@@ -2330,6 +2447,27 @@ Router.push     : 'route Router.t -> 'route -> 'msg Cmd.t      (* push history *
 Router.replace  : 'route Router.t -> 'route -> 'msg Cmd.t      (* replace current *)
 Router.back     : 'route Router.t -> 'msg Cmd.t                (* go back *)
 Router.on_navigate : 'route Router.t -> ('route -> 'msg) -> 'msg Sub.t  (* subscribe *)
+
+Router.destination : 'route Router.t -> 'route -> on_follow:('route -> 'msg)
+  -> ('msg Nopal_element.Link.destination, Nopal_element.Route_path.error) result
+  (* An in-app link destination for [route]: its path is exactly the string
+     push would push, and its message is [on_follow route]. It does not
+     navigate. to_path is the application's function and the router applies it
+     unchecked, so its result goes through Route_path.of_string here; a refusal
+     is returned as Error, never replaced by a default path or by not_found. *)
+```
+
+`on_navigate` fires on popstate only. A followed `Route` link reaches the model
+through its own `on_follow` message, which `update` answers with `push`:
+
+```ocaml
+let view model =
+  match Router.destination router Settings ~on_follow:(fun r -> Follow r) with
+  | Ok destination -> Element.link destination (Element.text "Settings")
+  | Error _ -> Element.text "Settings is unavailable"   (* to_path broke the rule *)
+
+let update model = function
+  | Follow route -> ({ model with route }, Router.push router route)
 ```
 
 ### Platform Capabilities (`nopal_platform`)
@@ -3641,6 +3779,15 @@ Test_renderer.keydown      : selector -> string -> 'msg rendered -> (unit, error
 Test_renderer.dblclick     : selector -> 'msg rendered -> (unit, error) result
   (* A disabled button has no dblclick handler, so it returns No_handler and
      dispatches nothing. *)
+Test_renderer.click_link   : host:Link.host -> Link.click -> selector -> 'msg rendered
+  -> ('msg Link.action, error) result
+  (* Answers [click] on the first matching link as a renderer for [host] would:
+     the action Link.decide returns, so a test asserts "navigated in-app"
+     (Ok (Navigate msg)) versus "left to the platform" (Ok Leave_to_platform)
+     or "handed to the opener" (Ok (Open_externally url)). Only Navigate
+     appends its message; no opener runs, so on_open_failed is never appended.
+     Not_found when nothing matches, No_handler { tag; event = "click" } when
+     the element is not a link. Test_renderer.click does not follow links. *)
 Test_renderer.focus        : selector -> 'msg rendered -> (unit, error) result
 Test_renderer.blur         : selector -> 'msg rendered -> (unit, error) result
   (* These two resolve against an input's focus edges. The box equivalents are
@@ -3833,6 +3980,41 @@ answers a click and an Enter in its form exactly as an untyped one did at
 `Element.checkbox`, `radio` and `select` is untouched and is still the native
 attribute.
 
+**Link answers that moved — read this on a pin bump.**
+**Every exhaustive `match` on `Element.t` stops compiling** (row 1): the
+variant gains a `Link` arm, and the compiler reports the missing case
+(warning 8, an error under dune's default dev profile). Handle `Link { child;
+_ }` the way the match handles a single-child container such as `Button`.
+**A Tauri app that mounts through `Nopal_web.mount` stops mounting** (row 2):
+it compiles, and at run time the window shows a refusal instead of the app.
+Mount through `Nopal_tauri_mount` instead, and add the three host edits
+(row 12) or every external link answers `Not_permitted`.
+
+Everything else is additive. "Before" is the tree at commit `c2ef9ea`. No test
+reads this table.
+
+| # | Key | Visible | Who meets it | Before | Now |
+|---|---|---|---|---|---|
+| 1 | `element-t-gains-link-arm` | compile | any exhaustive `match` on `Element.t` (a renderer, a tree walker, a test helper) | the match is exhaustive | non-exhaustive until it handles `Link of { style; interaction; attrs; destination : 'msg Link.destination; child }` |
+| 2 | `nopal-web-mount-refuses-on-tauri` | run time | a Tauri app calling `Nopal_web.mount` or `mount_with_telemetry` without `~open_external` (the page defines `__TAURI_INTERNALS__`) | mounts and runs | no runtime and no app: the fault text (Web Renderer → `Nopal_web.mount`, below) is written into the target and sent to `?on_error`, and `unmount` is inert. `mount_with_telemetry` runs the app's `init`, installs no bridge, and returns a handle that records nothing. `nopal_web` reads that one global and depends on no Tauri package |
+| 3 | `nopal-web-mount-gains-open-external` | compile, rarely | code annotating `Nopal_web.mount`'s or `mount_with_telemetry`'s full type | no `?open_external` | `?open_external:(Url.t -> ((unit, Link.open_error) result -> unit) -> unit)`; given, links render for `Link.Webview`, omitted, for `Link.Browser`. Ordinary call sites compile untouched |
+| 4 | `nopal-tauri-mount` | additive | a Tauri app | no Tauri mount entry point; the app chose `?write_clipboard` itself | library `nopal_tauri.mount`, module `Nopal_tauri_mount`, with `mount` and `mount_with_telemetry`: the `Nopal_web` arguments minus `?write_clipboard` and `?open_external`, which it supplies |
+| 5 | `nopal-tauri-package-depends-on-nopal-web` | install | anyone installing the `nopal_tauri` opam package | no `nopal_web` dependency | depends on `nopal_web` (for the sub-library). The `nopal_tauri` library itself still links no UI package |
+| 6 | `element-link-builder` | additive | view code | no link element | `Element.link : ?style -> ?interaction -> ?attrs -> 'msg Link.destination -> 'msg Element.t -> 'msg Element.t`, rendered as tag `a` by both renderers |
+| 7 | `link-href-rel-typed` | silent | a link's `~attrs` | — | `href` is always derived (the path or the URL), so an `("href", _)` pair never takes effect; `rel` is `"noopener noreferrer"` on `External` and absent on `Route`, so a `("rel", _)` pair stands on a `Route` link only |
+| 8 | `nopal-element-new-modules` | compile, rarely | code doing `open Nopal_element` that has its own `Url`, `Route_path` or `Link` module | not in scope | `Url`, `Route_path` and `Link` are in scope and can shadow a same-named module |
+| 9 | `router-destination` | additive | routed apps | no way to derive a link from a route | `Router.destination : 'route t -> 'route -> on_follow:('route -> 'msg) -> ('msg Link.destination, Route_path.error) result`: the path is exactly `push`'s string, a refusal is returned and never defaulted, and it does not navigate. `nopal_platform` now names `nopal_element` in its dune `libraries` (it was already a transitive dependency) |
+| 10 | `test-renderer-click-link` | additive | structural tests | no link to click | `Test_renderer.click_link : host:Link.host -> Link.click -> selector -> 'msg rendered -> ('msg Link.action, error) result`, appending the message on `Navigate` only. `Test_renderer.click` does not follow links |
+| 11 | `nopal-tauri-opener` | additive | Tauri apps; code doing `open Nopal_tauri` that has its own `Opener` module | — | `Nopal_tauri.Opener.open_url : Url.t -> ((unit, Link.open_error) result -> unit) -> unit`, resolving once, with the URL replaced by `<url>` in every `Failed` reason |
+| 12 | `tauri-host-opener-plugin` | run time | the Tauri host project (`src-tauri`) | no opener plugin | `tauri-plugin-opener = "2"` in `Cargo.toml`, `.plugin(tauri_plugin_opener::init())` in `src/lib.rs`, and `"opener:allow-open-url"` plus `"opener:allow-default-urls"` in `capabilities/default.json`, not `opener:default`. Without the plugin registered, or without either permission line, an external link click dispatches `on_open_failed Not_permitted` |
+| 13 | `renderer-link-host` | compile, rarely | code using `Nopal_web.Renderer` directly, or doing `open Nopal_web.Renderer` | — | new `type opener`, `type link_host = Browser \| Webview of { open_external : opener }`, and `create ?link_host` (default `Browser`); the open brings constructors `Browser` and `Webview` into scope |
+| 14 | `kitchen-sink-main-mounts-tauri` | example | anyone copying the kitchen sink's `main.ml` | `Nopal_web.mount* ?write_clipboard`, selected by `has_tauri ()` | `Nopal_tauri_mount.mount*` when `has_tauri ()`, `Nopal_web.mount*` otherwise; no local clipboard selection |
+
+What did **not** move: no existing element's rendered tree, and no existing
+signature other than the two mounts' new optional argument. A browser app
+mounting through `Nopal_web.mount` behaves exactly as before. `Router.push`,
+`Router.on_navigate` (popstate only) and `Runtime.create` are unchanged.
+
 #### Telemetry harness (`Nopal_test.Telemetry_test`)
 
 Native, browser-free harness that drives a real app through the recording MVU
@@ -3873,9 +4055,27 @@ Nopal_web.mount :
   -> ?on_error:(string -> unit)
   -> ?write_clipboard:
        (string -> ((unit, Nopal_mvu.Clipboard.error) result -> unit) -> unit)
+  -> ?open_external:
+       (Nopal_element.Url.t
+        -> ((unit, Nopal_element.Link.open_error) result -> unit) -> unit)
   -> (module Nopal_mvu.App.S with type model = 'model and type msg = 'msg)
   -> Brr.El.t -> Nopal_web.mounted      (* { unmount : unit -> unit } *)
-(* Records no telemetry and installs no bridge. *)
+(* Records no telemetry and installs no bridge.
+   ?open_external shows a URL outside the app and resolves with the outcome.
+   Given, links render for a Link.Webview host: a primary or middle click on an
+   External link is handed to it and the page does not navigate; its first
+   Error is dispatched as the link's on_open_failed and later answers are
+   absorbed; a raise before any answer is Failed with the exception's
+   constructor name, never its message. Omitted, links render for a
+   Link.Browser host.
+   REFUSAL: on a page that defines __TAURI_INTERNALS__ with ?open_external
+   omitted, mount creates no runtime and renders no app. It writes this fault
+   into the target and sends the same text to ?on_error, and unmount is inert:
+     "nopal_web refused to mount: this page runs in a Tauri webview and the
+      mount was given no ~open_external, so a link would navigate the webview
+      away from the app. Mount through Nopal_tauri_mount, which supplies one."
+   Reading that one global is all nopal_web knows of Tauri; it depends on no
+   Tauri package. *)
 
 (* Telemetry sibling of mount — see the E2E Telemetry section (Layer 2) *)
 Nopal_web.mount_with_telemetry :
@@ -3883,6 +4083,9 @@ Nopal_web.mount_with_telemetry :
   -> ?on_error:(string -> unit)
   -> ?write_clipboard:
        (string -> ((unit, Nopal_mvu.Clipboard.error) result -> unit) -> unit)
+  -> ?open_external:
+       (Nopal_element.Url.t
+        -> ((unit, Nopal_element.Link.open_error) result -> unit) -> unit)
   -> (module Nopal_mvu.App.S with type model = 'model and type msg = 'msg)
   -> ?serialize_msg:('msg -> string)      (* default: fun _ -> "<opaque>" *)
   -> ?serialize_model:('model -> string)  (* default: fun _ -> "<opaque>" *)
@@ -3891,7 +4094,10 @@ Nopal_web.mount_with_telemetry :
    over its handle, and returns { telemetry : Telemetry.handle; unmount } (the
    handle is the input to Layer 3). Presence is the function name + return
    type, never an optional argument. ?write_clipboard is the handler behind
-   Cmd.write_clipboard; see Commands -> Clipboard. *)
+   Cmd.write_clipboard; see Commands -> Clipboard. ?open_external is as on
+   mount, and so is the refusal: a refused mount installs no bridge, and its
+   telemetry handle comes from a runtime that is created (so init runs) and
+   never started (so it records nothing). *)
 
 (* Browser platform: navigation + storage capabilities *)
 module Platform_web : Nopal_platform.Platform.S   (* storage = Nopal_storage_web.Make () *)
@@ -3974,9 +4180,22 @@ val Store.delete : string -> (unit, string) result Nopal_mvu.Task.t
 val Store.clear  : unit -> (unit, string) result Nopal_mvu.Task.t
 val Store.save   : unit -> (unit, string) result Nopal_mvu.Task.t
 
+(* Opener — the Tauri handler behind an External link, via
+   tauri-plugin-opener's plugin:opener|open_url. Not called from update:
+   Nopal_tauri_mount passes it to Nopal_web.mount ~open_external. Requires the
+   plugin registered and "opener:allow-open-url" plus
+   "opener:allow-default-urls" granted (see "Links and the Tauri mount" below).
+   Resolves exactly once: Ok when the host handed the URL to the system's
+   default application; Error Not_permitted on an ACL refusal, an unregistered
+   plugin, or a URL outside the plugin's scope; Error (Failed reason) otherwise
+   — including "Tauri runtime not available" outside Tauri, and a throwing
+   invoke. Every occurrence of the URL in a reason is replaced by "<url>". *)
+val Opener.open_url :
+  Nopal_element.Url.t -> ((unit, Nopal_element.Link.open_error) result -> unit) -> unit
+
 (* Clipboard — the Tauri handler for Cmd.write_clipboard, via
-   tauri-plugin-clipboard-manager. Not called from update: pass it to
-   Nopal_web.mount ~write_clipboard. Requires the plugin registered and
+   tauri-plugin-clipboard-manager. Not called from update: Nopal_tauri_mount
+   passes it to Nopal_web.mount ~write_clipboard. Requires the plugin registered and
    "clipboard-manager:allow-write-text" granted (see Commands → Clipboard).
    Resolves exactly once: Ok, Error Not_permitted on an ACL refusal, or
    Error (Failed reason) — including "Tauri runtime not available" outside
@@ -4068,6 +4287,85 @@ let subscriptions model =
     (model, Cmd.task task)
 ```
 
+#### Links and the Tauri mount (`nopal_tauri.mount`)
+
+Mount a Tauri app through `Nopal_tauri_mount`, never through `Nopal_web.mount`
+directly. It is the sub-library `nopal_tauri.mount` (add `nopal_tauri.mount` to
+the executable's dune `libraries`); `nopal_tauri` itself stays free of UI
+packages. It renders with `Nopal_web` and supplies every host handler a webview
+needs, so a Tauri app cannot get browser link behaviour by forgetting an
+argument:
+
+```ocaml
+Nopal_tauri_mount.mount :
+  ?safe_area_source:((Nopal_element.Viewport.safe_area -> unit) -> unit -> unit)
+  -> ?on_error:(string -> unit)
+  -> (module Nopal_mvu.App.S with type model = 'model and type msg = 'msg)
+  -> Brr.El.t -> Nopal_web.mounted
+(* Nopal_web.mount with ~write_clipboard:Nopal_tauri.Clipboard.write and
+   ~open_external:Nopal_tauri.Opener.open_url. ?safe_area_source and ?on_error
+   pass through unchanged, so supplying Platform_tauri.safe_area_source on a
+   given platform stays the caller's choice. *)
+
+Nopal_tauri_mount.mount_with_telemetry :
+  ?safe_area_source:((Nopal_element.Viewport.safe_area -> unit) -> unit -> unit)
+  -> ?on_error:(string -> unit)
+  -> (module Nopal_mvu.App.S with type model = 'model and type msg = 'msg)
+  -> ?serialize_msg:('msg -> string) -> ?serialize_model:('model -> string)
+  -> Brr.El.t -> Nopal_web.mounted_with_telemetry
+(* Nopal_web.mount_with_telemetry with the same two handlers. *)
+```
+
+With it, links render for a webview (`Link.Webview`; the table under Element
+DSL → Links): a primary or middle click on an `External` link, modified or not,
+opens the URL in the system browser and the webview stays on the app; a
+`Route` link treats a modified or middle click as a plain click. A failed open
+dispatches the link's `on_open_failed` with `Not_permitted` or `Failed reason`.
+`Nopal_web.mount` on a Tauri page without `~open_external` refuses to mount
+and shows why in the window.
+
+The Tauri host needs three edits:
+
+```toml
+# src-tauri/Cargo.toml, under [dependencies]
+tauri-plugin-opener = "2"
+```
+
+```rust
+// src-tauri/src/lib.rs, on the tauri::Builder chain
+.plugin(tauri_plugin_opener::init())
+```
+
+```json
+// src-tauri/capabilities/default.json, in the "permissions" list
+"opener:allow-open-url",
+"opener:allow-default-urls",
+```
+
+Grant those two lines and nothing else. `opener:allow-open-url` lets the
+webview call `open_url` and carries no scope; `opener:allow-default-urls`
+grants no command and scopes `open_url` to `mailto:*`, `tel:*`, `http://*` and
+`https://*` — exactly the schemes a `Url.t` can carry (observed in the
+generated `src-tauri/gen/schemas/acl-manifests.json` for `tauri-plugin-opener`
+2.5.3, the version this repository's `Cargo.lock` holds). Without the scope
+line every open is refused, and the link dispatches `Not_permitted`.
+`opener:default` is not a shortcut: it also grants `allow-reveal-item-in-dir`,
+which lets the webview reveal any file in the system's file manager. Audit
+what a capability grants from that generated manifest, not from this list:
+a `:default` entry expands to permissions the list never names.
+
+**Recheck on a `tauri` or `tauri-plugin-opener` version bump.**
+`Nopal_tauri.Opener` recognises a refusal by the exact words of the versions
+named in `backends/nopal_tauri/opener.ml`: tauri 2.10.3's ACL refusals (the
+release build's `Command plugin:opener|open_url not allowed by ACL`, the debug
+build's messages beginning `opener.open_url not allowed` or
+`opener.open_url explicitly denied`, and `plugin opener not found`) and the
+plugin's scope refusal, which begins `Not allowed to open url ` followed by the
+URL. When either locked version changes, re-read those sources and update the
+decoder if a message is reworded. Until then a reworded refusal arrives as
+`Error (Failed <the host's message, URL redacted>)` instead of
+`Not_permitted` — still exactly once.
+
 ## E2E Telemetry
 
 Nopal's cross-platform E2E correctness contract is the MVU telemetry log, not
@@ -4102,16 +4400,18 @@ authentication, a QA-only config flag, or remote config). The framework makes th
 choice explicit and greppable; it does not make it safe-by-fiat.
 
 ```ocaml
-(* The application owns the policy; the framework provides composable capability. *)
+(* The application owns the policy; the framework provides composable capability.
+   A Tauri app mounts through Nopal_tauri_mount: Nopal_web.mount* refuses to
+   mount on a Tauri page without ~open_external. *)
 match Config.telemetry_mode config with   (* the app's enum, the app's config *)
 | Off ->
-    Nopal_web.mount (module App) target
+    ignore (Nopal_tauri_mount.mount (module App) target)
 | Record_and_expose ->
-    let handle =
-      Nopal_web.mount_with_telemetry (module App)
+    let mounted =
+      Nopal_tauri_mount.mount_with_telemetry (module App)
         ~serialize_msg ~serialize_model target
     in
-    Nopal_tauri.Telemetry.expose handle    (* Layer 3, optional, from the same handle *)
+    Nopal_tauri.Telemetry.expose mounted.Nopal_web.telemetry   (* Layer 3, optional, from the same handle *)
 ```
 
 ### Telemetry event log (`Nopal_runtime.Telemetry`)
@@ -4259,6 +4559,8 @@ backends/
   nopal_storage_web/   — IndexedDB backend implementing Nopal_storage.S
   nopal_storage_tauri/ — Filesystem (tauri-plugin-fs) backend implementing Nopal_storage.S
   nopal_tauri/       — Tauri desktop/mobile bindings (depends on nopal_mvu, nopal_platform)
+    mount/           — nopal_tauri.mount sub-library: Nopal_tauri_mount, the Tauri mount
+                       entry point (depends on nopal_web)
   nopal_telemetry_wire/ — Shared telemetry event ⇄ JS wire codec (nopal_web + nopal_tauri)
 examples/
   counter/           — Hello world

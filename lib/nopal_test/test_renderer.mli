@@ -49,8 +49,8 @@ val render : 'msg Nopal_element.Element.t -> 'msg rendered
     same name while every other pair the view declared is left where it was.
     Within [attrs] itself the same resolution applies: the last pair the view
     wrote is the one {!attr}, a {!By_attr} selector, and the selector {!click},
-    {!input}, {!submit}, {!submit_form}, {!keydown} and {!select_files} resolve,
-    all answer with.
+    {!click_link}, {!input}, {!submit}, {!submit_form}, {!keydown} and
+    {!select_files} resolve, all answer with.
 
     The web backend carries the same rule by a different mechanism — it applies
     the declared list before it writes any derivation — so on the keys it writes
@@ -58,23 +58,23 @@ val render : 'msg Nopal_element.Element.t -> 'msg rendered
     value of asserting on this one. Those keys are ["disabled"], ["accept"],
     ["capture"], ["multiple"], ["placeholder"], a radio's ["name"], a control's
     ["type"], an input's ["required"], ["aria-required"] and ["autocomplete"], a
-    form's ["autocomplete"] and ["novalidate"], and a button's ["type"] and
-    ["aria-disabled"]. On ["disabled"], ["multiple"], ["required"] and
-    ["novalidate"] the two agree on which side wins and not on the value: this
-    renderer carries ["true"] where the browser carries a presence attribute. A
-    checkbox's, radio's or file picker's ["type"] is this renderer's tag rather
-    than a pair; an input's [input_type] is a ["type"] pair here as there. A
-    box's [focusable] is a first-tier derivation in both, but each renderer
-    spells it in its own vocabulary — a tab-order attribute there, ["focusable"]
-    here — so there is no shared key to compare. ["checked"], ["value"] and
-    ["selected"] are {e not} among them: the browser carries all three as JS
-    properties and never as attributes, so a caller's pair of one of those names
-    is not overruled there. This renderer still overlays them, as a faithful
-    read-out of the typed field, and an assertion on one of the three is a
-    statement about this renderer alone. [Element.draw] carries neither a style
-    nor an attribute list, so it is structurally outside the rule, and a backend
-    nobody has written is bound by nothing here: a rule holds where a test holds
-    it.
+    form's ["autocomplete"] and ["novalidate"], a button's ["type"] and
+    ["aria-disabled"], and a link's ["href"] and ["rel"]. On ["disabled"],
+    ["multiple"], ["required"] and ["novalidate"] the two agree on which side
+    wins and not on the value: this renderer carries ["true"] where the browser
+    carries a presence attribute. A checkbox's, radio's or file picker's
+    ["type"] is this renderer's tag rather than a pair; an input's [input_type]
+    is a ["type"] pair here as there. A box's [focusable] is a first-tier
+    derivation in both, but each renderer spells it in its own vocabulary — a
+    tab-order attribute there, ["focusable"] here — so there is no shared key to
+    compare. ["checked"], ["value"] and ["selected"] are {e not} among them: the
+    browser carries all three as JS properties and never as attributes, so a
+    caller's pair of one of those names is not overruled there. This renderer
+    still overlays them, as a faithful read-out of the typed field, and an
+    assertion on one of the three is a statement about this renderer alone.
+    [Element.draw] carries neither a style nor an attribute list, so it is
+    structurally outside the rule, and a backend nobody has written is bound by
+    nothing here: a rule holds where a test holds it.
 
     A derivation asserts a value and never denies one. Where a typed field
     declines — a picker configuring no [capture], a control that is not
@@ -88,9 +88,10 @@ val render : 'msg Nopal_element.Element.t -> 'msg rendered
     the ["aria-required"] it carries, a form's ["novalidate"], and a button's
     ["aria-disabled"]. An option, or an empty list, contributes nothing when
     absent: ["accept"], ["capture"], an input's ["autocomplete"] and its
-    ["type"], and a form's ["autocomplete"]. An input's ["placeholder"], a
-    radio's ["name"] and a button's ["type"] have no absent form and are
-    contributed on every render.
+    ["type"], and a form's ["autocomplete"]. A link's ["rel"] is contributed for
+    an [External] link only, so a [Route] link uncovers a caller's ["rel"]. An
+    input's ["placeholder"], a radio's ["name"], a button's ["type"] and a
+    link's ["href"] have no absent form and are contributed on every render.
 
     A scroll container's [reveal] declaration is surfaced for inspection as the
     derived attribute pairs ["reveal"] and ["reveal-align"], carried exactly as
@@ -196,6 +197,24 @@ val click : selector -> 'msg rendered -> (unit, error) result
 
     Returns [Error (Not_found selector)] if no element matches, and
     [Error (No_handler ...)] exactly when the click would append nothing. *)
+
+val click_link :
+  host:Nopal_element.Link.host ->
+  Nopal_element.Link.click ->
+  selector ->
+  'msg rendered ->
+  ('msg Nopal_element.Link.action, error) result
+(** [click_link ~host click selector rendered] finds the first element matching
+    [selector] and, when it is an {!Nopal_element.Element.link}, answers [click]
+    on it as a renderer for [host] would: with the action
+    {!Nopal_element.Link.decide} returns for that host, click and the link's
+    destination. Only a [Navigate] action appends its message; a
+    [Leave_to_platform] or [Open_externally] action appends nothing, and no
+    opener runs, so an [Open_externally] never dispatches [on_open_failed].
+
+    Returns [Error (Not_found selector)] if no element matches, and
+    [Error (No_handler ...)] if the element is not a link. {!click} does not
+    follow links. *)
 
 val toggle : selector -> 'msg rendered -> (unit, error) result
 (** [toggle selector rendered] finds the first checkbox matching [selector],

@@ -68,6 +68,13 @@ type 'msg t =
       on_dblclick : 'msg option;
       child : 'msg t;
     }
+  | Link of {
+      style : Nopal_style.Style.t;
+      interaction : Nopal_style.Interaction.t;
+      attrs : (string * string) list;
+      destination : 'msg Link.destination;
+      child : 'msg t;
+    }
   | Input of {
       style : Nopal_style.Style.t;
       interaction : Nopal_style.Interaction.t;
@@ -204,6 +211,11 @@ let button ?(style = Nopal_style.Style.empty)
       on_dblclick;
       child;
     }
+
+let link ?(style = Nopal_style.Style.empty)
+    ?(interaction = Nopal_style.Interaction.default) ?(attrs = []) destination
+    child =
+  Link { style; interaction; attrs; destination; child }
 
 let input ?(style = Nopal_style.Style.empty)
     ?(interaction = Nopal_style.Interaction.default) ?(attrs = [])
@@ -390,6 +402,15 @@ let rec map f = function
           disabled;
           on_click = Option.map f on_click;
           on_dblclick = Option.map f on_dblclick;
+          child = map f child;
+        }
+  | Link { style; interaction; attrs; destination; child } ->
+      Link
+        {
+          style;
+          interaction;
+          attrs;
+          destination = Link.map_destination f destination;
           child = map f child;
         }
   | Input
@@ -580,6 +601,18 @@ let equal_button_type (t1 : button_type) (t2 : button_type) =
       true
   | (Submit | Push), _ -> false
 
+let equal_destination (d1 : 'msg Link.destination) (d2 : 'msg Link.destination)
+    =
+  match (d1, d2) with
+  | ( Link.Route { path = p1; on_follow = f1 },
+      Link.Route { path = p2; on_follow = f2 } ) ->
+      String.equal (Route_path.to_string p1) (Route_path.to_string p2)
+      && f1 == f2
+  | ( Link.External { url = u1; on_open_failed = o1 },
+      Link.External { url = u2; on_open_failed = o2 } ) ->
+      String.equal (Url.to_string u1) (Url.to_string u2) && o1 == o2
+  | (Link.Route _ | Link.External _), _ -> false
+
 (* Equality strategy for handler and message fields:
    Both function-typed handlers (on_click, on_toggle, on_change, ...) and plain
    'msg payloads (on_submit, on_focus, on_blur, on_select, ...) are compared by
@@ -710,6 +743,27 @@ let rec equal a b =
       && Bool.equal d1 d2
       && Option.equal ( == ) oc1 oc2
       && Option.equal ( == ) od1 od2
+      && equal ch1 ch2
+  | ( Link
+        {
+          style = s1;
+          interaction = i1;
+          attrs = a1;
+          destination = d1;
+          child = ch1;
+        },
+      Link
+        {
+          style = s2;
+          interaction = i2;
+          attrs = a2;
+          destination = d2;
+          child = ch2;
+        } ) ->
+      Nopal_style.Style.equal s1 s2
+      && Nopal_style.Interaction.equal i1 i2
+      && equal_attrs a1 a2
+      && equal_destination d1 d2
       && equal ch1 ch2
   | ( Input
         {
@@ -952,9 +1006,9 @@ let rec equal a b =
       && Option.equal equal_capture cap1 cap2
       && Bool.equal m1 m2
       && Option.equal ( == ) oc1 oc2
-  | ( ( Empty | Text _ | Box _ | Row _ | Column _ | Form _ | Button _ | Input _
-      | Checkbox _ | Radio _ | Select _ | File_input _ | Image _ | Scroll _
-      | Keyed _ | Draw _ | Virtual_list _ ),
+  | ( ( Empty | Text _ | Box _ | Row _ | Column _ | Form _ | Button _ | Link _
+      | Input _ | Checkbox _ | Radio _ | Select _ | File_input _ | Image _
+      | Scroll _ | Keyed _ | Draw _ | Virtual_list _ ),
       _ ) ->
       false
 

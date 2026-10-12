@@ -21,6 +21,7 @@ depends: [
   "nopal_storage"
   "nopal_storage_tauri"
   "nopal_telemetry_wire"
+  "nopal_web"
   "odoc" {with-doc}
 ]
 build: [

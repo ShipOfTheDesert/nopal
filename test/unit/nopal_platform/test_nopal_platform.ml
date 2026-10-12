@@ -238,6 +238,62 @@ let test_on_navigate_cleanup_stops_listener () =
     (Alcotest.option route_testable)
     "no dispatch after cleanup" None !received
 
+let test_destination_path_matches_push () =
+  let platform, controls = make_mock_platform "/" in
+  let router = make_router platform in
+  let destination =
+    Nopal_platform.Router.destination router (Item 7) ~on_follow:(fun route ->
+        route)
+  in
+  Alcotest.(check string)
+    "destination does not navigate" "/" (controls.get_path ());
+  Nopal_mvu.Cmd.execute ignore (Nopal_platform.Router.push router (Item 7));
+  let pushed = controls.get_path () in
+  Alcotest.(check string) "push navigated" "/items/7" pushed;
+  match destination with
+  | Ok (Nopal_element.Link.Route { path; on_follow }) ->
+      Alcotest.(check string)
+        "path is the pushed path" pushed
+        (Nopal_element.Route_path.to_string path);
+      Alcotest.check route_testable "on_follow is on_follow route" (Item 7)
+        on_follow
+  | Ok (Nopal_element.Link.External _) ->
+      Alcotest.fail "expected a Route destination, got External"
+  | Error
+      ( Nopal_element.Route_path.Not_absolute { input }
+      | Nopal_element.Route_path.Protocol_relative { input }
+      | Nopal_element.Route_path.Control_character { input } ) ->
+      Alcotest.failf "expected a Route destination, got an error on %S" input
+
+let destination_with_path path =
+  let platform, _controls = make_mock_platform "/" in
+  let router =
+    Nopal_platform.Router.create ~platform ~parse
+      ~to_path:(fun _ -> path)
+      ~not_found:NotFound
+  in
+  Nopal_platform.Router.destination router Home ~on_follow:(fun route -> route)
+
+let test_destination_rejects_bad_to_path () =
+  (match destination_with_path "//evil.example" with
+  | Error (Nopal_element.Route_path.Protocol_relative { input }) ->
+      Alcotest.(check string) "protocol-relative input" "//evil.example" input
+  | Error
+      ( Nopal_element.Route_path.Not_absolute _
+      | Nopal_element.Route_path.Control_character _ ) ->
+      Alcotest.fail "expected Protocol_relative for //evil.example"
+  | Ok (Nopal_element.Link.Route _ | Nopal_element.Link.External _) ->
+      Alcotest.fail "expected //evil.example to be refused");
+  match destination_with_path "javascript:x" with
+  | Error (Nopal_element.Route_path.Not_absolute { input }) ->
+      Alcotest.(check string) "not-absolute input" "javascript:x" input
+  | Error
+      ( Nopal_element.Route_path.Protocol_relative _
+      | Nopal_element.Route_path.Control_character _ ) ->
+      Alcotest.fail "expected Not_absolute for javascript:x"
+  | Ok (Nopal_element.Link.Route _ | Nopal_element.Link.External _) ->
+      Alcotest.fail "expected javascript:x to be refused"
+
 let () =
   Alcotest.run "nopal_platform"
     [
@@ -278,5 +334,12 @@ let () =
             test_on_navigate_dynamic_segment;
           Alcotest.test_case "cleanup stops listener" `Quick
             test_on_navigate_cleanup_stops_listener;
+        ] );
+      ( "router",
+        [
+          Alcotest.test_case "destination_path_matches_push" `Quick
+            test_destination_path_matches_push;
+          Alcotest.test_case "destination_rejects_bad_to_path" `Quick
+            test_destination_rejects_bad_to_path;
         ] );
     ]

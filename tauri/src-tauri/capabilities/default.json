@@ -31,6 +31,8 @@
     "core:menu:default",
     "store:default",
     "clipboard-manager:allow-write-text",
+    "opener:allow-open-url",
+    "opener:allow-default-urls",
     {
       "identifier": "fs:allow-mkdir",
       "allow": [{ "path": "$APPLOCALDATA/nopal_storage" }]

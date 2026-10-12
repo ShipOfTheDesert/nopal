@@ -218,6 +218,7 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(TelemetryMirror(Mutex::new(VecDeque::new())))
         .invoke_handler(tauri::generate_handler![
             get_telemetry,

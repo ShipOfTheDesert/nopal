@@ -52,3 +52,23 @@
  (name test_submit_route)
  (package nopal_element)
  (libraries nopal_element alcotest))
+
+(test
+ (name test_url)
+ (package nopal_element)
+ (libraries nopal_element alcotest))
+
+(test
+ (name test_route_path)
+ (package nopal_element)
+ (libraries nopal_element alcotest))
+
+(test
+ (name test_link)
+ (package nopal_element)
+ (libraries nopal_element alcotest))
+
+(test
+ (name test_url_text)
+ (package nopal_element)
+ (libraries nopal_element alcotest))

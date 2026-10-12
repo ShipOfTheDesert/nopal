@@ -172,6 +172,14 @@ type 'msg t =
       on_dblclick : 'msg option;
       child : 'msg t;
     }
+  | Link of {
+      style : Nopal_style.Style.t;
+      interaction : Nopal_style.Interaction.t;
+      attrs : (string * string) list;
+      destination : 'msg Link.destination;
+          (** Where the link goes; the link's address is derived from it. *)
+      child : 'msg t;
+    }
   | Input of {
       style : Nopal_style.Style.t;
       interaction : Nopal_style.Interaction.t;
@@ -269,7 +277,7 @@ type 'msg t =
     Several builders take both an [?attrs] list and typed fields a backend turns
     into attributes of its own — an input's [placeholder], a radio's [name], a
     picker's [accept], a container's [focusable], a button's [button_type] and
-    [disabled]. The rule is:
+    [disabled], a link's [destination]. The rule is:
     {b typed-field derivations beat the [~attrs] list; within the list, the last
        pair wins.}
 
@@ -297,16 +305,19 @@ type 'msg t =
     than left standing, empty default included — as is a radio's required
     [name], a checkbox's, radio's or file picker's ["type"], and a button's
     ["type"], which [button_type] derives as ["button"] when the button names
-    none. Uncovering is the behaviour of the derivations that can decline, and
-    they decline in one of two shapes. A [bool] cannot say "no attribute":
-    [true] asserts the key and [false] emits nothing, so a [false] uncovers a
-    caller's pair rather than removing it — a control's ["disabled"], a file
-    picker's ["multiple"], an input's ["required"] together with the
-    ["aria-required"] it carries, a form's ["novalidate"], and a button's
-    ["aria-disabled"] from its [disabled]. An option, or an empty list, asserts
-    nothing when absent and uncovers the caller's pair the same way — a file
-    picker's ["accept"] and ["capture"], an input's ["autocomplete"] and its
-    ["type"] from [input_type], and a form's ["autocomplete"].
+    none, and a link's ["href"], which its [destination] always spells.
+    Uncovering is the behaviour of the derivations that can decline, and they
+    decline in one of two shapes. A [bool] cannot say "no attribute": [true]
+    asserts the key and [false] emits nothing, so a [false] uncovers a caller's
+    pair rather than removing it — a control's ["disabled"], a file picker's
+    ["multiple"], an input's ["required"] together with the ["aria-required"] it
+    carries, a form's ["novalidate"], and a button's ["aria-disabled"] from its
+    [disabled]. An option, or an empty list, asserts nothing when absent and
+    uncovers the caller's pair the same way — a file picker's ["accept"] and
+    ["capture"], an input's ["autocomplete"] and its ["type"] from [input_type],
+    and a form's ["autocomplete"]. A link's ["rel"] declines by destination: an
+    [External] link asserts it and a [Route] link derives none, so a caller's
+    ["rel"] pair stands on a [Route] link only.
 
     Two renderers enforce this and no more than two, by two different
     mechanisms. The web backend applies the declared list before it writes any
@@ -323,24 +334,25 @@ type 'msg t =
     real attributes: ["disabled"], ["accept"], ["capture"], ["multiple"],
     ["placeholder"], a radio's ["name"], a control's ["type"], an input's
     ["required"], ["aria-required"] and ["autocomplete"], a form's
-    ["autocomplete"] and ["novalidate"], and a button's ["type"] and
-    ["aria-disabled"]. Of those, ["disabled"], ["multiple"], ["required"] and
-    ["novalidate"] are spelled differently by the two — a presence attribute in
-    the browser, a ["true"] pair in the structural tree — so they agree on which
-    side wins and not on the value; the rest carry the same value in both, a
-    button's ["aria-disabled"] being ["true"] and its ["type"] ["button"] or
-    ["submit"]. A checkbox's, radio's or file picker's ["type"] is the
-    structural node's tag rather than a pair, while an input's is a pair in
-    both. A container's [focusable] is a first-tier derivation in both
-    renderers, but each spells it in its own vocabulary — a tab-order attribute
-    in the browser, ["focusable"] in the structural tree — so there is no shared
-    key to compare. A checkbox's or radio's [checked], an input's or select's
-    value, and an option's selection are JS {e properties} in the browser and
-    never attributes, so a caller's ["checked"], ["value"] or ["selected"] pair
-    in [attrs] lands on the DOM as an ordinary attribute and is not overruled
-    there. The structural renderer still overlays those three, as a faithful
-    read-out of the typed field, but a structural assertion on them states what
-    that renderer answers and not what the browser does.
+    ["autocomplete"] and ["novalidate"], a button's ["type"] and
+    ["aria-disabled"], and a link's ["href"] and ["rel"]. Of those,
+    ["disabled"], ["multiple"], ["required"] and ["novalidate"] are spelled
+    differently by the two — a presence attribute in the browser, a ["true"]
+    pair in the structural tree — so they agree on which side wins and not on
+    the value; the rest carry the same value in both, a button's
+    ["aria-disabled"] being ["true"] and its ["type"] ["button"] or ["submit"],
+    and a link's ["rel"] ["noopener noreferrer"]. A checkbox's, radio's or file
+    picker's ["type"] is the structural node's tag rather than a pair, while an
+    input's is a pair in both. A container's [focusable] is a first-tier
+    derivation in both renderers, but each spells it in its own vocabulary — a
+    tab-order attribute in the browser, ["focusable"] in the structural tree —
+    so there is no shared key to compare. A checkbox's or radio's [checked], an
+    input's or select's value, and an option's selection are JS {e properties}
+    in the browser and never attributes, so a caller's ["checked"], ["value"] or
+    ["selected"] pair in [attrs] lands on the DOM as an ordinary attribute and
+    is not overruled there. The structural renderer still overlays those three,
+    as a faithful read-out of the typed field, but a structural assertion on
+    them states what that renderer answers and not what the browser does.
 
     {2:submit_contract Submit contract}
 
@@ -542,6 +554,30 @@ val button :
     look. Known limitation on the web backend: a disabled button's click is
     cancelled but still propagates to an ancestor's [on_click], unlike a native
     [disabled] button, which fires no click event at all. *)
+
+val link :
+  ?style:Nopal_style.Style.t ->
+  ?interaction:Nopal_style.Interaction.t ->
+  ?attrs:(string * string) list ->
+  'msg Link.destination ->
+  'msg t ->
+  'msg t
+(** [link destination child] is a link to [destination], with [child] as its
+    content. A backend with links renders a native one, whose address is derived
+    from [destination]: a [Route] link's ["href"] is its path, and an [External]
+    link's is its URL, with ["rel"] ["noopener noreferrer"] so the opened page
+    cannot reach back to this one. Both keys are typed, so an ["href"] pair in
+    [attrs] never takes effect, and a ["rel"] pair only on a [Route] link; see
+    {{!section-attribute_precedence} attribute precedence}. What a click on the
+    link does is {!Link.decide}'s answer.
+
+    Give a link no interactive children (a button, checkbox or input): HTML does
+    not allow interactive content inside an anchor, and on the web backend a
+    click on such a child dispatches its own message and then the link's as
+    well. The same holds for an ancestor: a link inside a [box ~on_click] fires
+    both, as the click propagates. The web backend renders the anchor
+    [display: inline], so under a [button] or [scroll] its width, height and
+    vertical padding have no effect; wrap it in a [box] to size it. *)
 
 val input :
   ?style:Nopal_style.Style.t ->

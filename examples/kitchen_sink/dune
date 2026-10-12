@@ -30,6 +30,7 @@
   sub_auth_form
   sub_button_semantics
   sub_clipboard
+  sub_links
   tauri_op)
  (libraries
   nopal_element
@@ -57,6 +58,7 @@
   nopal_image
   nopal_image_web
   nopal_tauri
+  nopal_tauri.mount
   brr)
  (modes js)
  (js_of_ocaml))

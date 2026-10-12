@@ -53,6 +53,9 @@
 //     whose continuation would run after the synchronous test returns, so while
 //     hidden `Promise.reject` is swapped for a thenable that parks its
 //     rejection on the clipboard queue, drained by `__nopal_clipboard_flush`.
+//   - `__nopal_opener_invokes`, `__nopal_set_opener_rejection(str | null)`,
+//     `__nopal_set_opener_throw(str | null)` and `__nopal_opener_flush()`: the
+//     same four for every `plugin:opener|…` invoke, on a queue of their own.
 (function () {
   var nextId = 1;
   var callbacks = {}; // handler id -> raw Event.listen callback
@@ -74,6 +77,10 @@
   var clipboardRejection = null;
   var clipboardThrow = null;
   var clipboardPending = [];
+  globalThis.__nopal_opener_invokes = [];
+  var openerRejection = null;
+  var openerThrow = null;
+  var openerPending = [];
   var DRAIN_LIMIT = 100;
   var hiddenInternals = null;
   var realPromiseReject = Promise.reject;
@@ -120,6 +127,10 @@
     clipboardRejection = null;
     clipboardThrow = null;
     clipboardPending = [];
+    globalThis.__nopal_opener_invokes = [];
+    openerRejection = null;
+    openerThrow = null;
+    openerPending = [];
   };
   globalThis.__nopal_set_clipboard_rejection = function (reason) {
     clipboardRejection = reason;
@@ -132,6 +143,19 @@
     while (clipboardPending.length > 0) {
       if (++steps > DRAIN_LIMIT) throw new Error("the queue did not drain");
       clipboardPending.shift()();
+    }
+  };
+  globalThis.__nopal_set_opener_rejection = function (reason) {
+    openerRejection = reason;
+  };
+  globalThis.__nopal_set_opener_throw = function (message) {
+    openerThrow = message;
+  };
+  globalThis.__nopal_opener_flush = function () {
+    var steps = 0;
+    while (openerPending.length > 0) {
+      if (++steps > DRAIN_LIMIT) throw new Error("the queue did not drain");
+      openerPending.shift()();
     }
   };
   globalThis.__nopal_hide_tauri = function () {
@@ -245,6 +269,20 @@
             clipboardPending.push(function () {
               if (rejection === null) onF(null);
               else onR(rejection);
+            });
+            return { then: function () {} };
+          },
+        };
+      }
+      if (cmd.indexOf("plugin:opener|") === 0) {
+        globalThis.__nopal_opener_invokes.push({ cmd: cmd, args: args });
+        if (openerThrow !== null) throw new TypeError(openerThrow);
+        var openerOutcome = openerRejection;
+        return {
+          then: function (onF, onR) {
+            openerPending.push(function () {
+              if (openerOutcome === null) onF(null);
+              else onR(openerOutcome);
             });
             return { then: function () {} };
           },

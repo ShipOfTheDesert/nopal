@@ -312,6 +312,7 @@ let form_fields label (el : form_msg E.t) =
   | E.Row _
   | E.Column _
   | E.Button _
+  | E.Link _
   | E.Input _
   | E.Checkbox _
   | E.Radio _
@@ -350,6 +351,7 @@ let input_fields label (el : form_msg E.t) =
   | E.Column _
   | E.Form _
   | E.Button _
+  | E.Link _
   | E.Checkbox _
   | E.Radio _
   | E.Select _
