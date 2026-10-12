@@ -23,6 +23,7 @@ by a project this job runs.
 | `window.e2e.ts` | title + visibility transitions via IPC telemetry |
 | `store.e2e.ts` | store value survives a real relaunch (`reloadSession()`) |
 | `event.e2e.ts` | `Event.emit` → real event bus → `Event.listen` → `TauriEventReceived` |
+| `clipboard.e2e.ts` | `Clipboard.write` reports Ok through the real clipboard-manager plugin |
 
 ## Local run (Linux)
 

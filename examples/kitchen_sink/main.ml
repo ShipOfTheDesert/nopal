@@ -20,6 +20,7 @@ module Sub_scroll_pane = Kitchen_sink_app.Sub_scroll_pane
 module Sub_focus_reveal = Kitchen_sink_app.Sub_focus_reveal
 module Sub_auth_form = Kitchen_sink_app.Sub_auth_form
 module Sub_button_semantics = Kitchen_sink_app.Sub_button_semantics
+module Sub_clipboard = Kitchen_sink_app.Sub_clipboard
 
 (* Result-task chaining for the Tauri ops (RFC 0118, REQ-F5). See
    {!Kitchen_sink_app.Tauri_op} for the contract; instantiated here with the
@@ -447,6 +448,7 @@ let update model msg =
   | App.Min_size_msg _
   | App.Auth_form_msg _
   | App.Button_semantics_msg _
+  | App.Clipboard_msg _
   | App.KeyboardHeightChanged _
   | App.Back_demo_push
   | App.Route_changed _
@@ -580,6 +582,10 @@ let serialize_msg : App.msg -> string = function
      from its view, and every fragment is ';'-terminated for the same reason
      the file-input ones are. *)
   | App.Button_semantics_msg bs_msg -> Sub_button_semantics.serialize_msg bs_msg
+  (* Clipboard: the outcome message is the only record of whether the write
+     reached the clipboard, so a browser spec waits on it by its constructor
+     names. It carries the result and never the key. *)
+  | App.Clipboard_msg cb_msg -> Sub_clipboard.serialize_msg cb_msg
   (* Mobile signals (RFC 0116): the keyboard-height readout (REQ-N2) and the
      back-demo route change the Tauri back-IPC e2e asserts on via the host
      [get_telemetry] mirror — [Route_changed] proves the hardware-back chain
@@ -940,9 +946,12 @@ let () =
       Some Nopal_tauri.Platform_tauri.safe_area_source
     else None
   in
+  let write_clipboard =
+    if has_tauri () then Some Nopal_tauri.Clipboard.write else None
+  in
   if telemetry_enabled () then begin
     let mounted : Nopal_web.mounted_with_telemetry =
-      Nopal_web.mount_with_telemetry ?safe_area_source
+      Nopal_web.mount_with_telemetry ?safe_area_source ?write_clipboard
         ~on_error:show_error_toast
         (module Mounted)
         ~serialize_msg ~serialize_model target
@@ -958,7 +967,8 @@ let () =
     (* The kitchen sink is a single-page app that lives for the page lifetime, so
        its [mounted]/[unmount] teardown handle is intentionally discarded. *)
     let (_ : Nopal_web.mounted) =
-      Nopal_web.mount ?safe_area_source ~on_error:show_error_toast
+      Nopal_web.mount ?safe_area_source ?write_clipboard
+        ~on_error:show_error_toast
         (module Mounted)
         target
     in

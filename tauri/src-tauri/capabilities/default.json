@@ -30,6 +30,7 @@
     "core:tray:default",
     "core:menu:default",
     "store:default",
+    "clipboard-manager:allow-write-text",
     {
       "identifier": "fs:allow-mkdir",
       "allow": [{ "path": "$APPLOCALDATA/nopal_storage" }]

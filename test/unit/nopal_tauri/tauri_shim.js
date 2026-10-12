@@ -28,19 +28,39 @@
 //   - `__nopal_set_invoke_failure(bool)`: when true, every non-listen/unlisten
 //     `invoke` rejects SYNCHRONOUSLY with a serde-style plain string (the shape
 //     tauri-plugin command errors take), so the result-typed Window/App/Event
-//     ops (REQ-F5) resolve `Error` observably inside a synchronous Alcotest case
+//     ops resolve `Error` observably inside a synchronous Alcotest case
 //     instead of hanging. Default false; reset by `__nopal_reset_subs`.
 //   - `__nopal_set_os_platform(str)`: define `__TAURI_OS_PLUGIN_INTERNALS__`
 //     with the given `platform` string so `Os.platform` can be driven to its
 //     unknown-platform `Error` path.
+//   - `__nopal_clipboard_invokes`: every `plugin:clipboard-manager|…` invoke,
+//     as `{cmd, args}`, so a test reads the command name and argument keys the
+//     host would receive.
+//   - `__nopal_set_clipboard_rejection(str | null)`: when a string, every
+//     clipboard invoke rejects with it, standing in for whatever rejection the
+//     host sends (an ACL refusal, a plugin error); when null they resolve.
+//     Reset by `__nopal_reset_subs`.
+//   - `__nopal_set_clipboard_throw(str | null)`: when a string, every clipboard
+//     invoke THROWS a TypeError with it synchronously, as `invoke` does when the
+//     internals are broken. Reset by `__nopal_reset_subs`.
+//   - `__nopal_clipboard_flush()`: clipboard settlements are PARKED, never run
+//     before `invoke` returns (a real promise settles on a later turn); this
+//     drains them, behind a step cap. A same-turn fake could not show a write
+//     resolving exactly once across that boundary.
+//   - `__nopal_hide_tauri()` / `__nopal_restore_tauri()`: remove and put back
+//     `__TAURI_INTERNALS__`, so `Ipc.invoke` takes its "Tauri runtime not
+//     available" path. That path returns `Promise.reject(…)`, a genuine promise
+//     whose continuation would run after the synchronous test returns, so while
+//     hidden `Promise.reject` is swapped for a thenable that parks its
+//     rejection on the clipboard queue, drained by `__nopal_clipboard_flush`.
 (function () {
   var nextId = 1;
   var callbacks = {}; // handler id -> raw Event.listen callback
   var listeners = {}; // event name -> [handler id]
   var pendingListens = []; // [{onF, onR}] awaiting explicit resolution
-  var stores = {}; // store rid -> { key: value } (plugin:store mock, REQ-F6)
+  var stores = {}; // store rid -> { key: value } (plugin:store mock)
   var nextStoreRid = 9000;
-  // Host-side telemetry mirror model (RFC 0110 Layer 3 / feature 0120 FR-7). A
+  // Host-side telemetry mirror model. A
   // small cap keeps the drop-oldest bound cheap to exercise; it models the real
   // Rust `TelemetryMirror` drop-oldest semantics, not its production N.
   var telemetryMirror = [];
@@ -50,6 +70,13 @@
   globalThis.__nopal_unlisten_count = 0;
   globalThis.__nopal_console_errors = [];
   globalThis.__nopal_fail_invoke = false;
+  globalThis.__nopal_clipboard_invokes = [];
+  var clipboardRejection = null;
+  var clipboardThrow = null;
+  var clipboardPending = [];
+  var DRAIN_LIMIT = 100;
+  var hiddenInternals = null;
+  var realPromiseReject = Promise.reject;
 
   // Capture Brr.Console.error output (the runtime on_error default path under
   // jsoo) so a test can assert a registration failure was reported. Recorded
@@ -89,6 +116,41 @@
     globalThis.__nopal_unlisten_count = 0;
     globalThis.__nopal_console_errors = [];
     globalThis.__nopal_fail_invoke = false;
+    globalThis.__nopal_clipboard_invokes = [];
+    clipboardRejection = null;
+    clipboardThrow = null;
+    clipboardPending = [];
+  };
+  globalThis.__nopal_set_clipboard_rejection = function (reason) {
+    clipboardRejection = reason;
+  };
+  globalThis.__nopal_set_clipboard_throw = function (message) {
+    clipboardThrow = message;
+  };
+  globalThis.__nopal_clipboard_flush = function () {
+    var steps = 0;
+    while (clipboardPending.length > 0) {
+      if (++steps > DRAIN_LIMIT) throw new Error("the queue did not drain");
+      clipboardPending.shift()();
+    }
+  };
+  globalThis.__nopal_hide_tauri = function () {
+    hiddenInternals = globalThis.__TAURI_INTERNALS__;
+    delete globalThis.__TAURI_INTERNALS__;
+    Promise.reject = function (reason) {
+      return {
+        then: function (_onF, onR) {
+          clipboardPending.push(function () {
+            onR(reason);
+          });
+          return { then: function () {} };
+        },
+      };
+    };
+  };
+  globalThis.__nopal_restore_tauri = function () {
+    Promise.reject = realPromiseReject;
+    globalThis.__TAURI_INTERNALS__ = hiddenInternals;
   };
   globalThis.__nopal_set_invoke_failure = function (fail) {
     globalThis.__nopal_fail_invoke = fail;
@@ -97,7 +159,7 @@
     globalThis.__TAURI_OS_PLUGIN_INTERNALS__ = { platform: platform };
   };
   // Push an event into the host mirror, dropping the oldest past TELEMETRY_CAP
-  // (drop-oldest), mirroring the bounded Rust `TelemetryMirror` (feature 0120).
+  // (drop-oldest), mirroring the bounded Rust `TelemetryMirror`.
   globalThis.__nopal_seed_telemetry = function (kind, value) {
     telemetryMirror.push({ kind: kind, value: value });
     if (telemetryMirror.length > TELEMETRY_CAP) telemetryMirror.shift();
@@ -132,7 +194,7 @@
         globalThis.__nopal_unlisten_count += 1;
         return Promise.resolve(0);
       }
-      // tauri-plugin-store v2 (REQ-F6): rid-keyed key-value store. `load`
+      // tauri-plugin-store v2: rid-keyed key-value store. `load`
       // returns a fresh resource id and creates the backing map; every other
       // command threads `args.rid`. Resolved through the same SYNCHRONOUS
       // thenable so a round-trip settles inside a synchronous test; a real
@@ -174,7 +236,21 @@
           },
         };
       }
-      // Host-side telemetry mirror read (RFC 0110 Layer 3 / feature 0120 FR-7).
+      if (cmd.indexOf("plugin:clipboard-manager|") === 0) {
+        globalThis.__nopal_clipboard_invokes.push({ cmd: cmd, args: args });
+        if (clipboardThrow !== null) throw new TypeError(clipboardThrow);
+        var rejection = clipboardRejection;
+        return {
+          then: function (onF, onR) {
+            clipboardPending.push(function () {
+              if (rejection === null) onF(null);
+              else onR(rejection);
+            });
+            return { then: function () {} };
+          },
+        };
+      }
+      // Host-side telemetry mirror read.
       // Returns a NON-draining clone of the bounded mirror — modelling the Rust
       // `get_telemetry`, which returns `log.clone()` and never drains — so the
       // OCaml `Nopal_tauri.Telemetry.get_telemetry` consumer is exercised against

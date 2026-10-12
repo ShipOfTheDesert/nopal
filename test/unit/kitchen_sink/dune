@@ -170,3 +170,13 @@
  (name test_button_semantics_section)
  (deps %{project_root}/test/e2e/fixtures/button-submit-matrix.tsv)
  (libraries kitchen_sink_app nopal_test alcotest))
+
+(test
+ (name test_clipboard_section)
+ (libraries
+  kitchen_sink_app
+  nopal_test
+  nopal_mvu
+  nopal_element
+  test_util
+  alcotest))

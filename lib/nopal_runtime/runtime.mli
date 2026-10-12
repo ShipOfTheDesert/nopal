@@ -11,6 +11,8 @@ module Make (A : Nopal_mvu.App.S) : sig
   val create :
     ?focus:(string -> unit) ->
     ?scroll_by:(string -> Nopal_element.Scroll_delta.t -> unit) ->
+    ?write_clipboard:
+      (string -> ((unit, Nopal_mvu.Clipboard.error) result -> unit) -> unit) ->
     ?schedule_after:(int -> (unit -> unit) -> unit) ->
     ?on_error:(string -> unit) ->
     ?interpret_atom:
@@ -19,8 +21,8 @@ module Make (A : Nopal_mvu.App.S) : sig
       (unit -> unit, string) result) ->
     unit ->
     t
-  (** [create ?focus ?scroll_by ?schedule_after ?on_error ()] builds a runtime
-      for the app [A].
+  (** [create ?focus ?scroll_by ?write_clipboard ?schedule_after ?on_error ()]
+      builds a runtime for the app [A].
 
       [focus id] is a platform-provided callback used to implement
       {!Nopal_mvu.Cmd.focus}. Defaults to a no-op. The web backend passes a
@@ -32,6 +34,15 @@ module Make (A : Nopal_mvu.App.S) : sig
       renders no elements leaves the request inert rather than reporting it —
       the same posture [focus] takes. The web backend passes a callback that
       queues the request for the drain running after the frame's DOM patch.
+
+      [write_clipboard text resolve] is a platform-provided callback used to
+      implement {!Nopal_mvu.Cmd.write_clipboard}: it places [text] on the
+      clipboard and calls [resolve] with the outcome; the runtime dispatches the
+      first call as the request's outcome message and absorbs later calls and a
+      raise. Defaults to a handler that resolves [Error Unavailable] at once —
+      not a no-op, because unlike [focus] and [scroll_by] this request carries a
+      message the application is waiting for, and a backend with no clipboard
+      must still answer it.
 
       [schedule_after ms callback] is a platform-provided timer used to
       implement {!Nopal_mvu.Cmd.after}. Defaults to a no-op that silently drops
@@ -66,6 +77,8 @@ module Make (A : Nopal_mvu.App.S) : sig
   val create_with_telemetry :
     ?focus:(string -> unit) ->
     ?scroll_by:(string -> Nopal_element.Scroll_delta.t -> unit) ->
+    ?write_clipboard:
+      (string -> ((unit, Nopal_mvu.Clipboard.error) result -> unit) -> unit) ->
     ?schedule_after:(int -> (unit -> unit) -> unit) ->
     ?on_error:(string -> unit) ->
     ?interpret_atom:
@@ -76,16 +89,16 @@ module Make (A : Nopal_mvu.App.S) : sig
     ?serialize_model:(A.model -> string) ->
     unit ->
     t * Telemetry.handle
-  (** [create_with_telemetry ?focus ?scroll_by ?schedule_after ?serialize_msg
-       ?serialize_model ()] builds a runtime that records every dispatched
-      message, model transition, issued command, and subscription firing into an
-      in-process log, and returns it alongside the {!Telemetry.handle} that
-      queries that log.
+  (** [create_with_telemetry ?focus ?scroll_by ?write_clipboard ?schedule_after
+       ?serialize_msg ?serialize_model ()] builds a runtime that records every
+      dispatched message, model transition, issued command, and subscription
+      firing into an in-process log, and returns it alongside the
+      {!Telemetry.handle} that queries that log.
 
-      [focus], [scroll_by], [schedule_after], [on_error], and [interpret_atom]
-      behave exactly as in {!create}. The returned runtime has the same type [t]
-      and identical loop semantics — telemetry only observes, it never alters
-      dispatch behaviour (REQ-N3).
+      [focus], [scroll_by], [write_clipboard], [schedule_after], [on_error], and
+      [interpret_atom] behave exactly as in {!create}. The returned runtime has
+      the same type [t] and identical loop semantics — telemetry only observes,
+      it never alters dispatch behaviour (REQ-N3).
 
       [serialize_msg] / [serialize_model] render recorded values to the strings
       stored in [Message] and [Model_transition] events. Each defaults to

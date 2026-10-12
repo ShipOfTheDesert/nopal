@@ -35,6 +35,13 @@ module Make (A : Nopal_mvu.App.S) = struct
            backend that renders no elements leaves the request inert rather than
            reporting it. Read only from [execute_cmd], never on the per-message
            path. *)
+    write_clipboard :
+      string -> ((unit, Nopal_mvu.Clipboard.error) result -> unit) -> unit;
+        (* Platform-supplied clipboard handler used to implement
+           {!Nopal_mvu.Cmd.write_clipboard}. Unlike [focus] and [scroll_by] its
+           default must not be a no-op: the request carries an outcome message
+           the application waits for, so a backend with no clipboard resolves
+           [Error Unavailable] rather than leaving it unanswered. *)
     schedule_after : int -> (unit -> unit) -> unit;
     on_error : string -> unit;
         (* Reports any exception raised by [A.update], [A.subscriptions], an
@@ -96,6 +103,8 @@ module Make (A : Nopal_mvu.App.S) = struct
      serialisers wired in here, so they share this assembly to keep the two
      entry points in lockstep. *)
   let make ?(focus = fun _id -> ()) ?(scroll_by = fun _id _delta -> ())
+      ?(write_clipboard =
+        fun _text resolve -> resolve (Error Nopal_mvu.Clipboard.Unavailable))
       ?(schedule_after = fun _ms _f -> ()) ?(on_error = default_on_error)
       ?(interpret_atom = default_interpret_atom) ~recording ~recorder
       ~serialize_msg ~serialize_model () =
@@ -112,6 +121,7 @@ module Make (A : Nopal_mvu.App.S) = struct
       queue = Queue.create ();
       focus;
       scroll_by;
+      write_clipboard;
       schedule_after;
       on_error;
       recording;
@@ -122,20 +132,22 @@ module Make (A : Nopal_mvu.App.S) = struct
       phase = Created;
     }
 
-  let create ?focus ?scroll_by ?schedule_after ?on_error ?interpret_atom () =
-    make ?focus ?scroll_by ?schedule_after ?on_error ?interpret_atom
-      ~recording:false ~recorder:Telemetry.off
+  let create ?focus ?scroll_by ?write_clipboard ?schedule_after ?on_error
+      ?interpret_atom () =
+    make ?focus ?scroll_by ?write_clipboard ?schedule_after ?on_error
+      ?interpret_atom ~recording:false ~recorder:Telemetry.off
       ~serialize_msg:(fun _msg -> "<opaque>")
       ~serialize_model:(fun _model -> "<opaque>")
       ()
 
-  let create_with_telemetry ?focus ?scroll_by ?schedule_after ?on_error
-      ?interpret_atom ?(serialize_msg = fun _msg -> "<opaque>")
+  let create_with_telemetry ?focus ?scroll_by ?write_clipboard ?schedule_after
+      ?on_error ?interpret_atom ?(serialize_msg = fun _msg -> "<opaque>")
       ?(serialize_model = fun _model -> "<opaque>") () =
     let recorder, handle = Telemetry.create () in
     let rt =
-      make ?focus ?scroll_by ?schedule_after ?on_error ?interpret_atom
-        ~recording:true ~recorder ~serialize_msg ~serialize_model ()
+      make ?focus ?scroll_by ?write_clipboard ?schedule_after ?on_error
+        ?interpret_atom ~recording:true ~recorder ~serialize_msg
+        ~serialize_model ()
     in
     (rt, handle)
 
@@ -297,6 +309,7 @@ module Make (A : Nopal_mvu.App.S) = struct
        Post-shutdown completions route back through [dispatch], which drops. *)
     guard rt "command effect" (fun () ->
         Nopal_mvu.Cmd.interpret ~focus:rt.focus ~scroll_by:rt.scroll_by
+          ~write_clipboard:rt.write_clipboard
           ~dispatch:(fun msg -> dispatch rt msg)
           ~schedule_after:(fun ms msg ->
             rt.schedule_after ms (fun () -> dispatch rt msg))

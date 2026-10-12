@@ -61,6 +61,93 @@ struct
   let subscriptions _model = Nopal_mvu.Sub.none
 end
 
+(* A copy app: [Copy] asks for the fake key to be written to the clipboard,
+   and the outcome message moves the model to a status naming the outcome. The
+   key is fake so a test can search every recorded event for it. *)
+let fake_key = "nopal-test-key-7Q2"
+
+type clip_msg = Copy | Copied of (unit, Nopal_mvu.Clipboard.error) result
+
+module Clipboard_app :
+  Nopal_mvu.App.S with type model = string and type msg = clip_msg = struct
+  type model = string
+  type msg = clip_msg
+
+  let init () = ("idle", Nopal_mvu.Cmd.none)
+
+  let update model msg =
+    match msg with
+    | Copy ->
+        ( model,
+          Nopal_mvu.Cmd.write_clipboard fake_key ~on_result:(fun r -> Copied r)
+        )
+    | Copied (Ok ()) -> ("copied", Nopal_mvu.Cmd.none)
+    | Copied (Error Nopal_mvu.Clipboard.Not_permitted) ->
+        ("not-permitted", Nopal_mvu.Cmd.none)
+    | Copied (Error Nopal_mvu.Clipboard.Unavailable) ->
+        ("unavailable", Nopal_mvu.Cmd.none)
+    | Copied (Error (Nopal_mvu.Clipboard.Failed _)) ->
+        ("failed", Nopal_mvu.Cmd.none)
+
+  let view _vp model = Nopal_element.Element.text model
+  let subscriptions _model = Nopal_mvu.Sub.none
+end
+
+let serialize_clip_msg = function
+  | Copy -> "Copy"
+  | Copied _ -> "Copied"
+
+let event_mentions needle = function
+  | Telemetry.Message s
+  | Telemetry.Command s
+  | Telemetry.Subscription s ->
+      contains s needle
+  | Telemetry.Model_transition { before; after } ->
+      contains before needle || contains after needle
+
+(* The whole recorded history, so one assertion pins the [Command
+   "write_clipboard"] event followed by the harness's [Unavailable] outcome
+   message ([Copied]) and the transition to "unavailable". *)
+let test_harness_resolves_write_unavailable () =
+  let final, events =
+    Harness.run_with_telemetry
+      (module Clipboard_app)
+      ~serialize_msg:serialize_clip_msg ~serialize_model:Fun.id [ Copy ]
+  in
+  Alcotest.(check string)
+    "the default Unavailable outcome reached the model" "unavailable" final;
+  Alcotest.(check (list event_testable))
+    "the copy, its command and the Unavailable outcome are recorded"
+    [
+      Telemetry.Message "Copy";
+      Telemetry.Model_transition { before = "idle"; after = "idle" };
+      Telemetry.Command "write_clipboard";
+      Telemetry.Message "Copied";
+      Telemetry.Model_transition { before = "idle"; after = "unavailable" };
+    ]
+    events;
+  Alcotest.(check bool)
+    "the copied text appears in no recorded event" false
+    (List.exists (event_mentions fake_key) events)
+
+(* The test feeds the outcome itself: the callback taken from the command
+   [update] returned becomes the next message the harness dispatches. *)
+let test_fed_outcome_reaches_update () =
+  let _, cmd = Clipboard_app.update "idle" Copy in
+  match Nopal_mvu.Cmd.extract_clipboard_writes cmd with
+  | [ (text, on_result) ] ->
+      Alcotest.(check string) "the write carries the key" fake_key text;
+      let final, _events =
+        Harness.run_with_telemetry
+          (module Clipboard_app)
+          ~serialize_msg:serialize_clip_msg ~serialize_model:Fun.id
+          [ Copy; on_result (Ok ()) ]
+      in
+      Alcotest.(check string) "the fed outcome moved the model" "copied" final
+  | writes ->
+      Alcotest.failf "expected exactly one clipboard write, got %d"
+        (List.length writes)
+
 let test_harness_drives_and_records () =
   let final, events =
     Harness.run_with_telemetry
@@ -172,6 +259,10 @@ let () =
             test_harness_drives_and_records;
           Alcotest.test_case "app exception dumps and re-raises" `Quick
             test_app_exception_dumps_and_reraises;
+          Alcotest.test_case "resolves a clipboard write Unavailable" `Quick
+            test_harness_resolves_write_unavailable;
+          Alcotest.test_case "a fed clipboard outcome reaches update" `Quick
+            test_fed_outcome_reaches_update;
         ] );
       ( "Assertions",
         [

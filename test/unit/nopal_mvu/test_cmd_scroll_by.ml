@@ -132,6 +132,7 @@ let test_interpret_routes_to_the_callback () =
   Cmd.interpret
     ~focus:(fun id -> focused := id :: !focused)
     ~scroll_by:(fun id d -> scrolled := (id, d) :: !scrolled)
+    ~write_clipboard:(fun _text _resolve -> ())
     ~dispatch:ignore
     ~schedule_after:(fun _ms _msg -> ())
     cmd;

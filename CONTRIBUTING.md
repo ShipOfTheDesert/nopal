@@ -93,9 +93,9 @@ disagreeing with its argument rather than by waiting for the change that would
 close it.
 
 Each record lives beside the rule it defers, so the next reader of that rule
-sees the exception: D-1, D-2, D-6, D-10 and D-16 under
-[E2E tests](#e2e-tests-playwright), D-3 under [Performance](#performance), D-4
-and D-12 under [Kitchen Sink](#kitchen-sink), D-5 and D-7 under
+sees the exception: D-1, D-2, D-6, D-10, D-16 and D-18 under
+[E2E tests](#e2e-tests-playwright), D-3 and D-17 (discharged) under
+[Performance](#performance), D-4 and D-12 under [Kitchen Sink](#kitchen-sink), D-5 and D-7 under
 [VIII. Bug-Class Prevention](#viii-bug-class-prevention), D-8, D-9, D-11,
 D-13, D-14 and D-15 under [V. Functional Patterns](#v-functional-patterns). D-11 is
 discharged; its record stays where it was, because an id is assigned once and
@@ -215,8 +215,8 @@ and `touch ~/.cache/ms-playwright/<browser>-<rev>/INSTALLATION_COMPLETE`.
 Deferring a browser case is allowed; leaving it unrecorded is not — see
 [Deferrals and decisions not to cover](#deferrals-and-decisions-not-to-cover)
 for the `D-n` scheme these records follow.
-**There is one current deferral (D-1) and four decisions not to cover
-(D-2, D-6, D-10 and D-16).**
+**There is one current deferral (D-1) and five decisions not to cover
+(D-2, D-6, D-10, D-16 and D-18).**
 
 #### Open deferral D-1 — a relative-scroll request naming a container the frame removed
 
@@ -437,6 +437,36 @@ that is loading, answers as the matrix states. A renderer that derived either
 answer from something other than those two fields would pass every browser gate
 here. The owner above names that change, and it adds the untyped and loading
 cells to the section and the spec, and deletes this record.
+
+#### Decision not to cover D-18 — no Tauri e2e case shows `main.ml` selecting `Nopal_tauri.Clipboard.write`
+
+**Owner: whoever gives the web fallback a way to be told apart from the Tauri
+handler (a path marker in the outcome, or a fallback that fails under Tauri), in
+the change that does it.**
+
+`test/e2e/tauri/clipboard.e2e.ts` clicks Copy and waits for
+`Clipboard:Copy_result:Ok;`. It covers the plugin registration in
+`tauri/src-tauri/src/lib.rs` and the `clipboard-manager:allow-write-text` grant:
+with the grant removed the spec goes red on `Error Not_permitted;` (observed
+2026-10-11, `GDK_BACKEND=x11 just e2e-tauri`).
+
+It does not cover the line in `examples/kitchen_sink/main.ml` that selects
+`Nopal_tauri.Clipboard.write` under `has_tauri ()`. Passing `None` there leaves
+the spec green (observed 2026-10-11: 7 of 7 spec files pass). The cause is that
+`nopal_web` falls back to `navigator.clipboard.writeText`
+(`backends/nopal_web/clipboard_web.ml` lines 52-57, used by default at
+`backends/nopal_web/nopal_web.ml` lines 426 and 458), and the Tauri webview
+grants that too, so the result is `Ok` either way. Telling the two apart would
+need a production change or a read of the OS clipboard, which the spec does not
+do.
+
+The substitute is a manual check against the packaged app: remove
+`clipboard-manager:allow-write-text` from the capability, click Copy, and expect
+`Error Not_permitted`. An `Ok` means the web fallback, not the Tauri handler,
+performed the write (`main.ml` passed the web fallback instead of
+`Nopal_tauri.Clipboard.write`). The revival trigger is the owner's change above, or any change
+that makes the fallback fail under Tauri; that change adds the assertion to
+`clipboard.e2e.ts` and deletes this record.
 
 ### Desktop Development (Tauri)
 
@@ -1314,7 +1344,7 @@ js_of_ocaml output without justification.
 Deferring a benchmark obligation is allowed; leaving it unrecorded is not — see
 [Deferrals and decisions not to cover](#deferrals-and-decisions-not-to-cover)
 for the `D-n` scheme.
-**There is one current deferral (D-3).**
+**There is one current deferral (D-3); D-17 is discharged below.**
 
 ### Open deferral D-3 — the committed baseline is stale, so read it relatively
 
@@ -1364,6 +1394,36 @@ drift later, and silently raises the regression ceiling for every future
 change. Until then: record the red runs alongside the green ones rather than
 the run that suited you, never re-run until green, and never re-baseline to
 absorb an inflated number.
+
+### Discharged deferral D-17 — `virtual_list/initial_render_10000` read +22.6% in a three-run pair
+
+**Discharged by the six-run reading below, the "more runs" step the procedure
+prescribes for a median still above 20%.**
+
+The change that added `Cmd.write_clipboard` ran the D-3 procedure as three
+interleaved `just bench` runs per tree, its working tree against a `git archive`
+of its merge base, on 2026-10-11. Seventeen of the eighteen medians were within
+20%. `virtual_list/initial_render_10000` was not:
+
+| tree | runs (ms) | median | spread |
+| --- | --- | --- | --- |
+| merge base | 15.5 / 18.0 / 15.3 | 15.5 | 17.4% |
+| branch | 19.0 / 19.3 / 15.5 | 19.0 | 20.0% |
+
+That is **+22.6%**. Neither tree's own spread covers it, and the branch median
+lies above every base run, so the three-run pair alone did not discharge it.
+
+The same session then ran three more interleaved runs per tree, all of them
+reported. Over six runs the base read 15.5 / 18.0 / 15.3 / 20.8 / 16.1 / 18.4
+(median 17.05, spread 32.3%) and the branch 19.0 / 19.3 / 15.5 / 18.2 / 21.9 /
+17.9 (median 18.60, spread 34.4%): **+9.1%**, inside either tree's spread. That
+is the "more runs of this one metric on both trees" the record prescribed, and
+it discharges the record: the move is within the benchmark's own noise.
+
+The code argument corroborates: the benchmark mounts through `Runtime.create`
+and `Nopal_web.Renderer`, and the renderer was not changed. The runtime gained
+one record field, set once at creation, and one label passed to `Cmd.interpret`
+per command; the initial render issues no clipboard command.
 
 ## Kitchen Sink
 

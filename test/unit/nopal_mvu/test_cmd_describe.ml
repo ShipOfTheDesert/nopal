@@ -9,6 +9,8 @@ let cmds_with_labels =
     (Cmd.after 100 0, "after");
     (Cmd.focus "id", "focus");
     (Cmd.scroll_by "id" (Nopal_element.Scroll_delta.viewports 0.5), "scroll_by");
+    ( Cmd.write_clipboard "text" ~on_result:(fun _outcome -> 0),
+      "write_clipboard" );
   ]
 
 (* The label is the only name the telemetry mirror — and therefore the browser
