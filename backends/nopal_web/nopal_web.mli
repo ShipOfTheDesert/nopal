@@ -30,6 +30,8 @@ type mounted_with_telemetry = {
 val mount :
   ?safe_area_source:((Nopal_element.Viewport.safe_area -> unit) -> unit -> unit) ->
   ?on_error:(string -> unit) ->
+  ?write_clipboard:
+    (string -> ((unit, Nopal_mvu.Clipboard.error) result -> unit) -> unit) ->
   (module Nopal_mvu.App.S with type model = 'model and type msg = 'msg) ->
   Brr.El.t ->
   mounted
@@ -85,6 +87,21 @@ val mount :
     toast as the reference pattern for surfacing faults in a packaged app, so a
     [view] that raises surfaces there too.
 
+    [~write_clipboard text resolve] performs {!Nopal_mvu.Cmd.write_clipboard}
+    and calls [resolve] with the outcome. The runtime delivers the handler's
+    first call as the outcome message; later calls, and a raise from the
+    handler, are absorbed (a raise before any call becomes [Failed]). When
+    omitted, the write goes to the browser's asynchronous Clipboard API
+    ([navigator.clipboard.writeText]), called synchronously while the runtime
+    interprets the command — never queued to a frame as focus and relative
+    scrolls are — so a write issued from the [update] handling a click runs
+    within that click's user activation, which is the only window in which a
+    browser grants it. An absent API resolves [Error Unavailable], a
+    [NotAllowedError] rejection [Error Not_permitted], and any other rejection
+    or throw [Error (Failed reason)] with the platform's message. A Tauri entry
+    point passes [Nopal_tauri.Clipboard.write] here; [nopal_web] stays
+    Tauri-agnostic, as with [~safe_area_source].
+
     This wires everything together: runtime creation, Lwd root subscription, DOM
     rendering, and event dispatch. It records no telemetry and installs no
     inspection surface — see {!mount_with_telemetry} for the telemetry sibling.
@@ -97,6 +114,8 @@ val mount :
 val mount_with_telemetry :
   ?safe_area_source:((Nopal_element.Viewport.safe_area -> unit) -> unit -> unit) ->
   ?on_error:(string -> unit) ->
+  ?write_clipboard:
+    (string -> ((unit, Nopal_mvu.Clipboard.error) result -> unit) -> unit) ->
   (module Nopal_mvu.App.S with type model = 'model and type msg = 'msg) ->
   ?serialize_msg:('msg -> string) ->
   ?serialize_model:('model -> string) ->
@@ -104,10 +123,10 @@ val mount_with_telemetry :
   mounted_with_telemetry
 (** [mount_with_telemetry (module MyApp) ?serialize_msg ?serialize_model target]
     is the telemetry sibling of {!mount} (and accepts the same
-    [~safe_area_source] and [~on_error] hooks): it builds the runtime via
-    {!Nopal_runtime.Runtime.Make.create_with_telemetry}, drives it exactly as
-    {!mount} does, installs the [window.__nopal_telemetry__] browser bridge over
-    its handle (RFC 0110, Layer 2), and returns that handle as the [telemetry]
+    [~safe_area_source], [~on_error] and [~write_clipboard] hooks): it builds
+    the runtime via {!Nopal_runtime.Runtime.Make.create_with_telemetry}, drives
+    it exactly as {!mount} does, installs the [window.__nopal_telemetry__]
+    browser bridge over its handle, and returns that handle as the [telemetry]
     field of a {!mounted_with_telemetry} — paired with the same [unmount]
     teardown {!mount} yields.
 

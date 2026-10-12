@@ -141,6 +141,7 @@ let test_cmd_interpret_single_pass () =
   Nopal_mvu.Cmd.interpret
     ~focus:(fun _id -> ())
     ~scroll_by:(fun _id _delta -> ())
+    ~write_clipboard:(fun _text _resolve -> ())
     ~dispatch:(fun msg -> dispatched := msg :: !dispatched)
     ~schedule_after:(fun ms msg -> scheduled := (ms, msg) :: !scheduled)
     cmd;
@@ -183,6 +184,7 @@ let test_cmd_batch_interprets_children_in_list_order () =
   Nopal_mvu.Cmd.interpret
     ~focus:(fun _id -> ())
     ~scroll_by:(fun _id _delta -> ())
+    ~write_clipboard:(fun _text _resolve -> ())
     ~dispatch:(fun (_ : int) -> ())
     ~schedule_after:(fun _ms _msg -> ())
     cmd;

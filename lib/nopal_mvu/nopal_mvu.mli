@@ -2,11 +2,13 @@
 
     This package defines the MVU runtime contract: [Cmd.t] for commands, [Sub.t]
     for subscriptions, [App.S] for the application signature, [Task.t] for
-    composable async operations, and [Key_chord] for the modifier-folded key
-    string a keydown or keyup subscription handler receives. It has zero
-    platform dependencies and compiles on native OCaml. *)
+    composable async operations, [Clipboard] for the outcome of a clipboard
+    write, and [Key_chord] for the modifier-folded key string a keydown or keyup
+    subscription handler receives. It has zero platform dependencies and
+    compiles on native OCaml. *)
 
 module Cmd = Cmd
+module Clipboard = Clipboard
 module Sub = Sub
 module App = App
 module Task = Task

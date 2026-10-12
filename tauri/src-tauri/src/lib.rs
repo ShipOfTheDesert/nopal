@@ -6,10 +6,10 @@ use tauri::{Emitter, Listener, Manager};
 // Bound on the host mirror: beyond this many events the oldest are dropped
 // (drop-oldest). Kept in parity with the OCaml `Nopal_runtime.Telemetry`
 // `log_capacity` so the host and browser mirrors agree and neither grows
-// unbounded (feature 0120 FR-7).
+// unbounded.
 const TELEMETRY_CAPACITY: usize = 10_000;
 
-// Host-side mirror of the in-webview telemetry log (RFC 0110, Layer 3). Always
+// Host-side mirror of the in-webview telemetry log. Always
 // compiled, but inert until the OCaml side calls `Nopal_tauri.Telemetry.expose`,
 // which registers a forwarder that emits each event as `nopal:telemetry`. The
 // listener registered in `run`'s setup appends those into this bounded deque, so
@@ -20,8 +20,7 @@ struct TelemetryMirror(Mutex<VecDeque<Value>>);
 #[tauri::command]
 fn get_telemetry(mirror: tauri::State<'_, TelemetryMirror>) -> Vec<Value> {
     // Non-draining read: clone the mirror (oldest first) without emptying it, so
-    // repeated reads see the same log — matching the browser `getEvents` bridge
-    // (feature 0120 FR-7).
+    // repeated reads see the same log — matching the browser `getEvents` bridge.
     match mirror.0.lock() {
         Ok(log) => log.iter().cloned().collect(),
         Err(_) => Vec::new(),
@@ -30,7 +29,7 @@ fn get_telemetry(mirror: tauri::State<'_, TelemetryMirror>) -> Vec<Value> {
 
 #[tauri::command]
 fn simulate_tray_click(app: tauri::AppHandle) {
-    // Reuse the real tray-click signal; only the trigger is synthetic (REQ-F6).
+    // Reuse the real tray-click signal; only the trigger is synthetic.
     let _ = app.emit("nopal:tray-click", "Left");
 }
 
@@ -164,10 +163,10 @@ mod tray_linux {
 // insets, soft-keyboard height, or hardware-back interception — the real values
 // come from the Android side (`WindowInsets` / IME via JNI or a Kotlin plugin)
 // and require an initialized `gen/android` project, which lands with the Android
-// build pipeline (RFC 0116, Task 7). Until then this emits structurally-correct
+// build pipeline. Until then this emits structurally-correct
 // events with the documented payload grammar and stub (zero) values.
 //
-// Two distinct "zero" semantics — do not conflate (RFC 0116 Decision 1):
+// Two distinct "zero" semantics — do not conflate:
 //   - Desktop: this module is `#[cfg(target_os = "android")]`, so desktop never
 //     runs it. No native event fires; the OCaml `Sub.custom` setup dispatches
 //     zero insets / 0 keyboard height once. Zero is the correct PERMANENT
@@ -218,6 +217,7 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(TelemetryMirror(Mutex::new(VecDeque::new())))
         .invoke_handler(tauri::generate_handler![
             get_telemetry,
@@ -228,16 +228,16 @@ pub fn run() {
             report_keyboard_height
         ])
         .setup(|app| {
-            // Feed the host-side mirror from the in-webview forwarder
-            // (RFC 0110, Layer 3). Inert until `Nopal_tauri.Telemetry.expose`
-            // starts emitting `nopal:telemetry`.
+            // Feed the host-side mirror from the in-webview forwarder. Inert
+            // until `Nopal_tauri.Telemetry.expose` starts emitting
+            // `nopal:telemetry`.
             let mirror_handle = app.handle().clone();
             app.listen("nopal:telemetry", move |event| {
                 if let Ok(value) = serde_json::from_str::<Value>(event.payload()) {
                     if let Some(state) = mirror_handle.try_state::<TelemetryMirror>() {
                         if let Ok(mut log) = state.0.lock() {
                             // Drop-oldest once at capacity so the mirror cannot
-                            // grow unbounded (feature 0120 FR-7).
+                            // grow unbounded.
                             if log.len() >= TELEMETRY_CAPACITY {
                                 log.pop_front();
                             }

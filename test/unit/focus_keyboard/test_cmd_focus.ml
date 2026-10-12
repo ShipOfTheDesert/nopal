@@ -24,6 +24,7 @@ let test_focus_interpret_calls_callback () =
   Nopal_mvu.Cmd.interpret
     ~focus:(fun id -> recorded := id :: !recorded)
     ~scroll_by:(fun _id _delta -> ())
+    ~write_clipboard:(fun _text _resolve -> ())
     ~dispatch:ignore
     ~schedule_after:(fun _ _ -> ())
     (Nopal_mvu.Cmd.focus "target");

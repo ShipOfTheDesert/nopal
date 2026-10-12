@@ -11,7 +11,7 @@ Homepage: nopal.run
 Every concern is a separate opam package with strict one-way dependency flow:
 
 ```
-nopal_mvu       ← MVU core (Cmd, Sub, App, Task, Key_chord) — depends on nopal_element for the types Cmd/Sub/App carry (Scroll_delta.t, Viewport.t, Element.t); no platform deps
+nopal_mvu       ← MVU core (Cmd, Sub, App, Task, Key_chord, Clipboard) — depends on nopal_element for the types Cmd/Sub/App carry (Scroll_delta.t, Viewport.t, Element.t); no platform deps
 nopal_element   ← Element.t DSL — no platform deps
 nopal_style     ← Typed layout/paint — no platform deps
 nopal_storage   ← Backend-agnostic async key-value storage contract (module type S, In_memory, With_codec) — no platform deps
@@ -155,6 +155,11 @@ Cmd.scroll_by : string -> Nopal_element.Scroll_delta.t -> 'msg Cmd.t
      compose rather than overwrite. An id naming nothing, an id naming
      something that cannot scroll, and a backend that renders no elements are
      all the same no-op, and none of them is an error. Carries no message. *)
+Cmd.write_clipboard :
+  string -> on_result:((unit, Clipboard.error) result -> 'msg) -> 'msg Cmd.t
+  (* Place a string on the system clipboard; on_result receives the outcome,
+     exactly once. Issue it from the update that handles the click. See
+     Clipboard below. *)
 Cmd.map : ('a -> 'b) -> 'a Cmd.t -> 'b Cmd.t  (* transform message type *)
 ```
 
@@ -208,6 +213,137 @@ the container in the platform's natural tab order.
 There is no `autofocus` field and none is needed: `Cmd.focus` from `init`'s
 command focuses on first render, which is also the version an application can
 make conditional.
+
+#### Clipboard
+
+Writing plain text to the system clipboard is a command, so `update` stays pure
+and the application imports no backend. The outcome comes back as one message:
+
+```ocaml
+type msg = Copy_clicked | Copied of (unit, Nopal_mvu.Clipboard.error) result
+
+| Copy_clicked ->
+    (model, Cmd.write_clipboard model.api_key ~on_result:(fun r -> Copied r))
+| Copied (Ok ()) -> ({ model with note = "Copied" }, Cmd.none)
+| Copied (Error Nopal_mvu.Clipboard.Not_permitted) -> ...  (* refused *)
+| Copied (Error Nopal_mvu.Clipboard.Unavailable) -> ...    (* no clipboard *)
+| Copied (Error (Nopal_mvu.Clipboard.Failed reason)) -> ...
+```
+
+Every write resolves exactly once — a rejected, thrown or absent platform API
+is an `Error`, never only a console line. The reason is a variant; match it,
+do not parse a message:
+
+```ocaml
+type Nopal_mvu.Clipboard.error =
+  | Not_permitted     (* the platform refused the write *)
+  | Unavailable       (* there is no clipboard to write to *)
+  | Failed of string  (* anything else: the platform's reason, never the text *)
+```
+
+| Situation | Outcome |
+|---|---|
+| Browser: `navigator.clipboard` or `writeText` absent (not a secure context — only `https` pages and `localhost` are — or an old browser) | `Error Unavailable` |
+| Browser: `writeText` rejects with `NotAllowedError` (permission denied, or no user activation) | `Error Not_permitted` |
+| Tauri: the ACL refuses the command (permission not granted, or plugin not registered — both are setup mistakes with the same fix) | `Error Not_permitted` |
+| A runtime created with no clipboard handler (`Runtime.create`'s default) | `Error Unavailable` |
+| Anything else (another rejection, a throw, `Nopal_tauri.Clipboard.write` outside Tauri) | `Error (Failed reason)` |
+
+**Issue the write from the `update` that handles the click.** Browsers allow a
+clipboard write only within the user activation of a gesture. The runtime
+interprets a command on the same call stack as the click that produced it, and
+the web backend calls `writeText` synchronously there, so a write returned from
+that `update` runs inside the window. A write returned from a message that
+arrives later — a `Task` completion, a `Cmd.after`, an HTTP response — may be
+refused as `Not_permitted`, depending on the browser. Chromium with the
+`clipboard-write` permission granted accepts a write with no gesture at all
+(observed in Playwright's Chromium 145), so a Chromium-only test cannot show a
+write that left the window; do not take that as portable. When the text comes
+from a request, fetch it first and copy on the user's next click.
+
+**Nopal never logs the copied text, and it does not redact your state.**
+`Cmd.describe` names the command `"write_clipboard"` and never its text, so the
+telemetry `Command` event carries no text, and a `Failed` reason never contains
+it. The telemetry log records messages and the model through the application's
+own `serialize_msg` and `serialize_model` (passed to
+`Nopal_web.mount_with_telemetry` or `Runtime.create_with_telemetry`), so an
+application copying a secret — an API key, a token — keeps it out of those
+serialisers and out of anything else it logs. Both default to `"<opaque>"`.
+
+**Testing.** No test backend has a clipboard: the `Telemetry_test` harness
+records the `Command "write_clipboard"` event and resolves the write
+`Error Unavailable`, the runtime default. Assert
+on the request structurally, then feed the outcome you want through `update`:
+
+```ocaml
+Cmd.extract_clipboard_writes :
+  'msg Cmd.t -> (string * ((unit, Clipboard.error) result -> 'msg)) list
+(* Every write in the command tree, recursing into batch, in issue order: its
+   text and the callback that turns an outcome into a message. *)
+
+let model, cmd = App.update model Copy_clicked in
+match Cmd.extract_clipboard_writes cmd with
+| [ (text, on_result) ] ->
+    (* text is the key; now drive the refusal branch *)
+    let model, _ =
+      App.update model (on_result (Error Nopal_mvu.Clipboard.Not_permitted))
+    in ...
+| _ -> Alcotest.fail "expected exactly one clipboard write"
+```
+
+**Backends.** `Nopal_web.mount` and `mount_with_telemetry` write with the
+browser's asynchronous Clipboard API unless given `?write_clipboard`. A Tauri
+app passes `Nopal_tauri.Clipboard.write` there, which writes through the
+official `tauri-plugin-clipboard-manager`. The desktop manual check is pending
+(not yet run) and mobile — plain text only, per the plugin's documentation — is
+not verified by Nopal:
+
+```ocaml
+(* main.ml — the one place that knows the platform. Nopal ships no Tauri
+   probe; this is the kitchen sink's own check. *)
+let has_tauri () =
+  not (Jv.is_undefined (Jv.get Jv.global "__TAURI_INTERNALS__"))
+
+let () =
+  let write_clipboard =
+    if has_tauri () then Some Nopal_tauri.Clipboard.write else None
+  in
+  ignore (Nopal_web.mount ?write_clipboard (module App) root)
+```
+
+The Tauri host needs three edits:
+
+```toml
+# src-tauri/Cargo.toml, under [dependencies]
+tauri-plugin-clipboard-manager = "2"
+```
+
+```rust
+// src-tauri/src/lib.rs, on the tauri::Builder chain
+.plugin(tauri_plugin_clipboard_manager::init())
+```
+
+```json
+// src-tauri/capabilities/default.json, in the "permissions" list
+"clipboard-manager:allow-write-text",
+```
+
+Grant `clipboard-manager:allow-write-text` and nothing else.
+`clipboard-manager:allow-read-text` lets the webview read the clipboard, which
+copying never needs. `clipboard-manager:default` is not a shortcut: in
+`tauri-plugin-clipboard-manager` 2.3.3 its permission list is empty, so it
+grants no clipboard command at all and the write is refused as `Not_permitted`.
+
+**Recheck on a `tauri` version bump.** `Nopal_tauri.Clipboard` recognises an
+access-control refusal by the exact words of the `tauri` version named in `backends/nopal_tauri/clipboard.ml`: the release
+build's `Command plugin:clipboard-manager|write_text not allowed by ACL`, and
+the debug build's messages beginning `clipboard-manager.write_text not allowed`
+or `clipboard-manager.write_text explicitly denied`. When the locked `tauri`
+version changes, re-read the ACL check in `src/webview/mod.rs` and
+`resolve_access_message` in `src/ipc/authority.rs`, and update the decoder in
+`backends/nopal_tauri/clipboard.ml` if either is reworded. Until then a
+reworded refusal arrives as `Error (Failed <the host's message>)` instead of
+`Not_permitted` — still exactly once.
 
 ### Tasks (`Task.t`)
 
@@ -3733,19 +3869,29 @@ Mount an app to the DOM (the only package with browser dependencies):
 
 ```ocaml
 Nopal_web.mount :
-  (module Nopal_mvu.App.S with type model = 'model and type msg = 'msg)
-  -> Brr.El.t -> unit
+  ?safe_area_source:((Nopal_element.Viewport.safe_area -> unit) -> unit -> unit)
+  -> ?on_error:(string -> unit)
+  -> ?write_clipboard:
+       (string -> ((unit, Nopal_mvu.Clipboard.error) result -> unit) -> unit)
+  -> (module Nopal_mvu.App.S with type model = 'model and type msg = 'msg)
+  -> Brr.El.t -> Nopal_web.mounted      (* { unmount : unit -> unit } *)
 (* Records no telemetry and installs no bridge. *)
 
 (* Telemetry sibling of mount — see the E2E Telemetry section (Layer 2) *)
 Nopal_web.mount_with_telemetry :
-  (module Nopal_mvu.App.S with type model = 'model and type msg = 'msg)
+  ?safe_area_source:((Nopal_element.Viewport.safe_area -> unit) -> unit -> unit)
+  -> ?on_error:(string -> unit)
+  -> ?write_clipboard:
+       (string -> ((unit, Nopal_mvu.Clipboard.error) result -> unit) -> unit)
+  -> (module Nopal_mvu.App.S with type model = 'model and type msg = 'msg)
   -> ?serialize_msg:('msg -> string)      (* default: fun _ -> "<opaque>" *)
   -> ?serialize_model:('model -> string)  (* default: fun _ -> "<opaque>" *)
-  -> Brr.El.t -> Nopal_runtime.Telemetry.handle
+  -> Brr.El.t -> Nopal_web.mounted_with_telemetry
 (* Builds a recording runtime, drives it, installs window.__nopal_telemetry__
-   over its handle, and returns that handle (the input to Layer 3). Presence is
-   the function name + handle return type, never an optional argument. *)
+   over its handle, and returns { telemetry : Telemetry.handle; unmount } (the
+   handle is the input to Layer 3). Presence is the function name + return
+   type, never an optional argument. ?write_clipboard is the handler behind
+   Cmd.write_clipboard; see Commands -> Clipboard. *)
 
 (* Browser platform: navigation + storage capabilities *)
 module Platform_web : Nopal_platform.Platform.S   (* storage = Nopal_storage_web.Make () *)
@@ -3827,6 +3973,16 @@ val Store.set    : string -> string -> (unit, string) result Nopal_mvu.Task.t
 val Store.delete : string -> (unit, string) result Nopal_mvu.Task.t
 val Store.clear  : unit -> (unit, string) result Nopal_mvu.Task.t
 val Store.save   : unit -> (unit, string) result Nopal_mvu.Task.t
+
+(* Clipboard — the Tauri handler for Cmd.write_clipboard, via
+   tauri-plugin-clipboard-manager. Not called from update: pass it to
+   Nopal_web.mount ~write_clipboard. Requires the plugin registered and
+   "clipboard-manager:allow-write-text" granted (see Commands → Clipboard).
+   Resolves exactly once: Ok, Error Not_permitted on an ACL refusal, or
+   Error (Failed reason) — including "Tauri runtime not available" outside
+   Tauri. *)
+val Clipboard.write :
+  string -> ((unit, Nopal_mvu.Clipboard.error) result -> unit) -> unit
 
 (* Event — emit returns Task.t; listen uses callbacks (maps to Sub.custom) *)
 type Event.event = { payload : string }
@@ -3984,17 +4140,26 @@ Runtime constructors (`Nopal_runtime.Runtime.Make(A)`):
 val create :
   ?focus:(string -> unit) ->
   ?scroll_by:(string -> Nopal_element.Scroll_delta.t -> unit) ->
+  ?write_clipboard:
+    (string -> ((unit, Nopal_mvu.Clipboard.error) result -> unit) -> unit) ->
   ?schedule_after:(int -> (unit -> unit) -> unit) ->
   unit -> t
 (* Records nothing. Behaviour unchanged from the pre-telemetry runtime.
    [scroll_by] is the platform callback implementing Cmd.scroll_by; like
    [focus] it defaults to a no-op, so a backend that renders no elements leaves
    the request inert rather than reporting it. The web backend passes a callback
-   that queues the request for the drain running after the frame's DOM patch. *)
+   that queues the request for the drain running after the frame's DOM patch.
+   [write_clipboard text resolve] implements Cmd.write_clipboard and calls
+   [resolve]; the runtime delivers the first call and absorbs later calls and a
+   raise. Unlike [focus] it is not a no-op by default: the
+   default resolves [Error Unavailable] at once, because the application is
+   waiting for the outcome message. *)
 
 val create_with_telemetry :
   ?focus:(string -> unit) ->
   ?scroll_by:(string -> Nopal_element.Scroll_delta.t -> unit) ->
+  ?write_clipboard:
+    (string -> ((unit, Nopal_mvu.Clipboard.error) result -> unit) -> unit) ->
   ?schedule_after:(int -> (unit -> unit) -> unit) ->
   ?serialize_msg:(A.msg -> string) ->        (* default: fun _ -> "<opaque>" *)
   ?serialize_model:(A.model -> string) ->    (* default: fun _ -> "<opaque>" *)
@@ -4008,7 +4173,7 @@ Constructor labels for the `Command`/`Subscription` events (stable strings the
 fragment assertions depend on):
 
 ```ocaml
-val Cmd.describe : 'msg Cmd.t -> string   (* "none" | "batch" | "perform" | "task" | "after" | "focus" | "scroll_by" *)
+val Cmd.describe : 'msg Cmd.t -> string   (* "none" | "batch" | "perform" | "task" | "after" | "focus" | "scroll_by" | "write_clipboard" — never the copied text *)
 val Sub.describe : 'msg Sub.t -> string   (* "none" | "batch" | "every" | "on_keydown" | ... | "custom" *)
 ```
 
@@ -4064,7 +4229,7 @@ would let the same assertion spec run against web and Tauri) is tracked in
 
 ```
 lib/
-  nopal_mvu/         — Cmd, Sub, App, Task, Key_chord — depends on nopal_element
+  nopal_mvu/         — Cmd, Sub, App, Task, Key_chord, Clipboard — depends on nopal_element
                        for the types they carry; zero platform deps
   nopal_element/     — Element.t DSL + Virtual_list + Reveal + Scroll_delta + Submit_route — zero platform deps
   nopal_style/       — Style.t, Text.t, Interaction.t, Cursor.t, Font, Color

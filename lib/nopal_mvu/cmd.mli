@@ -117,6 +117,32 @@ val scroll_by : string -> Nopal_element.Scroll_delta.t -> 'msg t
     an off-screen target with a [scroll_by] lands at focus's position, not the
     scroll's. *)
 
+val write_clipboard :
+  string -> on_result:((unit, Clipboard.error) result -> 'msg) -> 'msg t
+(** [write_clipboard text ~on_result] asks the platform to place [text] on the
+    system clipboard. The interpreter resolves the request exactly once, and the
+    runtime dispatches [on_result] applied to the outcome: [Ok ()] when the text
+    was written, [Error reason] otherwise (see {!Clipboard.error}). A backend
+    with no clipboard resolves [Error Unavailable]; it never drops the request.
+
+    {b Issue it from the [update] that handles the click.} Browsers allow a
+    clipboard write only within the user activation of a gesture, and the
+    runtime interprets the command on the same call stack as the click that
+    produced it. A write issued from a message that arrives later — a {!Task.t}
+    completion, an {!after} — may be refused as [Not_permitted], depending on
+    the browser.
+
+    {b A secure context is required.} In a browser the Clipboard API exists only
+    on [https] pages and [localhost]; elsewhere the write resolves
+    [Error Unavailable].
+
+    {b Nopal never logs the text, but it does not redact application state.}
+    {!describe} names the command and never its text, and a [Failed] reason
+    never carries it. Telemetry records messages and the model through the
+    application's own [serialize_msg] and [serialize_model], so an application
+    copying a secret keeps it out of those serialisers, and out of anything else
+    it logs. *)
+
 val map : ('a -> 'b) -> 'a t -> 'b t
 (** Transform the message type of a command. *)
 
@@ -126,18 +152,21 @@ val is_none : 'msg t -> bool
 
 val describe : 'msg t -> string
 (** A stable label naming the command's top-level constructor ([none] | [batch]
-    | [perform] | [task] | [after] | [focus] | [scroll_by]), for telemetry
-    [Command] events. Total over the variant. *)
+    | [perform] | [task] | [after] | [focus] | [scroll_by] | [write_clipboard]),
+    for telemetry [Command] events. Total over the variant. The label never
+    carries a command's payload, so a copied text cannot reach telemetry through
+    it. *)
 
 val execute : 'msg dispatch -> 'msg t -> unit
 (** [execute dispatch cmd] interprets a command tree, calling [dispatch] for
     each message produced. It acts on [perform] and [task] nodes only, and
-    ignores all three of the others: [after], [focus] and [scroll_by] are each
-    dropped with no report that a request was there. That makes it a test-only
+    ignores all four of the others: [after], [focus], [scroll_by] and
+    [write_clipboard] are each dropped with no report that a request was there —
+    a dropped clipboard write dispatches no outcome. That makes it a test-only
     interpreter, for suites whose assertions are about the messages an app
-    dispatches and nothing else. A suite that must see a delayed, focused or
-    scrolled effect uses {!interpret} instead, which takes a handler for each of
-    the three and so cannot drop one silently. *)
+    dispatches and nothing else. A suite that must see a delayed, focused,
+    scrolled or copied effect uses {!interpret} instead, which takes a handler
+    for each of the four and so cannot drop one silently. *)
 
 val extract_after : 'msg t -> (int * 'msg) option
 (** [extract_after cmd] extracts the delay and message from an [after] command.
@@ -157,22 +186,37 @@ val extract_scroll_bys : 'msg t -> (string * Nopal_element.Scroll_delta.t) list
     structural test can see the request: unlike a declaration on an element, a
     command leaves no trace in the element tree. *)
 
+val extract_clipboard_writes :
+  'msg t -> (string * ((unit, Clipboard.error) result -> 'msg)) list
+(** [extract_clipboard_writes cmd] collects every clipboard write in a command
+    tree, recursing into [batch], in issue order: each request's text and the
+    callback that turns its outcome into a message. A structural test asserts
+    the copy was asked for, then feeds a chosen outcome back through [update] by
+    applying the callback. *)
+
 val interpret :
   focus:(string -> unit) ->
   scroll_by:(string -> Nopal_element.Scroll_delta.t -> unit) ->
+  write_clipboard:(string -> ((unit, Clipboard.error) result -> unit) -> unit) ->
   dispatch:'msg dispatch ->
   schedule_after:(int -> 'msg -> unit) ->
   'msg t ->
   unit
-(** [interpret ~focus ~scroll_by ~dispatch ~schedule_after cmd] processes the
-    entire command tree in a single pass. [Perform] and [Task] nodes are
-    executed with [dispatch]. [After] nodes are passed to [schedule_after].
-    [Focus] nodes call [focus] with the element id. [Scroll_by] nodes call
-    [scroll_by] with the container id and the delta. [None] is ignored.
+(** [interpret ~focus ~scroll_by ~write_clipboard ~dispatch ~schedule_after cmd]
+    processes the entire command tree in a single pass. [Perform] and [Task]
+    nodes are executed with [dispatch]. [After] nodes are passed to
+    [schedule_after]. [Focus] nodes call [focus] with the element id.
+    [Scroll_by] nodes call [scroll_by] with the container id and the delta.
+    [Write_clipboard] nodes call [write_clipboard] with the text and a resolver;
+    the handler calls the resolver with the outcome, synchronously or later, and
+    the first call is dispatched as the request's outcome message; later calls
+    are absorbed and a raise from the handler becomes [Failed]. [None] is
+    ignored.
 
-    [scroll_by] is a required label rather than an optional one: an interpreter
-    allowed to omit it would discard the request without saying so, which is the
-    silently-dropped-effect shape this codebase rules out.
+    [scroll_by] and [write_clipboard] are required labels rather than optional
+    ones: an interpreter allowed to omit either would discard the request
+    without saying so, which is the silently-dropped-effect shape this codebase
+    rules out.
 
     Note: [schedule_after] receives the raw message (['msg]), not a callback.
     The runtime wraps this to produce the [(int -> (unit -> unit) -> unit)]

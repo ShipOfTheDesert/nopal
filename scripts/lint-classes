@@ -80,6 +80,8 @@ C1_RE='Console\.\(\s*error|Console\.error'
 C1B_RE='Task\.guard[^_][^(]*\(fun resolve ->\s*\n\s*let resolve ='
 C2_RE='Error "[^" ]+"'
 C3_RE='\("rid", *Jv\.(of_int|of_string)|\brid *= *[0-9]'
+TAURI_PIN_RE='tauri [0-9]+\.[0-9]+\.[0-9]+'
+TAURI_LOCK_RE='name = "tauri"\nversion = "[0-9.]+"'
 C5_RE='\b(List\.hd|List\.tl|List\.nth|Result\.get_ok|Option\.get)\b'
 
 report_class() { # title  remediation  matches
@@ -168,7 +170,26 @@ run_checks() {
     found=1
   fi
 
+  # tauri pin — clipboard.ml classifies the host's refusal wording of the tauri
+  # version named in its comment ("tauri X.Y.Z"). Cargo.toml asks for tauri "2",
+  # so a routine cargo update can move the locked version and silently turn
+  # Not_permitted into Failed. Make a bump go red until the wording is rechecked.
+  local named locked
+  named="$(rg -o --no-filename -m1 "$TAURI_PIN_RE" "$REPO_ROOT/backends/nopal_tauri/clipboard.ml" | rg -o '[0-9]+\.[0-9]+\.[0-9]+' || true)"
+  locked="$(rg -U -o --no-filename "$TAURI_LOCK_RE" "$REPO_ROOT/tauri/src-tauri/Cargo.lock" | rg -o -m1 '[0-9]+\.[0-9]+\.[0-9]+' || true)"
+  if tauri_pin_mismatch "$named" "$locked"; then
+    report_class "tauri version pin (clipboard refusal wording)" \
+      "recheck the refusal strings in backends/nopal_tauri/clipboard.ml against tauri $locked, then update the version named in its comment (named: '${named:-none}', locked: '${locked:-none}')" \
+      "backends/nopal_tauri/clipboard.ml vs tauri/src-tauri/Cargo.lock"
+    found=1
+  fi
+
   return $found
+}
+
+# True when the version named in the comment is absent or differs from the locked one.
+tauri_pin_mismatch() { # named  locked
+  [ -z "$1" ] || [ "$1" != "$2" ]
 }
 
 # --selftest — prove each pattern fires on a known-bad snippet (fixtures are fed
@@ -198,6 +219,15 @@ selftest() {
   assert_fires "class 3 (faked rid, literal)"  "$C3_RE" '[| ("rid", Jv.of_int 0) |]'
   assert_fires "class 3 (faked rid, binding)"  "$C3_RE" 'let rid = 0 in'
   assert_fires "class 5 (partial function)"    "$C5_RE" 'let first = List.hd items in'
+  assert_fires "tauri pin (comment)"           "$TAURI_PIN_RE" '(* How tauri 2.10.3 words an access-control refusal'
+  assert_fires "tauri pin (Cargo.lock)"        "$TAURI_LOCK_RE" 'name = "tauri"
+version = "2.10.3"'
+  if tauri_pin_mismatch "2.10.3" "2.10.4" && ! tauri_pin_mismatch "2.10.3" "2.10.3"; then
+    echo "  ok   tauri pin comparison fires on a mismatched pin and lock"
+  else
+    echo "  FAIL tauri pin comparison did not distinguish a mismatch" >&2
+    rc=1
+  fi
   echo "  note class 4 (bare lifecycle flag) has no reliable grep — see header + docs/bug-classes/0004"
 
   echo "lint-classes --selftest: the current tree is clean"

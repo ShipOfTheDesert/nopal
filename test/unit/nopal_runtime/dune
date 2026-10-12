@@ -5,6 +5,7 @@
   test_sub_manager
   test_runtime_viewport
   test_telemetry
-  test_runtime_telemetry)
+  test_runtime_telemetry
+  test_runtime_clipboard)
  (package nopal_runtime)
- (libraries nopal_runtime nopal_mvu nopal_element lwd alcotest))
+ (libraries nopal_runtime nopal_mvu nopal_element lwd test_util alcotest))

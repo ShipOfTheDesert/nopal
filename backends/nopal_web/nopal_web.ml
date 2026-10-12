@@ -423,6 +423,7 @@ let drive (type msg) ?(on_error = default_on_error) ~(start : unit -> unit)
         shutdown ()
 
 let mount (type model msg) ?safe_area_source ?on_error
+    ?(write_clipboard = Clipboard_web.write)
     (module A : Nopal_mvu.App.S with type model = model and type msg = msg)
     (target : Brr.El.t) : mounted =
   let module R = Nopal_runtime.Runtime.Make (A) in
@@ -436,7 +437,8 @@ let mount (type model msg) ?safe_area_source ?on_error
     R.create
       ~focus:(fun id -> Queue.add id pending_focus)
       ~scroll_by:(fun id delta -> Queue.add (id, delta) pending_scroll)
-      ~schedule_after ?on_error ~interpret_atom:web_interpret_atom ()
+      ~write_clipboard ~schedule_after ?on_error
+      ~interpret_atom:web_interpret_atom ()
   in
   let unmount =
     drive ?on_error
@@ -453,6 +455,7 @@ let mount (type model msg) ?safe_area_source ?on_error
   { unmount }
 
 let mount_with_telemetry (type model msg) ?safe_area_source ?on_error
+    ?(write_clipboard = Clipboard_web.write)
     (module A : Nopal_mvu.App.S with type model = model and type msg = msg)
     ?serialize_msg ?serialize_model (target : Brr.El.t) : mounted_with_telemetry
     =
@@ -464,8 +467,8 @@ let mount_with_telemetry (type model msg) ?safe_area_source ?on_error
     R.create_with_telemetry
       ~focus:(fun id -> Queue.add id pending_focus)
       ~scroll_by:(fun id delta -> Queue.add (id, delta) pending_scroll)
-      ~schedule_after ?on_error ~interpret_atom:web_interpret_atom
-      ?serialize_msg ?serialize_model ()
+      ~write_clipboard ~schedule_after ?on_error
+      ~interpret_atom:web_interpret_atom ?serialize_msg ?serialize_model ()
   in
   let unmount =
     drive ?on_error

@@ -4,6 +4,7 @@
     via js_of_ocaml and Brr. It does NOT depend on any nopal UI packages. *)
 
 module App = App
+module Clipboard = Clipboard
 module Event = Event
 module Os = Os
 module Platform_tauri = Platform_tauri

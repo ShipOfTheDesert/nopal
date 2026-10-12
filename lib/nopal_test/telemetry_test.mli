@@ -35,7 +35,15 @@ val run_with_telemetry :
     The harness renders nothing, so a relative-scroll request an app issues
     under it is inert and leaves no event behind. Assert on one structurally
     instead, with {!Nopal_mvu.Cmd.extract_scroll_bys} over the command [update]
-    returned. *)
+    returned.
+
+    A clipboard write resolves [Error Unavailable]: the harness has no
+    clipboard, so it keeps the runtime default and dispatches that outcome
+    message, never dropping the request. The [Command "write_clipboard"] event
+    names the request and never the copied text. To drive another outcome,
+    extract the request with {!Nopal_mvu.Cmd.extract_clipboard_writes} over the
+    command [update] returned, apply the extracted callback to the chosen
+    outcome, and pass the resulting message in [msgs]. *)
 
 (** {2 Assertion helpers}
 

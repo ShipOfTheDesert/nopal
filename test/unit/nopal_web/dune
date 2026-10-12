@@ -184,3 +184,17 @@
  (modes js)
  (js_of_ocaml
   (javascript_files dom_shim.js stylesheet_shim.js)))
+
+; test_mount_clipboard drives the clipboard write through mount, so it needs
+; mount_shim (captured rAF, so no frame runs unless a case runs one) over
+; dom_shim, and clipboard_shim to present each shape of the browser's Clipboard
+; API and to park promise settlements until a case drains them. See
+; clipboard_shim.js for the rationale.
+
+(test
+ (name test_mount_clipboard)
+ (package nopal_web)
+ (libraries nopal_web nopal_element nopal_mvu test_util alcotest brr)
+ (modes js)
+ (js_of_ocaml
+  (javascript_files dom_shim.js mount_shim.js clipboard_shim.js)))

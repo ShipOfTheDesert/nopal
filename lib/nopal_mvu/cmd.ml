@@ -8,6 +8,10 @@ type 'msg t =
   | After of { ms : int; msg : 'msg }
   | Focus of { id : string }
   | Scroll_by of { id : string; delta : Nopal_element.Scroll_delta.t }
+  | Write_clipboard of {
+      text : string;
+      on_result : (unit, Clipboard.error) result -> 'msg;
+    }
 
 let none = None
 
@@ -23,6 +27,7 @@ let task t = Task t
 let after ms msg = After { ms; msg }
 let focus id = Focus { id }
 let scroll_by id delta = Scroll_by { id; delta }
+let write_clipboard text ~on_result = Write_clipboard { text; on_result }
 
 let is_none = function
   | None -> true
@@ -31,7 +36,8 @@ let is_none = function
   | Task _
   | After _
   | Focus _
-  | Scroll_by _ ->
+  | Scroll_by _
+  | Write_clipboard _ ->
       false
 
 let describe = function
@@ -42,6 +48,7 @@ let describe = function
   | After _ -> "after"
   | Focus _ -> "focus"
   | Scroll_by _ -> "scroll_by"
+  | Write_clipboard _ -> "write_clipboard"
 
 let rec map f cmd =
   match cmd with
@@ -52,6 +59,8 @@ let rec map f cmd =
   | After { ms; msg } -> After { ms; msg = f msg }
   | Focus { id } -> Focus { id }
   | Scroll_by { id; delta } -> Scroll_by { id; delta }
+  | Write_clipboard { text; on_result } ->
+      Write_clipboard { text; on_result = (fun r -> f (on_result r)) }
 
 let rec execute dispatch cmd =
   match cmd with
@@ -61,7 +70,8 @@ let rec execute dispatch cmd =
   | Task t -> Task.run t dispatch
   | After _
   | Focus _
-  | Scroll_by _ ->
+  | Scroll_by _
+  | Write_clipboard _ ->
       ()
 
 let extract_after = function
@@ -71,7 +81,8 @@ let extract_after = function
   | Perform _
   | Task _
   | Focus _
-  | Scroll_by _ ->
+  | Scroll_by _
+  | Write_clipboard _ ->
       Option.none
 
 let extract_focus = function
@@ -81,7 +92,8 @@ let extract_focus = function
   | Perform _
   | Task _
   | After _
-  | Scroll_by _ ->
+  | Scroll_by _
+  | Write_clipboard _ ->
       Option.none
 
 let rec extract_focuses = function
@@ -91,7 +103,8 @@ let rec extract_focuses = function
   | Perform _
   | Task _
   | After _
-  | Scroll_by _ ->
+  | Scroll_by _
+  | Write_clipboard _ ->
       []
 
 let rec extract_scroll_bys = function
@@ -101,15 +114,36 @@ let rec extract_scroll_bys = function
   | Perform _
   | Task _
   | After _
-  | Focus _ ->
+  | Focus _
+  | Write_clipboard _ ->
       []
 
-let rec interpret ~focus ~scroll_by ~dispatch ~schedule_after = function
+let rec extract_clipboard_writes = function
+  | Write_clipboard { text; on_result } -> [ (text, on_result) ]
+  | Batch cmds -> List.concat_map extract_clipboard_writes cmds
+  | None
+  | Perform _
+  | Task _
+  | After _
+  | Focus _
+  | Scroll_by _ ->
+      []
+
+let rec interpret ~focus ~scroll_by ~write_clipboard ~dispatch ~schedule_after =
+  function
   | None -> ()
   | Batch cmds ->
-      List.iter (interpret ~focus ~scroll_by ~dispatch ~schedule_after) cmds
+      List.iter
+        (interpret ~focus ~scroll_by ~write_clipboard ~dispatch ~schedule_after)
+        cmds
   | Perform f -> f dispatch
   | Task t -> Task.run t dispatch
   | After { ms; msg } -> schedule_after ms msg
   | Focus { id } -> focus id
   | Scroll_by { id; delta } -> scroll_by id delta
+  | Write_clipboard { text; on_result } ->
+      Task.run
+        (Task.guard_once
+           ~on_exn:(fun e -> Clipboard.Failed (Printexc.to_string e))
+           (write_clipboard text))
+        (fun r -> dispatch (on_result r))

@@ -1,4 +1,5 @@
 module App = App
+module Clipboard = Clipboard
 module Event = Event
 module Os = Os
 module Platform_tauri = Platform_tauri
