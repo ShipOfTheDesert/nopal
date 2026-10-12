@@ -12,6 +12,7 @@ depends: [
   "alcotest" {>= "1.9.1" & with-test}
   "ocaml"
   "nopal_mvu"
+  "nopal_element"
   "nopal_storage"
   "odoc" {with-doc}
 ]

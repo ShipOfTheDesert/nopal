@@ -48,11 +48,19 @@ type reveal_request = { container : Brr.El.t; request : Nopal_element.Reveal.t }
    because the request is only meaningful for the element that declared it —
    nothing outside that container is ever scrolled. *)
 
+type opener =
+  Nopal_element.Url.t ->
+  ((unit, Nopal_element.Link.open_error) result -> unit) ->
+  unit
+
+type link_host = Browser | Webview of { open_external : opener }
+
 type 'msg t = {
   mutable root : 'msg live;
   (* mutable: root is replaced on reconciliation when element variant changes *)
   parent : Brr.El.t;
   sheet : Style_sheet.t;
+  link_host : link_host;
   reveals : reveal_request Queue.t;
       (* mutable: a queue is mutable state on an otherwise immutable handle.
      Requests are collected while the tree is being built or patched and acted
@@ -145,6 +153,7 @@ let container_main_axis (el : 'msg Nopal_element.Element.t) :
   | Empty
   | Text _
   | Button _
+  | Link _
   | Input _
   | Checkbox _
   | Radio _
@@ -223,6 +232,7 @@ let interaction_of (el : 'msg Nopal_element.Element.t) =
   | Row { interaction; _ }
   | Column { interaction; _ }
   | Button { interaction; _ }
+  | Link { interaction; _ }
   | Input { interaction; _ } ->
       Some interaction
   | Checkbox { interaction; _ }
@@ -320,6 +330,73 @@ let wire_dblclick ~dispatch el ~disabled on_dblclick =
           (Brr.El.as_target el)
       in
       [ listener ]
+
+let decide_host = function
+  | Browser -> Nopal_element.Link.Browser
+  | Webview { open_external = _ } -> Nopal_element.Link.Webview
+
+let link_click_of_event ev : Nopal_element.Link.click =
+  let mouse = Brr.Ev.as_type ev in
+  {
+    button = Nopal_element.Link.button_of_index (Brr.Ev.Mouse.button mouse);
+    ctrl = Brr.Ev.Mouse.ctrl_key mouse;
+    meta = Brr.Ev.Mouse.meta_key mouse;
+    shift = Brr.Ev.Mouse.shift_key mouse;
+    alt = Brr.Ev.Mouse.alt_key mouse;
+  }
+
+(* The outcome goes through [guard_once], whose latch sits outside its own
+   exception handler, so a failure is dispatched once whatever the opener
+   answers after it, and a raise before any answer is that failure. The raise's
+   message is not used because it may carry the URL; its constructor name is. *)
+let open_externally ~dispatch ~open_external ~on_open_failed url =
+  Nopal_mvu.Task.run
+    (Nopal_mvu.Task.guard_once
+       ~on_exn:(fun exn ->
+         Nopal_element.Link.Failed
+           ("open_external raised " ^ Printexc.exn_slot_name exn))
+       (open_external url))
+    (fun outcome ->
+      match outcome with
+      | Ok () -> ()
+      | Error error -> dispatch (on_open_failed error))
+
+let follow_link ~link_host ~dispatch destination ev =
+  match
+    Nopal_element.Link.decide ~host:(decide_host link_host)
+      (link_click_of_event ev) destination
+  with
+  | Nopal_element.Link.Navigate msg ->
+      Brr.Ev.prevent_default ev;
+      dispatch msg
+  | Nopal_element.Link.Leave_to_platform -> ()
+  | Nopal_element.Link.Open_externally { url; on_open_failed } -> (
+      match link_host with
+      | Webview { open_external } ->
+          Brr.Ev.prevent_default ev;
+          open_externally ~dispatch ~open_external ~on_open_failed url
+      (* [decide] opens a link externally only in a webview; were a browser to
+         get here, the platform keeps the click. *)
+      | Browser -> ())
+
+let listen_link ~link_host ~dispatch el destination event =
+  Brr.Ev.listen event
+    (follow_link ~link_host ~dispatch destination)
+    (Brr.El.as_target el)
+
+(* Brr 0.0.8's [Ev.auxclick] names the [dblclick] event, so the type is built
+   here from the event's own name. *)
+let auxclick : Brr.Ev.Mouse.t Brr.Ev.type' =
+  Brr.Ev.Type.create (Jstr.v "auxclick")
+
+(* A browser fires [click] for the primary button, keyboard activation
+   included, and [auxclick] for every other button, so each click on a link
+   reaches [decide] once and a middle click reaches it at all. *)
+let wire_link_clicks ~link_host ~dispatch el destination =
+  [
+    listen_link ~link_host ~dispatch el destination Brr.Ev.click;
+    listen_link ~link_host ~dispatch el destination auxclick;
+  ]
 
 let wire_input_events ~dispatch el ~on_change ~on_submit ~on_focus ~on_blur
     ~on_keydown =
@@ -429,6 +506,25 @@ let apply_button_config el ~declared ~button_type ~disabled =
     (match disabled with
     | true -> Some "true"
     | false -> None)
+
+(* A link's two derived attributes, on the same terms. [href] has no absent
+   form, so it is written on every application; [rel] only for an [External]
+   link, so a [Route] link uncovers a caller's pair. The structural renderer
+   derives the same pairs from the same destination. *)
+let link_config (destination : 'msg Nopal_element.Link.destination) =
+  match destination with
+  | Nopal_element.Link.Route { path; _ } ->
+      (Nopal_element.Route_path.to_string path, None)
+  | Nopal_element.Link.External { url; _ } ->
+      (Nopal_element.Url.to_string url, Some "noopener noreferrer")
+
+let equal_link_config (href1, rel1) (href2, rel2) =
+  String.equal href1 href2 && Option.equal String.equal rel1 rel2
+
+let apply_link_config el ~declared (href, rel) =
+  let set = set_derived el ~declared in
+  set "href" (Some href);
+  set "rel" rel
 
 (* An input's three derived configurations, on the same terms as a form's:
    written over the declared list and uncovering it when absent. [required]
@@ -727,7 +823,7 @@ let apply_focusable el focusable =
    set, [set_data_key], and [get_data_key] always agree. *)
 let comment_key_prop = "__nopal_key"
 
-let rec create_live ~sheet ~reveals ~dispatch ~parent_axis
+let rec create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
     (element : 'msg Nopal_element.Element.t) : 'msg live =
   match element with
   | Empty ->
@@ -771,7 +867,7 @@ let rec create_live ~sheet ~reveals ~dispatch ~parent_axis
       let children_axis = container_main_axis element in
       let live_children =
         List.map
-          (create_and_append ~sheet ~reveals ~dispatch
+          (create_and_append ~sheet ~reveals ~link_host ~dispatch
              ~parent_axis:children_axis el)
           children
       in
@@ -802,7 +898,7 @@ let rec create_live ~sheet ~reveals ~dispatch ~parent_axis
       let children_axis = container_main_axis element in
       let live_children =
         List.map
-          (create_and_append ~sheet ~reveals ~dispatch
+          (create_and_append ~sheet ~reveals ~link_host ~dispatch
              ~parent_axis:children_axis el)
           children
       in
@@ -828,7 +924,7 @@ let rec create_live ~sheet ~reveals ~dispatch ~parent_axis
       let children_axis = container_main_axis element in
       let live_children =
         List.map
-          (create_and_append ~sheet ~reveals ~dispatch
+          (create_and_append ~sheet ~reveals ~link_host ~dispatch
              ~parent_axis:children_axis el)
           children
       in
@@ -865,7 +961,7 @@ let rec create_live ~sheet ~reveals ~dispatch ~parent_axis
       let children_axis = container_main_axis element in
       let live_children =
         List.map
-          (create_and_append ~sheet ~reveals ~dispatch
+          (create_and_append ~sheet ~reveals ~link_host ~dispatch
              ~parent_axis:children_axis el)
           children
       in
@@ -897,8 +993,8 @@ let rec create_live ~sheet ~reveals ~dispatch ~parent_axis
       apply_button_config el ~declared:attrs ~button_type ~disabled;
       let children_axis = container_main_axis element in
       let live_child =
-        create_and_append ~sheet ~reveals ~dispatch ~parent_axis:children_axis
-          el child
+        create_and_append ~sheet ~reveals ~link_host ~dispatch
+          ~parent_axis:children_axis el child
       in
       let listeners =
         wire_button_click ~dispatch el ~disabled on_click
@@ -910,6 +1006,27 @@ let rec create_live ~sheet ~reveals ~dispatch ~parent_axis
           element;
           children = [ live_child ];
           listeners;
+          base_id;
+          interaction_id;
+        }
+  | Link { style; interaction; attrs; destination; child } ->
+      let el = Brr.El.v (Jstr.v "a") [] in
+      let base_id, interaction_id =
+        apply_styles_for_element ~sheet ~parent_axis el style interaction
+      in
+      apply_attrs el attrs;
+      apply_link_config el ~declared:attrs (link_config destination);
+      let children_axis = container_main_axis element in
+      let live_child =
+        create_and_append ~sheet ~reveals ~link_host ~dispatch
+          ~parent_axis:children_axis el child
+      in
+      Live_node
+        {
+          dom = el;
+          element;
+          children = [ live_child ];
+          listeners = wire_link_clicks ~link_host ~dispatch el destination;
           base_id;
           interaction_id;
         }
@@ -1075,8 +1192,8 @@ let rec create_live ~sheet ~reveals ~dispatch ~parent_axis
       collect_reveal ~reveals ~container:el ~previous:None ~next:reveal;
       let children_axis = container_main_axis element in
       let live_child =
-        create_and_append ~sheet ~reveals ~dispatch ~parent_axis:children_axis
-          el child
+        create_and_append ~sheet ~reveals ~link_host ~dispatch
+          ~parent_axis:children_axis el child
       in
       Live_node
         {
@@ -1093,7 +1210,7 @@ let rec create_live ~sheet ~reveals ~dispatch ~parent_axis
          [container_main_axis] on the key itself would tell the child it has no
          main axis whenever its real parent is a row or a column. *)
       let live_child =
-        create_live ~sheet ~reveals ~dispatch ~parent_axis child
+        create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis child
       in
       (* Set the key on the rendered node so it round-trips across reconciles.
          Elements/text carry it in a data-key attribute; comment nodes can't,
@@ -1205,8 +1322,8 @@ let rec create_live ~sheet ~reveals ~dispatch ~parent_axis
                  out, so a row item sits on no main axis. Spelled literally so
                  the value follows from the real parent rather than from the
                  virtual list happening to answer the same thing. *)
-              create_and_append ~sheet ~reveals ~dispatch ~parent_axis:None
-                row_wrapper item_el)
+              create_and_append ~sheet ~reveals ~link_host ~dispatch
+                ~parent_axis:None row_wrapper item_el)
       in
       (* rAF-gated scroll listener *)
       let raf_pending = ref false in
@@ -1243,9 +1360,11 @@ let rec create_live ~sheet ~reveals ~dispatch ~parent_axis
           interaction_id = None;
         }
 
-and create_and_append ~sheet ~reveals ~dispatch ~parent_axis parent
+and create_and_append ~sheet ~reveals ~link_host ~dispatch ~parent_axis parent
     (element : 'msg Nopal_element.Element.t) =
-  let live = create_live ~sheet ~reveals ~dispatch ~parent_axis element in
+  let live =
+    create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis element
+  in
   let jv = jv_of_live live in
   ignore (Jv.call (Brr.El.to_jv parent) "appendChild" [| jv |]);
   live
@@ -1369,16 +1488,18 @@ let apply_reveal { container; request } =
 let drain_reveals (reveals : reveal_request Queue.t) =
   Queue.iter apply_reveal reveals
 
-let create ~dispatch ~parent element =
+let create ?(link_host = Browser) ~dispatch ~parent element =
   let sheet = Style_sheet.create () in
   let reveals = Queue.create () in
   (* The mount target was not built by this backend, so how it lays its
      children out is not knowable from here. *)
-  let live = create_live ~sheet ~reveals ~dispatch ~parent_axis:None element in
+  let live =
+    create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis:None element
+  in
   let jv = jv_of_live live in
   ignore (Jv.call (Brr.El.to_jv parent) "appendChild" [| jv |]);
   drain_reveals reveals;
-  { root = live; parent; sheet; reveals }
+  { root = live; parent; sheet; link_host; reveals }
 
 let unlisten_all listeners = List.iter Brr.Ev.unlisten listeners
 
@@ -1411,6 +1532,7 @@ let same_variant (a : 'msg Nopal_element.Element.t)
   | Column _, Column _
   | Form _, Form _
   | Button _, Button _
+  | Link _, Link _
   | Input _, Input _
   | Image _, Image _
   | Scroll _, Scroll _
@@ -1422,9 +1544,9 @@ let same_variant (a : 'msg Nopal_element.Element.t)
   | File_input _, File_input _
   | Virtual_list _, Virtual_list _ ->
       true
-  | ( ( Empty | Text _ | Box _ | Row _ | Column _ | Form _ | Button _ | Input _
-      | Checkbox _ | Radio _ | Select _ | File_input _ | Image _ | Scroll _
-      | Keyed _ | Draw _ | Virtual_list _ ),
+  | ( ( Empty | Text _ | Box _ | Row _ | Column _ | Form _ | Button _ | Link _
+      | Input _ | Checkbox _ | Radio _ | Select _ | File_input _ | Image _
+      | Scroll _ | Keyed _ | Draw _ | Virtual_list _ ),
       _ ) ->
       false
 
@@ -1432,9 +1554,9 @@ let extract_keyed_pairs elements =
   let rec go acc = function
     | [] -> Some (List.rev acc)
     | Keyed { key; child } :: rest -> go ((key, child) :: acc) rest
-    | ( Empty | Text _ | Box _ | Row _ | Column _ | Form _ | Button _ | Input _
-      | Checkbox _ | Radio _ | Select _ | File_input _ | Image _ | Scroll _
-      | Draw _ | Virtual_list _ )
+    | ( Empty | Text _ | Box _ | Row _ | Column _ | Form _ | Button _ | Link _
+      | Input _ | Checkbox _ | Radio _ | Select _ | File_input _ | Image _
+      | Scroll _ | Draw _ | Virtual_list _ )
       :: _ ->
         None
   in
@@ -1464,6 +1586,7 @@ let attrs_of (el : 'msg Nopal_element.Element.t) =
   | Row { attrs; _ }
   | Column { attrs; _ }
   | Button { attrs; _ }
+  | Link { attrs; _ }
   | Input { attrs; _ }
   | Checkbox { attrs; _ }
   | Radio { attrs; _ }
@@ -1510,6 +1633,7 @@ let focusable_of (el : 'msg Nopal_element.Element.t) =
   | Column _
   | Form _
   | Button _
+  | Link _
   | Input _
   | Checkbox _
   | Radio _
@@ -1561,6 +1685,7 @@ let previous_disabled (el : 'msg Nopal_element.Element.t) =
   | Column _
   | Form _
   | Button _
+  | Link _
   | Input _
   | File_input _
   | Image _
@@ -1581,6 +1706,7 @@ let previous_placeholder (el : 'msg Nopal_element.Element.t) =
   | Column _
   | Form _
   | Button _
+  | Link _
   | Checkbox _
   | Radio _
   | Select _
@@ -1609,6 +1735,7 @@ let style_of (el : 'msg Nopal_element.Element.t) =
   | Row { style; _ }
   | Column { style; _ }
   | Button { style; _ }
+  | Link { style; _ }
   | Input { style; _ }
   | Image { style; _ }
   | Scroll { style; _ }
@@ -1674,8 +1801,8 @@ let maybe_apply_style ~old_parent_axis ~parent_axis dom old_el new_el =
          don't (Empty, Text, Keyed) never reach this path. *)
       ()
 
-let rec reconcile_keyed_children ~sheet ~reveals ~dispatch ~old_parent_axis
-    ~parent_axis parent_el old_children new_pairs =
+let rec reconcile_keyed_children ~sheet ~reveals ~link_host ~dispatch
+    ~old_parent_axis ~parent_axis parent_el old_children new_pairs =
   let parent_jv = Brr.El.to_jv parent_el in
   let old_map = Hashtbl.create (List.length old_children) in
   List.iter (fun (key, live) -> Hashtbl.replace old_map key live) old_children;
@@ -1687,8 +1814,8 @@ let rec reconcile_keyed_children ~sheet ~reveals ~dispatch ~old_parent_axis
         | Some old_live ->
             Hashtbl.remove old_map key;
             let updated =
-              reconcile_live ~sheet ~reveals ~dispatch ~old_parent_axis
-                ~parent_axis parent_el old_live child
+              reconcile_live ~sheet ~reveals ~link_host ~dispatch
+                ~old_parent_axis ~parent_axis parent_el old_live child
             in
             (* On a variant change reconcile_live replaces the DOM node with a
                freshly-created one that does not carry the key, so re-establish
@@ -1701,7 +1828,8 @@ let rec reconcile_keyed_children ~sheet ~reveals ~dispatch ~old_parent_axis
             (key, updated)
         | None ->
             let live =
-              create_live ~sheet ~reveals ~dispatch ~parent_axis child
+              create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
+                child
             in
             set_data_key live key;
             (key, live))
@@ -1748,8 +1876,8 @@ let rec reconcile_keyed_children ~sheet ~reveals ~dispatch ~old_parent_axis
   reorder Jv.null (List.rev new_lives);
   List.map snd new_lives
 
-and reconcile_children ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
-    parent_el old_children new_elements =
+and reconcile_children ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
+    ~parent_axis parent_el old_children new_elements =
   (* If all new elements are Keyed, use keyed reconciliation *)
   match extract_keyed_pairs new_elements with
   | Some keyed_pairs ->
@@ -1781,16 +1909,16 @@ and reconcile_children ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
                 None)
           old_children
       in
-      reconcile_keyed_children ~sheet ~reveals ~dispatch ~old_parent_axis
-        ~parent_axis parent_el old_keyed keyed_pairs
+      reconcile_keyed_children ~sheet ~reveals ~link_host ~dispatch
+        ~old_parent_axis ~parent_axis parent_el old_keyed keyed_pairs
   | None ->
       let rec go olds news acc =
         match (olds, news) with
         | [], [] -> List.rev acc
         | [], new_el :: rest_new ->
             let live =
-              create_and_append ~sheet ~reveals ~dispatch ~parent_axis parent_el
-                new_el
+              create_and_append ~sheet ~reveals ~link_host ~dispatch
+                ~parent_axis parent_el new_el
             in
             go [] rest_new (live :: acc)
         | old_live :: rest_old, [] ->
@@ -1800,15 +1928,15 @@ and reconcile_children ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
             go rest_old [] acc
         | old_live :: rest_old, new_el :: rest_new ->
             let updated =
-              reconcile_live ~sheet ~reveals ~dispatch ~old_parent_axis
-                ~parent_axis parent_el old_live new_el
+              reconcile_live ~sheet ~reveals ~link_host ~dispatch
+                ~old_parent_axis ~parent_axis parent_el old_live new_el
             in
             go rest_old rest_new (updated :: acc)
       in
       go old_children new_elements []
 
-and reconcile_live ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
-    parent_el (old_live : 'msg live)
+and reconcile_live ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
+    ~parent_axis parent_el (old_live : 'msg live)
     (new_element : 'msg Nopal_element.Element.t) : 'msg live =
   match (old_live, new_element) with
   | Live_text t, Text { content = s; text_style } ->
@@ -1837,21 +1965,22 @@ and reconcile_live ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
       Live_text t
   | Live_comment c, Empty -> Live_comment c
   | Live_node old_n, new_el when same_variant old_n.element new_el ->
-      reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
-        old_n new_el;
+      reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
+        ~parent_axis old_n new_el;
       Live_node old_n
   | ( Live_text _,
-      ( Empty | Box _ | Row _ | Column _ | Form _ | Button _ | Input _
+      ( Empty | Box _ | Row _ | Column _ | Form _ | Button _ | Link _ | Input _
       | Checkbox _ | Radio _ | Select _ | File_input _ | Image _ | Scroll _
       | Keyed _ | Draw _ | Virtual_list _ ) )
   | ( Live_comment _,
-      ( Text _ | Box _ | Row _ | Column _ | Form _ | Button _ | Input _
+      ( Text _ | Box _ | Row _ | Column _ | Form _ | Button _ | Link _ | Input _
       | Checkbox _ | Radio _ | Select _ | File_input _ | Image _ | Scroll _
       | Keyed _ | Draw _ | Virtual_list _ ) )
   | Live_node _, _ ->
       (* Different variant or same_variant returned false — replace *)
       let new_live =
-        create_live ~sheet ~reveals ~dispatch ~parent_axis new_element
+        create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
+          new_element
       in
       let old_jv = jv_of_live old_live in
       let new_jv = jv_of_live new_live in
@@ -1979,8 +2108,9 @@ and maybe_reconcile_styles ~sheet ~old_parent_axis ~parent_axis
       (* Both non-interactive: inline style reconciliation *)
       maybe_apply_style ~old_parent_axis ~parent_axis old_n.dom old_el new_el
 
-and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
-    (old_n : 'msg live_node) (new_el : 'msg Nopal_element.Element.t) =
+and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
+    ~parent_axis (old_n : 'msg live_node)
+    (new_el : 'msg Nopal_element.Element.t) =
   let el = old_n.dom in
   (* What this element handed its children last frame, and what it hands them
      now. Read before [old_n.element] is replaced at the end of this pass. *)
@@ -2022,7 +2152,7 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
           on_pointer_down on_pointer_up on_wheel
         @ wire_box_focus_events ~dispatch el ~on_focus ~on_blur;
       old_n.children <-
-        reconcile_children ~sheet ~reveals ~dispatch
+        reconcile_children ~sheet ~reveals ~link_host ~dispatch
           ~old_parent_axis:old_children_axis ~parent_axis:children_axis el
           old_n.children children
   | Row { children; _ } ->
@@ -2031,7 +2161,7 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
       (* Re-assert hardcoded direction after style reconciliation. *)
       Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v "row") el;
       old_n.children <-
-        reconcile_children ~sheet ~reveals ~dispatch
+        reconcile_children ~sheet ~reveals ~link_host ~dispatch
           ~old_parent_axis:old_children_axis ~parent_axis:children_axis el
           old_n.children children
   | Column { children; _ } ->
@@ -2040,7 +2170,7 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
       (* Re-assert hardcoded direction after style reconciliation. *)
       Brr.El.set_inline_style (Jstr.v "flex-direction") (Jstr.v "column") el;
       old_n.children <-
-        reconcile_children ~sheet ~reveals ~dispatch
+        reconcile_children ~sheet ~reveals ~link_host ~dispatch
           ~old_parent_axis:old_children_axis ~parent_axis:children_axis el
           old_n.children children
   | Form { style; attrs; children; on_submit; autocomplete; novalidate; _ } ->
@@ -2061,6 +2191,7 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
       | Column _
       | Form _
       | Button _
+      | Link _
       | Input _
       | Checkbox _
       | Radio _
@@ -2078,7 +2209,7 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
       unlisten_all old_n.listeners;
       old_n.listeners <- wire_form_submit ~dispatch el on_submit;
       old_n.children <-
-        reconcile_children ~sheet ~reveals ~dispatch
+        reconcile_children ~sheet ~reveals ~link_host ~dispatch
           ~old_parent_axis:old_children_axis ~parent_axis:children_axis el
           old_n.children children
   | Button { attrs; button_type; disabled; on_click; on_dblclick; child; _ } ->
@@ -2100,6 +2231,7 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
       | Column _
       | Form _
       | Button _
+      | Link _
       | Input _
       | Checkbox _
       | Radio _
@@ -2116,7 +2248,41 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
         wire_button_click ~dispatch el ~disabled on_click
         @ wire_dblclick ~dispatch el ~disabled on_dblclick;
       old_n.children <-
-        reconcile_children ~sheet ~reveals ~dispatch
+        reconcile_children ~sheet ~reveals ~link_host ~dispatch
+          ~old_parent_axis:old_children_axis ~parent_axis:children_axis el
+          old_n.children [ child ]
+  | Link { attrs; destination; child; _ } ->
+      let attrs_written = maybe_apply_attrs el old_n.element new_el in
+      let config = link_config destination in
+      (* Guarded on the previous render, as [Button]'s configuration is. *)
+      (match old_n.element with
+      | Link { destination = old_destination; _ }
+        when (not attrs_written)
+             && equal_link_config (link_config old_destination) config ->
+          ()
+      | Empty
+      | Text _
+      | Box _
+      | Row _
+      | Column _
+      | Form _
+      | Button _
+      | Link _
+      | Input _
+      | Checkbox _
+      | Radio _
+      | Select _
+      | File_input _
+      | Image _
+      | Scroll _
+      | Keyed _
+      | Draw _
+      | Virtual_list _ ->
+          apply_link_config el ~declared:attrs config);
+      unlisten_all old_n.listeners;
+      old_n.listeners <- wire_link_clicks ~link_host ~dispatch el destination;
+      old_n.children <-
+        reconcile_children ~sheet ~reveals ~link_host ~dispatch
           ~old_parent_axis:old_children_axis ~parent_axis:children_axis el
           old_n.children [ child ]
   | Input
@@ -2162,6 +2328,7 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
       | Column _
       | Form _
       | Button _
+      | Link _
       | Input _
       | Checkbox _
       | Radio _
@@ -2207,6 +2374,7 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
       | Column _
       | Form _
       | Button _
+      | Link _
       | Input _
       | Checkbox _
       | Radio _
@@ -2233,6 +2401,7 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
         | Column _
         | Form _
         | Button _
+        | Link _
         | Input _
         | Checkbox _
         | Radio _
@@ -2250,7 +2419,7 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
       in
       collect_reveal ~reveals ~container:el ~previous ~next:reveal;
       old_n.children <-
-        reconcile_children ~sheet ~reveals ~dispatch
+        reconcile_children ~sheet ~reveals ~link_host ~dispatch
           ~old_parent_axis:old_children_axis ~parent_axis:children_axis el
           old_n.children [ child ]
   | Draw
@@ -2451,8 +2620,8 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
                  out, so a row item sits on no main axis. Spelled literally so
                  the value follows from the real parent rather than from the
                  virtual list happening to answer the same thing. *)
-              create_and_append ~sheet ~reveals ~dispatch ~parent_axis:None
-                row_wrapper item_el)
+              create_and_append ~sheet ~reveals ~link_host ~dispatch
+                ~parent_axis:None row_wrapper item_el)
       in
       old_n.children <- live_children;
       (* Rewire scroll listener *)
@@ -2510,6 +2679,7 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
       | Column _
       | Form _
       | Button _
+      | Link _
       | Input _
       | Checkbox _
       | Radio _
@@ -2537,9 +2707,9 @@ and reconcile_node ~sheet ~reveals ~dispatch ~old_parent_axis ~parent_axis
 let update ~dispatch handle new_element =
   Queue.clear handle.reveals;
   handle.root <-
-    reconcile_live ~sheet:handle.sheet ~reveals:handle.reveals ~dispatch
-      ~old_parent_axis:None ~parent_axis:None handle.parent handle.root
-      new_element;
+    reconcile_live ~sheet:handle.sheet ~reveals:handle.reveals
+      ~link_host:handle.link_host ~dispatch ~old_parent_axis:None
+      ~parent_axis:None handle.parent handle.root new_element;
   drain_reveals handle.reveals
 
 let reveal_request_count handle = Queue.length handle.reveals

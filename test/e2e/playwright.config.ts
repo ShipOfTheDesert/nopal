@@ -12,7 +12,7 @@ export default defineConfig({
   projects: [
     {
       name: "counter",
-      testMatch: "counter.spec.ts",
+      testMatch: ["counter.spec.ts", "mount-refusal.spec.ts"],
       use: { browserName: "chromium", baseURL: "http://localhost:3000/counter" },
     },
     {

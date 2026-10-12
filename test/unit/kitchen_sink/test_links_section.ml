@@ -1,0 +1,157 @@
+(* The links kitchen-sink section, read structurally through the whole kitchen
+   sink so the section's registration is under test too.
+
+   What this file can see is the rendered anchors, the message a click asks for,
+   and the navigation [update] answers it with, run against a platform that
+   records what is pushed. What it cannot see is a browser following, or
+   declining to follow, an anchor — that is the browser spec's job. *)
+
+open Nopal_test.Test_renderer
+module Link = Nopal_element.Link
+module Sub = Kitchen_sink_app.Sub_links
+
+(* mutable: the recording platform stub appends each path the router pushes;
+   a test reads it back after the click. *)
+let pushed = ref []
+
+module Recording_platform : Nopal_platform.Platform.S = struct
+  let current_path () = "/kitchen_sink/"
+  let push_state path = pushed := !pushed @ [ path ]
+  let replace_state (_ : string) = ()
+  let back () = ()
+  let on_popstate (_ : string -> unit) () = ()
+
+  module Store = Nopal_storage.In_memory ()
+
+  let storage = (module Store : Nopal_storage.S)
+end
+
+module K = Kitchen_sink_app.Make (Recording_platform)
+
+let vp = Nopal_element.Viewport.desktop
+let section = By_attr ("data-testid", "links-section")
+let route_link = By_attr ("data-testid", "links-route-link")
+let external_link = By_attr ("data-testid", "links-external-link")
+let current_route = By_attr ("data-testid", "links-current-route")
+let open_status = By_attr ("data-testid", "links-open-status")
+
+let plain_primary =
+  {
+    Link.button = Link.Primary;
+    ctrl = false;
+    meta = false;
+    shift = false;
+    alt = false;
+  }
+
+let model0 () = fst (K.init ())
+
+let node_in label selector node =
+  match find selector node with
+  | Some found -> found
+  | None -> Alcotest.fail (label ^ ": no such element")
+
+let section_of model =
+  node_in "the links section" section (tree (render (K.view vp model)))
+
+let tag_of label node =
+  match node with
+  | Element { tag; _ } -> tag
+  | Empty
+  | Text _ ->
+      Alcotest.fail (label ^ " is not an element")
+
+let route_readout model =
+  attr "data-route" (node_in "the route line" current_route (section_of model))
+
+let status_readout model =
+  let node = node_in "the opener line" open_status (section_of model) in
+  (attr "data-status" node, text_content node)
+
+let test_links_section_has_route_and_external () =
+  let s = section_of (model0 ()) in
+  let route = node_in "the route link" route_link s in
+  let ext = node_in "the external link" external_link s in
+  Alcotest.(check (list string))
+    "both links are anchors" [ "a"; "a" ]
+    [ tag_of "the route link" route; tag_of "the external link" ext ];
+  Alcotest.(check (option string))
+    "the route link's address is its route's path"
+    (Some "/kitchen_sink/?links=target") (attr "href" route);
+  Alcotest.(check (option string))
+    "the external link's address is its URL" (Some "https://ocaml.org/")
+    (attr "href" ext);
+  Alcotest.(check (option string))
+    "the external link cannot reach back to this page"
+    (Some "noopener noreferrer") (attr "rel" ext);
+  Alcotest.(check (option string))
+    "the route link carries no rel" None (attr "rel" route)
+
+(* The click alone pushes nothing — the push is [update]'s answer to the
+   message — and the same fixture then pushes exactly the link's address. *)
+let test_links_route_click_follows_via_router () =
+  pushed := [];
+  let model = model0 () in
+  Alcotest.(check (option string))
+    "the section starts at its start route" (Some "start") (route_readout model);
+  let rendered = render (K.view vp model) in
+  (match click_link ~host:Link.Browser plain_primary route_link rendered with
+  | Ok (Link.Navigate _) -> ()
+  | Ok Link.Leave_to_platform ->
+      Alcotest.fail "a plain click on the route link was left to the browser"
+  | Ok (Link.Open_externally _) ->
+      Alcotest.fail "a plain click on the route link opened externally"
+  | Error (Not_found _) -> Alcotest.fail "the route link is missing"
+  | Error (No_handler { tag; event }) ->
+      Alcotest.failf "the route link is a %s with no %s" tag event);
+  let followed =
+    match messages rendered with
+    | [ K.Links_msg msg ] -> msg
+    | msgs ->
+        Alcotest.failf "the click dispatched %d messages, expected one link msg"
+          (List.length msgs)
+  in
+  Alcotest.(check string)
+    "the click dispatches the follow message" "Links:Followed:Target;"
+    (Sub.serialize_msg followed);
+  Alcotest.(check (list string)) "the click itself pushes nothing" [] !pushed;
+  let model, cmd = K.update model (K.Links_msg followed) in
+  Nopal_mvu.Cmd.execute (fun (_ : K.msg) -> ()) cmd;
+  Alcotest.(check (list string))
+    "update pushes the link's address"
+    [ "/kitchen_sink/?links=target" ]
+    !pushed;
+  Alcotest.(check (option string))
+    "the model holds the followed route" (Some "target") (route_readout model)
+
+(* Each failure is fed back through the section's own message, as the opener's
+   callback would deliver it. *)
+let test_open_failure_shows_status () =
+  let after error =
+    status_readout
+      (fst (K.update (model0 ()) (K.Links_msg (Sub.Open_failed error))))
+  in
+  let status = Alcotest.(pair (option string) string) in
+  Alcotest.check status "nothing is reported before a failure"
+    (Some "idle", "No external link has failed to open")
+    (status_readout (model0 ()));
+  Alcotest.check status "a refusal says so"
+    (Some "not-permitted", "Not opened: the platform refused to open the link")
+    (after Link.Not_permitted);
+  Alcotest.check status "any other failure shows the platform's reason"
+    (Some "failed", "Not opened: no browser installed")
+    (after (Link.Failed "no browser installed"))
+
+let () =
+  Alcotest.run "kitchen_sink_links_section"
+    [
+      ( "links",
+        [
+          Alcotest.test_case "links_section_has_route_and_external" `Quick
+            test_links_section_has_route_and_external;
+          Alcotest.test_case "links_route_click_follows_via_router" `Quick
+            test_links_route_click_follows_via_router;
+          Alcotest.test_case "open_failure_shows_status" `Quick
+            test_open_failure_shows_status;
+        ] );
+    ]

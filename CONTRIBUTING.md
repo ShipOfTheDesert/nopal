@@ -93,7 +93,7 @@ disagreeing with its argument rather than by waiting for the change that would
 close it.
 
 Each record lives beside the rule it defers, so the next reader of that rule
-sees the exception: D-1, D-2, D-6, D-10, D-16 and D-18 under
+sees the exception: D-1, D-2, D-6, D-10, D-16, D-18 and D-19 under
 [E2E tests](#e2e-tests-playwright), D-3 and D-17 (discharged) under
 [Performance](#performance), D-4 and D-12 under [Kitchen Sink](#kitchen-sink), D-5 and D-7 under
 [VIII. Bug-Class Prevention](#viii-bug-class-prevention), D-8, D-9, D-11,
@@ -215,8 +215,8 @@ and `touch ~/.cache/ms-playwright/<browser>-<rev>/INSTALLATION_COMPLETE`.
 Deferring a browser case is allowed; leaving it unrecorded is not — see
 [Deferrals and decisions not to cover](#deferrals-and-decisions-not-to-cover)
 for the `D-n` scheme these records follow.
-**There is one current deferral (D-1) and five decisions not to cover
-(D-2, D-6, D-10, D-16 and D-18).**
+**There is one current deferral (D-1) and six decisions not to cover
+(D-2, D-6, D-10, D-16, D-18 and D-19).**
 
 #### Open deferral D-1 — a relative-scroll request naming a container the frame removed
 
@@ -468,6 +468,69 @@ performed the write (`main.ml` passed the web fallback instead of
 that makes the fallback fail under Tauri; that change adds the assertion to
 `clipboard.e2e.ts` and deletes this record.
 
+#### Decision not to cover D-19 — no Tauri e2e case opens an external link
+
+**Owner: whoever adds a Tauri e2e case able to observe an external open — a
+test host whose default `https` handler is a stub the spec can read back, say —
+in the change that adds it.**
+
+No automated case clicks an `External` link in the Tauri app; `test/e2e/tauri/links.e2e.ts`
+clicks the `Route` link, plainly and with Ctrl, and asserts one
+`Links:Followed:Target;` each and no navigation off the app. The webview is also not
+guarded against navigation by other routes: the context menu's "Open Link" and
+a dragged link still navigate it off the app, because `lib.rs` registers no
+`on_navigation` guard. A host `on_navigation` guard is a follow-up feature. Not
+covered:
+`Nopal_tauri.Opener.open_url` reaching `tauri-plugin-opener` on a real host,
+the `.plugin(tauri_plugin_opener::init())` registration in
+`tauri/src-tauri/src/lib.rs`, and the `opener:allow-open-url` and
+`opener:allow-default-urls` grants in `tauri/src-tauri/capabilities/default.json`.
+
+The cause is that a successful open leaves nothing in the app to observe. An
+`External` link carries a failure message and no success message
+(`Nopal_element.Link.destination`, read from `lib/nopal_element/link.mli`), so
+a click that showed the system browser and a click that did nothing leave the
+same telemetry log and the same window. The browser opens outside the webview,
+and the `tauri-driver` session drives only the webview (assumed: a WebDriver
+session addresses the app's own windows; not tried). The failure arm is
+observable — it dispatches `Links:Open_failed:Not_permitted;` — but only from a
+binary built with a grant removed, since the capability is compiled into the
+binary, and `just e2e-tauri` builds one binary from the working tree (read from
+the `justfile`).
+
+What stands in:
+
+- `test/unit/nopal_tauri/test_nopal_tauri_opener.ml` — the command name and
+  its `url` argument, every refusal shape of tauri 2.10.3 and
+  `tauri-plugin-opener` 2.5.3 decoded as `Not_permitted`, the URL redacted from
+  every `Failed` reason, and a throwing `invoke` resolving once. It runs against
+  a JS shim, not the host.
+- `test/unit/nopal_web/test_link_render.ml` — under a webview host, an
+  `External` click is prevented and handed to the opener once, and a failure is
+  dispatched as `on_open_failed`; a middle click on a `Route` link is followed
+  in-app. Which modifiers and buttons are taken over is `Link.decide`'s
+  answer, which `decide_exhaustive` in `test/unit/nopal_element/test_link.ml`
+  checks for every host, button, modifier combination and destination.
+- `test/unit/nopal_tauri/test_nopal_tauri_mount.ml` — `Nopal_tauri_mount`
+  supplies `Nopal_tauri.Opener.open_url` and `Nopal_tauri.Clipboard.write`.
+- A manual check against `just dev-tauri`, whose oracle is outside the app:
+  click **OCaml's website** in the kitchen sink's **Links** section and expect
+  `https://ocaml.org/` to open in the system browser while the window keeps the
+  kitchen sink and the status line still reads **No external link has failed
+  to open**; a window that navigates to ocaml.org, or a click after which
+  nothing opens, is a defect. Then delete the `"opener:allow-default-urls"`
+  line (restore it from a copy, never with git), rebuild, click again, and
+  expect **Not opened: the platform refused to open the link** and exactly one
+  `Links:Open_failed:Not_permitted;`; `Failed …` there means the plugin
+  reworded its scope refusal and `backends/nopal_tauri/opener.ml` needs
+  updating. The same check clicks **Follow an in-app link** plainly, with Ctrl
+  and with the middle button, expecting one `Links:Followed:Target;` per click
+  and no page load. The `Route` clicks are automated in `test/e2e/tauri/links.e2e.ts`;
+  only the `External` open is manual.
+
+The owner's change adds the external-open case to
+`test/e2e/tauri/`, and deletes this record.
+
 ### Desktop Development (Tauri)
 
 Tauri builds require two additional tools:
@@ -632,6 +695,8 @@ boundaries — not convention.
 nopal_mvu          ← depends on element for the types Cmd/Sub/App carry,
                      no platform deps
 nopal_element      ← depends on scene + style, no platform deps, no browser types
+nopal_platform     ← depends on nopal_element (Router.destination's Link.destination)
+nopal_tauri.mount  ← depends on nopal_web
 nopal_style        ← no platform deps
 nopal_scene        ← depends on style, no platform deps (Color, Paint, Transform, Path, Scene)
 nopal_draw         ← depends on scene + style (Scale + higher-level Path algorithms)
@@ -692,9 +757,11 @@ via its `.mli` file. Additional public modules require documented
 justification.
 
 The element DSL has a fixed minimal set: `Box`, `Row`, `Column`, `Text`,
-`Button`, `Input`, `Image`, `Scroll`, `Keyed`, `Empty`, `Map`. New
-primitive elements require strong justification and a cross-platform
-viability argument.
+`Button`, `Input`, `Image`, `Scroll`, `Keyed`, `Empty`, `Map`, `Link`,
+`Form`. New primitive elements require strong justification and a
+cross-platform viability argument. `Link` is viable everywhere: an anchor on
+web and in a webview, and `Link.decide` is pure, so a native renderer reuses it.
+`Form` groups inputs and submit semantics a native renderer also has.
 
 ### IV. Reversible by Default
 

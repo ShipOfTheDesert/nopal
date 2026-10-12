@@ -15,7 +15,7 @@
 //   - document.getElementById — see "Element lookup by id" below
 //   - window.requestAnimationFrame, setTimeout, getComputedStyle
 //   - CSS.escape
-//   - Event, KeyboardEvent, InputEvent constructors
+//   - Event, KeyboardEvent, InputEvent, MouseEvent constructors
 //
 // Why this is needed: dune's `(modes js)` test stanza compiles OCaml to
 // JavaScript via js_of_ocaml and runs it under Node.js. Node.js has no DOM,
@@ -198,6 +198,9 @@
 //     cover both.
 //   - The form owner is the nearest `<form>` ancestor only; the `form`
 //     attribute that re-associates a control elsewhere is not read.
+//   - An uncancelled `click` or `auxclick` on an `<a>` follows nothing and
+//     records no navigation. A test reads the event's `defaultPrevented`, which
+//     is the platform's own signal for whether the link will be followed.
 //
 // ## Maintenance Checklist (run when upgrading Brr)
 //
@@ -758,7 +761,11 @@
     el.style = makeStyle();
     el.classList = makeClassList(el);
 
+    // Counts every write, so a test can tell a reconcile that rewrote an
+    // attribute from one that left it alone.
+    el.setAttributeCalls = 0;
     el.setAttribute = function (name, value) {
+      el.setAttributeCalls += 1;
       el._attributes[name] = String(value);
       // The `style` attribute IS the element's inline style declaration, so a
       // write to it replaces the declaration wholesale rather than sitting
@@ -1034,6 +1041,21 @@
   globalThis.Event = function (type, opts) { return makeEvent(type, opts); };
   globalThis.KeyboardEvent = function (type, opts) { return makeEvent(type, opts); };
   globalThis.InputEvent = function (type, opts) { return makeEvent(type, opts); };
+  // A MouseEvent carries the platform's own defaults for the fields a link
+  // listener reads: the primary button and no modifier held. Like the
+  // platform's, it is not cancelable unless asked, and a test standing in for a
+  // user's click asks.
+  globalThis.MouseEvent = function (type, opts) {
+    return makeEvent(type, Object.assign({
+      button: 0,
+      buttons: 0,
+      detail: 0,
+      ctrlKey: false,
+      metaKey: false,
+      shiftKey: false,
+      altKey: false,
+    }, opts));
+  };
   globalThis.CSS = { escape: cssEscape };
   globalThis.getComputedStyle = function (el) { return el.style; };
   globalThis.requestAnimationFrame = function (cb) { setTimeout(cb, 0); return 0; };

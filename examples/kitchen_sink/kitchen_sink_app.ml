@@ -148,6 +148,9 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
       ~platform:(module Platform : Nopal_platform.Platform.NAV)
       ~parse:back_route_of_path ~to_path:back_route_to_path ~not_found:Back_home
 
+  let links_router =
+    Sub_links.router (module Platform : Nopal_platform.Platform.NAV)
+
   (* Model *)
   type model = {
     button_clicks : int;
@@ -225,6 +228,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     auth_form : Sub_auth_form.model;
     button_semantics : Sub_button_semantics.model;
     clipboard : Sub_clipboard.model;
+    links : Sub_links.model;
     keyboard_height : int;  (** soft-keyboard height in logical px (REQ-N2) *)
     back_route : back_route;  (** current route of the back-navigation demo *)
   }
@@ -270,6 +274,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | Auth_form_msg of Sub_auth_form.msg
     | Button_semantics_msg of Sub_button_semantics.msg
     | Clipboard_msg of Sub_clipboard.msg
+    | Links_msg of Sub_links.msg
     | KeyboardHeightChanged of int  (** native soft-keyboard height (REQ-F5) *)
     | Back_demo_push  (** push the back-demo one step deep (to [Back_detail]) *)
     | Route_changed of back_route  (** popstate-driven route update (REQ-F3) *)
@@ -407,6 +412,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     let auth_form, auth_form_cmd = Sub_auth_form.init () in
     let button_semantics, button_semantics_cmd = Sub_button_semantics.init () in
     let clipboard, clipboard_cmd = Sub_clipboard.init () in
+    let links, links_cmd = Sub_links.init () in
     ( {
         button_clicks = 0;
         input_text = "";
@@ -481,6 +487,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         auth_form;
         button_semantics;
         clipboard;
+        links;
         keyboard_height = 0;
         back_route = Back_home;
       },
@@ -512,6 +519,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
             (fun m -> Button_semantics_msg m)
             button_semantics_cmd;
           Nopal_mvu.Cmd.map (fun m -> Clipboard_msg m) clipboard_cmd;
+          Nopal_mvu.Cmd.map (fun m -> Links_msg m) links_cmd;
           (* Re-read the persisted demo value so a reload dispatches a
              [StorageRestored] message — the E2E persistence proof (REQ-F3). *)
           Nopal_mvu.Cmd.task
@@ -717,6 +725,12 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         let clipboard, cb_cmd = Sub_clipboard.update model.clipboard cb_msg in
         ( { model with clipboard },
           Nopal_mvu.Cmd.map (fun m -> Clipboard_msg m) cb_cmd )
+    | Links_msg links_msg ->
+        let links, links_cmd =
+          Sub_links.update links_router model.links links_msg
+        in
+        ( { model with links },
+          Nopal_mvu.Cmd.map (fun m -> Links_msg m) links_cmd )
     | DrawPointerMove (x, y) ->
         ({ model with draw_pointer = Some (x, y) }, Nopal_mvu.Cmd.none)
     | DrawPointerLeave ->
@@ -4048,6 +4062,14 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                  (Sub_clipboard.view vp model.clipboard);
              ];
            view_section
+             ~attrs:[ ("data-testid", "links-section") ]
+             "Links"
+             [
+               Element.map
+                 (fun m -> Links_msg m)
+                 (Sub_links.view links_router vp model.links);
+             ];
+           view_section
              ~attrs:[ ("data-testid", "file-input-section") ]
              "File Input"
              [
@@ -4273,4 +4295,5 @@ module Sub_focus_reveal = Sub_focus_reveal
 module Sub_auth_form = Sub_auth_form
 module Sub_button_semantics = Sub_button_semantics
 module Sub_clipboard = Sub_clipboard
+module Sub_links = Sub_links
 module Tauri_op = Tauri_op

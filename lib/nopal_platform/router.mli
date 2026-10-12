@@ -39,6 +39,22 @@ val push : 'route t -> 'route -> 'msg Nopal_mvu.Cmd.t
 (** [push router route] returns a command that navigates to [route] by pushing a
     new history entry. *)
 
+val destination :
+  'route t ->
+  'route ->
+  on_follow:('route -> 'msg) ->
+  ('msg Nopal_element.Link.destination, Nopal_element.Route_path.error) result
+(** [destination router route ~on_follow] is an in-app link destination for
+    [route]: its path is the string {!push} would push for [route], and its
+    message is [on_follow route]. Deriving both from the one route keeps a
+    link's address and the navigation it dispatches from drifting apart. It does
+    not navigate.
+
+    The router applies the application's [to_path] unchecked, so its result is
+    checked here by {!Nopal_element.Route_path.of_string}. When that refuses it,
+    the refusal is returned as [Error]; it is never replaced by a default path
+    or by [not_found]. *)
+
 val replace : 'route t -> 'route -> 'msg Nopal_mvu.Cmd.t
 (** [replace router route] returns a command that navigates to [route] by
     replacing the current history entry. *)

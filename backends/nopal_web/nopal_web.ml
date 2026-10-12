@@ -284,7 +284,7 @@ let drive (type msg) ?(on_error = default_on_error) ~(start : unit -> unit)
     ~(safe_area_source :
        ((Nopal_element.Viewport.safe_area -> unit) -> unit -> unit) option)
     ~(shutdown : unit -> unit) ~(bridge : Nopal_runtime.Telemetry.handle option)
-    (target : Brr.El.t) : unit -> unit =
+    ~(link_host : Renderer.link_host) (target : Brr.El.t) : unit -> unit =
   let w = Jv.get Jv.global "window" in
   (* Inject CSS custom properties bridging env() safe area values into JS-readable
      form. Must run before read_safe_area. Runs once on startup (REQ-N3). *)
@@ -314,7 +314,9 @@ let drive (type msg) ?(on_error = default_on_error) ~(start : unit -> unit)
   in
   let root = Lwd.observe view_lwd in
   let initial_element = Lwd.quick_sample root in
-  let handle = Renderer.create ~dispatch ~parent:target initial_element in
+  let handle =
+    Renderer.create ~link_host ~dispatch ~parent:target initial_element
+  in
   (* mutable: teardown lifecycle. The rAF loop and the returned teardown both
      guard on it so unmount is idempotent and the loop stops rescheduling once
      torn down (see {!mount_lifecycle}). *)
@@ -422,64 +424,107 @@ let drive (type msg) ?(on_error = default_on_error) ~(start : unit -> unit)
         unlisten_safe_area ();
         shutdown ()
 
+(* The Tauri runtime defines this global in every page it serves; reading it is
+   all this backend knows of Tauri. *)
+let tauri_runtime_present () =
+  not (Jv.is_undefined (Jv.get Jv.global "__TAURI_INTERNALS__"))
+
+let tauri_refusal =
+  "nopal_web refused to mount: this page runs in a Tauri webview and the mount \
+   was given no ~open_external, so a link would navigate the webview away from \
+   the app. Mount through Nopal_tauri_mount, which supplies one."
+
+type admission = Admitted of Renderer.link_host | Refused of string
+
+let admit open_external =
+  match open_external with
+  | Some open_external -> Admitted (Renderer.Webview { open_external })
+  | None -> (
+      match tauri_runtime_present () with
+      | false -> Admitted Renderer.Browser
+      | true -> Refused tauri_refusal)
+
+(* A refused mount starts no runtime and renders nothing, so the app's [view]
+   never runs, and it registers nothing for its [unmount] to release. *)
+let refuse ?(on_error = default_on_error) target fault =
+  Brr.El.set_children target [ Brr.El.txt' fault ];
+  on_error fault
+
 let mount (type model msg) ?safe_area_source ?on_error
-    ?(write_clipboard = Clipboard_web.write)
+    ?(write_clipboard = Clipboard_web.write) ?open_external
     (module A : Nopal_mvu.App.S with type model = model and type msg = msg)
     (target : Brr.El.t) : mounted =
-  let module R = Nopal_runtime.Runtime.Make (A) in
-  let pending_focus = Queue.create () in
-  (* Mutable state local to this mount, never a module-level ref: two mounts in
+  match admit open_external with
+  | Refused fault ->
+      refuse ?on_error target fault;
+      { unmount = (fun () -> ()) }
+  | Admitted link_host ->
+      let module R = Nopal_runtime.Runtime.Make (A) in
+      let pending_focus = Queue.create () in
+      (* Mutable state local to this mount, never a module-level ref: two mounts in
      one document each carry their own requests, and a torn-down mount's queue
      goes with it. Commands are interpreted during dispatch, so the queue is
      what carries a request across to the frame that can act on it. *)
-  let pending_scroll = Queue.create () in
-  let rt =
-    R.create
-      ~focus:(fun id -> Queue.add id pending_focus)
-      ~scroll_by:(fun id delta -> Queue.add (id, delta) pending_scroll)
-      ~write_clipboard ~schedule_after ?on_error
-      ~interpret_atom:web_interpret_atom ()
-  in
-  let unmount =
-    drive ?on_error
-      ~start:(fun () -> R.start rt)
-      ~set_viewport:(fun vp -> R.set_viewport rt vp)
-      ~view_lwd:(R.view rt)
-      ~dispatch:(fun msg -> R.dispatch rt msg)
-      ~flush_scroll:(fun () -> drain_scroll_by ?on_error pending_scroll)
-      ~flush_focus:(fun () -> drain_focus pending_focus)
-      ~safe_area_source
-      ~shutdown:(fun () -> R.shutdown rt)
-      ~bridge:None target
-  in
-  { unmount }
+      let pending_scroll = Queue.create () in
+      let rt =
+        R.create
+          ~focus:(fun id -> Queue.add id pending_focus)
+          ~scroll_by:(fun id delta -> Queue.add (id, delta) pending_scroll)
+          ~write_clipboard ~schedule_after ?on_error
+          ~interpret_atom:web_interpret_atom ()
+      in
+      let unmount =
+        drive ?on_error
+          ~start:(fun () -> R.start rt)
+          ~set_viewport:(fun vp -> R.set_viewport rt vp)
+          ~view_lwd:(R.view rt)
+          ~dispatch:(fun msg -> R.dispatch rt msg)
+          ~flush_scroll:(fun () -> drain_scroll_by ?on_error pending_scroll)
+          ~flush_focus:(fun () -> drain_focus pending_focus)
+          ~safe_area_source
+          ~shutdown:(fun () -> R.shutdown rt)
+          ~bridge:None ~link_host target
+      in
+      { unmount }
 
 let mount_with_telemetry (type model msg) ?safe_area_source ?on_error
-    ?(write_clipboard = Clipboard_web.write)
+    ?(write_clipboard = Clipboard_web.write) ?open_external
     (module A : Nopal_mvu.App.S with type model = model and type msg = msg)
     ?serialize_msg ?serialize_model (target : Brr.El.t) : mounted_with_telemetry
     =
-  let module R = Nopal_runtime.Runtime.Make (A) in
-  let pending_focus = Queue.create () in
-  (* Mount-local, for the reason the sibling entry point states. *)
-  let pending_scroll = Queue.create () in
-  let rt, handle =
-    R.create_with_telemetry
-      ~focus:(fun id -> Queue.add id pending_focus)
-      ~scroll_by:(fun id delta -> Queue.add (id, delta) pending_scroll)
-      ~write_clipboard ~schedule_after ?on_error
-      ~interpret_atom:web_interpret_atom ?serialize_msg ?serialize_model ()
-  in
-  let unmount =
-    drive ?on_error
-      ~start:(fun () -> R.start rt)
-      ~set_viewport:(fun vp -> R.set_viewport rt vp)
-      ~view_lwd:(R.view rt)
-      ~dispatch:(fun msg -> R.dispatch rt msg)
-      ~flush_scroll:(fun () -> drain_scroll_by ?on_error pending_scroll)
-      ~flush_focus:(fun () -> drain_focus pending_focus)
-      ~safe_area_source
-      ~shutdown:(fun () -> R.shutdown rt)
-      ~bridge:(Some handle) target
-  in
-  { telemetry = handle; unmount }
+  match admit open_external with
+  | Refused fault ->
+      refuse ?on_error target fault;
+      (* A telemetry handle comes only from a runtime, so one is created and
+         never started: the app's [init] runs and nothing after it, so the
+         handle records nothing and no bridge is installed over it. *)
+      let module R = Nopal_runtime.Runtime.Make (A) in
+      let _rt, telemetry =
+        R.create_with_telemetry ?on_error ?serialize_msg ?serialize_model ()
+      in
+      { telemetry; unmount = (fun () -> ()) }
+  | Admitted link_host ->
+      let module R = Nopal_runtime.Runtime.Make (A) in
+      let pending_focus = Queue.create () in
+      (* Mount-local, for the reason the sibling entry point states. *)
+      let pending_scroll = Queue.create () in
+      let rt, handle =
+        R.create_with_telemetry
+          ~focus:(fun id -> Queue.add id pending_focus)
+          ~scroll_by:(fun id delta -> Queue.add (id, delta) pending_scroll)
+          ~write_clipboard ~schedule_after ?on_error
+          ~interpret_atom:web_interpret_atom ?serialize_msg ?serialize_model ()
+      in
+      let unmount =
+        drive ?on_error
+          ~start:(fun () -> R.start rt)
+          ~set_viewport:(fun vp -> R.set_viewport rt vp)
+          ~view_lwd:(R.view rt)
+          ~dispatch:(fun msg -> R.dispatch rt msg)
+          ~flush_scroll:(fun () -> drain_scroll_by ?on_error pending_scroll)
+          ~flush_focus:(fun () -> drain_focus pending_focus)
+          ~safe_area_source
+          ~shutdown:(fun () -> R.shutdown rt)
+          ~bridge:(Some handle) ~link_host target
+      in
+      { telemetry = handle; unmount }

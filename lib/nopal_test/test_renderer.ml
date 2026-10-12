@@ -74,6 +74,11 @@ type 'msg box_handler_entry = {
   on_wheel : (Nopal_element.Element.wheel_event -> 'msg) option;
 }
 
+type 'msg link_handler_entry = {
+  link_path : int list;
+  destination : 'msg Nopal_element.Link.destination;
+}
+
 type 'msg rendered = {
   tree : node;
   msgs : 'msg list ref;
@@ -83,6 +88,7 @@ type 'msg rendered = {
   form_handlers : 'msg form_handler_entry list;
   draw_handlers : 'msg draw_handler_entry list;
   box_handlers : 'msg box_handler_entry list;
+  link_handlers : 'msg link_handler_entry list;
 }
 
 (* A pair derived from a typed field is an overlay over the view's own [attrs]
@@ -116,6 +122,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
   let form_handlers = ref [] in
   let draw_handlers = ref [] in
   let box_handlers = ref [] in
+  let link_handlers = ref [] in
   let rec go ~form rev_path (el : 'msg Nopal_element.Element.t) : node =
     match el with
     | Empty -> Empty
@@ -284,6 +291,30 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             tag = "button";
             style;
             attrs = attrs @ button_config;
+            children = [ go ~form (0 :: rev_path) child ];
+            interaction;
+          }
+    | Link { style; interaction; attrs; destination; child } ->
+        (* ["href"] has no absent form, so a caller's pair never stands. ["rel"]
+           is derived for an [External] link only, so a [Route] link uncovers a
+           caller's ["rel"]. *)
+        let link_config =
+          match destination with
+          | Nopal_element.Link.Route { path; _ } ->
+              [ ("href", Nopal_element.Route_path.to_string path) ]
+          | Nopal_element.Link.External { url; _ } ->
+              [
+                ("href", Nopal_element.Url.to_string url);
+                ("rel", "noopener noreferrer");
+              ]
+        in
+        link_handlers :=
+          { link_path = List.rev rev_path; destination } :: !link_handlers;
+        Element
+          {
+            tag = "a";
+            style;
+            attrs = attrs @ link_config;
             children = [ go ~form (0 :: rev_path) child ];
             interaction;
           }
@@ -644,6 +675,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
     form_handlers = !form_handlers;
     draw_handlers = !draw_handlers;
     box_handlers = !box_handlers;
+    link_handlers = !link_handlers;
   }
 
 let tree r = r.tree
@@ -910,6 +942,26 @@ let click sel r =
   | _ :: _ as msgs ->
       r.msgs := List.rev_append msgs !(r.msgs);
       Ok ()
+
+let find_link_handler_by_path path link_handlers =
+  List.find_opt (fun h -> h.link_path = path) link_handlers
+
+let click_link ~host click sel r =
+  let* path, found =
+    resolve_path sel r.tree |> Option.to_result ~none:(Not_found sel)
+  in
+  let tag = tag_of_node found in
+  let* handler =
+    find_link_handler_by_path path r.link_handlers
+    |> Option.to_result ~none:(No_handler { tag; event = "click" })
+  in
+  let action = Nopal_element.Link.decide ~host click handler.destination in
+  (match action with
+  | Nopal_element.Link.Navigate msg -> r.msgs := msg :: !(r.msgs)
+  | Nopal_element.Link.Leave_to_platform
+  | Nopal_element.Link.Open_externally _ ->
+      ());
+  Ok action
 
 let toggle sel r =
   let* path, found =

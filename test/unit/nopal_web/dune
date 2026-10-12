@@ -137,6 +137,20 @@
  (js_of_ocaml
   (javascript_files dom_shim.js stylesheet_shim.js)))
 
+; test_link_render reads the anchor a link renders to in the web backend beside
+; the structural renderer's node for the same element, so it links nopal_test,
+; and drives clicks on that anchor through dom_shim's MouseEvent. test_util is
+; linked for the substring check on a failure reason. stylesheet_shim is loaded
+; because Renderer.create builds a style sheet.
+
+(test
+ (name test_link_render)
+ (package nopal_web)
+ (libraries nopal_web nopal_element nopal_test test_util alcotest brr)
+ (modes js)
+ (js_of_ocaml
+  (javascript_files dom_shim.js stylesheet_shim.js)))
+
 (test
  (name test_mount_unmount)
  (package nopal_web)
@@ -198,3 +212,16 @@
  (modes js)
  (js_of_ocaml
   (javascript_files dom_shim.js mount_shim.js clipboard_shim.js)))
+
+; test_mount_link_host mounts an app whose view is one External link, with and
+; without an opener, on a page that defines the Tauri runtime's global, so it
+; needs mount_shim (captured rAF, so no frame runs) over dom_shim, whose
+; MouseEvent the affirmative arm's click is built from.
+
+(test
+ (name test_mount_link_host)
+ (package nopal_web)
+ (libraries nopal_web nopal_element nopal_mvu nopal_runtime alcotest brr)
+ (modes js)
+ (js_of_ocaml
+  (javascript_files dom_shim.js mount_shim.js)))

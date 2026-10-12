@@ -42,3 +42,8 @@ let on_navigate t to_msg =
         dispatch (to_msg route)
       in
       P.on_popstate callback)
+
+let destination t route ~on_follow =
+  Result.map
+    (fun path -> Nopal_element.Link.Route { path; on_follow = on_follow route })
+    (Nopal_element.Route_path.of_string (t.to_path route))

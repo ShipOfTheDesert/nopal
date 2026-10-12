@@ -1,0 +1,4 @@
+(library
+ (name nopal_tauri_mount)
+ (public_name nopal_tauri.mount)
+ (libraries brr nopal_element nopal_mvu nopal_tauri nopal_web))
