@@ -349,6 +349,12 @@ let text_input_fixture () : msg Nopal_ui.TextInput.config =
     wrapper_style = None;
     error_style = None;
     on_label_click = None;
+    required = None;
+    autocomplete = None;
+    input_type = None;
+    name = None;
+    on_keydown = None;
+    on_focus = None;
   }
 
 let checkbox_fixture () : msg Nopal_ui.Checkbox.config =
@@ -778,6 +784,44 @@ let test_input_typed_fields_that_fall_uncover_or_remove () =
         keys)
     authoring_one
 
+(* An input's typed [name], spelled identically in both backends: authored, it
+   outranks the caller's pair; absent, it uncovers that pair. *)
+let test_input_name_tier () =
+  let callers = [ ("name", "caller") ] in
+  let authored = E.input ~attrs:callers ~name:"email" "v" in
+  check_opt "web keeps the derived name" (Some "email")
+    (web_attr authored "name");
+  check_opt "structural keeps the derived name" (Some "email")
+    (structural_attr authored "name");
+  let absent = E.input ~attrs:callers "v" in
+  check_opt "web uncovers the caller's name" (Some "caller")
+    (web_attr absent "name");
+  check_opt "structural uncovers the caller's name" (Some "caller")
+    (structural_attr absent "name")
+
+let test_input_name_removed_on_reconcile () =
+  let callers = [ ("name", "caller") ] in
+  check_opt "a changed name reaches the node" (Some "password")
+    (web_attr_after_update
+       ~first:(E.input ~name:"email" "v")
+       ~second:(E.input ~name:"password" "v")
+       "name");
+  check_opt "the name is re-asserted over a caller's pair arriving on update"
+    (Some "email")
+    (web_attr_after_update
+       ~first:(E.input ~name:"email" "v")
+       ~second:(E.input ~attrs:callers ~name:"email" "v")
+       "name");
+  check_opt "a fallen name uncovers the caller's pair" (Some "caller")
+    (web_attr_after_update
+       ~first:(E.input ~attrs:callers ~name:"email" "v")
+       ~second:(E.input ~attrs:callers "v")
+       "name");
+  check_opt "a fallen name with no caller pair is removed" None
+    (web_attr_after_update
+       ~first:(E.input ~name:"email" "v")
+       ~second:(E.input "v") "name")
+
 (* A form's typed [autocomplete] and [novalidate], on the same terms as an
    input's typed fields above: both are spelled identically in both backends
    ([autocomplete] as its wire token, [novalidate] as a presence attribute),
@@ -1137,6 +1181,9 @@ let () =
             `Quick test_typed_button_type_outranks_attrs_type_pair_web;
           Alcotest.test_case "disabled_derives_aria_disabled_over_attrs_web"
             `Quick test_disabled_derives_aria_disabled_over_attrs_web;
+          Alcotest.test_case "input_name_tier" `Quick test_input_name_tier;
+          Alcotest.test_case "input_name_removed_on_reconcile" `Quick
+            test_input_name_removed_on_reconcile;
         ] );
       ( "the submit contract",
         [

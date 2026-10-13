@@ -2,7 +2,13 @@ open Nopal_test.Test_renderer
 module TI = Nopal_ui.TextInput
 module E = Nopal_element.Element
 
-type msg = Got of string | Blurred | Submitted | Label_clicked
+type msg =
+  | Got of string
+  | Blurred
+  | Submitted
+  | Label_clicked
+  | Focused
+  | Consumed
 
 let msg_testable =
   Alcotest.testable
@@ -10,7 +16,9 @@ let msg_testable =
       | Got s -> Format.fprintf fmt "Got %s" s
       | Blurred -> Format.fprintf fmt "Blurred"
       | Submitted -> Format.fprintf fmt "Submitted"
-      | Label_clicked -> Format.fprintf fmt "Label_clicked")
+      | Label_clicked -> Format.fprintf fmt "Label_clicked"
+      | Focused -> Format.fprintf fmt "Focused"
+      | Consumed -> Format.fprintf fmt "Consumed")
     ( = )
 
 let check_attr msg key expected node =
@@ -102,6 +110,40 @@ let test_no_error_omits_alert () =
   Alcotest.(check (option string))
     "no aria-describedby" None
     (attr "aria-describedby" inp)
+
+let email_with_error error = { (TI.make ~label:"Email" ~value:"") with error }
+let input_of config = find_input (tree (render (TI.view config)))
+
+let test_aria_invalid_follows_error () =
+  check_attr "an error marks the input invalid" "aria-invalid" (Some "true")
+    (input_of (email_with_error (Some "bad")));
+  check_attr "no error derives nothing" "aria-invalid" None
+    (input_of (email_with_error None))
+
+let test_aria_invalid_absent_uncovers_caller () =
+  let config =
+    { (email_with_error None) with attrs = [ ("aria-invalid", "true") ] }
+  in
+  check_attr "the caller's pair stands" "aria-invalid" (Some "true")
+    (input_of config)
+
+let test_aria_invalid_caller_replaces () =
+  let config =
+    {
+      (email_with_error (Some "bad")) with
+      attrs = [ ("aria-invalid", "false") ];
+    }
+  in
+  check_attr "the caller's later pair replaces the derived one" "aria-invalid"
+    (Some "false") (input_of config)
+
+let test_describedby_survives () =
+  let config = email_with_error (Some "bad") in
+  let inp = input_of config in
+  check_attr "aria-invalid is derived" "aria-invalid" (Some "true") inp;
+  check_attr "aria-describedby still names the error slot" "aria-describedby"
+    (Some (TI.error_id config))
+    inp
 
 (* --- Error ID --- *)
 
@@ -349,6 +391,121 @@ let test_error_style_reaches_the_error_slot () =
     "the style's text component reaches the message"
     (Some red_error_style.Nopal_style.Style.text) (text_style text_node)
 
+(* --- Typed input fields --- *)
+
+let password_base () = TI.make ~label:"Password" ~value:""
+
+let typed_fields_config () =
+  password_base ()
+  |> TI.with_required true
+  |> TI.with_autocomplete "current-password"
+  |> TI.with_input_type E.Password
+  |> TI.with_name "password"
+
+let test_typed_fields_reach_input () =
+  let inp = find_input (tree (render (TI.view (typed_fields_config ())))) in
+  check_attr "required" "required" (Some "true") inp;
+  check_attr "required brings aria-required" "aria-required" (Some "true") inp;
+  check_attr "autocomplete" "autocomplete" (Some "current-password") inp;
+  check_attr "input type" "type" (Some "password") inp;
+  check_attr "name" "name" (Some "password") inp
+
+let test_typed_field_outranks_attrs () =
+  let declared = { (password_base ()) with attrs = [ ("type", "text") ] } in
+  check_attr "the typed field beats the declared pair" "type" (Some "password")
+    (find_input
+       (tree (render (TI.view (TI.with_input_type E.Password declared)))));
+  check_attr "without the setter the declared pair stands" "type" (Some "text")
+    (find_input (tree (render (TI.view declared))))
+
+let test_make_leaves_new_fields_none () =
+  let typed = find_input (tree (render (TI.view (typed_fields_config ())))) in
+  let bare = find_input (tree (render (TI.view (password_base ())))) in
+  List.iter
+    (fun key ->
+      Alcotest.(check bool)
+        (key ^ " is reachable on this fixture")
+        true
+        (Option.is_some (attr key typed));
+      check_attr (key ^ " absent from a make config") key None bare)
+    [ "name"; "type"; "autocomplete"; "required"; "aria-required" ];
+  let r =
+    render
+      (TI.view
+         { (TI.make ~label:"Code" ~value:"") with on_submit = Some Submitted })
+  in
+  ignore (focus (By_tag "input") r);
+  Alcotest.(check (list msg_testable))
+    "make has no on_focus: focus dispatches nothing" [] (messages r);
+  ignore (keydown (By_tag "input") "Enter" r);
+  Alcotest.(check (list msg_testable))
+    "make has no on_keydown: Enter takes only the on_submit path" [ Submitted ]
+    (messages r)
+
+let consume_enter key =
+  match key with
+  | "Enter" -> Some Consumed
+  | _ -> None
+
+let test_on_keydown_consumes_enter () =
+  let config =
+    TI.with_on_keydown consume_enter
+      { (TI.make ~label:"Code" ~value:"") with on_submit = Some Submitted }
+  in
+  let r = render (TI.view config) in
+  Alcotest.(check (result unit Test_util.error_testable))
+    "enter ok" (Ok ())
+    (keydown (By_tag "input") "Enter" r);
+  Alcotest.(check (list msg_testable))
+    "a consumed Enter does not reach on_submit" [ Consumed ] (messages r);
+  Alcotest.(check (result unit Test_util.error_testable))
+    "other key ok" (Ok ())
+    (keydown (By_tag "input") "a" r);
+  Alcotest.(check (list msg_testable))
+    "a declined key adds nothing" [ Consumed ] (messages r);
+  let declining =
+    TI.with_on_keydown
+      (fun _ -> None)
+      { (TI.make ~label:"Code" ~value:"") with on_submit = Some Submitted }
+  in
+  let d = render (TI.view declining) in
+  Alcotest.(check (result unit Test_util.error_testable))
+    "declined enter ok" (Ok ())
+    (keydown (By_tag "input") "Enter" d);
+  Alcotest.(check (list msg_testable))
+    "a declined Enter reaches on_submit" [ Submitted ] (messages d)
+
+let test_on_focus_dispatches () =
+  let config = TI.with_on_focus Focused (TI.make ~label:"Email" ~value:"") in
+  let r = render (TI.view config) in
+  Alcotest.(check (result unit Test_util.error_testable))
+    "focus ok" (Ok ()) (focus (By_tag "input") r);
+  Alcotest.(check (list msg_testable)) "got message" [ Focused ] (messages r)
+
+let test_disabled_suppresses_new_handlers () =
+  let config ~disabled =
+    { (TI.make ~label:"Code" ~value:"") with disabled }
+    |> TI.with_on_focus Focused
+    |> TI.with_on_keydown consume_enter
+  in
+  let off = render (TI.view (config ~disabled:true)) in
+  Alcotest.(check bool)
+    "no focus handler while disabled" true
+    (Result.is_error (focus (By_tag "input") off));
+  Alcotest.(check bool)
+    "no keydown handler while disabled" true
+    (Result.is_error (keydown (By_tag "input") "Enter" off));
+  Alcotest.(check (list msg_testable)) "nothing dispatched" [] (messages off);
+  let on = render (TI.view (config ~disabled:false)) in
+  Alcotest.(check (result unit Test_util.error_testable))
+    "focus ok when enabled" (Ok ())
+    (focus (By_tag "input") on);
+  Alcotest.(check (result unit Test_util.error_testable))
+    "keydown ok when enabled" (Ok ())
+    (keydown (By_tag "input") "Enter" on);
+  Alcotest.(check (list msg_testable))
+    "both dispatch when enabled" [ Focused; Consumed ] (messages on)
+
 (* --- Test runner --- *)
 
 let () =
@@ -373,6 +530,14 @@ let () =
             `Quick test_error_id_matches;
           Alcotest.test_case "no error omits alert and aria-describedby" `Quick
             test_no_error_omits_alert;
+          Alcotest.test_case "aria-invalid follows error" `Quick
+            test_aria_invalid_follows_error;
+          Alcotest.test_case "aria-invalid absent uncovers caller" `Quick
+            test_aria_invalid_absent_uncovers_caller;
+          Alcotest.test_case "aria-invalid caller replaces" `Quick
+            test_aria_invalid_caller_replaces;
+          Alcotest.test_case "describedby survives" `Quick
+            test_describedby_survives;
         ] );
       ( "error id",
         [
@@ -421,5 +586,20 @@ let () =
             test_wrapper_style_reaches_the_column;
           Alcotest.test_case "error style reaches the error slot" `Quick
             test_error_style_reaches_the_error_slot;
+        ] );
+      ( "typed input fields",
+        [
+          Alcotest.test_case "typed fields reach input" `Quick
+            test_typed_fields_reach_input;
+          Alcotest.test_case "typed field outranks attrs" `Quick
+            test_typed_field_outranks_attrs;
+          Alcotest.test_case "make leaves new fields none" `Quick
+            test_make_leaves_new_fields_none;
+          Alcotest.test_case "on_keydown consumes enter" `Quick
+            test_on_keydown_consumes_enter;
+          Alcotest.test_case "on_focus dispatches" `Quick
+            test_on_focus_dispatches;
+          Alcotest.test_case "disabled suppresses new handlers" `Quick
+            test_disabled_suppresses_new_handlers;
         ] );
     ]

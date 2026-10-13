@@ -196,6 +196,10 @@ let attr_candidates =
     candidate "text input with an error" (By_tag "input")
       ~key:"aria-describedby" ~before:(Some "first-name-error")
       (TI.view ti_error);
+    candidate "text input with an error" (By_tag "input") ~key:"aria-invalid"
+      ~before:None (TI.view ti_error);
+    candidate "text input" (By_tag "input") ~key:"aria-invalid" ~before:None
+      (TI.view ti_plain);
     (* Checkbox. *)
     candidate "checkbox" (By_tag "checkbox") ~key:"aria-label"
       ~before:(Some "Accept Terms") (CB.view cb_plain);
@@ -278,14 +282,17 @@ let attr_candidates =
       ~key:"data-testid" ~before:(Some "bottom-tabs-back") (BT.view tabs_config);
   ]
 
-(* The attribute rows of the change list published in llms.txt, as
-   (where, key). Every row is a key whose answer moved. This list and that table
-   are edited together. *)
+(* The attribute rows of the change lists published in llms.txt, as
+   (where, key). Every row is a key whose answer moved. The [aria-invalid] row
+   is the [ui-text-input-aria-invalid] row of "Text_input answers that moved";
+   every other row is in the attribute table of "Component output that moved".
+   This list and those two tables are edited together. *)
 let published_attribute_change_list =
   [
     ("text input", "aria-label");
     ("text input", "aria-labelledby");
     ("text input", "id");
+    ("text input with an error", "aria-invalid");
     ("checkbox", "aria-label");
     ("checkbox", "aria-labelledby");
     ("checkbox", "id");
@@ -306,6 +313,7 @@ let unchanged_attribute_keys =
     ("text input", "data-field");
     ("text input error slot", "id");
     ("text input with an error", "aria-describedby");
+    ("text input", "aria-invalid");
     ("checkbox", "data-field");
     ("checkbox under with_id", "data-field");
     ("select", "data-field");

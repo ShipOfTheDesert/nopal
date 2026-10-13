@@ -429,7 +429,7 @@ Only Ctrl and Shift are folded, so a subscription naming a bare key still matche
 **Attribute precedence.** Where a builder takes both `?attrs` and a typed field
 a backend renders as an attribute — `placeholder`, a radio's `name`, a picker's
 `accept`/`capture`/`multiple`, `disabled`, a container's `focusable`, an
-input's `required`/`autocomplete`/`input_type`, a form's
+input's `required`/`autocomplete`/`input_type`/`name`, a form's
 `autocomplete`/`novalidate`, a button's `button_type`/`disabled`, a link's
 `destination` (its `href` and `rel`) — the rule is: **typed-field derivations beat the `~attrs` list; within the list, the
 last pair wins.**
@@ -457,7 +457,7 @@ declines in one of two shapes:
   `novalidate`, a button's `aria-disabled` (from its `disabled`).
 - **Option or empty list** — absent asserts nothing and uncovers the caller's
   pair: `accept`, `capture`, an input's `autocomplete`, an input's `type` (from
-  `input_type`), a form's `autocomplete`.
+  `input_type`), an input's `name`, a form's `autocomplete`.
 - **By destination** — a link's `rel` is `"noopener noreferrer"` on an
   `External` link and absent on a `Route` link, so a caller's `rel` pair stands
   on a `Route` link only.
@@ -475,7 +475,7 @@ renderer appends derived pairs after the view's own and resolves every lookup �
 resolves — to the last pair. The first tier is shared by the two on the keys the
 web backend writes as real attributes: `disabled`, `accept`, `capture`,
 `multiple`, `placeholder`, a radio's `name`, a control's `type`, an input's
-`required`, `aria-required` and `autocomplete`, a form's `autocomplete` and
+`required`, `aria-required`, `autocomplete` and `name`, a form's `autocomplete` and
 `novalidate`, a button's `type` and `aria-disabled`, and a link's `href` and
 `rel`. Every one of them
 carries the same value in both renderers except `disabled`, `multiple`,
@@ -705,8 +705,8 @@ Element.input_type_to_string : input_type -> string
 Element.input : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
   -> ?placeholder:string -> ?on_change:(string -> 'msg) -> ?on_submit:'msg
   -> ?on_focus:'msg -> ?on_blur:'msg -> ?on_keydown:(string -> 'msg option)
-  -> ?required:bool -> ?autocomplete:string -> ?input_type:input_type -> string
-  -> 'msg Element.t
+  -> ?required:bool -> ?autocomplete:string -> ?input_type:input_type
+  -> ?name:string -> string -> 'msg Element.t
   (* [on_focus] fires when the input takes focus and [on_blur] when it loses it.
      An input holds no children, so neither edge has a subtree to account for —
      unlike the same-named arguments on Element.box.
@@ -718,8 +718,10 @@ Element.input : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string *
      written. [input_type] is closed on purpose: a checkbox, radio or file
      picker has its own element; any other kind stays reachable through a
      ("type", …) pair in [attrs], which an input authoring no [input_type]
-     leaves standing. Each of the three outranks an [attrs] pair of its key, so
-     adopting one makes that pair stop taking effect. *)
+     leaves standing. [name] is the key the field's value is submitted under,
+     and the one a password manager reads to recognise it. Each of the four
+     outranks an [attrs] pair of its key, so adopting one makes that pair stop
+     taking effect; an input authoring none of them leaves the pair standing. *)
 Element.checkbox : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
   -> ?disabled:bool -> ?on_toggle:(bool -> 'msg) -> bool -> 'msg Element.t
 Element.radio : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
@@ -2223,6 +2225,12 @@ type 'msg config = {
   wrapper_style : Style.t option;
   error_style : Style.t option;
   on_label_click : 'msg option;
+  required : bool option;
+  autocomplete : string option;
+  input_type : Element.input_type option;
+  name : string option;
+  on_keydown : (string -> 'msg option) option;
+  on_focus : 'msg option;
 }
 
 val make : label:string -> value:string -> 'msg config
@@ -2250,6 +2258,36 @@ val with_error_style : Style.t -> 'msg config -> 'msg config
 val with_on_label_click : 'msg -> 'msg config -> 'msg config
 (* Pointer-down on the label as a message. Pair with control_id + Cmd.focus. *)
 
+val with_required : bool -> 'msg config -> 'msg config
+(* The input's typed required. With true the input carries required and
+   aria-required, and either replaces a pair of that key in config.attrs. With
+   false, or without the setter, neither is derived and such a pair stands. *)
+
+val with_autocomplete : string -> 'msg config -> 'msg config
+(* The input's typed autocomplete token — "email", "current-password",
+   "one-time-code" and the rest of the platform's open set, as written. It
+   replaces an ("autocomplete", _) pair; without the setter none is derived and
+   such a pair stands. *)
+
+val with_input_type : Element.input_type -> 'msg config -> 'msg config
+(* The input's typed input_type, carried as its type. It replaces a ("type", _)
+   pair; without the setter no type is derived and such a pair stands — the
+   route for a kind input_type does not name. *)
+
+val with_name : string -> 'msg config -> 'msg config
+(* The input's typed name — the key the value is submitted under, and the one
+   a password manager reads. It replaces a ("name", _) pair; without the setter
+   none is derived and such a pair stands. *)
+
+val with_on_keydown : (string -> 'msg option) -> 'msg config -> 'msg config
+(* The input's on_keydown. How it shares an Enter with config.on_submit and an
+   enclosing form is the submit contract under Element DSL; the component adds
+   no route of its own. Suppressed while config.disabled is true. *)
+
+val with_on_focus : 'msg -> 'msg config -> 'msg config
+(* Dispatched when the input takes focus. Suppressed while config.disabled is
+   true. *)
+
 val control_id : 'msg config -> string
 (* config.id when set, else the slugified label. This is the input's id, the
    value data-field carries, and the stem of the label and error ids. *)
@@ -2262,19 +2300,65 @@ val view : 'msg config -> 'msg Element.t
 (* Renders a vertical column containing:
    1. A label element — a Box carrying ("id", control_id config ^ "-label")
       and wrapping the label's text node
-   2. An input (Element.input) with value, placeholder and event handlers,
-      carrying ("id", control_id config),
+   2. An input (Element.input) with value, placeholder, event handlers and
+      the typed fields the setters above set, carrying
+      ("id", control_id config),
       ("aria-labelledby", control_id config ^ "-label") and
       ("data-field", control_id config)
    3. When config.error is Some msg, an error box with role="alert" and
-      id=error_id; the input gains aria-describedby=error_id
+      id=error_id; the input gains aria-describedby=error_id and
+      aria-invalid="true"
+   aria-invalid is an ordinary pair ahead of config.attrs, in two tiers by the
+   error: with an error it is present, and a caller's ("aria-invalid", _) pair
+   in config.attrs replaces it; without one the component derives nothing, so
+   a caller's pair stands and is not erased.
    The input is named by aria-labelledby and carries no aria-label of its own;
    an ("aria-label", _) pair pushed through config.attrs survives in the tree
    but does not name the input. Pushing ("id", _) through config.attrs replaces
    the input's id at the attrs tier and the caller then owns re-pointing
    aria-labelledby; with_id (equivalently config.id) is the supported route.
-   When disabled, input carries disabled="" and event handlers are suppressed. *)
+   When disabled, input carries disabled="" and its on_change, on_submit,
+   on_focus, on_blur and on_keydown are all suppressed. *)
 ```
+
+Every field of `Element.input` is set through a typed route, so a sign-in
+field needs no `config.attrs` pair:
+
+```ocaml
+TextInput.view
+  {
+    (TextInput.make ~label:"Password" ~value:model.password
+    |> TextInput.with_input_type Element.Password
+    |> TextInput.with_autocomplete "current-password"
+    |> TextInput.with_required true
+    |> TextInput.with_name "password")
+    with
+    on_change = Some (fun value -> Password_changed value);
+    error = model.password_error;
+  }
+```
+
+**Every `Element.input` field, and the `Text_input` route to it.** One row per
+field, and no row is "missing" or "via attrs". The table is kept in step with
+`Element.input`: a field the element gains becomes a row here in the same
+change.
+
+| `Element.input` field | `Text_input` route |
+|---|---|
+| `style` | `config.style` |
+| `interaction` | `config.interaction` |
+| `attrs` | `config.attrs`, after the component's own pairs |
+| `value` | `make ~value` |
+| `placeholder` | `config.placeholder` |
+| `on_change` | `config.on_change` |
+| `on_submit` | `config.on_submit` |
+| `on_blur` | `config.on_blur` |
+| `on_focus` | `with_on_focus` |
+| `on_keydown` | `with_on_keydown` |
+| `required` | `with_required` |
+| `autocomplete` | `with_autocomplete` |
+| `input_type` | `with_input_type` |
+| `name` | `with_name` |
 
 **Component output that moved — read this on a pin bump.** Four components now
 own the element that renders their label, so a control is named by
@@ -4014,6 +4098,66 @@ What did **not** move: no existing element's rendered tree, and no existing
 signature other than the two mounts' new optional argument. A browser app
 mounting through `Nopal_web.mount` behaves exactly as before. `Router.push`,
 `Router.on_navigate` (popstate only) and `Runtime.create` are unchanged.
+
+**Text_input answers that moved — read this on a pin bump.**
+**Every complete `Nopal_ui.TextInput.config` record literal stops compiling**
+(rows 1–6). The record gains `required`, `autocomplete`, `input_type`, `name`,
+`on_keydown` and `on_focus`, and the compiler says `Error: Some record fields
+are undefined: …`. Add the listed fields as `None` to keep every answer as it
+was. A config built with `TextInput.make` and the `with_*` setters, or updated
+with `{ config with … }`, compiles untouched; each new field has a setter, and
+the setter is the supported route. No existing field, `make` or `with_*`
+signature changed.
+
+`Element.input` gains a typed `name` (rows 7–8), and a `Text_input` with an
+error is now announced as invalid (row 9). Rows 10–14 are the `config.attrs`
+pairs a caller can now replace with a setter, or drop. "Before" is the tree at
+commit `0a56b7f`. The Where column names the renderer whose answer moved: the
+browser, the structural `Test_renderer`, or both. No test reads this table.
+Row 9, and the unchanged answer without an error, are pinned in both directions
+by the hand-kept lists in `test/unit/nopal_ui/test_change_list.ml`, which are
+edited together with it. Rows 1–7 are compile-visible. Rows 8 and 10–14 are
+joined to this text by nothing: the behaviour each describes is tested, but an
+edit to the text alone reddens no test.
+
+| # | Key | Visible | Where | When | Before | Now |
+|---|---|---|---|---|---|---|
+| 1 | `ui-text-input-config-gains-required` | compile | both | a complete `Nopal_ui.TextInput.config` record literal | compiles | fails to compile until it supplies `required`; `None` derives nothing, and `with_required` sets it |
+| 2 | `ui-text-input-config-gains-autocomplete` | compile | both | the same literal | compiles | fails to compile until it supplies `autocomplete`; `with_autocomplete` sets it |
+| 3 | `ui-text-input-config-gains-input_type` | compile | both | the same literal | compiles | fails to compile until it supplies `input_type`; `with_input_type` sets it |
+| 4 | `ui-text-input-config-gains-name` | compile | both | the same literal | compiles | fails to compile until it supplies `name`; `with_name` sets it |
+| 5 | `ui-text-input-config-gains-on_keydown` | compile | both | the same literal | compiles | fails to compile until it supplies `on_keydown`; `with_on_keydown` sets it |
+| 6 | `ui-text-input-config-gains-on_focus` | compile | both | the same literal | compiles | fails to compile until it supplies `on_focus`; `with_on_focus` sets it |
+| 7 | `element-input-record-gains-name` | compile | both | an `Input { … }` pattern listing its fields without `; _`, or code building that record directly | compiles | fails to compile until it handles `name : string option` |
+| 8 | `element-input-gains-name` | additive | both | an input passing `~name`, or a `Text_input` given `with_name`, beside a `("name", _)` pair in its attrs | the argument does not exist | the typed field wins and the pair stops taking effect. With no `~name` the pair stands, and once neither is present the browser removes the attribute on the next render |
+| 9 | `ui-text-input-aria-invalid` | silent | both | a `Text_input` whose `config.error` is `Some _` | absent, unless a caller's `("aria-invalid", _)` pair in `config.attrs` supplied it | `aria-invalid="true"`, as a pair ahead of `config.attrs`, so a caller's pair still replaces it. With `config.error = None` nothing is derived, as before |
+| 10 | `ui-text-input-replace-type-pair` | migration | both | a `Text_input` carrying `("type", t)` in `config.attrs` | the pair was the only route | `with_input_type`, with `Plain` for `"text"`. A kind `input_type` does not name keeps the pair, which stands while no `with_input_type` is set |
+| 11 | `ui-text-input-replace-autocomplete-pair` | migration | both | a `Text_input` carrying `("autocomplete", v)` in `config.attrs` | the pair was the only route | `with_autocomplete v` |
+| 12 | `ui-text-input-replace-required-pair` | migration | both | a `Text_input` carrying `("required", "")` in `config.attrs` | `required` from the pair, and no `aria-required` | `with_required true`, which also brings `aria-required="true"`. Structurally `required` then reads `"true"` rather than the pair's `""` |
+| 13 | `ui-text-input-replace-name-pair` | migration | both | a `Text_input` carrying `("name", v)` in `config.attrs` | the pair was the only route | `with_name v` |
+| 14 | `ui-text-input-drop-aria-invalid-pair` | migration | both | a `Text_input` carrying `("aria-invalid", "true")` in `config.attrs`, set while `config.error` is `Some _` | the pair was the only route | drop the pair: row 9 derives the same answer. A pair set while `config.error` is `None` still stands, and is still the only route there |
+
+A pair from rows 10–13 kept beside its setter does nothing: the typed field
+outranks it. Disabled suppression now also covers `on_focus` and `on_keydown`,
+on the same terms as `on_change`, `on_submit` and `on_blur`. Both handlers are
+new, so no answer an existing caller meets moves.
+
+**A node's `attrs` list.** With an error, the input's list gains
+`("aria-invalid", "true")` directly after `aria-describedby`, ahead of
+`config.attrs`. An input given any of the four new typed fields gains that
+field's derived pairs at the back of the list. Every lookup answers as the
+table says, but `Test_renderer.node` exposes `attrs` publicly, so a whole-list
+equality on that node sees a different list.
+
+What did **not** move, recorded so a reader does not go looking. The input's
+`aria-describedby` is still `error_id config` with an error and absent without
+one. Its `id`, `aria-labelledby` and `data-field` answer as they did at
+`0a56b7f`. `test_change_list.ml` holds `aria-describedby` and `data-field` as
+unchanged, and the naming cases in `test/unit/nopal_ui/test_text_input.ml` hold
+`id` and `aria-labelledby`. A `Text_input` with no error that uses none of the
+new setters renders exactly the tree it did. Existing `Element.input` call sites
+compile untouched. `Checkbox`, `Radio_group` and `Select_input` are untouched:
+each already passed every field of the element it wraps.
 
 #### Telemetry harness (`Nopal_test.Telemetry_test`)
 

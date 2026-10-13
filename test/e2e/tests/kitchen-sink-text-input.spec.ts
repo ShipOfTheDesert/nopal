@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { NopalTelemetry } from "./nopal-telemetry";
 import AxeBuilder from "@axe-core/playwright";
 import { assertNoAxeViolations } from "./axe";
 
@@ -49,6 +50,30 @@ test("error message displayed", async ({ page }) => {
   await expect(errorAlert).toHaveAttribute("role", "alert");
   await expect(errorAlert).toBeVisible();
   await expect(errorAlert).toContainText("This field is required");
+});
+
+test("aria-invalid follows the error, axe clean in the error state", async ({
+  page,
+}, testInfo) => {
+  // The field's error is shown while it is empty and cleared once it holds
+  // text. Each absence below follows a presence on the same input, so it can
+  // only pass because the renderer removed the attribute, not because the
+  // input was never found.
+  const input = page.locator(INPUT_ERROR);
+  const errorSlot = page.locator(`${SECTION} #with-error-error`);
+
+  await expect(errorSlot).toBeVisible();
+  await expect(input).toHaveAttribute("aria-invalid", "true");
+  await expect(input).toHaveAttribute("aria-describedby", "with-error-error");
+  await assertNoAxeViolations(page, testInfo, SECTION);
+
+  await input.fill("filled");
+  await expect(errorSlot).toHaveCount(0);
+  await expect(input).not.toHaveAttribute("aria-invalid", /.*/);
+
+  await input.fill("");
+  await expect(errorSlot).toBeVisible();
+  await expect(input).toHaveAttribute("aria-invalid", "true");
 });
 
 test("submitting dispatches on enter", async ({ page }) => {
@@ -127,4 +152,18 @@ test("label click focuses the input", async ({ page }) => {
 
 test("restyled text input is axe-clean", async ({ page }, testInfo) => {
   await assertNoAxeViolations(page, testInfo, RESTYLED);
+});
+
+test("focusing the default field dispatches Field_focused and updates the readout", async ({
+  page,
+}) => {
+  const telemetry = new NopalTelemetry(page);
+  await page.locator(INPUT_DEFAULT).focus();
+  // Telemetry first (ADR 0108): the dispatch is the contract; the readout is
+  // the visible consequence.
+  await telemetry.waitForMessage("Field_focused:Default", 15000);
+  await telemetry.assertDispatched("Field_focused:Default");
+  await expect(page.locator('[data-testid="text-input-focused"]')).toHaveText(
+    "Focused: Default"
+  );
 });

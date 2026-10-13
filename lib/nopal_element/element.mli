@@ -197,6 +197,8 @@ type 'msg t =
           (** [None] asks for nothing and leaves the platform's default. *)
       input_type : input_type option;
           (** [None] names no kind, and the platform's default is text. *)
+      name : string option;
+          (** [None] names nothing: the field carries no name. *)
     }
   | Checkbox of {
       style : Nopal_style.Style.t;
@@ -314,10 +316,10 @@ type 'msg t =
     carries, a form's ["novalidate"], and a button's ["aria-disabled"] from its
     [disabled]. An option, or an empty list, asserts nothing when absent and
     uncovers the caller's pair the same way — a file picker's ["accept"] and
-    ["capture"], an input's ["autocomplete"] and its ["type"] from [input_type],
-    and a form's ["autocomplete"]. A link's ["rel"] declines by destination: an
-    [External] link asserts it and a [Route] link derives none, so a caller's
-    ["rel"] pair stands on a [Route] link only.
+    ["capture"], an input's ["autocomplete"], its ["type"] from [input_type] and
+    its ["name"], and a form's ["autocomplete"]. A link's ["rel"] declines by
+    destination: an [External] link asserts it and a [Route] link derives none,
+    so a caller's ["rel"] pair stands on a [Route] link only.
 
     Two renderers enforce this and no more than two, by two different
     mechanisms. The web backend applies the declared list before it writes any
@@ -333,7 +335,7 @@ type 'msg t =
     The first tier is a shared rule only for the keys the web backend writes as
     real attributes: ["disabled"], ["accept"], ["capture"], ["multiple"],
     ["placeholder"], a radio's ["name"], a control's ["type"], an input's
-    ["required"], ["aria-required"] and ["autocomplete"], a form's
+    ["required"], ["aria-required"], ["autocomplete"] and ["name"], a form's
     ["autocomplete"] and ["novalidate"], a button's ["type"] and
     ["aria-disabled"], and a link's ["href"] and ["rel"]. Of those,
     ["disabled"], ["multiple"], ["required"] and ["novalidate"] are spelled
@@ -592,6 +594,7 @@ val input :
   ?required:bool ->
   ?autocomplete:string ->
   ?input_type:input_type ->
+  ?name:string ->
   string ->
   'msg t
 (** A text input. The positional argument is the current value. [on_focus] is
@@ -609,9 +612,11 @@ val input :
     [false]. [autocomplete] is the per-field token the platform reads to offer a
     remembered value — ["username"], ["current-password"], ["email"] and the
     rest of that open set, passed through as written. [input_type] names the
-    kind of text the field takes. Each of the three is a typed field above
-    [attrs], so a field that authors one replaces an [attrs] pair for the same
-    key, and a field that authors none leaves that pair standing; see
+    kind of text the field takes. [name] is the key the field's value is
+    submitted under, and the one a password manager reads to recognise it. Each
+    of the four is a typed field above [attrs], so a field that authors one
+    replaces an [attrs] pair for the same key, and a field that authors none
+    leaves that pair standing; see
     {{!section-attribute_precedence} attribute precedence}. A caller that moves
     from an [attrs] pair to the typed field finds the pair stops taking effect,
     which is the rule working. *)

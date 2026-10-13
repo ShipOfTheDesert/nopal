@@ -126,6 +126,7 @@ let text_input ~on_submit ~on_keydown =
       required = false;
       autocomplete = None;
       input_type = None;
+      name = None;
     }
 
 let bare_input () = text_input ~on_submit:None ~on_keydown:None
@@ -146,6 +147,7 @@ let input_with_value ~input_type value =
       required = false;
       autocomplete = None;
       input_type;
+      name = None;
     }
 
 let button ~button_type ~disabled ~attrs ~on_click =

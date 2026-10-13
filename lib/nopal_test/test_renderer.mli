@@ -57,9 +57,9 @@ val render : 'msg Nopal_element.Element.t -> 'msg rendered
     as real attributes the two renderers answer identically, which is the whole
     value of asserting on this one. Those keys are ["disabled"], ["accept"],
     ["capture"], ["multiple"], ["placeholder"], a radio's ["name"], a control's
-    ["type"], an input's ["required"], ["aria-required"] and ["autocomplete"], a
-    form's ["autocomplete"] and ["novalidate"], a button's ["type"] and
-    ["aria-disabled"], and a link's ["href"] and ["rel"]. On ["disabled"],
+    ["type"], an input's ["required"], ["aria-required"], ["autocomplete"] and
+    ["name"], a form's ["autocomplete"] and ["novalidate"], a button's ["type"]
+    and ["aria-disabled"], and a link's ["href"] and ["rel"]. On ["disabled"],
     ["multiple"], ["required"] and ["novalidate"] the two agree on which side
     wins and not on the value: this renderer carries ["true"] where the browser
     carries a presence attribute. A checkbox's, radio's or file picker's
@@ -87,11 +87,12 @@ val render : 'msg Nopal_element.Element.t -> 'msg rendered
     cannot remove it: ["disabled"], ["multiple"], an input's ["required"] with
     the ["aria-required"] it carries, a form's ["novalidate"], and a button's
     ["aria-disabled"]. An option, or an empty list, contributes nothing when
-    absent: ["accept"], ["capture"], an input's ["autocomplete"] and its
-    ["type"], and a form's ["autocomplete"]. A link's ["rel"] is contributed for
-    an [External] link only, so a [Route] link uncovers a caller's ["rel"]. An
-    input's ["placeholder"], a radio's ["name"], a button's ["type"] and a
-    link's ["href"] have no absent form and are contributed on every render.
+    absent: ["accept"], ["capture"], an input's ["autocomplete"], its ["type"]
+    and its ["name"], and a form's ["autocomplete"]. A link's ["rel"] is
+    contributed for an [External] link only, so a [Route] link uncovers a
+    caller's ["rel"]. An input's ["placeholder"], a radio's ["name"], a button's
+    ["type"] and a link's ["href"] have no absent form and are contributed on
+    every render.
 
     A scroll container's [reveal] declaration is surfaced for inspection as the
     derived attribute pairs ["reveal"] and ["reveal-align"], carried exactly as

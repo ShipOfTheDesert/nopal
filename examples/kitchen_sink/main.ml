@@ -506,6 +506,8 @@ let serialize_msg : App.msg -> string = function
       "Restyled_changed:" ^ v
   | App.Text_input_msg Kitchen_sink_text_input.Restyled_label_clicked ->
       "Restyled_label_clicked"
+  | App.Text_input_msg (Kitchen_sink_text_input.Field_focused f) ->
+      "Field_focused:" ^ f
   | App.Toast_msg Sub_toast.ShowInfo -> "Toast:ShowInfo"
   | App.Toast_msg Sub_toast.ShowSuccess -> "Toast:ShowSuccess"
   | App.Toast_msg Sub_toast.ShowWarning -> "Toast:ShowWarning"

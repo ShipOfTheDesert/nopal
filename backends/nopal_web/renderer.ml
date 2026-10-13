@@ -526,13 +526,13 @@ let apply_link_config el ~declared (href, rel) =
   set "href" (Some href);
   set "rel" rel
 
-(* An input's three derived configurations, on the same terms as a form's:
+(* An input's four derived configurations, on the same terms as a form's:
    written over the declared list and uncovering it when absent. [required]
-   asserts both keys only when [true]; [autocomplete] and [input_type] only
-   when authored, so an input that says nothing about any of them renders the
-   markup a caller's [~attrs] spelled. [input_type_to_string] is the sole
+   asserts both keys only when [true]; [autocomplete], [input_type] and [name]
+   only when authored, so an input that says nothing about any of them renders
+   the markup a caller's [~attrs] spelled. [input_type_to_string] is the sole
    producer of the type token, and the structural renderer calls it too. *)
-let apply_input_config el ~declared ~required ~autocomplete ~input_type =
+let apply_input_config el ~declared ~required ~autocomplete ~input_type ~name =
   let set = set_derived el ~declared in
   set "required"
     (match required with
@@ -543,17 +543,19 @@ let apply_input_config el ~declared ~required ~autocomplete ~input_type =
     | true -> Some "true"
     | false -> None);
   set "autocomplete" autocomplete;
-  set "type" (Option.map Nopal_element.Element.input_type_to_string input_type)
+  set "type" (Option.map Nopal_element.Element.input_type_to_string input_type);
+  set "name" name
 
 let equal_input_type_opt (a : Nopal_element.Element.input_type option)
     (b : Nopal_element.Element.input_type option) =
   Option.equal Nopal_element.Element.equal_input_type a b
 
-let equal_input_config ~old_required ~old_autocomplete ~old_input_type ~required
-    ~autocomplete ~input_type =
+let equal_input_config ~old_required ~old_autocomplete ~old_input_type ~old_name
+    ~required ~autocomplete ~input_type ~name =
   Bool.equal old_required required
   && Option.equal String.equal old_autocomplete autocomplete
   && equal_input_type_opt old_input_type input_type
+  && Option.equal String.equal old_name name
 
 let equal_autocomplete_mode_opt
     (a : Nopal_element.Element.autocomplete_mode option)
@@ -1045,6 +1047,7 @@ let rec create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
         required;
         autocomplete;
         input_type;
+        name;
       } ->
       let el = Brr.El.v (Jstr.v "input") [] in
       let base_id, interaction_id =
@@ -1052,7 +1055,8 @@ let rec create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
       in
       apply_attrs el attrs;
       Brr.El.set_at (Jstr.v "placeholder") (Some (Jstr.v placeholder)) el;
-      apply_input_config el ~declared:attrs ~required ~autocomplete ~input_type;
+      apply_input_config el ~declared:attrs ~required ~autocomplete ~input_type
+        ~name;
       Jv.set (Brr.El.to_jv el) "value" (Jv.of_string value);
       let listeners =
         wire_input_events ~dispatch el ~on_change ~on_submit ~on_focus ~on_blur
@@ -2298,6 +2302,7 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
         required;
         autocomplete;
         input_type;
+        name;
         _;
       } ->
       let attrs_written = maybe_apply_attrs el old_n.element new_el in
@@ -2315,11 +2320,13 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
             required = old_required;
             autocomplete = old_autocomplete;
             input_type = old_input_type;
+            name = old_name;
             _;
           }
         when (not attrs_written)
              && equal_input_config ~old_required ~old_autocomplete
-                  ~old_input_type ~required ~autocomplete ~input_type ->
+                  ~old_input_type ~old_name ~required ~autocomplete ~input_type
+                  ~name ->
           ()
       | Empty
       | Text _
@@ -2340,7 +2347,7 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
       | Draw _
       | Virtual_list _ ->
           apply_input_config el ~declared:attrs ~required ~autocomplete
-            ~input_type);
+            ~input_type ~name);
       (* Controlled input: reflect the model, but only write when the DOM
          value actually differs. A redundant write collapses the
          caret/selection and resets IME composition; with the global keydown

@@ -9,11 +9,12 @@
     The section is one form holding an email field, a password field, a one-time
     code field and a submit button. The form carries the submit message, so an
     Enter in the email or password field and a press of the button all dispatch
-    the same message, once, and the page does not navigate. The fields declare
-    what they are through the typed input fields — kind, autofill token and
-    whether they are required — rather than through raw attribute pairs, and the
-    form carries an accessible name, which is what makes a form a landmark to
-    assistive technology.
+    the same message, once, and the page does not navigate. Each field is a
+    [Nopal_ui.TextInput], named by its visible label, and declares what it is
+    through the component's typed settings — kind, autofill token, whether it is
+    required, and the name a submission and a password manager read — with no
+    raw attribute pair on any field. The form carries an accessible name, which
+    is what makes a form a landmark to assistive technology.
 
     The one-time code field is there to show the other half of the submit
     contract: it answers Enter with a message of its own, and an Enter a field
@@ -51,19 +52,25 @@ type msg =
   | Submitted  (** The form was submitted. *)
   | Novalidate_toggled of bool
       (** The validation control: [true] makes the form skip validation. *)
+  | Label_clicked of string
+      (** A pointer went down on a field's visible label; carries that field's
+          control id, which [update] answers with a focus command. *)
 
 val init : unit -> model * msg Nopal_mvu.Cmd.t
 (** Empty fields, no submissions, validation on. *)
 
 val update : model -> msg -> model * msg Nopal_mvu.Cmd.t
 (** Records a field's value, counts a submission or a confirmation, or sets the
-    validation flag. No command is ever produced. *)
+    validation flag. Only a label click produces a command: [Cmd.focus] on that
+    field's control. *)
 
 val view : Nopal_element.Viewport.t -> model -> msg Nopal_element.Element.t
 (** Renders the demo notice, the validation control, the form and the two
-    counters. Every element a browser case reaches carries a [data-testid]:
-    [auth-form], [auth-email], [auth-password], [auth-code], [auth-submit],
-    [auth-novalidate], [auth-submit-count] and [auth-code-count]. *)
+    counters. The three fields are reached by the [data-field] their component
+    derives from its id: [auth-email], [auth-password] and [auth-code]. Every
+    other element a browser case reaches carries a [data-testid]: [auth-form],
+    [auth-submit], [auth-novalidate], [auth-submit-count] and [auth-code-count].
+*)
 
 val serialize_model : model -> string
 (** Telemetry serializer. Each field is prefixed with [auth_] so it cannot

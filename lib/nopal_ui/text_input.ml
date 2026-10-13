@@ -17,6 +17,12 @@ type 'msg config = {
   wrapper_style : Nopal_style.Style.t option;
   error_style : Nopal_style.Style.t option;
   on_label_click : 'msg option;
+  required : bool option;
+  autocomplete : string option;
+  input_type : E.input_type option;
+  name : string option;
+  on_keydown : (string -> 'msg option) option;
+  on_focus : 'msg option;
 }
 
 let make ~label ~value =
@@ -37,6 +43,12 @@ let make ~label ~value =
     wrapper_style = None;
     error_style = None;
     on_label_click = None;
+    required = None;
+    autocomplete = None;
+    input_type = None;
+    name = None;
+    on_keydown = None;
+    on_focus = None;
   }
 
 let with_id id config = { config with id = Some id }
@@ -44,6 +56,20 @@ let with_label_style style config = { config with label_style = Some style }
 let with_wrapper_style style config = { config with wrapper_style = Some style }
 let with_error_style style config = { config with error_style = Some style }
 let with_on_label_click msg config = { config with on_label_click = Some msg }
+let with_required required config = { config with required = Some required }
+
+let with_autocomplete autocomplete config =
+  { config with autocomplete = Some autocomplete }
+
+let with_input_type input_type config =
+  { config with input_type = Some input_type }
+
+let with_name name config = { config with name = Some name }
+
+let with_on_keydown on_keydown config =
+  { config with on_keydown = Some on_keydown }
+
+let with_on_focus msg config = { config with on_focus = Some msg }
 
 let control_id config =
   Slug.derive_id ~explicit:config.id ~label:config.label ()
@@ -62,10 +88,12 @@ let view config =
   let on_change = if suppressed then None else config.on_change in
   let on_submit = if suppressed then None else config.on_submit in
   let on_blur = if suppressed then None else config.on_blur in
+  let on_focus = if suppressed then None else config.on_focus in
+  let on_keydown = if suppressed then None else config.on_keydown in
   let disabled_attrs = if config.disabled then [ ("disabled", "") ] else [] in
   let aria_attrs =
     match config.error with
-    | Some _ -> [ ("aria-describedby", eid) ]
+    | Some _ -> [ ("aria-describedby", eid); ("aria-invalid", "true") ]
     | None -> []
   in
   let naming_attrs = [ ("id", iid); ("aria-labelledby", lid) ] in
@@ -76,7 +104,9 @@ let view config =
   let input_el =
     E.input ?style:config.style ?interaction:config.interaction
       ~attrs:input_attrs ?placeholder:config.placeholder ?on_change ?on_submit
-      ?on_blur config.value
+      ?on_focus ?on_blur ?on_keydown ?required:config.required
+      ?autocomplete:config.autocomplete ?input_type:config.input_type
+      ?name:config.name config.value
   in
   let label_text = Text_node.of_style ~style:config.label_style config.label in
   let label_el =

@@ -7,6 +7,7 @@ type model = {
   error_value : string;
   disabled_value : string;
   restyled_value : string;
+  focused : string;
 }
 
 type msg =
@@ -16,6 +17,7 @@ type msg =
   | Error_changed of string
   | Restyled_changed of string
   | Restyled_label_clicked
+  | Field_focused of string
 
 let init () =
   ( {
@@ -24,6 +26,7 @@ let init () =
       error_value = "";
       disabled_value = "Cannot edit";
       restyled_value = "";
+      focused = "";
     },
     Nopal_mvu.Cmd.none )
 
@@ -70,6 +73,12 @@ let restyled_config ~value =
     wrapper_style = Some restyled_wrapper_style;
     error_style = Some restyled_error_style;
     on_label_click = Some Restyled_label_clicked;
+    required = None;
+    autocomplete = None;
+    input_type = None;
+    name = None;
+    on_keydown = None;
+    on_focus = None;
   }
 
 let update model msg =
@@ -79,6 +88,7 @@ let update model msg =
   | Placeholder_changed v ->
       ({ model with placeholder_value = v }, Nopal_mvu.Cmd.none)
   | Error_changed v -> ({ model with error_value = v }, Nopal_mvu.Cmd.none)
+  | Field_focused name -> ({ model with focused = name }, Nopal_mvu.Cmd.none)
   | Restyled_changed v -> ({ model with restyled_value = v }, Nopal_mvu.Cmd.none)
   (* Click-to-focus, the application's half and the whole of it: a view function
      cannot issue a command, so the component hands the label press out as a
@@ -96,12 +106,23 @@ let group_style =
 let view _vp model =
   let default_input =
     TextInput.view
-      {
-        (TextInput.make ~label:"Default" ~value:model.default_value) with
-        on_change = Some (fun v -> Default_changed v);
-        on_submit = Some Default_submitted;
-        attrs = [ ("data-testid", "text-input-default") ];
-      }
+      (TextInput.with_on_focus (Field_focused "Default")
+         {
+           (TextInput.make ~label:"Default" ~value:model.default_value) with
+           on_change = Some (fun v -> Default_changed v);
+           on_submit = Some Default_submitted;
+           attrs = [ ("data-testid", "text-input-default") ];
+         })
+  in
+  let focused_readout =
+    Element.box
+      ~attrs:[ ("data-testid", "text-input-focused") ]
+      [
+        Element.text
+          (match model.focused with
+          | "" -> "Focused: none"
+          | f -> "Focused: " ^ f);
+      ]
   in
   let placeholder_input =
     TextInput.view
@@ -117,7 +138,10 @@ let view _vp model =
     TextInput.view
       {
         (TextInput.make ~label:"With Error" ~value:model.error_value) with
-        error = Some "This field is required";
+        error =
+          (match model.error_value with
+          | "" -> Some "This field is required"
+          | _ -> None);
         on_change = Some (fun v -> Error_changed v);
         attrs = [ ("data-testid", "text-input-error") ];
       }
@@ -143,4 +167,5 @@ let view _vp model =
       error_input;
       disabled_input;
       restyled_input;
+      focused_readout;
     ]

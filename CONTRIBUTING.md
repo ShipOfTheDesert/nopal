@@ -97,10 +97,10 @@ sees the exception: D-1, D-2, D-6, D-10, D-16, D-18 and D-19 under
 [E2E tests](#e2e-tests-playwright), D-3 and D-17 (discharged) under
 [Performance](#performance), D-4 and D-12 under [Kitchen Sink](#kitchen-sink), D-5 and D-7 under
 [VIII. Bug-Class Prevention](#viii-bug-class-prevention), D-8, D-9, D-11,
-D-13, D-14 and D-15 under [V. Functional Patterns](#v-functional-patterns). D-11 is
-discharged; its record stays where it was, because an id is assigned once and
-never reused and a reader who meets the id in an older commit message has to be
-able to find it.
+D-13, D-14 and D-15 under [V. Functional Patterns](#v-functional-patterns). D-11,
+D-15 and D-17 are discharged; their records stay where they were, because an id is
+assigned once and never reused and a reader who meets the id in an older commit
+message has to be able to find it.
 
 ## Reporting a framework gap
 
@@ -993,6 +993,12 @@ false; adding an element inside an existing component without giving it a
 mechanism is the same defect one level down, and it is the shape that produced
 the fork above.
 
+**A field added to an element that a `nopal_ui` component wraps is exposed by
+that component in the same change.** That covers a typed attribute or a handler
+as much as a visual decision. A field the element gained and the component does
+not pass on is reachable only through an `~attrs` pair or a fork, and it is
+reachable through a pair only below the typed tier.
+
 Deferring part of the rule is allowed; leaving it unrecorded is not — see
 [Deferrals and decisions not to cover](#deferrals-and-decisions-not-to-cover)
 for the `D-n` scheme. **Two records sit under this rule: a decision not to
@@ -1081,6 +1087,8 @@ merely unwired: `Nopal_style.Interaction.t` has exactly three states — `hover`
 `Style.paint` carries no `outline`; neither an invalid state nor an outline is
 spelled anywhere in `nopal_style` or `nopal_web`.
 
+Invalidity is announced even though its styling is deferred: `Text_input` derives `aria-invalid` from the error, so only the styling remains deferred.
+
 Why this is a decision rather than a violation of the rule above: the rule is
 about decisions a *component* makes, and this appearance is the browser's, not a
 `nopal_ui` component's. Withholding `required` would not hand a consumer the
@@ -1092,19 +1100,33 @@ record of its own until this one. The record is discharged by the change that
 gives `Interaction` an `invalid` state and `Style.paint` an `outline`, together,
 and demonstrates the override on a `required` input set to a non-default value.
 
-#### Decision not to cover D-15 — `nopal_ui.Text_input` pass-through of the three typed fields
+#### Discharged deferral D-15 — `nopal_ui.Text_input` pass-through of the three typed fields
 
-**Owner: whoever next touches `Text_input`, or a follow-up feature, in that
-change — routed through 0142's `with_*` convention.**
+**Discharged by `Text_input.with_required`, `with_autocomplete` and
+`with_input_type`, pinned by `test/unit/nopal_ui/test_text_input.ml`,
+`typed fields reach input` and `typed field outranks attrs`.**
 
-`lib/nopal_ui/text_input.ml:78` builds its `Element.input` without
-`?required`, `?autocomplete` or `?input_type`, so a `Text_input` caller cannot
-reach any of the three typed fields that `Element.input` added. This was Part 1
-of 0143, which is frozen; the pass-through is Part 2 scope and is recorded here
-rather than by editing the frozen Part 1 requirements. The record is discharged
-by the change that adds `with_required`, `with_autocomplete` and
-`with_input_type` (or equivalents) to `Text_input`, following the `with_*`
-convention `Nopal_ui` established in 0142.
+`Element.input` gained typed `required`, `autocomplete` and `input_type` fields,
+and `Text_input` went on building its input without them. A `Text_input` caller
+could reach the three only as `~attrs` pairs, which sit below the typed tier and
+carry no `aria-required`, or by forking the component. The change that added the
+fields did not take on the component, so the gap was recorded here instead.
+
+Each setter passes its field through to the input. Each case sets the field to a
+non-default value and asserts that the rendered node changed. With no setter the
+field is `None`, and a caller's pair of the same key stands.
+
+The same change covers three fields the record did not name:
+
+- `with_on_focus` and `with_on_keydown` forward the input's two handlers, which
+  `Text_input` had never forwarded either. While the control is disabled they
+  are suppressed, as `on_change`, `on_submit` and `on_blur` are.
+- `with_name` forwards the typed `name` that `Element.input` gained alongside
+  them.
+
+The rule line above (an element's new field is exposed by the component that
+wraps it, in the same change) is what keeps the next field from reopening this
+gap.
 
 **A Typed Size Is a Guarantee, Not a Hint**
 `Style.size` states what a dimension of an element is, and a backend has to

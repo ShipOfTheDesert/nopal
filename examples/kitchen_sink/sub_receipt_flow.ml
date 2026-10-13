@@ -1018,6 +1018,12 @@ let note_input model =
       wrapper_style = None;
       error_style = None;
       on_label_click = None;
+      required = None;
+      autocomplete = None;
+      input_type = None;
+      name = None;
+      on_keydown = None;
+      on_focus = None;
     }
 
 (* A photograph under the heading that says which of the two it is. Every field
