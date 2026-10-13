@@ -12,8 +12,10 @@ import { assertNoAxeViolations } from "./axe";
 // section's whole dispatch list over the interaction rather than looking for a
 // message, so a doubled submit and a dropped one both redden it.
 //
-// The DOM is read in two places only. The landmark and the axe scan are
-// accessibility facts with no telemetry event to carry them. The `novalidate`
+// The DOM is read in three places only. The landmark and the axe scan are
+// accessibility facts with no telemetry event to carry them. The password
+// field's `type`, `autocomplete` and `name` are render facts a password manager
+// reads and no message reports. The `novalidate`
 // attribute is read as a render gate, not as an assertion: the model flipping
 // the flag and the next frame writing it onto the form are two steps apart, and
 // a click between them would submit the form it had before.
@@ -23,9 +25,11 @@ import { assertNoAxeViolations } from "./axe";
 
 const SECTION = '[data-testid="auth-form-section"]';
 const FORM = `${SECTION} [data-testid="auth-form"]`;
-const EMAIL = `${SECTION} [data-testid="auth-email"]`;
-const PASSWORD = `${SECTION} [data-testid="auth-password"]`;
-const CODE = `${SECTION} [data-testid="auth-code"]`;
+// The fields are `Text_input`s, so each is anchored by the `data-field` the
+// component derives from its id rather than by a `data-testid` pair.
+const EMAIL = `${SECTION} [data-field="auth-email"]`;
+const PASSWORD = `${SECTION} [data-field="auth-password"]`;
+const CODE = `${SECTION} [data-field="auth-code"]`;
 const SUBMIT = `${SECTION} [data-testid="auth-submit"]`;
 const NOVALIDATE = `${SECTION} [data-testid="auth-novalidate"]`;
 // The record this section contributes to the page's single serialized model.
@@ -223,6 +227,33 @@ test("a consuming on_keydown suppresses the form submit", async ({ page }) => {
     "auth_code_confirms=1; auth_submits=1;"
   );
   await telemetry.attachHistory(test.info());
+});
+
+test("the password field renders its typed fields", async ({ page }) => {
+  const password = page.locator(PASSWORD);
+  await expect(password).toHaveAttribute("type", "password");
+  await expect(password).toHaveAttribute("autocomplete", "current-password");
+  await expect(password).toHaveAttribute("name", "password");
+  await expect(password).toHaveAttribute("required", "");
+  await expect(password).toHaveAttribute("aria-required", "true");
+});
+
+test("a click on a field's label focuses that field", async ({ page }) => {
+  for (const [field, id] of [
+    [EMAIL, "auth-email"],
+    [PASSWORD, "auth-password"],
+    [CODE, "auth-code"],
+  ] as const) {
+    await page.locator(`#${id}-label`).click();
+    // The label box is not focusable, so only the message reaching `update`
+    // and its Cmd.focus can move focus here. The retry is load-bearing: the
+    // web backend drains focus requests in the rAF loop.
+    await expect(page.locator(field)).toBeFocused();
+    const focusedId = await page.evaluate(() =>
+      document.activeElement === null ? "none" : document.activeElement.id
+    );
+    expect(focusedId).toBe(id);
+  }
 });
 
 test("the form is a landmark and axe reports no violations", async ({

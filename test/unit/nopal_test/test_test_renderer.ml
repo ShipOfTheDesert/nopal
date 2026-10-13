@@ -1967,8 +1967,39 @@ let change_list_tests =
       button_answer_change_readings;
   ]
 
+(* An input's typed [name] sits at the first tier. The outrank and uncover
+   cases share one fixture, so the uncover reading is shown reachable by the
+   same caller pair the typed field beats. *)
+let input_name_read element =
+  match find (By_tag "input") (tree (render element)) with
+  | Some node -> attr "name" node
+  | None -> Alcotest.fail "no input node rendered"
+
+let input_with_a_caller_name_pair ?name () =
+  E.input ~attrs:[ ("name", "x") ] ?name ""
+
+let input_name_derived () =
+  Alcotest.(check (option string))
+    "a typed name is on the node" (Some "email")
+    (input_name_read (E.input ~name:"email" ""))
+
+let input_name_outranks_attrs () =
+  Alcotest.(check (option string))
+    "the typed name beats the caller's pair" (Some "email")
+    (input_name_read (input_with_a_caller_name_pair ~name:"email" ()))
+
+let input_name_absent_uncovers () =
+  Alcotest.(check (option string))
+    "an absent name leaves the caller's pair standing" (Some "x")
+    (input_name_read (input_with_a_caller_name_pair ()))
+
 let attr_precedence_tests =
   [
+    Alcotest.test_case "input_name_derived" `Quick input_name_derived;
+    Alcotest.test_case "input_name_outranks_attrs" `Quick
+      input_name_outranks_attrs;
+    Alcotest.test_case "input_name_absent_uncovers" `Quick
+      input_name_absent_uncovers;
     Alcotest.test_case "caller_duplicate_resolves_to_the_last_pair" `Quick
       caller_duplicate_resolves_to_the_last_pair;
     Alcotest.test_case "derived_pair_beats_a_caller_pair_of_the_same_key" `Quick

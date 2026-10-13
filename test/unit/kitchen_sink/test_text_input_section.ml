@@ -139,9 +139,61 @@ let test_label_click_asks_the_update_for_focus () =
           Alcotest.failf "expected exactly one message, got %d"
             (List.length msgs))
 
+(* [on_focus] reaches the application through the component: focusing the
+   Default field yields exactly one message, update records it, and the readout
+   the section renders names that field. *)
+let test_focus_reaches_the_readout () =
+  let model, r = rendered () in
+  match focus (By_attr ("data-testid", "text-input-default")) r with
+  | Error (Not_found _) -> Alcotest.fail "the Default input was not found"
+  | Error (No_handler { tag; event }) ->
+      Alcotest.failf "the Default input (%s) has no %s handler" tag event
+  | Ok () -> (
+      match messages r with
+      | [ msg ] -> (
+          let model, _cmd = Section.update model msg in
+          let r = render (Section.view vp model) in
+          match
+            find (By_attr ("data-testid", "text-input-focused")) (tree r)
+          with
+          | Some node ->
+              Alcotest.(check bool)
+                "the readout names the focused field" true
+                (find (By_text "Focused: Default") node <> None)
+          | None -> Alcotest.fail "the focus readout is missing")
+      | msgs ->
+          Alcotest.failf "expected exactly one message, got %d"
+            (List.length msgs))
+
+(* Decision 3: the error on the With Error field depends on its value. Present
+   while empty, gone once filled; [aria-invalid] follows. *)
+let test_error_follows_the_value () =
+  let model, r = rendered () in
+  let field = By_attr ("data-testid", "text-input-error") in
+  let alert root = find (By_attr ("role", "alert")) root in
+  let invalid r = Option.bind (find field (tree r)) (attr "aria-invalid") in
+  let section_alert r = find (By_attr ("id", "with-error-error")) (tree r) in
+  Alcotest.(check bool)
+    "alert present when empty" true
+    (section_alert r <> None && alert (tree r) <> None);
+  Alcotest.(check (option string))
+    "aria-invalid true when empty" (Some "true") (invalid r);
+  let model, _ = Section.update model (Section.Error_changed "x") in
+  let r = render (Section.view vp model) in
+  Alcotest.(check bool) "alert gone once filled" true (section_alert r = None);
+  Alcotest.(check (option string))
+    "aria-invalid gone once filled" None (invalid r)
+
 let () =
   Alcotest.run "kitchen_sink_text_input_section"
     [
+      ( "value and focus",
+        [
+          Alcotest.test_case "focus reaches the readout" `Quick
+            test_focus_reaches_the_readout;
+          Alcotest.test_case "error follows the value" `Quick
+            test_error_follows_the_value;
+        ] );
       ( "restyled input",
         [
           Alcotest.test_case "label is a box around its own text" `Quick

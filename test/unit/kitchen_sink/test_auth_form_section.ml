@@ -20,9 +20,9 @@ module Sub = Kitchen_sink_app__Sub_auth_form
 
 let vp = Nopal_element.Viewport.desktop
 let form = By_attr ("data-testid", "auth-form")
-let email = By_attr ("data-testid", "auth-email")
-let password = By_attr ("data-testid", "auth-password")
-let code = By_attr ("data-testid", "auth-code")
+let email = By_attr ("data-field", "auth-email")
+let password = By_attr ("data-field", "auth-password")
+let code = By_attr ("data-field", "auth-code")
 let submit_button = By_attr ("data-testid", "auth-submit")
 let novalidate_control = By_attr ("data-testid", "auth-novalidate")
 let submit_count = By_attr ("data-testid", "auth-submit-count")
@@ -119,11 +119,30 @@ let field_attrs label selector rendered =
   let node = field_in_form label selector rendered in
   List.map
     (fun key -> (key, attr key node))
-    [ "type"; "autocomplete"; "required"; "aria-required" ]
+    [ "type"; "autocomplete"; "required"; "aria-required"; "name" ]
 
 let attr_list = Alcotest.(list (pair string (option string)))
 
-let test_fields_carry_typed_type_autocomplete_and_required () =
+(* A field named through an [aria-label] pair would still read as labelled to a
+   browser, so the name is followed to the element it points at, and the pair
+   the section used to write is asserted gone on the same field. *)
+let check_labelled_by label selector expected rendered =
+  let field = field_in_form label selector rendered in
+  Alcotest.(check (option string))
+    (label ^ " is not named by an attribute pair")
+    None (attr "aria-label" field);
+  match attr "aria-labelledby" field with
+  | None -> Alcotest.fail (label ^ " carries no aria-labelledby")
+  | Some id ->
+      Alcotest.(check string)
+        (label ^ " is named by the visible label it points at")
+        expected
+        (text_content
+           (node_in (label ^ "'s label")
+              (By_attr ("id", id))
+              (form_node rendered)))
+
+let test_fields_are_text_inputs_with_typed_fields () =
   let rendered = rendered_for (after []) in
   Alcotest.check attr_list "the email field is a required email field"
     [
@@ -131,6 +150,7 @@ let test_fields_carry_typed_type_autocomplete_and_required () =
       ("autocomplete", Some "email");
       ("required", Some "true");
       ("aria-required", Some "true");
+      ("name", Some "email");
     ]
     (field_attrs "the email field" email rendered);
   Alcotest.check attr_list
@@ -140,6 +160,7 @@ let test_fields_carry_typed_type_autocomplete_and_required () =
       ("autocomplete", Some "current-password");
       ("required", Some "true");
       ("aria-required", Some "true");
+      ("name", Some "password");
     ]
     (field_attrs "the password field" password rendered);
   (* The same derivations answer differently for a field that does not ask for
@@ -150,8 +171,84 @@ let test_fields_carry_typed_type_autocomplete_and_required () =
       ("autocomplete", Some "one-time-code");
       ("required", None);
       ("aria-required", None);
+      ("name", Some "code");
     ]
-    (field_attrs "the one-time code field" code rendered)
+    (field_attrs "the one-time code field" code rendered);
+  check_labelled_by "the email field" email "Email" rendered;
+  check_labelled_by "the password field" password "Password" rendered;
+  check_labelled_by "the one-time code field" code "One-time code" rendered
+
+(* Every attribute key a [TextInput] input emits from its typed settings. A key
+   outside this set can only have come from a raw [~attrs] pair on the field's
+   config, which the section promises none of. *)
+let component_keys =
+  [
+    "id";
+    "aria-labelledby";
+    "data-field";
+    "name";
+    "type";
+    "autocomplete";
+    "required";
+    "aria-required";
+    "aria-describedby";
+    "aria-invalid";
+    "value";
+    "placeholder";
+  ]
+
+let test_no_field_carries_raw_attrs () =
+  let rendered = rendered_for (after []) in
+  List.iter
+    (fun (label, selector) ->
+      match field_in_form label selector rendered with
+      | Element { attrs; _ } ->
+          let strays =
+            List.filter (fun (k, _) -> not (List.mem k component_keys)) attrs
+          in
+          Alcotest.(check (list string))
+            (label ^ " carries only the component's own attributes")
+            [] (List.map fst strays)
+      | Empty
+      | Text _ ->
+          Alcotest.fail (label ^ " is not an element"))
+    [
+      ("the email field", email);
+      ("the password field", password);
+      ("the one-time code field", code);
+    ]
+
+(* Click-to-focus: the label press dispatches the section's message and update
+   answers it with a focus command on that field's own control. *)
+let test_label_click_focuses_its_field () =
+  List.iter
+    (fun (label, control_id) ->
+      let model = after [] in
+      let rendered = rendered_for model in
+      (match
+         box_pointer_down
+           (By_attr ("id", control_id ^ "-label"))
+           ~x:4.0 ~y:4.0 rendered
+       with
+      | Ok () -> ()
+      | Error (Not_found _) -> Alcotest.fail (label ^ ": no label element")
+      | Error (No_handler { tag; event }) ->
+          Alcotest.failf "%s: the label (%s) has no %s handler" label tag event);
+      match messages rendered with
+      | [ msg ] ->
+          let _model, cmd = Sub.update model msg in
+          Alcotest.(check (option string))
+            (label ^ ": update answers the label click with Cmd.focus")
+            (Some control_id)
+            (Nopal_mvu.Cmd.extract_focus cmd)
+      | msgs ->
+          Alcotest.failf "%s: expected one message, got %d" label
+            (List.length msgs))
+    [
+      ("email", "auth-email");
+      ("password", "auth-password");
+      ("code", "auth-code");
+    ]
 
 let toggle_novalidate label model =
   let rendered = rendered_for model in
@@ -179,7 +276,7 @@ let test_novalidate_toggle_flips_the_form_attribute () =
   Alcotest.(check (option string))
     "and the toggle takes it away again" None (novalidate_of back_model)
 
-let test_a_consuming_on_keydown_field_suppresses_the_form_submit () =
+let test_code_field_consumes_enter () =
   let rendered = rendered_for (after []) in
   let (_ : node) = field_in_form "the one-time code field" code rendered in
   press "Enter in the one-time code field" code "Enter" rendered;
@@ -217,13 +314,15 @@ let () =
             test_submit_button_is_inside_the_form;
           Alcotest.test_case "the_form_carries_an_accessible_name" `Quick
             test_the_form_carries_an_accessible_name;
-          Alcotest.test_case
-            "email_and_password_fields_carry_typed_type_autocomplete_and_required"
-            `Quick test_fields_carry_typed_type_autocomplete_and_required;
+          Alcotest.test_case "fields_are_text_inputs_with_typed_fields" `Quick
+            test_fields_are_text_inputs_with_typed_fields;
+          Alcotest.test_case "no_field_carries_raw_attrs" `Quick
+            test_no_field_carries_raw_attrs;
+          Alcotest.test_case "label_click_focuses_its_field" `Quick
+            test_label_click_focuses_its_field;
           Alcotest.test_case "novalidate_toggle_flips_the_form_attribute" `Quick
             test_novalidate_toggle_flips_the_form_attribute;
-          Alcotest.test_case
-            "a_consuming_on_keydown_field_suppresses_the_form_submit" `Quick
-            test_a_consuming_on_keydown_field_suppresses_the_form_submit;
+          Alcotest.test_case "code_field_consumes_enter" `Quick
+            test_code_field_consumes_enter;
         ] );
     ]

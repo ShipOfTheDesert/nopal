@@ -325,23 +325,25 @@ let form_fields label (el : form_msg E.t) =
   | E.Virtual_list _ ->
       Alcotest.fail (label ^ ": expected a Form")
 
-(* An input's three typed fields and its submission handler, lifted out of the
+(* An input's typed fields and its submission handler, lifted out of the
    inline record the same way [form_fields] lifts a form's. Every other variant
    fails the case. *)
 type input_fields = {
   i_required : bool;
   i_autocomplete : string option;
   i_input_type : E.input_type option;
+  i_name : string option;
   i_on_submit : form_msg option;
 }
 
 let input_fields label (el : form_msg E.t) =
   match el with
-  | E.Input { required; autocomplete; input_type; on_submit; _ } ->
+  | E.Input { required; autocomplete; input_type; name; on_submit; _ } ->
       {
         i_required = required;
         i_autocomplete = autocomplete;
         i_input_type = input_type;
+        i_name = name;
         i_on_submit = on_submit;
       }
   | E.Empty
@@ -538,29 +540,33 @@ let form_equal_distinguishes_each_field () =
 
 (* --- Input's typed fields (2) --- *)
 
-let input_defaults_author_none_of_the_three () =
+let input_defaults_author_none_of_the_typed_fields () =
   let i = input_fields "defaults" (E.input "v") in
   Alcotest.(check bool) "required defaults to false" false i.i_required;
   Alcotest.(check (option string))
     "no autocomplete is authored" None i.i_autocomplete;
   Alcotest.(check (option input_type_testable))
     "no input type is authored" None i.i_input_type;
+  Alcotest.(check (option string)) "no name is authored" None i.i_name;
   (* The affirmative arm: the builder does carry each field when authored, so
-     the three absences above are the defaults and not a dropped argument. *)
+     the absences above are the defaults and not a dropped argument. *)
   let a =
     input_fields "authored"
-      (E.input ~required:true ~autocomplete:"username" ~input_type:E.Email "v")
+      (E.input ~required:true ~autocomplete:"username" ~input_type:E.Email
+         ~name:"email" "v")
   in
   Alcotest.(check bool) "an authored required is carried" true a.i_required;
   Alcotest.(check (option string))
     "an authored autocomplete is carried" (Some "username") a.i_autocomplete;
   Alcotest.(check (option input_type_testable))
-    "an authored input type is carried" (Some E.Email) a.i_input_type
+    "an authored input type is carried" (Some E.Email) a.i_input_type;
+  Alcotest.(check (option string))
+    "an authored name is carried" (Some "email") a.i_name
 
-let input_map_and_equal_carry_the_three_fields () =
+let input_map_and_equal_carry_the_typed_fields () =
   let el =
     E.input ~required:true ~autocomplete:"current-password"
-      ~input_type:E.Password ~on_submit:Signed_in ""
+      ~input_type:E.Password ~name:"password" ~on_submit:Signed_in ""
   in
   let m = input_fields "mapped" (E.map (fun msg -> Wrapped msg) el) in
   Alcotest.(check bool) "required survives map" true m.i_required;
@@ -568,6 +574,8 @@ let input_map_and_equal_carry_the_three_fields () =
     "autocomplete survives map" (Some "current-password") m.i_autocomplete;
   Alcotest.(check (option input_type_testable))
     "input type survives map" (Some E.Password) m.i_input_type;
+  Alcotest.(check (option string))
+    "name survives map" (Some "password") m.i_name;
   (match m.i_on_submit with
   | Some (Wrapped Signed_in) -> ()
   | Some (Signed_in | Field_entered | Carrying _ | Wrapped _)
@@ -576,7 +584,7 @@ let input_map_and_equal_carry_the_three_fields () =
   (* [equal] gates reconciliation skipping, so each new field needs its own
      conjunct: a dropped one reports two differing inputs equal. *)
   let base ?(required = true) ?(autocomplete = Some "username")
-      ?(input_type = Some E.Email) () =
+      ?(input_type = Some E.Email) ?(name = Some "email") () =
     E.Input
       {
         style = Nopal_style.Style.empty;
@@ -592,6 +600,7 @@ let input_map_and_equal_carry_the_three_fields () =
         required;
         autocomplete;
         input_type;
+        name;
       }
   in
   Alcotest.(check bool)
@@ -606,7 +615,9 @@ let input_map_and_equal_carry_the_three_fields () =
   differs "an absent autocomplete is not equal" (base ~autocomplete:None ());
   differs "a different input type is not equal"
     (base ~input_type:(Some E.Tel) ());
-  differs "an absent input type is not equal" (base ~input_type:None ())
+  differs "an absent input type is not equal" (base ~input_type:None ());
+  differs "a different name is not equal" (base ~name:(Some "username") ());
+  differs "an absent name is not equal" (base ~name:None ())
 
 (* --- Test runner --- *)
 
@@ -677,9 +688,9 @@ let () =
         ] );
       ( "input_fields",
         [
-          Alcotest.test_case "defaults_author_none_of_the_three" `Quick
-            input_defaults_author_none_of_the_three;
-          Alcotest.test_case "map_and_equal_carry_the_three_fields" `Quick
-            input_map_and_equal_carry_the_three_fields;
+          Alcotest.test_case "defaults_author_none_of_the_typed_fields" `Quick
+            input_defaults_author_none_of_the_typed_fields;
+          Alcotest.test_case "map_and_equal_carry_the_typed_fields" `Quick
+            input_map_and_equal_carry_the_typed_fields;
         ] );
     ]

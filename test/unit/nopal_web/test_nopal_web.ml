@@ -157,6 +157,7 @@ let test_input_creates_input () =
         required = false;
         autocomplete = None;
         input_type = None;
+        name = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
@@ -333,6 +334,7 @@ let test_input_change_dispatches () =
         required = false;
         autocomplete = None;
         input_type = None;
+        name = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
@@ -366,6 +368,7 @@ let test_input_submit_dispatches_on_enter () =
         required = false;
         autocomplete = None;
         input_type = None;
+        name = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
@@ -401,6 +404,7 @@ let test_input_submit_ignores_non_enter () =
         required = false;
         autocomplete = None;
         input_type = None;
+        name = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
@@ -570,6 +574,7 @@ let focus_input ~on_focus =
       required = false;
       autocomplete = None;
       input_type = None;
+      name = None;
     }
 
 (* Each of these renders one element and reconciles against a second,
@@ -750,6 +755,7 @@ let test_input_focus_dispatches () =
         required = false;
         autocomplete = None;
         input_type = None;
+        name = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
@@ -1260,6 +1266,7 @@ let test_keyed_stable_node_identity () =
                       required = false;
                       autocomplete = None;
                       input_type = None;
+                      name = None;
                     };
               };
             Keyed
@@ -1309,6 +1316,7 @@ let test_keyed_stable_node_identity () =
                       required = false;
                       autocomplete = None;
                       input_type = None;
+                      name = None;
                     };
               };
           ];
@@ -2103,6 +2111,7 @@ let test_reconcile_input_skips_unchanged_placeholder () =
         required = false;
         autocomplete = None;
         input_type = None;
+        name = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -2124,6 +2133,7 @@ let test_reconcile_input_skips_unchanged_placeholder () =
         required = false;
         autocomplete = None;
         input_type = None;
+        name = None;
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
@@ -2150,6 +2160,7 @@ let test_reconcile_input_updates_changed_placeholder () =
         required = false;
         autocomplete = None;
         input_type = None;
+        name = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -2171,6 +2182,7 @@ let test_reconcile_input_updates_changed_placeholder () =
         required = false;
         autocomplete = None;
         input_type = None;
+        name = None;
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
@@ -2206,6 +2218,7 @@ let test_reconcile_input_skips_unchanged_value () =
         required = false;
         autocomplete = None;
         input_type = None;
+        name = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent (mk "v") in
@@ -2236,6 +2249,7 @@ let test_reconcile_input_updates_changed_value () =
         required = false;
         autocomplete = None;
         input_type = None;
+        name = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent (mk "v") in
@@ -2623,6 +2637,7 @@ let test_reconcile_input_skips_unchanged_attrs () =
         required = false;
         autocomplete = None;
         input_type = None;
+        name = None;
       }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
@@ -2644,6 +2659,7 @@ let test_reconcile_input_skips_unchanged_attrs () =
         required = false;
         autocomplete = None;
         input_type = None;
+        name = None;
       }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;

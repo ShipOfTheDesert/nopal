@@ -149,6 +149,12 @@ let text_input_config () : msg TI.config =
     wrapper_style = Some amber;
     error_style = Some violet;
     on_label_click = Some "label-clicked";
+    required = None;
+    autocomplete = None;
+    input_type = None;
+    name = None;
+    on_keydown = None;
+    on_focus = None;
   }
 
 let test_text_input_aria_survives_every_style_override () =

@@ -1,5 +1,6 @@
 open Nopal_element
 open Nopal_style
+module TextInput = Nopal_ui.TextInput
 
 type model = {
   email : string;
@@ -17,6 +18,7 @@ type msg =
   | Code_confirmed
   | Submitted
   | Novalidate_toggled of bool
+  | Label_clicked of string
 
 let init () =
   ( {
@@ -40,6 +42,10 @@ let update model msg =
   | Submitted -> ({ model with submits = model.submits + 1 }, Nopal_mvu.Cmd.none)
   | Novalidate_toggled novalidate ->
       ({ model with novalidate }, Nopal_mvu.Cmd.none)
+  (* Click-to-focus, the application's half: the component hands the label
+     press out as a message carrying its control's id, and this line answers
+     it. *)
+  | Label_clicked control_id -> (model, Nopal_mvu.Cmd.focus control_id)
 
 (* The one-time code field answers Enter itself and declines every other key.
    Answering Enter is what consumes it, so it never goes on to submit the form;
@@ -91,28 +97,45 @@ let view _vp model =
         ~attrs:[ ("data-testid", "auth-form"); ("aria-label", "Demo sign-in") ]
         ~on_submit:Submitted ~novalidate:model.novalidate
         [
-          Element.text "Email";
-          Element.input
-            ~attrs:[ ("data-testid", "auth-email"); ("aria-label", "Email") ]
-            ~on_change:(fun s -> Email_changed s)
-            ~required:true ~autocomplete:"email" ~input_type:Element.Email
-            model.email;
-          Element.text "Password";
-          Element.input
-            ~attrs:
-              [ ("data-testid", "auth-password"); ("aria-label", "Password") ]
-            ~on_change:(fun s -> Password_changed s)
-            ~required:true ~autocomplete:"current-password"
-            ~input_type:Element.Password model.password;
+          TextInput.view
+            {
+              (TextInput.make ~label:"Email" ~value:model.email
+              |> TextInput.with_id "auth-email"
+              |> TextInput.with_on_label_click (Label_clicked "auth-email")
+              |> TextInput.with_input_type Element.Email
+              |> TextInput.with_autocomplete "email"
+              |> TextInput.with_required true
+              |> TextInput.with_name "email")
+              with
+              on_change = Some (fun s -> Email_changed s);
+            };
+          TextInput.view
+            {
+              (TextInput.make ~label:"Password" ~value:model.password
+              |> TextInput.with_id "auth-password"
+              |> TextInput.with_on_label_click (Label_clicked "auth-password")
+              |> TextInput.with_input_type Element.Password
+              |> TextInput.with_autocomplete "current-password"
+              |> TextInput.with_required true
+              |> TextInput.with_name "password")
+              with
+              on_change = Some (fun s -> Password_changed s);
+            };
           Element.text
-            "One-time code (Enter here confirms the code and does not submit \
-             the form)";
-          Element.input
-            ~attrs:
-              [ ("data-testid", "auth-code"); ("aria-label", "One-time code") ]
-            ~on_change:(fun s -> Code_changed s)
-            ~on_keydown:code_keydown ~autocomplete:"one-time-code"
-            ~input_type:Element.Plain model.code;
+            "Enter in the one-time code field confirms the code and does not \
+             submit the form.";
+          TextInput.view
+            {
+              (TextInput.make ~label:"One-time code" ~value:model.code
+              |> TextInput.with_id "auth-code"
+              |> TextInput.with_on_label_click (Label_clicked "auth-code")
+              |> TextInput.with_input_type Element.Plain
+              |> TextInput.with_autocomplete "one-time-code"
+              |> TextInput.with_on_keydown code_keydown
+              |> TextInput.with_name "code")
+              with
+              on_change = Some (fun s -> Code_changed s);
+            };
           (* No message of its own: the press submits the form, and the form
              carries the message, so a handler here would dispatch twice. *)
           Element.button
@@ -140,3 +163,4 @@ let serialize_msg msg =
   | Code_confirmed -> "AuthForm:Code_confirmed;"
   | Submitted -> "AuthForm:Submitted;"
   | Novalidate_toggled _ -> "AuthForm:Novalidate_toggled;"
+  | Label_clicked _ -> "AuthForm:Label_clicked;"

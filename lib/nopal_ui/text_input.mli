@@ -20,14 +20,26 @@ type 'msg config = {
   wrapper_style : Nopal_style.Style.t option;
   error_style : Nopal_style.Style.t option;
   on_label_click : 'msg option;
+  required : bool option;
+  autocomplete : string option;
+  input_type : Nopal_element.Element.input_type option;
+  name : string option;
+  on_keydown : (string -> 'msg option) option;
+  on_focus : 'msg option;
 }
 (** TextInput configuration. [label] and [value] are required — use {!make}.
 
-    The last four fields are the override surface. The supported route to them
-    is {!with_label_style}, {!with_wrapper_style}, {!with_error_style} and
-    {!with_on_label_click} rather than writing them by hand; they are fields
-    because a setter needs somewhere to put its value, and a caller who builds
-    this record as a complete literal must supply them. *)
+    The last ten fields are reached through setters. [label_style],
+    [wrapper_style], [error_style] and [on_label_click] are the override
+    surface, set by {!with_label_style}, {!with_wrapper_style},
+    {!with_error_style} and {!with_on_label_click}. [required], [autocomplete],
+    [input_type], [name], [on_keydown] and [on_focus] carry the input element's
+    own fields through to it, set by {!with_required}, {!with_autocomplete},
+    {!with_input_type}, {!with_name}, {!with_on_keydown} and {!with_on_focus},
+    so no field of [Element.input] is reachable only through [config.attrs]. The
+    supported route to all ten is the setter rather than writing them by hand;
+    they are fields because a setter needs somewhere to put its value, and a
+    caller who builds this record as a complete literal must supply them. *)
 
 val make : label:string -> value:string -> 'msg config
 (** [make ~label ~value] returns a config with the given label and value. All
@@ -77,6 +89,46 @@ val with_on_label_click : 'msg -> 'msg config -> 'msg config
     [Cmd.focus (control_id config)]. Without this setter the label carries no
     pointer handler at all. *)
 
+val with_required : bool -> 'msg config -> 'msg config
+(** [with_required required config] passes [required] to the input's typed
+    [required] field. With [true] the input carries [required] and
+    [aria-required], and either replaces a pair for the same key in
+    [config.attrs]. With [false], or without this setter, the input derives
+    neither, and such a pair stands. *)
+
+val with_autocomplete : string -> 'msg config -> 'msg config
+(** [with_autocomplete token config] passes [token] — ["current-password"],
+    ["email"], ["one-time-code"] and the rest of the platform's open set, as
+    written — to the input's typed [autocomplete] field, which replaces an
+    [("autocomplete", _)] pair in [config.attrs]. Without this setter the input
+    derives none, and such a pair stands. *)
+
+val with_input_type :
+  Nopal_element.Element.input_type -> 'msg config -> 'msg config
+(** [with_input_type kind config] passes [kind] to the input's typed
+    [input_type] field, which the input carries as its [type] and which replaces
+    a [("type", _)] pair in [config.attrs]. Without this setter the input
+    derives no [type], and such a pair stands — the route for a kind
+    [input_type] does not name. *)
+
+val with_name : string -> 'msg config -> 'msg config
+(** [with_name name config] passes [name] to the input's typed [name] field —
+    the key the value is submitted under, and the one a password manager reads.
+    It replaces a [("name", _)] pair in [config.attrs]. Without this setter the
+    input derives none, and such a pair stands. *)
+
+val with_on_keydown : (string -> 'msg option) -> 'msg config -> 'msg config
+(** [with_on_keydown handler config] passes [handler] to the input's
+    [on_keydown]. How it shares an Enter with [config.on_submit] and with an
+    enclosing form is {!Nopal_element.Element}'s
+    {{!Nopal_element.Element.section-submit_contract} submit contract}; the
+    component adds no route of its own. Suppressed while [config.disabled] is
+    [true]. *)
+
+val with_on_focus : 'msg -> 'msg config -> 'msg config
+(** [with_on_focus msg config] dispatches [msg] when the input takes focus.
+    Suppressed while [config.disabled] is [true]. *)
+
 val control_id : 'msg config -> string
 (** [control_id config] is the identifier the input element carries, and
     therefore the argument [Cmd.focus] needs. It is [config.id] when the caller
@@ -97,8 +149,8 @@ val error_id : 'msg config -> string
 val view : 'msg config -> 'msg Nopal_element.Element.t
 (** Renders the text input, which carries [data-field=<input id>] (the [id],
     defaulting to the slugified label when unset). This anchor is the E2E
-    selector contract (RFC 0112) and is asserted by [test_anchors.ml]. The
-    input's own [id] carries that same value; [data-field] is unchanged by it.
+    selector contract and is asserted by [test_anchors.ml]. The input's own [id]
+    carries that same value; [data-field] is unchanged by it.
 
     [view config] renders a vertical column, styled by {!with_wrapper_style},
     containing:
@@ -110,7 +162,12 @@ val view : 'msg config -> 'msg Nopal_element.Element.t
     [("aria-labelledby", control_id config ^ "-label")] 3. When [config.error]
     is [Some msg], an error element styled by {!with_error_style} with
     [("role", "alert")] and [("id", error_id config)]; the input gains
-    [("aria-describedby", error_id config)]
+    [("aria-describedby", error_id config)] and [("aria-invalid", "true")]
+
+    [aria-invalid] is an ordinary pair ahead of [config.attrs]. With an error it
+    is present, and a caller's [("aria-invalid", _)] pair in [config.attrs]
+    replaces it. Without an error the component derives nothing, so a caller's
+    pair stands.
 
     To override the accessible name, point [aria-labelledby] at your own
     element; [aria-label] no longer takes effect on this control. The input is
@@ -126,4 +183,5 @@ val view : 'msg config -> 'msg Nopal_element.Element.t
     is [config.id], which moves both halves together.
 
     When [config.disabled] is [true], the input carries [("disabled", "")] and
-    event handlers are suppressed. *)
+    its [on_change], [on_submit], [on_focus], [on_blur] and [on_keydown] are all
+    suppressed. *)

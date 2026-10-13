@@ -99,8 +99,8 @@ type 'msg rendered = {
    A derivation asserts a value and never denies one. For the keys the web
    renderer spells as real DOM attributes and whose absence it spells as
    removal — ["disabled"], ["accept"], ["capture"], ["multiple"], an input's
-   ["required"], ["aria-required"], ["autocomplete"] and ["type"], and a form's
-   ["autocomplete"] and ["novalidate"] — a typed field that declines
+   ["required"], ["aria-required"], ["autocomplete"], ["type"] and ["name"],
+   and a form's ["autocomplete"] and ["novalidate"] — a typed field that declines
    contributes no pair at all, so whatever [attrs] declared for that name is
    uncovered rather than erased and the two renderers cannot disagree about who
    won. [derived_flag] is the boolean spelling of the same rule and also
@@ -333,6 +333,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
           required;
           autocomplete;
           input_type;
+          name;
         } ->
         handlers :=
           {
@@ -349,10 +350,11 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             deferred_enter = form.enter;
           }
           :: !handlers;
-        (* The three typed fields are spelled by absence as the web renderer
-           spells them: [required] only when [true], carrying ["aria-required"]
-           with it; [autocomplete] and [input_type] only when authored. A field
-           that says nothing uncovers whatever [attrs] declared under its key.
+        (* The typed fields are spelled by absence as the web renderer spells
+           them: [required] only when [true], carrying ["aria-required"] with
+           it; [autocomplete], [input_type] and [name] only when authored. A
+           field that says nothing uncovers whatever [attrs] declared under its
+           key.
            [required] carries ["true"] here where the DOM carries a presence
            attribute, the same split [disabled] has. *)
         let input_config =
@@ -361,6 +363,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
           @ derived_pair "autocomplete" autocomplete
           @ derived_pair "type"
               (Option.map Nopal_element.Element.input_type_to_string input_type)
+          @ derived_pair "name" name
         in
         Element
           {

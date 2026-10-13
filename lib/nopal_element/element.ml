@@ -89,6 +89,7 @@ type 'msg t =
       required : bool;
       autocomplete : string option;
       input_type : input_type option;
+      name : string option;
     }
   | Checkbox of {
       style : Nopal_style.Style.t;
@@ -220,7 +221,7 @@ let link ?(style = Nopal_style.Style.empty)
 let input ?(style = Nopal_style.Style.empty)
     ?(interaction = Nopal_style.Interaction.default) ?(attrs = [])
     ?(placeholder = "") ?on_change ?on_submit ?on_focus ?on_blur ?on_keydown
-    ?(required = false) ?autocomplete ?input_type value =
+    ?(required = false) ?autocomplete ?input_type ?name value =
   Input
     {
       style;
@@ -236,6 +237,7 @@ let input ?(style = Nopal_style.Style.empty)
       required;
       autocomplete;
       input_type;
+      name;
     }
 
 let checkbox ?(style = Nopal_style.Style.empty)
@@ -428,6 +430,7 @@ let rec map f = function
         required;
         autocomplete;
         input_type;
+        name;
       } ->
       Input
         {
@@ -444,6 +447,7 @@ let rec map f = function
           required;
           autocomplete;
           input_type;
+          name;
         }
   | Checkbox { style; interaction; attrs; checked; disabled; on_toggle } ->
       Checkbox
@@ -780,6 +784,7 @@ let rec equal a b =
           required = r1;
           autocomplete = ac1;
           input_type = it1;
+          name = n1;
         },
       Input
         {
@@ -796,6 +801,7 @@ let rec equal a b =
           required = r2;
           autocomplete = ac2;
           input_type = it2;
+          name = n2;
         } ) ->
       Nopal_style.Style.equal s1 s2
       && Nopal_style.Interaction.equal i1 i2
@@ -810,6 +816,7 @@ let rec equal a b =
       && Bool.equal r1 r2
       && Option.equal String.equal ac1 ac2
       && Option.equal equal_input_type it1 it2
+      && Option.equal String.equal n1 n2
   | ( Image { style = s1; src = src1; alt = alt1 },
       Image { style = s2; src = src2; alt = alt2 } ) ->
       Nopal_style.Style.equal s1 s2
