@@ -141,6 +141,152 @@ test("legend renders entries", async ({ page }) => {
   await expect(legend).toContainText("Product B");
 });
 
+// The donut section draws two donuts over a checkerboard of 40 px cells in a
+// 560 x 280 scene. On canvas each hole is sampled at its centre and at a point
+// in the opposite-coloured cell: a disc painted over the hole, whatever its
+// colour, cannot match both. Every sample is 20 px from its cell's edges and
+// well inside its hole, so antialiasing and devicePixelRatio cannot move the
+// expected bytes.
+const DONUT_SCENE = { width: 560, height: 280 };
+const DONUT_CELL = 40;
+const DONUT_INNER_RADIUS = 70;
+const DONUT_HOLE_CENTRES = [
+  { at: "multi-segment hole", cx: 140, cy: 140 },
+  { at: "full-turn hole", cx: 420, cy: 140 },
+];
+const CHECKER_LIGHT = [250, 214, 165, 255];
+const CHECKER_DARK = [74, 108, 111, 255];
+const DONUT_HOLE_SAMPLES = [
+  { at: "multi-segment hole centre", x: 140, y: 140, rgba: CHECKER_LIGHT },
+  { at: "multi-segment hole, dark cell", x: 180, y: 140, rgba: CHECKER_DARK },
+  { at: "full-turn hole centre", x: 420, y: 140, rgba: CHECKER_DARK },
+  { at: "full-turn hole, light cell", x: 460, y: 140, rgba: CHECKER_LIGHT },
+];
+// One ring pixel per donut, 20 px from its cell's edges and about 89 px from
+// the donut centre (between the 70 px hole and the ring's outer edge). A ring
+// that was not drawn shows a checker colour here.
+const DONUT_RING_SAMPLES = [
+  { at: "multi-segment ring", x: 100, y: 60 },
+  { at: "full-turn ring", x: 460, y: 60 },
+];
+const isChecker = (rgba: number[]) =>
+  [CHECKER_LIGHT, CHECKER_DARK].some((c) => c.every((b, k) => b === rgba[k]));
+const EXPECTED_HOLE_PIXELS = DONUT_HOLE_SAMPLES.map(({ at, rgba }) => ({
+  at,
+  rgba,
+}));
+
+test("donut hole shows the background (canvas)", async ({ page }) => {
+  const canvas = page.locator("[data-testid='donut-canvas'] canvas");
+  await expect(canvas).toBeVisible();
+  const sample = (samples: { at: string; x: number; y: number }[]) =>
+    canvas.evaluate((el, samples) => {
+      const ctx = (el as HTMLCanvasElement).getContext("2d")!;
+      const dpr = window.devicePixelRatio;
+      return samples.map(({ at, x, y }) => ({
+        at,
+        rgba: Array.from(
+          ctx.getImageData(Math.round(x * dpr), Math.round(y * dpr), 1, 1).data
+        ),
+      }));
+    }, samples);
+  await expect.poll(() => sample(DONUT_HOLE_SAMPLES)).toEqual(
+    EXPECTED_HOLE_PIXELS
+  );
+  const rings = await sample(DONUT_RING_SAMPLES);
+  expect(rings.map(({ at, rgba }) => ({ at, checker: isChecker(rgba) }))).toEqual(
+    DONUT_RING_SAMPLES.map(({ at }) => ({ at, checker: false }))
+  );
+});
+
+// SVG is checked pixel by pixel over each whole hole rather than at two
+// points: a subpath split paints chords only a few pixels wide, which no
+// sample 20 px from a cell edge lands on. The image is rasterised at a fixed
+// size, so devicePixelRatio does not enter. The scanned disc stops 3 px inside
+// the hole's edge, and pixels within 2 px of a cell boundary are skipped, so
+// every pixel compared is a whole checker pixel matched exactly.
+test("donut hole shows the background (SVG)", async ({ page }) => {
+  const raster = DONUT_SCENE;
+  const innerRadiusPx =
+    (DONUT_INNER_RADIUS * raster.width) / DONUT_SCENE.width;
+  const scanRadius = innerRadiusPx - 3;
+  expect(scanRadius).toBe(67);
+  const img = page.locator("[data-testid='donut-svg'] img");
+  await expect(img).toBeVisible();
+  const scans = await img.evaluate(
+    async (el, { holes, rings, raster, cell, scanRadius, light, dark }) => {
+      const image = el as HTMLImageElement;
+      await image.decode();
+      // The SVG root carries only a viewBox, so Chromium reports the default
+      // 300 x 150 natural size; drawing at that size would resample the
+      // checker.
+      const offscreen = document.createElement("canvas");
+      offscreen.width = raster.width;
+      offscreen.height = raster.height;
+      const ctx = offscreen.getContext("2d")!;
+      ctx.drawImage(image, 0, 0, raster.width, raster.height);
+      const pixels = ctx.getImageData(0, 0, raster.width, raster.height).data;
+      const nearBoundary = (v: number) => {
+        const offset = v % cell;
+        return offset < 2 || offset >= cell - 2;
+      };
+      const ring = rings.map(({ at, x, y }) => {
+        const i = (y * raster.width + x) * 4;
+        return { at, rgba: [pixels[i], pixels[i + 1], pixels[i + 2], pixels[i + 3]] };
+      });
+      const holeScans = holes.map(({ at, cx, cy }) => {
+        let scanned = 0;
+        let mismatched = 0;
+        const firstMismatches: { x: number; y: number; rgba: number[] }[] = [];
+        const r = Math.floor(scanRadius);
+        for (let y = cy - r; y <= cy + r; y++) {
+          for (let x = cx - r; x <= cx + r; x++) {
+            const centreDx = x + 0.5 - cx;
+            const centreDy = y + 0.5 - cy;
+            const outside =
+              centreDx * centreDx + centreDy * centreDy >
+              scanRadius * scanRadius;
+            if (outside || nearBoundary(x) || nearBoundary(y)) continue;
+            scanned++;
+            const lightCell =
+              (Math.floor(x / cell) + Math.floor(y / cell)) % 2 === 0;
+            const want = lightCell ? light : dark;
+            const i = (y * raster.width + x) * 4;
+            const got = [pixels[i], pixels[i + 1], pixels[i + 2], pixels[i + 3]];
+            if (got.some((byte, k) => byte !== want[k])) {
+              mismatched++;
+              if (firstMismatches.length < 5)
+                firstMismatches.push({ x, y, rgba: got });
+            }
+          }
+        }
+        return { at, covered: scanned > 0, mismatched, firstMismatches };
+      });
+      return { holeScans, ring };
+    },
+    {
+      holes: DONUT_HOLE_CENTRES,
+      rings: DONUT_RING_SAMPLES,
+      raster,
+      cell: DONUT_CELL,
+      scanRadius,
+      light: CHECKER_LIGHT,
+      dark: CHECKER_DARK,
+    }
+  );
+  expect(
+    scans.ring.map(({ at, rgba }) => ({ at, checker: isChecker(rgba) }))
+  ).toEqual(DONUT_RING_SAMPLES.map(({ at }) => ({ at, checker: false })));
+  expect(scans.holeScans).toEqual(
+    DONUT_HOLE_CENTRES.map(({ at }) => ({
+      at,
+      covered: true,
+      mismatched: 0,
+      firstMismatches: [],
+    }))
+  );
+});
+
 test("dashboard cross-chart hover", async ({ page }) => {
   // Hovering on the bar chart should also affect the line chart
   // (both share chart_hover state via model.chart_hover)

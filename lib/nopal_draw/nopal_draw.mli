@@ -20,6 +20,9 @@ module Transform = Nopal_scene.Transform
 module Path = Path
 (** Path segments and builder utilities (Catmull-Rom, area, arcs). *)
 
+module Arc = Arc
+(** The sweep rules every renderer resolves an arc segment by. *)
+
 module Scene = Nopal_scene.Scene
 (** Scene tree nodes: shapes, text, groups, and clipping. *)
 

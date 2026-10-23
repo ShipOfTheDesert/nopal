@@ -6,5 +6,6 @@
   nopal_style
   nopal_charts
   nopal_draw
+  arc_cases
   test_util
   alcotest))

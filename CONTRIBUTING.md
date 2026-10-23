@@ -329,9 +329,11 @@ changed rather than proving anything is plumbed through.
 
 What that substitute does not reach, stated so the paragraph above cannot be
 read as more than it is: it pins the *scene* a chart produces, not the browser
-painting it. A defect in `canvas_renderer.ml`'s stroke or text handling — a
-width ignored, a fill dropped — leaves both fixtures green, and no test in this
-repo would catch it. That residue is accepted on the same grounds: the
+painting it. A defect in `canvas_renderer.ml`'s stroke width or text handling
+leaves both fixtures green, and no test in this repo would catch it. (A fill
+dropped from a path is caught elsewhere: by the shim's `_lastFill` and
+`_lastStroke` through `filled_path_calls`, and by the donut pixel checks'
+`getImageData` in `kitchen-sink-charts.spec.ts`.) That residue is accepted on the same grounds: the
 assertion that would cover it is the pixel sample ruled out above.
 
 The existing canvas presence and size assertions in

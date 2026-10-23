@@ -40,21 +40,40 @@ let closed_area points =
       (Move_to { x; y } :: List.map (fun (x, y) -> Line_to { x; y }) rest)
       @ [ Close ]
 
-let arc_segment ~cx ~cy ~r ~start_angle ~end_angle =
+let arc_to ?(direction = Clockwise) ~cx ~cy ~r ~start_angle ~end_angle () =
+  Nopal_scene.Path.arc_to ~cx ~cy ~r ~start_angle ~end_angle ~direction
+
+let arc_segment ?(direction = Clockwise) ~cx ~cy ~r ~start_angle ~end_angle () =
   let sx = cx +. (r *. cos start_angle) in
   let sy = cy +. (r *. sin start_angle) in
-  [ Move_to { x = sx; y = sy }; Arc_to { cx; cy; r; start_angle; end_angle } ]
+  [
+    Move_to { x = sx; y = sy };
+    Arc_to { cx; cy; r; start_angle; end_angle; direction };
+  ]
 
-let donut_arc ~cx ~cy ~inner_r ~outer_r ~start_angle ~end_angle =
+let donut_arc ?(direction = Clockwise) ~cx ~cy ~inner_r ~outer_r ~start_angle
+    ~end_angle () =
   let outer_sx = cx +. (outer_r *. cos start_angle) in
   let outer_sy = cy +. (outer_r *. sin start_angle) in
   let inner_ex = cx +. (inner_r *. cos end_angle) in
   let inner_ey = cy +. (inner_r *. sin end_angle) in
+  let inner_direction =
+    match direction with
+    | Clockwise -> Anticlockwise
+    | Anticlockwise -> Clockwise
+  in
   [
     Move_to { x = outer_sx; y = outer_sy };
-    Arc_to { cx; cy; r = outer_r; start_angle; end_angle };
+    Arc_to { cx; cy; r = outer_r; start_angle; end_angle; direction };
     Line_to { x = inner_ex; y = inner_ey };
     Arc_to
-      { cx; cy; r = inner_r; start_angle = end_angle; end_angle = start_angle };
+      {
+        cx;
+        cy;
+        r = inner_r;
+        start_angle = end_angle;
+        end_angle = start_angle;
+        direction = inner_direction;
+      };
     Close;
   ]

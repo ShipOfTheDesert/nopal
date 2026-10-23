@@ -135,6 +135,21 @@ let text_baseline_to_brr (b : Nopal_draw.Scene.text_baseline) =
   | Bottom -> C2d.Text_baseline.bottom
   | Alphabetic -> C2d.Text_baseline.alphabetic
 
+(* The stop angle handed to the platform. The platform recomputes
+   [stop - start], and for a full turn [(start + 2π) - start] can round to less
+   than 2π, which it would draw as a partial arc (or, read literally, as
+   coincident endpoints and nothing). Step the stop outward one float at a time
+   until the difference is a full turn; at most a few steps, and always ends
+   because each step widens the difference. *)
+let platform_stop ~start ~sweep ~anticlockwise =
+  let full_turn = 2. *. Float.pi in
+  let step = if anticlockwise then Float.pred else Float.succ in
+  let rec widen stop =
+    if Float.abs (stop -. start) >= full_turn then stop else widen (step stop)
+  in
+  let stop = start +. sweep in
+  if Float.abs sweep >= full_turn then widen stop else stop
+
 let build_path segments =
   let p = C2d.Path.create () in
   List.iter
@@ -145,8 +160,19 @@ let build_path segments =
       | Bezier_to { cp1x; cp1y; cp2x; cp2y; x; y } ->
           C2d.Path.ccurve_to p ~cx:cp1x ~cy:cp1y ~cx':cp2x ~cy':cp2y ~x ~y
       | Quad_to { cpx; cpy; x; y } -> C2d.Path.qcurve_to p ~cx:cpx ~cy:cpy ~x ~y
-      | Arc_to { cx; cy; r; start_angle; end_angle } ->
-          C2d.Path.arc p ~cx ~cy ~r ~start:start_angle ~stop:end_angle
+      | Arc_to { cx; cy; r; start_angle; end_angle; direction } -> (
+          match
+            Nopal_draw.Arc.resolve direction ~cx ~cy ~r ~start_angle ~end_angle
+          with
+          | Invalid -> ()
+          | Sweep { start; sweep } ->
+              let anticlockwise =
+                match direction with
+                | Clockwise -> false
+                | Anticlockwise -> true
+              in
+              C2d.Path.arc ~anticlockwise p ~cx ~cy ~r ~start
+                ~stop:(platform_stop ~start ~sweep ~anticlockwise))
       | Close -> C2d.Path.close p)
     segments;
   p
@@ -306,7 +332,7 @@ let render ctx scene =
       (* Clear the full backing store in device pixels. [setup_hidpi] leaves a
          [devicePixelRatio] scale on [ctx], under which a clear sized to the
          backing-store dimensions would cover only [backing * dpr] device pixels
-         — at dpr < 1 that leaves a strip painted (FR-7). Reset the transform
+         — at dpr < 1 that leaves a strip painted. Reset the transform
          for the clear, then restore so drawing stays in logical coordinates. *)
       let w = Float.of_int (Canvas.w c) in
       let h = Float.of_int (Canvas.h c) in

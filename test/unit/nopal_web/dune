@@ -42,7 +42,7 @@
 (test
  (name test_canvas_renderer)
  (package nopal_web)
- (libraries nopal_web alcotest brr)
+ (libraries nopal_web nopal_scene nopal_draw arc_cases alcotest brr)
  (modes js)
  (js_of_ocaml
   (javascript_files dom_shim.js canvas_shim.js)))

@@ -1,3 +1,5 @@
+type direction = Clockwise | Anticlockwise
+
 type segment =
   | Move_to of { x : float; y : float }
   | Line_to of { x : float; y : float }
@@ -16,6 +18,7 @@ type segment =
       r : float;
       start_angle : float;
       end_angle : float;
+      direction : direction;
     }
   | Close
 
@@ -27,10 +30,21 @@ let bezier_to ~cp1x ~cp1y ~cp2x ~cp2y ~x ~y =
 
 let quad_to ~cpx ~cpy ~x ~y = Quad_to { cpx; cpy; x; y }
 
-let arc_to ~cx ~cy ~r ~start_angle ~end_angle =
-  Arc_to { cx; cy; r; start_angle; end_angle }
+let arc_to ~cx ~cy ~r ~start_angle ~end_angle ~direction =
+  Arc_to { cx; cy; r; start_angle; end_angle; direction }
 
 let close = Close
+
+let pp_direction ppf = function
+  | Clockwise -> Format.pp_print_string ppf "Clockwise"
+  | Anticlockwise -> Format.pp_print_string ppf "Anticlockwise"
+
+let equal_direction a b =
+  match (a, b) with
+  | Clockwise, Clockwise
+  | Anticlockwise, Anticlockwise ->
+      true
+  | (Clockwise | Anticlockwise), _ -> false
 
 let equal_segment a b =
   let float_eq a b = Float.abs (a -. b) < 1e-10 in
@@ -55,6 +69,7 @@ let equal_segment a b =
       && float_eq a.r b.r
       && float_eq a.start_angle b.start_angle
       && float_eq a.end_angle b.end_angle
+      && equal_direction a.direction b.direction
   | Close, Close -> true
   | (Move_to _ | Line_to _ | Bezier_to _ | Quad_to _ | Arc_to _ | Close), _ ->
       false

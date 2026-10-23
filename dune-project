@@ -373,6 +373,7 @@
     (>= 1.9.1)
     :with-test))
   ocaml
+  nopal_draw
   nopal_scene))
 
 (package

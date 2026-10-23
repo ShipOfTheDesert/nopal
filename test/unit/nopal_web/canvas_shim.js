@@ -11,12 +11,17 @@
 //   - ctx._lastClear.deviceW / deviceH — the clearRect region expressed in
 //     device (backing-store) pixels, i.e. the logical rect multiplied by the
 //     transform scale active at the time of the call. This is the oracle for
-//     FR-7: a correct full clear must cover the whole backing store at ANY
+//     the full clear: a correct full clear must cover the whole backing store at ANY
 //     devicePixelRatio, including dpr < 1 where a logical-rect clear leaves a
 //     strip uncleared. We encode the BROWSER contract (clearRect is affected
 //     by the current transform) so the renderer's under-clear fails loudly.
 //   - canvas.width / canvas.height — the backing store, updated by setup_hidpi;
 //     lets a dpr change be observed as a re-setup.
+//   - ctx._lastFill / ctx._lastStroke — the Path2D most recently filled or
+//     stroked. Its _calls lists every moveTo, lineTo, arc and closePath made on
+//     it, in order. An arc records all six arguments; an omitted anticlockwise
+//     is recorded as false, the platform default, so a renderer that forgets
+//     to pass it is seen running clockwise.
 //
 // Load order matters: dom_shim.js must run first (it defines document).
 //
@@ -24,7 +29,7 @@
 //
 // Brr_canvas's C2d binding routes each call through Jv.call on the context
 // object. If a Brr upgrade renames or re-routes any of the methods below,
-// this shim under-records and the FR-7 tests silently weaken. Re-verify
+// this shim under-records and the clear and arc tests silently weaken. Re-verify
 // against _opam/lib/brr/brr_canvas.ml:
 //   - C2d.get_context  -> canvas.getContext("2d", attrs)
 //   - C2d.canvas       -> reads ctx.canvas
@@ -33,11 +38,57 @@
 //   - C2d.scale        -> ctx.scale(sx, sy)
 //   - C2d.clear_rect   -> ctx.clearRect(x, y, w, h)
 //   - Canvas.w/h/set_w/set_h -> canvas.width / canvas.height
+//   - C2d.fill / C2d.stroke -> ctx.fill(path, rule) / ctx.stroke(path)
+//   - C2d.Path.create  -> new Path2D() (Brr reads globalThis.Path2D at load)
+//   - C2d.Path.move_to -> path.moveTo(x, y)
+//   - C2d.Path.line_to -> path.lineTo(x, y)
+//   - C2d.Path.arc     -> path.arc(cx, cy, r, start, stop, anticlockwise)
+//   - C2d.Path.ccurve_to -> path.bezierCurveTo(cx, cy, cx', cy', x, y)
+//   - C2d.Path.qcurve_to -> path.quadraticCurveTo(cx, cy, x, y)
+//   - C2d.Path.close   -> path.closePath()
 
 (function () {
   const doc = globalThis.document;
   if (!doc) throw new Error("canvas_shim.js must load after dom_shim.js");
   const origCreate = doc.createElement;
+
+  globalThis.Path2D = function Path2D() {
+    this._calls = [];
+  };
+  Path2D.prototype.moveTo = function (x, y) {
+    this._calls.push({ op: "moveTo", x: x, y: y });
+  };
+  Path2D.prototype.lineTo = function (x, y) {
+    this._calls.push({ op: "lineTo", x: x, y: y });
+  };
+  Path2D.prototype.arc = function (cx, cy, r, start, stop, anticlockwise) {
+    this._calls.push({
+      op: "arc",
+      cx: cx,
+      cy: cy,
+      r: r,
+      start: start,
+      stop: stop,
+      anticlockwise: anticlockwise === undefined ? false : !!anticlockwise,
+    });
+  };
+  Path2D.prototype.bezierCurveTo = function (c1x, c1y, c2x, c2y, x, y) {
+    this._calls.push({
+      op: "bezierCurveTo",
+      c1x: c1x,
+      c1y: c1y,
+      c2x: c2x,
+      c2y: c2y,
+      x: x,
+      y: y,
+    });
+  };
+  Path2D.prototype.quadraticCurveTo = function (cx, cy, x, y) {
+    this._calls.push({ op: "quadraticCurveTo", cx: cx, cy: cy, x: x, y: y });
+  };
+  Path2D.prototype.closePath = function () {
+    this._calls.push({ op: "closePath" });
+  };
 
   function makeContext(canvas) {
     const ctx = {
@@ -49,6 +100,14 @@
       _stack: [],
       _clearCount: 0,
       _lastClear: null,
+      _lastFill: null,
+      _lastStroke: null,
+      fill(path) {
+        ctx._lastFill = path;
+      },
+      stroke(path) {
+        ctx._lastStroke = path;
+      },
       save() {
         ctx._stack.push([ctx._scaleX, ctx._scaleY]);
       },

@@ -191,3 +191,17 @@
   nopal_storage
   nopal_mvu
   alcotest))
+
+(test
+ (name test_donut_section)
+ (libraries
+  kitchen_sink_app
+  nopal_test
+  nopal_element
+  nopal_scene
+  nopal_svg
+  nopal_fs_key
+  nopal_platform
+  nopal_storage
+  test_util
+  alcotest))
