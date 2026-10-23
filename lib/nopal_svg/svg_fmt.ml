@@ -120,60 +120,111 @@ let transform_to_attr (t : Transform.t) =
 
 let transforms_to_attr ts = String.concat " " (List.map transform_to_attr ts)
 
-(** Approximate a circular arc as cubic Bezier curves. Uses the standard
-    approach of splitting arcs > π/2 into segments. *)
-let arc_to_beziers ~cx ~cy ~r ~start_angle ~end_angle =
-  let sweep = end_angle -. start_angle in
-  let abs_sweep = Float.abs sweep in
-  (* Split into segments of at most π/2 *)
-  let n = max 1 (Float.to_int (Float.round (abs_sweep /. (Float.pi /. 2.0)))) in
-  let n =
-    if Float.compare (abs_sweep /. Float.of_int n) (Float.pi /. 2.0) > 0 then
-      n + 1
-    else n
+let point_to_d command ~x ~y =
+  Printf.sprintf "%s %s %s" command (fmt_float x) (fmt_float y)
+
+let bezier_to_d ~cp1x ~cp1y ~cp2x ~cp2y ~x ~y =
+  Printf.sprintf "C %s %s %s %s %s %s" (fmt_float cp1x) (fmt_float cp1y)
+    (fmt_float cp2x) (fmt_float cp2y) (fmt_float x) (fmt_float y)
+
+(** Approximate a circular arc of signed [sweep] from [start_angle] as cubic
+    Bezier curves of at most π/2 each. A sweep of [0.] gives no curves. *)
+let arc_to_beziers ~cx ~cy ~r ~start_angle ~sweep =
+  if Float.equal sweep 0. then []
+  else
+    let abs_sweep = Float.abs sweep in
+    (* Split into segments of at most π/2 *)
+    let n =
+      max 1 (Float.to_int (Float.round (abs_sweep /. (Float.pi /. 2.0))))
+    in
+    let n =
+      if Float.compare (abs_sweep /. Float.of_int n) (Float.pi /. 2.0) > 0 then
+        n + 1
+      else n
+    in
+    let step = sweep /. Float.of_int n in
+    List.init n (fun i ->
+        let a1 = start_angle +. (Float.of_int i *. step) in
+        let a2 = a1 +. step in
+        let k = 4.0 /. 3.0 *. Float.tan (step /. 4.0) in
+        let sin_a1 = Float.sin a1 in
+        let cos_a1 = Float.cos a1 in
+        let sin_a2 = Float.sin a2 in
+        let cos_a2 = Float.cos a2 in
+        let x1 = cx +. (r *. cos_a1) in
+        let y1 = cy +. (r *. sin_a1) in
+        let x2 = cx +. (r *. cos_a2) in
+        let y2 = cy +. (r *. sin_a2) in
+        let cp1x = x1 -. (k *. r *. sin_a1) in
+        let cp1y = y1 +. (k *. r *. cos_a1) in
+        let cp2x = x2 +. (k *. r *. sin_a2) in
+        let cp2y = y2 -. (k *. r *. cos_a2) in
+        bezier_to_d ~cp1x ~cp1y ~cp2x ~cp2y ~x:x2 ~y:y2)
+
+(* An arc reaches its start point the way canvas [arc()] does: with a line when
+   the path already has a subpath, so a donut stays one subpath, and with a move
+   only when it has none. *)
+let arc_to_d ~has_subpath ~cx ~cy ~r ~start_angle ~sweep =
+  let x = cx +. (r *. Float.cos start_angle) in
+  let y = cy +. (r *. Float.sin start_angle) in
+  let lead =
+    match has_subpath with
+    | true -> point_to_d "L" ~x ~y
+    | false -> point_to_d "M" ~x ~y
   in
-  let step = sweep /. Float.of_int n in
-  (* mutable: accumulator for imperative loop; reversed and flipped at end *)
-  let acc = ref [] in
-  for i = n - 1 downto 0 do
-    let a1 = start_angle +. (Float.of_int i *. step) in
-    let a2 = a1 +. step in
-    let alpha = (a2 -. a1) /. 2.0 in
-    let cos_a = Float.cos alpha in
-    let k = 4.0 /. 3.0 *. (1.0 -. cos_a) /. Float.sin alpha in
-    let sin_a1 = Float.sin a1 in
-    let cos_a1 = Float.cos a1 in
-    let sin_a2 = Float.sin a2 in
-    let cos_a2 = Float.cos a2 in
-    let x1 = cx +. (r *. cos_a1) in
-    let y1 = cy +. (r *. sin_a1) in
-    let x2 = cx +. (r *. cos_a2) in
-    let y2 = cy +. (r *. sin_a2) in
-    let cp1x = x1 -. (k *. r *. sin_a1) in
-    let cp1y = y1 +. (k *. r *. cos_a1) in
-    let cp2x = x2 +. (k *. r *. sin_a2) in
-    let cp2y = y2 -. (k *. r *. cos_a2) in
-    acc := Path.bezier_to ~cp1x ~cp1y ~cp2x ~cp2y ~x:x2 ~y:y2 :: !acc;
-    if i = 0 then acc := Path.move_to ~x:x1 ~y:y1 :: !acc
-  done;
-  !acc
+  lead :: arc_to_beziers ~cx ~cy ~r ~start_angle ~sweep
 
-let rec segment_to_d (seg : Path.segment) =
+(* Canvas "ensures there is a subpath" before a line or curve: with none, the
+   segment first moves to its own first point. SVG would drop such a command, so
+   it is led by the same move. *)
+let with_subpath ~has_subpath ~x ~y part =
+  match has_subpath with
+  | true -> [ part ]
+  | false -> [ part; point_to_d "M" ~x ~y ]
+
+let add_segment (has_subpath, rev_parts) (seg : Path.segment) =
   match seg with
-  | Move_to { x; y } -> Printf.sprintf "M %s %s" (fmt_float x) (fmt_float y)
-  | Line_to { x; y } -> Printf.sprintf "L %s %s" (fmt_float x) (fmt_float y)
+  | Move_to { x; y } -> (true, point_to_d "M" ~x ~y :: rev_parts)
+  | Line_to { x; y } ->
+      ( true,
+        (match has_subpath with
+        | true -> point_to_d "L" ~x ~y
+        | false -> point_to_d "M" ~x ~y)
+        :: rev_parts )
   | Bezier_to { cp1x; cp1y; cp2x; cp2y; x; y } ->
-      Printf.sprintf "C %s %s %s %s %s %s" (fmt_float cp1x) (fmt_float cp1y)
-        (fmt_float cp2x) (fmt_float cp2y) (fmt_float x) (fmt_float y)
+      ( true,
+        with_subpath ~has_subpath ~x:cp1x ~y:cp1y
+          (bezier_to_d ~cp1x ~cp1y ~cp2x ~cp2y ~x ~y)
+        @ rev_parts )
   | Quad_to { cpx; cpy; x; y } ->
-      Printf.sprintf "Q %s %s %s %s" (fmt_float cpx) (fmt_float cpy)
-        (fmt_float x) (fmt_float y)
-  | Arc_to { cx; cy; r; start_angle; end_angle } ->
-      let beziers = arc_to_beziers ~cx ~cy ~r ~start_angle ~end_angle in
-      String.concat " " (List.map segment_to_d beziers)
-  | Close -> "Z"
+      ( true,
+        with_subpath ~has_subpath ~x:cpx ~y:cpy
+          (Printf.sprintf "Q %s %s %s %s" (fmt_float cpx) (fmt_float cpy)
+             (fmt_float x) (fmt_float y))
+        @ rev_parts )
+  | Arc_to
+      {
+        cx;
+        cy;
+        r;
+        start_angle;
+        end_angle;
+        direction = (Clockwise | Anticlockwise) as direction;
+      } -> (
+      match
+        Nopal_draw.Arc.resolve direction ~cx ~cy ~r ~start_angle ~end_angle
+      with
+      | Invalid -> (has_subpath, rev_parts)
+      | Sweep { start; sweep } ->
+          ( true,
+            List.rev_append
+              (arc_to_d ~has_subpath ~cx ~cy ~r ~start_angle:start ~sweep)
+              rev_parts ))
+  | Close -> (has_subpath, "Z" :: rev_parts)
 
-let path_to_d segs = String.concat " " (List.map segment_to_d segs)
+let path_to_d segs =
+  let _, rev_parts = List.fold_left add_segment (false, []) segs in
+  String.concat " " (List.rev rev_parts)
 
 let blend_to_css (b : Scene.blend) =
   match b with

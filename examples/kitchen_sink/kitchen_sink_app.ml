@@ -2405,7 +2405,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           ~stroke:(Paint.stroke ~width:2.0 (Paint.solid red))
           ~fill:Paint.no_paint
           (Path.arc_segment ~cx:270.0 ~cy:30.0 ~r:20.0 ~start_angle:0.0
-             ~end_angle:(pi *. 1.5));
+             ~end_angle:(pi *. 1.5) ());
       ]
     in
     (* Fill types scene *)
@@ -2841,6 +2841,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                   ~color:(fun (_, _, c) -> c)
                   ~width:200.0 ~height:200.0 ~inner_radius:50.0 ();
               ];
+            Sub_donut.view ();
             (* Scatter chart with variable radius + tooltip *)
             Element.text "Scatter chart (variable radius):";
             Element.box
@@ -4296,4 +4297,5 @@ module Sub_auth_form = Sub_auth_form
 module Sub_button_semantics = Sub_button_semantics
 module Sub_clipboard = Sub_clipboard
 module Sub_links = Sub_links
+module Sub_donut = Sub_donut
 module Tauri_op = Tauri_op

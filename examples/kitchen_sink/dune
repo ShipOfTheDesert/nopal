@@ -31,14 +31,17 @@
   sub_button_semantics
   sub_clipboard
   sub_links
+  sub_donut
   tauri_op)
  (libraries
   nopal_element
   nopal_mvu
   nopal_style
   nopal_draw
+  nopal_scene
   nopal_charts
   nopal_svg
+  nopal_fs_key
   nopal_http
   nopal_image
   nopal_ui

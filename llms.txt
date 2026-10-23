@@ -17,8 +17,8 @@ nopal_style     ← Typed layout/paint — no platform deps
 nopal_storage   ← Backend-agnostic async key-value storage contract (module type S, In_memory, With_codec) — no platform deps
 nopal_platform  ← Type-safe bidirectional routing + platform-capability signatures (Platform.NAV, Platform.S) — depends on nopal_storage, and on nopal_element for Router.destination's Link.destination; no platform deps (renamed from nopal_router)
 nopal_scene     ← Pure scene types (Color, Paint, Transform, Path segments, Scene) — no platform deps
-nopal_draw      ← 2D drawing DSL (Scale + higher-level Path algorithms) — depends on nopal_scene
-nopal_svg       ← Pure SVG 1.1 string renderer for nopal_scene — no platform deps
+nopal_draw      ← 2D drawing DSL (Scale, the shared arc sweep resolver Arc, and higher-level Path algorithms) — depends on nopal_scene
+nopal_svg       ← Pure SVG 1.1 string renderer for nopal_scene — depends on nopal_scene and nopal_draw; no platform deps
 nopal_charts    ← Composable interactive charts (Bar, Line, Area, Pie, Scatter, Sparkline,
                    Heat_map, Trading.Candlestick, Trading.Drawdown, Chart_pane,
                    Color_scale, Domain_window, Viewport, Downsample, Snap)
@@ -2950,11 +2950,61 @@ Path.smooth_curve  : (float * float) list -> Path.segment list   (* Catmull-Rom 
 Path.straight_line : (float * float) list -> Path.segment list
 Path.closed_area   : (float * float) list -> Path.segment list
 
+(* Arcs. Angles are radians from the positive x axis; y grows downward, so
+   increasing angles turn clockwise as seen. Every arc names its direction. *)
+type Path.direction = Clockwise | Anticlockwise
+(* Path.segment's arm: Arc_to of { cx; cy; r; start_angle; end_angle; direction } *)
+Path.arc_to      : ?direction:Path.direction -> cx:float -> cy:float -> r:float
+                   -> start_angle:float -> end_angle:float -> unit -> Path.segment
+Path.arc_segment : ?direction:Path.direction -> cx:float -> cy:float -> r:float
+                   -> start_angle:float -> end_angle:float -> unit -> Path.segment list
+                   (* Move_to the start point, then the arc *)
+Path.donut_arc   : ?direction:Path.direction -> cx:float -> cy:float -> inner_r:float
+                   -> outer_r:float -> start_angle:float -> end_angle:float -> unit
+                   -> Path.segment list
+                   (* one closed ring segment: outer edge start -> end in direction,
+                      inner edge end -> start in the opposite direction *)
+(* ?direction defaults to Clockwise; the trailing () is required.
+   Nopal_scene.Path.arc_to takes ~direction as a required argument and no (). *)
+
+(* The shared sweep rules every renderer resolves an arc by *)
+type Arc.resolved = Invalid | Sweep of { start : float; sweep : float }
+    (* start reduced into [0, 2π); sweep signed, in [-2π, 2π] *)
+Arc.resolve : Path.direction -> cx:float -> cy:float -> r:float
+              -> start_angle:float -> end_angle:float -> Arc.resolved
+
 (* Data-to-pixel mapping *)
 Scale.create : domain:(float * float) -> range:(float * float) -> Scale.t
 Scale.apply  : Scale.t -> float -> float
 Scale.invert : Scale.t -> float -> float
 ```
+
+**Arc rules.** Canvas and SVG both resolve every `Arc_to` through
+`Arc.resolve`, which follows the text of the HTML canvas `arc()`
+specification, so the two renderers cannot draw one arc two ways:
+
+- The arc runs from the point at `start_angle` to the point at `end_angle` in
+  its direction, whichever angle is larger. A `Clockwise` arc from `π` to `π/2`
+  goes the long way round, sweeping `3π/2`. Draw a decreasing arc with
+  `~direction:Anticlockwise` to go the short way.
+- A span of a full turn or more in the given direction draws the full circle
+  (a sweep of `2π` clockwise, `-2π` anticlockwise).
+- Two angles naming the same point draw nothing (a sweep of `0.`): equal angles, and
+  also a `Clockwise` arc from `2π` down to `0`. Chromium's own `arc()` draws a
+  full circle for that one; nopal passes canvas angles it has already resolved,
+  so no browser's reading decides it (a full turn's `stop` is nudged by one
+  float step, so the platform's own subtraction also sees a full turn).
+- A valid arc always brings the pen to its start point, even with a zero sweep.
+  A zero radius is valid: the start point is the centre. When a subpath is
+  already open the pen gets there with a line, so an arc never splits a path.
+- An arc whose centre, radius or either angle is non-finite, or whose radius is
+  negative, is `Invalid`: it adds nothing to the path and the pen stays where it
+  was. Canvas makes no `arc()` call for it, so a negative radius never throws
+  `IndexSizeError`, and SVG emits nothing for it.
+
+A donut is `donut_arc` (or `Pie ~inner_radius`): its inner edge runs opposite
+its outer edge, so the hole stays empty and shows
+whatever is behind the chart, on canvas and in SVG.
 
 ### SVG Renderer (`nopal_svg`)
 
@@ -2975,6 +3025,9 @@ module Svg_fmt : sig
   val transform_to_attr   : Transform.t -> string
   val transforms_to_attr  : Transform.t list -> string
   val path_to_d           : Path.segment list -> string
+    (* Arc_to -> cubic Béziers of at most π/2 each over Arc.resolve's sweep;
+       reaches the arc start with L inside an open subpath, M otherwise;
+       an Invalid arc emits nothing *)
   val blend_to_css        : Scene.blend -> string
   val line_cap_to_string  : Paint.line_cap -> string
   val line_join_to_string : Paint.line_join -> string
@@ -4159,6 +4212,53 @@ new setters renders exactly the tree it did. Existing `Element.input` call sites
 compile untouched. `Checkbox`, `Radio_group` and `Select_input` are untouched:
 each already passed every field of the element it wraps.
 
+**Arc answers that moved — read this on a pin bump.**
+**Every complete `Arc_to { … }` record literal, and every `Arc_to` pattern
+that lists its fields without `; _`, stops compiling** (row 1). The constructor
+gains a required `direction : direction` field (`Clockwise | Anticlockwise`) in
+`Nopal_scene.Path`, which `Nopal_draw.Path` re-exports. A literal is rejected
+for the missing field; a closed pattern trips warning 9, an error under dune's
+default dev profile. Write `direction = Clockwise` to keep a literal's canvas
+reading, and handle both constructors in a pattern. **Every call to
+`Nopal_draw.Path.arc_to`, `arc_segment` or `donut_arc` needs a trailing `()`**
+(row 3): without it the call is a partial application, and the type error is
+reported where the result is used. A call with no `~direction` still draws
+clockwise.
+
+"Before" is the tree at commit `fd02c03`. The Where column names the renderer
+whose answer moved: canvas, SVG, or both. No test reads this table. The
+behaviour each row describes is tested, by the one edge-case table that
+generates both the canvas and the SVG suites or by the kitchen sink's donut
+pixel checks, but an edit to the text alone reddens no test.
+
+| # | Key | Visible | Where | When | Before | Now |
+|---|---|---|---|---|---|---|
+| 1 | `scene-path-arc-to-gains-direction` | compile | both | a complete `Arc_to { … }` literal, or an `Arc_to` pattern listing its fields without `; _` | five float fields | fails to compile until it supplies or handles `direction : direction` |
+| 2 | `scene-path-arc-to-requires-direction` | compile | both | a call to `Nopal_scene.Path.arc_to` | `~cx ~cy ~r ~start_angle ~end_angle` | also requires `~direction`; this layer has no default |
+| 3 | `draw-path-arc-builders-end-in-unit` | compile | both | a call to `Nopal_draw.Path.arc_to`, `arc_segment` or `donut_arc` | ended at `~end_angle`; `Nopal_draw.Path.arc_to` was the scene builder, re-exported | `?direction … ~end_angle ()`, with `?direction` defaulting to `Clockwise`; add `()` to every call |
+| 4 | `draw-arc-module` | compile, rarely | both | code doing `open Nopal_draw` that has its own `Arc` module | not in scope | `Nopal_draw.Arc` is in scope and can shadow it: `type resolved = Invalid \| Sweep of { start : float; sweep : float }` and `resolve`, the shared sweep rules ("Arc rules" under 2D Drawing) |
+| 5 | `draw-donut-arc-inner-edge-reverses` | render | both | `donut_arc` | the inner arc ran from `end_angle` back to `start_angle` with no direction, so each renderer read it its own way | the inner arc carries the opposite of `?direction`, so `Anticlockwise` by default |
+| 6 | `pie-donut-hole-empty` | render | both | `Pie.scene` or `Pie.view` with `~inner_radius` above `0.` | canvas: the hole filled with the segment's colour; SVG: chord slivers of the segment's colour in the hole | the hole is empty and shows whatever lies behind the chart |
+| 7 | `svg-arc-continues-subpath` | bytes, render | SVG | `Svg_fmt.path_to_d`, and so `Nopal_svg.render`, on an `Arc_to` that follows an open subpath | `M x y` to the arc's start, opening a second subpath | `L x y`: `arc_segment ~cx:50. ~cy:40. ~r:30. ~start_angle:0. ~end_angle:(π/2) ()` gives `M 80 40 L 80 40 C 80 56.5685 66.5685 70 50 70` where it gave `M 80 40 M 80 40 C …`. When the pen is not already on the arc's start, the render changes too: the old `M` lifted the pen and left the earlier subpath unjoined, and the `L` now draws a connecting line (and fills across it). An arc with no open subpath still opens with `M` |
+| 8 | `svg-decreasing-clockwise-arc-long-way` | render | SVG | an arc whose end angle is below its start angle, with `Clockwise`, the default of every `Nopal_draw` builder | the short way round: SVG swept the signed `end_angle - start_angle` | the long way round, as canvas always drew it: `arc_segment … ~start_angle:π ~end_angle:(π/2) ()` gives three curves where it gave one. Pass `~direction:Anticlockwise` for the short way |
+| 9 | `svg-invalid-or-empty-arc` | bytes | SVG | an invalid arc (a non-finite centre, radius or angle, or a negative radius), or an arc with a zero sweep | invalid: `M nan nan C …`, or an arc reflected through the centre; zero sweep: a `C` with NaN control points | invalid: nothing at all; zero sweep: only the `L` or `M` to its start point |
+| 10 | `canvas-arc-anticlockwise` | render | canvas | an `Arc_to` with `Anticlockwise` | every arc ran clockwise: `arc()` was called without `anticlockwise` | `arc()` receives `anticlockwise` from the direction |
+| 11 | `canvas-arc-angles-resolved` | render | canvas | a `Clockwise` arc from `2π` down to `0` | `arc()` received the raw angles, and Chromium drew a full circle | `arc()` receives `start_angle` and `start_angle` plus the resolved sweep, so that arc draws nothing, as in SVG |
+| 12 | `canvas-invalid-arc-no-call` | run time | canvas | an invalid arc | passed raw to `arc()`, which threw `IndexSizeError` on a negative radius and did nothing on a non-finite value | no `arc()` call: the arc adds nothing, and the pen stays where it was |
+| 13 | `nopal-svg-depends-on-nopal-draw` | install | — | anyone installing the `nopal_svg` opam package | depends on `nopal_scene` only | also depends on `nopal_draw` (and transitively `nopal_style`), which is platform-free; `nopal_svg` still builds native |
+| 14 | `kitchen-sink-donut-section` | example | both | anyone copying the kitchen sink | — | a new section, `Sub_donut`, draws a multi-segment donut and a single-segment full-turn donut over a checkerboard, on a canvas and as `Nopal_svg.render` output loaded into an image; the kitchen sink library now also links `nopal_fs_key` |
+| 15 | `svg-leading-move-for-line-and-curves` | bytes | SVG | `Svg_fmt.path_to_d` on a `Line_to`, `Bezier_to` or `Quad_to` with no current subpath, e.g. a path opening with one of them or following an `Invalid` arc | bare `L x y`, `C …` or `Q …` | a `Line_to` becomes a move to its point (`M x y`); a `Bezier_to` or `Quad_to` is preceded by an `M` to its first control point (the control point for `Quad_to`), matching canvas |
+
+What did **not** move, with the one exception of row 15. An increasing arc of less than a full turn draws the
+same pixels on canvas: the kitchen sink's stroked `arc_segment` demo (`0` to
+`3π/2`) was compared with `fd02c03`'s build at device pixel ratios 1 and 2, and
+no pixel differed. In SVG such an arc keeps its Bézier curves byte for byte, when the pen
+already sits on the arc's start; otherwise only its leading command changes, as
+rows 7 and 15 say. `Circle` nodes, and every
+segment other than `Arc_to`, render as they did in both renderers, except a
+`Line_to`, `Bezier_to` or `Quad_to` with no current subpath (row 15). `Pie` fills
+without a stroke, so a full-turn donut shows no radial seam.
+
 #### Telemetry harness (`Nopal_test.Telemetry_test`)
 
 Native, browser-free harness that drives a real app through the recording MVU
@@ -4682,7 +4782,7 @@ lib/
   nopal_storage/     — Nopal_storage.S, In_memory, With_codec (async key-value contract)
   nopal_platform/    — Router.t, Platform.NAV, Platform.S (storage capability) [renamed from nopal_router]
   nopal_scene/       — Pure scene types: Color, Paint, Transform, Path, Scene
-  nopal_draw/        — Scale + higher-level Path algorithms (re-exports nopal_scene)
+  nopal_draw/        — Scale, Arc (shared arc sweep resolver) + higher-level Path algorithms (re-exports nopal_scene)
   nopal_charts/      — Bar, Line, Area, Pie, Scatter, Sparkline, Heat_map,
                        Trading.Candlestick, Trading.Drawdown, Chart_pane,
                        Color_scale, Domain_window, Viewport, Downsample, Snap

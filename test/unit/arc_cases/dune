@@ -1,0 +1,3 @@
+(library
+ (name arc_cases)
+ (libraries nopal_scene nopal_draw))

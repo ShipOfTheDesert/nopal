@@ -34,7 +34,7 @@ let scene ~data ~value ~label ~color ~width ~height ?(inner_radius = 0.0)
             (* Build path using donut_arc *)
             let path_segs =
               Nopal_draw.Path.donut_arc ~cx ~cy ~inner_r ~outer_r
-                ~start_angle:start_a ~end_angle:end_a
+                ~start_angle:start_a ~end_angle:end_a ()
             in
             let c = color datum in
             let path_node =
@@ -105,7 +105,7 @@ let view ~data ~value ~label ~color ~width ~height ?(inner_radius = 0.0)
             (* Build path using donut_arc *)
             let path_segs =
               Nopal_draw.Path.donut_arc ~cx:seg_cx ~cy:seg_cy ~inner_r ~outer_r
-                ~start_angle:start_a ~end_angle:end_a
+                ~start_angle:start_a ~end_angle:end_a ()
             in
             let c = color datum in
             let path_node =

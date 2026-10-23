@@ -31,7 +31,12 @@ val transforms_to_attr : Nopal_scene.Transform.t list -> string
 
 val path_to_d : Nopal_scene.Path.segment list -> string
 (** Path segments to SVG [d="..."] attribute value. Arc_to is approximated as a
-    series of Bezier curves. *)
+    series of Bezier curves of at most π/2 each, over the sweep
+    [Nopal_draw.Arc.resolve] gives it. An arc reaches its start point with [L]
+    when the path already has a subpath and with [M] only when it has none, so
+    an arc never splits a subpath. An invalid arc emits nothing. As canvas does,
+    a line with no subpath becomes a move to its point; a curve with no subpath
+    is preceded by an [M] to its first point (the first control point). *)
 
 val blend_to_css : Nopal_scene.Scene.blend -> string
 (** Blend mode to CSS [mix-blend-mode] value. *)
