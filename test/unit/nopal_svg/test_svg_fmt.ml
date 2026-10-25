@@ -458,6 +458,16 @@ let test_line_join_mapping () =
     (Nopal_svg.Svg_fmt.line_join_to_string Round_join);
   check_string "bevel" "bevel" (Nopal_svg.Svg_fmt.line_join_to_string Bevel)
 
+let test_graphic_name_to_attrs_named () =
+  check_string "role and escaped label, each preceded by a space"
+    " role=\"img\" aria-label=\"Q &amp; &quot;A&quot;\""
+    (Nopal_svg.Svg_fmt.graphic_name_to_attrs
+       (Test_util.graphic_name "Q & \"A\""))
+
+let test_graphic_name_to_attrs_decorative () =
+  check_string "aria-hidden alone" " aria-hidden=\"true\""
+    (Nopal_svg.Svg_fmt.graphic_name_to_attrs Graphic_name.decorative)
+
 let () =
   Alcotest.run "Svg_fmt"
     [
@@ -514,6 +524,13 @@ let () =
             test_segment_after_invalid_arc_opens_with_move;
           Alcotest.test_case "arc leading move when no subpath" `Quick
             test_arc_leading_move_when_no_subpath;
+        ] );
+      ( "graphic_name",
+        [
+          Alcotest.test_case "named is escaped" `Quick
+            test_graphic_name_to_attrs_named;
+          Alcotest.test_case "decorative" `Quick
+            test_graphic_name_to_attrs_decorative;
         ] );
       ("blend", [ Alcotest.test_case "all modes" `Quick test_blend_modes ]);
       ("line_cap", [ Alcotest.test_case "mapping" `Quick test_line_cap_mapping ]);

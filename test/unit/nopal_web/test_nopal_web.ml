@@ -26,6 +26,8 @@ let node_type jv = Jv.Int.get jv "nodeType"
 let tag_of jv =
   Jv.Jstr.get jv "nodeName" |> Jstr.to_string |> String.uppercase_ascii
 
+let graphic_name = Test_util.graphic_name
+
 (* 18 *)
 let test_empty_creates_comment () =
   let parent = fresh_parent () in
@@ -174,7 +176,9 @@ let test_input_creates_input () =
 let test_image_creates_img () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
-  let el = Image { style = default; src = "pic.png"; alt = "A pic" } in
+  let el =
+    Image { style = default; src = "pic.png"; name = graphic_name "A pic" }
+  in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
   let node = Nopal_web.Renderer.dom_node handle in
   Alcotest.(check string) "tag is IMG" "IMG" (tag_of node);
@@ -1767,10 +1771,14 @@ let test_keyed_reused_node_skips_data_key_write () =
 let test_reconcile_image_attributes () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
-  let el1 = Image { style = default; src = "a.png"; alt = "old" } in
+  let el1 =
+    Image { style = default; src = "a.png"; name = graphic_name "old" }
+  in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
   let node = Nopal_web.Renderer.dom_node handle in
-  let el2 = Image { style = default; src = "b.png"; alt = "new" } in
+  let el2 =
+    Image { style = default; src = "b.png"; name = graphic_name "new" }
+  in
   Nopal_web.Renderer.update ~dispatch handle el2;
   let node_after = Nopal_web.Renderer.dom_node handle in
   Alcotest.(check bool) "same node" true (node == node_after);
@@ -1787,11 +1795,15 @@ let test_reconcile_image_attributes () =
 let test_reconcile_image_skips_unchanged_src () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
-  let el1 = Image { style = default; src = "same.png"; alt = "same" } in
+  let el1 =
+    Image { style = default; src = "same.png"; name = graphic_name "same" }
+  in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
   let node = Nopal_web.Renderer.dom_node handle in
   let count = spy_set_attr node in
-  let el2 = Image { style = default; src = "same.png"; alt = "same" } in
+  let el2 =
+    Image { style = default; src = "same.png"; name = graphic_name "same" }
+  in
   Nopal_web.Renderer.update ~dispatch handle el2;
   Alcotest.(check int) "setAttribute not called for unchanged image" 0 !count
 
@@ -1799,17 +1811,143 @@ let test_reconcile_image_skips_unchanged_src () =
 let test_reconcile_image_updates_only_changed_attr () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
-  let el1 = Image { style = default; src = "a.png"; alt = "same" } in
+  let el1 =
+    Image { style = default; src = "a.png"; name = graphic_name "same" }
+  in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
   let node = Nopal_web.Renderer.dom_node handle in
   let count = spy_set_attr node in
-  let el2 = Image { style = default; src = "b.png"; alt = "same" } in
+  let el2 =
+    Image { style = default; src = "b.png"; name = graphic_name "same" }
+  in
   Nopal_web.Renderer.update ~dispatch handle el2;
   Alcotest.(check int) "setAttribute called once (src only)" 1 !count;
   let src =
     Jv.call node "getAttribute" [| Jv.of_string "src" |] |> Jv.to_string
   in
   Alcotest.(check string) "src updated" "b.png" src
+
+let attribute_opt node name =
+  Jv.to_option Jv.to_string
+    (Jv.call node "getAttribute" [| Jv.of_string name |])
+
+let canvas_named name =
+  Draw
+    {
+      width = 10.;
+      height = 10.;
+      scene = [];
+      on_pointer_move = None;
+      on_click = None;
+      on_pointer_leave = None;
+      on_pointer_down = None;
+      on_pointer_up = None;
+      on_wheel = None;
+      cursor = None;
+      name;
+    }
+
+let image_named name = Image { style = default; src = "chart.svg"; name }
+
+(* The canvas's accessibility row as (role, aria-label, aria-hidden), so one
+   check pins both the attributes the row writes and the ones it must not. *)
+let canvas_row node =
+  ( attribute_opt node "role",
+    attribute_opt node "aria-label",
+    attribute_opt node "aria-hidden" )
+
+let check_canvas_row msg expected node =
+  Alcotest.(check (triple (option string) (option string) (option string)))
+    msg expected (canvas_row node)
+
+let named_row label = (Some "img", Some label, None)
+let decorative_row = (None, None, Some "true")
+
+let test_draw_name_skips_unchanged () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (canvas_named (graphic_name "same"))
+  in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let count = spy_set_attr node in
+  Nopal_web.Renderer.update ~dispatch handle
+    (canvas_named (graphic_name "same"));
+  Alcotest.(check int) "no role/aria-label write for an equal name" 0 !count
+
+let test_draw_named_writes_role_and_label () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (canvas_named (graphic_name "Equity curve"))
+  in
+  check_canvas_row "named canvas row" (named_row "Equity curve")
+    (Nopal_web.Renderer.dom_node handle)
+
+let test_draw_decorative_writes_aria_hidden_only () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (canvas_named Nopal_element.Graphic_name.decorative)
+  in
+  check_canvas_row "decorative canvas row" decorative_row
+    (Nopal_web.Renderer.dom_node handle)
+
+let test_draw_name_reconciles_across_cases () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (canvas_named (graphic_name "Equity"))
+  in
+  let node = Nopal_web.Renderer.dom_node handle in
+  check_canvas_row "first named" (named_row "Equity") node;
+  let step label name expected =
+    Nopal_web.Renderer.update ~dispatch handle (canvas_named name);
+    Alcotest.(check bool)
+      (label ^ ": same canvas") true
+      (node == Nopal_web.Renderer.dom_node handle);
+    check_canvas_row label expected node
+  in
+  step "to decorative" Nopal_element.Graphic_name.decorative decorative_row;
+  step "to another name" (graphic_name "Drawdown") (named_row "Drawdown");
+  step "back to the first name" (graphic_name "Equity") (named_row "Equity")
+
+let test_image_named_and_decorative_alt () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let alt_of name =
+    Nopal_web.Renderer.create ~dispatch ~parent (image_named name)
+    |> Nopal_web.Renderer.dom_node
+    |> fun node -> attribute_opt node "alt"
+  in
+  Alcotest.(check (option string))
+    "named alt" (Some "Allocation")
+    (alt_of (graphic_name "Allocation"));
+  Alcotest.(check (option string))
+    "decorative alt is present and empty" (Some "")
+    (alt_of Nopal_element.Graphic_name.decorative)
+
+let test_image_name_reconciles () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent
+      (image_named (graphic_name "Allocation"))
+  in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let step label name expected =
+    Nopal_web.Renderer.update ~dispatch handle (image_named name);
+    Alcotest.(check bool)
+      (label ^ ": same img") true
+      (node == Nopal_web.Renderer.dom_node handle);
+    Alcotest.(check (option string)) label expected (attribute_opt node "alt")
+  in
+  step "to decorative" Nopal_element.Graphic_name.decorative (Some "");
+  step "to another name" (graphic_name "Exposure") (Some "Exposure")
 
 (* Box: unchanged attrs must not trigger setAttribute *)
 let test_reconcile_box_skips_unchanged_attrs () =
@@ -2267,7 +2405,7 @@ let test_reconcile_input_updates_changed_value () =
 let test_reconcile_removes_dropped_inline_style () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
-  let mk style = Image { style; src = "a.png"; alt = "a" } in
+  let mk style = Image { style; src = "a.png"; name = graphic_name "a" } in
   let styled =
     with_paint
       (fun p -> { p with background = Some (rgba 255 0 0 1.0) })
@@ -2606,7 +2744,7 @@ let test_reconcile_unchanged_style_no_write () =
         (fun p -> { p with background = Some (rgba 255 0 0 1.0) })
         default
     in
-    Image { style = styled; src = "a.png"; alt = "a" }
+    Image { style = styled; src = "a.png"; name = graphic_name "a" }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent (mk ()) in
   let node = Nopal_web.Renderer.dom_node handle in
@@ -4740,7 +4878,7 @@ let test_container_main_axis_non_container_is_none () =
          child = Empty;
        });
   check_axis "an image is not a flex container" "no axis"
-    (Image { style = default; src = "a.png"; alt = "a" });
+    (Image { style = default; src = "a.png"; name = graphic_name "a" });
   (* Affirmative arm: the resolver is not answering "no axis" to everything. *)
   check_axis "a box still is one" "vertical"
     (plain_box ~style:down ~children:[])
@@ -5294,6 +5432,21 @@ let () =
             test_restyle_on_spread_change;
           Alcotest.test_case "reconcile unchanged style no write" `Quick
             test_reconcile_unchanged_style_no_write;
+        ] );
+      ( "graphic names",
+        [
+          Alcotest.test_case "draw_named_writes_role_and_label" `Quick
+            test_draw_named_writes_role_and_label;
+          Alcotest.test_case "draw_decorative_writes_aria_hidden_only" `Quick
+            test_draw_decorative_writes_aria_hidden_only;
+          Alcotest.test_case "draw_name_skips_unchanged" `Quick
+            test_draw_name_skips_unchanged;
+          Alcotest.test_case "draw_name_reconciles_across_cases" `Quick
+            test_draw_name_reconciles_across_cases;
+          Alcotest.test_case "image_named_and_decorative_alt" `Quick
+            test_image_named_and_decorative_alt;
+          Alcotest.test_case "image_name_reconciles" `Quick
+            test_image_name_reconciles;
         ] );
       ( "checkbox reconciliation",
         [

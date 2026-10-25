@@ -1,5 +1,6 @@
 open Nopal_test.Test_renderer
 module E = Nopal_element.Element
+module Graphic_name = Nopal_element.Graphic_name
 
 let check_node = Test_util.check_node
 
@@ -34,17 +35,26 @@ let msg_testable =
       | PointerLeave -> Format.fprintf fmt "PointerLeave")
     ( = )
 
+let graphic_name = Test_util.graphic_name
 let simple_scene = [ Nopal_draw.Scene.rect ~x:0.0 ~y:0.0 ~w:50.0 ~h:50.0 () ]
 
 let test_render_draw_node () =
-  let el = E.draw ~width:200.0 ~height:100.0 simple_scene in
+  let el =
+    E.draw ~name:Graphic_name.decorative ~width:200.0 ~height:100.0 simple_scene
+  in
   let r = render el in
   check_node "draw renders as canvas"
     (Element
        {
          tag = "canvas";
          style = Nopal_style.Style.default;
-         attrs = [ ("width", "200."); ("height", "100."); ("scene-nodes", "1") ];
+         attrs =
+           [
+             ("width", "200.");
+             ("height", "100.");
+             ("scene-nodes", "1");
+             ("aria-hidden", "true");
+           ];
          children = [];
          interaction = Nopal_style.Interaction.default;
        })
@@ -58,16 +68,60 @@ let test_render_draw_scene_attr () =
       Nopal_draw.Scene.text ~x:0.0 ~y:0.0 "hello";
     ]
   in
-  let el = E.draw ~width:100.0 ~height:100.0 scene in
+  let el =
+    E.draw ~name:Graphic_name.decorative ~width:100.0 ~height:100.0 scene
+  in
   let r = render el in
   let canvas = find (By_tag "canvas") (tree r) in
   Alcotest.(check (option string))
     "scene-nodes attr is 3" (Some "3")
     (attr "scene-nodes" (Option.get canvas))
 
+let draw_named_carries_img_role_and_label () =
+  let r =
+    render
+      (E.column
+         [
+           E.draw ~name:Graphic_name.decorative ~width:10.0 ~height:10.0 [];
+           E.draw
+             ~name:(graphic_name "Revenue by month")
+             ~width:200.0 ~height:100.0 simple_scene;
+         ])
+  in
+  let canvas =
+    Test_util.find_or_fail "a canvas found by its accessible name"
+      (By_attr ("aria-label", "Revenue by month"))
+      (tree r)
+  in
+  Alcotest.(check (option string))
+    "the named canvas, not its decorative sibling" (Some "200.")
+    (attr "width" canvas);
+  Alcotest.(check (option string))
+    "role is img" (Some "img") (attr "role" canvas);
+  Alcotest.(check (option string))
+    "aria-label is the name" (Some "Revenue by month")
+    (attr "aria-label" canvas);
+  Alcotest.(check (option string))
+    "a named canvas is not hidden" None
+    (attr "aria-hidden" canvas)
+
+let draw_decorative_is_aria_hidden_and_unnamed () =
+  let r =
+    render
+      (E.draw ~name:Graphic_name.decorative ~width:200.0 ~height:100.0
+         simple_scene)
+  in
+  let canvas = Test_util.find_or_fail "the canvas" (By_tag "canvas") (tree r) in
+  Alcotest.(check (option string))
+    "aria-hidden is true" (Some "true")
+    (attr "aria-hidden" canvas);
+  Alcotest.(check (option string)) "no role" None (attr "role" canvas);
+  Alcotest.(check (option string))
+    "no aria-label" None (attr "aria-label" canvas)
+
 let test_pointer_move_dispatches () =
   let el =
-    E.draw
+    E.draw ~name:Graphic_name.decorative
       ~on_pointer_move:(fun pe -> PointerMove (pe.x, pe.y))
       ~width:200.0 ~height:100.0 simple_scene
   in
@@ -82,7 +136,7 @@ let test_pointer_move_dispatches () =
 
 let test_pointer_click_dispatches () =
   let el =
-    E.draw
+    E.draw ~name:Graphic_name.decorative
       ~on_click:(fun pe -> PointerClick (pe.x, pe.y))
       ~width:200.0 ~height:100.0 simple_scene
   in
@@ -97,8 +151,8 @@ let test_pointer_click_dispatches () =
 
 let test_pointer_leave_dispatches () =
   let el =
-    E.draw ~on_pointer_leave:PointerLeave ~width:200.0 ~height:100.0
-      simple_scene
+    E.draw ~name:Graphic_name.decorative ~on_pointer_leave:PointerLeave
+      ~width:200.0 ~height:100.0 simple_scene
   in
   let r = render el in
   let result = pointer_leave (By_tag "canvas") r in
@@ -108,7 +162,9 @@ let test_pointer_leave_dispatches () =
     "pointer leave message dispatched" [ PointerLeave ] (messages r)
 
 let test_pointer_no_handler () =
-  let el = E.draw ~width:200.0 ~height:100.0 simple_scene in
+  let el =
+    E.draw ~name:Graphic_name.decorative ~width:200.0 ~height:100.0 simple_scene
+  in
   let r = render el in
   let result_move = pointer_move (By_tag "canvas") ~x:10.0 ~y:20.0 r in
   Alcotest.(check (result unit error_testable))
@@ -136,6 +192,10 @@ let () =
             test_render_draw_node;
           Alcotest.test_case "test_render_draw_scene_attr" `Quick
             test_render_draw_scene_attr;
+          Alcotest.test_case "draw_named_carries_img_role_and_label" `Quick
+            draw_named_carries_img_role_and_label;
+          Alcotest.test_case "draw_decorative_is_aria_hidden_and_unnamed" `Quick
+            draw_decorative_is_aria_hidden_and_unnamed;
         ] );
       ( "draw pointer events",
         [

@@ -235,7 +235,12 @@ type 'msg t =
       multiple : bool;
       on_change : (file_info list -> 'msg) option;
     }
-  | Image of { style : Nopal_style.Style.t; src : string; alt : string }
+  | Image of {
+      style : Nopal_style.Style.t;
+      src : string;
+      name : Nopal_scene.Graphic_name.t;
+          (** The image's accessible name, or that it is decorative. *)
+    }
   | Scroll of {
       style : Nopal_style.Style.t;
       attrs : (string * string) list;
@@ -256,7 +261,8 @@ type 'msg t =
       on_pointer_up : (pointer_event -> 'msg) option;
       on_wheel : (wheel_event -> 'msg) option;
       cursor : Nopal_style.Cursor.t option;
-      aria_label : string option;
+      name : Nopal_scene.Graphic_name.t;
+          (** The drawing's accessible name, or that it is decorative. *)
     }
   | Virtual_list of {
       style : Nopal_style.Style.t;
@@ -328,8 +334,10 @@ type 'msg t =
     resolves every lookup to the last pair, so an overlay is what carries it
     there. The within-list half is the same function in both — {!Attrs.resolve}
     — so there is one definition of what a repeated key answers and nothing for
-    the two to drift apart from. {!draw} carries neither a style nor an
-    attribute list, so it is structurally outside the rule. A backend nobody has
+    the two to drift apart from. {!draw} and {!image} take no attribute list, so
+    the pairs they derive from their [name] are the only source of those keys
+    and there is no caller pair for them to outrank. Should either route gain an
+    attribute list, its [name] outranks it under this rule. A backend nobody has
     written is bound by nothing here: a rule holds where a test holds it.
 
     The first tier is a shared rule only for the keys the web backend writes as
@@ -337,7 +345,8 @@ type 'msg t =
     ["placeholder"], a radio's ["name"], a control's ["type"], an input's
     ["required"], ["aria-required"], ["autocomplete"] and ["name"], a form's
     ["autocomplete"] and ["novalidate"], a button's ["type"] and
-    ["aria-disabled"], and a link's ["href"] and ["rel"]. Of those,
+    ["aria-disabled"], a link's ["href"] and ["rel"], a drawing's ["role"],
+    ["aria-label"] and ["aria-hidden"], and an image's ["alt"]. Of those,
     ["disabled"], ["multiple"], ["required"] and ["novalidate"] are spelled
     differently by the two — a presence attribute in the browser, a ["true"]
     pair in the structural tree — so they agree on which side wins and not on
@@ -702,8 +711,20 @@ val file_input :
 *)
 
 val image :
-  ?style:Nopal_style.Style.t -> src:string -> alt:string -> unit -> 'msg t
-(** An image element. [src] and [alt] are required. *)
+  ?style:Nopal_style.Style.t ->
+  src:string ->
+  name:Nopal_scene.Graphic_name.t ->
+  unit ->
+  'msg t
+(** An image element. [src] and [name] are required.
+
+    [name] is the only source of the image's text alternative. A [Named n] image
+    carries the ["alt"] [n], and is exposed to assistive technology as an image
+    with that name. A [Decorative] image carries an ["alt"] that is present and
+    empty, which removes it from the accessibility tree; an absent ["alt"] would
+    not. An SVG document shown through an image has its own internal attributes
+    ignored by assistive technology, so a scene rendered to SVG and shown here
+    is named here. *)
 
 val scroll :
   ?style:Nopal_style.Style.t ->
@@ -752,14 +773,21 @@ val draw :
   ?on_pointer_up:(pointer_event -> 'msg) ->
   ?on_wheel:(wheel_event -> 'msg) ->
   ?cursor:Nopal_style.Cursor.t ->
-  ?aria_label:string ->
+  name:Nopal_scene.Graphic_name.t ->
   width:float ->
   height:float ->
   Nopal_scene.Scene.t list ->
   'msg t
-(** [draw ~width ~height scene] creates a 2D drawing canvas element. The scene
-    list describes shapes rendered onto the canvas. Optional pointer callbacks
-    receive canvas-local coordinates. *)
+(** [draw ~name ~width ~height scene] creates a 2D drawing canvas element. The
+    scene list describes shapes rendered onto the canvas. Optional pointer
+    callbacks receive canvas-local coordinates.
+
+    [name] is the only source of the canvas's accessible attributes. A [Named n]
+    canvas carries the ["role"] ["img"] and the ["aria-label"] [n], and is
+    exposed to assistive technology as one image with that name. A [Decorative]
+    canvas carries ["aria-hidden"] ["true"] and neither of the other two, so it
+    is absent from the accessibility tree and a value it draws beside is read
+    once. No other accessibility attribute is derived. *)
 
 val virtual_list :
   ?style:Nopal_style.Style.t ->

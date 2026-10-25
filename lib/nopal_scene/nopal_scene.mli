@@ -21,3 +21,7 @@ module Path = Path
 
 module Scene = Scene
 (** Scene tree nodes: shapes, text, groups, and clipping. *)
+
+module Graphic_name = Graphic_name
+(** The accessible-name decision a graphic carries: a checked name, or
+    decorative. *)

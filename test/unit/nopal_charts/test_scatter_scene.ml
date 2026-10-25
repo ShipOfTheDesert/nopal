@@ -26,7 +26,8 @@ let test_scatter_scene_matches_view () =
       ~width:400.0 ~height:300.0 ()
   in
   let view_el =
-    Scatter.view ~data:sample ~x:fst ~y:snd
+    Scatter.view ~name:Nopal_element.Graphic_name.decorative ~data:sample ~x:fst
+      ~y:snd
       ~color:(fun _ -> Nopal_draw.Color.categorical.(0))
       ~width:400.0 ~height:300.0 ()
   in

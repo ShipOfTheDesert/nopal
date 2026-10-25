@@ -50,7 +50,8 @@ let update _model msg =
   | Render_candlestick_1k ->
       let data = gen_ohlc 1000 in
       let el =
-        Trading.Candlestick.view ~data
+        Trading.Candlestick.view ~name:Nopal_element.Graphic_name.decorative
+          ~data
           ~x:(fun (x, _, _, _, _) -> x)
           ~open_:(fun (_, o, _, _, _) -> o)
           ~high:(fun (_, _, h, _, _) -> h)
@@ -69,7 +70,7 @@ let update _model msg =
           ~high:(Nopal_draw.Color.rgba ~r:0.0 ~g:0.4 ~b:0.0 ~a:1.0)
       in
       let el =
-        Heat_map.view ~data
+        Heat_map.view ~name:Nopal_element.Graphic_name.decorative ~data
           ~row:(fun (r, _, _) -> r)
           ~col:(fun (_, c, _) -> c)
           ~value:(fun (_, _, v) -> v)
@@ -81,7 +82,7 @@ let update _model msg =
       let data = gen_line_data 100_000 in
       let domain_window = Domain_window.create ~x_min:50000.0 ~x_max:50500.0 in
       let el =
-        Line.view
+        Line.view ~name:Nopal_element.Graphic_name.decorative
           ~series:
             [
               Line.series ~label:"bench" ~color:Nopal_draw.Color.blue

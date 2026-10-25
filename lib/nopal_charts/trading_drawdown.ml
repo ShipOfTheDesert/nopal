@@ -92,15 +92,15 @@ let scene ~data ~x ~y ~width ~height ?(padding = Padding.default) ?fill_color
       in
       area_scene @ x_axis_scene @ y_axis_scene
 
-let view ~data ~x ~y ~width ~height ?(padding = Padding.default) ?fill_color
-    ?(x_axis = Axis.default_config) ?y_axis ?format_tooltip ?on_hover ?on_leave
-    ?hover ?domain_window () =
+let view ~name ~data ~x ~y ~width ~height ?(padding = Padding.default)
+    ?fill_color ?(x_axis = Axis.default_config) ?y_axis ?format_tooltip
+    ?on_hover ?on_leave ?hover ?domain_window () =
   let all_scene =
     scene ~data ~x ~y ~width ~height ~padding ?fill_color ~x_axis ?y_axis
       ?domain_window ()
   in
   match all_scene with
-  | [] -> Nopal_element.Element.draw ~width ~height []
+  | [] -> Nopal_element.Element.draw ~name ~width ~height []
   | _ ->
       (* Recompute clipped data and scales for hit map *)
       let visible_data =
@@ -154,8 +154,8 @@ let view ~data ~x ~y ~width ~height ?(padding = Padding.default) ?fill_color
         | _ -> None
       in
       let draw_el =
-        Nopal_element.Element.draw ?on_pointer_move ?on_pointer_leave:on_leave
-          ~width ~height all_scene
+        Nopal_element.Element.draw ~name ?on_pointer_move
+          ?on_pointer_leave:on_leave ~width ~height all_scene
       in
       (* Compose with tooltip if hovered *)
       let visible_arr = Array.of_list visible_data in

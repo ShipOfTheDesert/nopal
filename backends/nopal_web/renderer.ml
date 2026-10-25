@@ -746,6 +746,15 @@ let wire_draw_pointer_events ~dispatch el on_pointer_move on_click
   wire_pointer_events ~dispatch el ?on_pointer_move ?on_click ?on_pointer_leave
     ?on_pointer_down ?on_pointer_up ?on_wheel ()
 
+(* The name-to-attribute table is [Graphic_name.aria_attrs]; a [None] entry
+   removes the key, which is what lets a reconcile across names leave exactly
+   the new row behind. *)
+let apply_draw_name el (name : Nopal_element.Graphic_name.t) =
+  List.iter
+    (fun (key, value) ->
+      Brr.El.set_at (Jstr.v key) (Option.map Jstr.v value) el)
+    (Nopal_element.Graphic_name.aria_attrs name)
+
 let wire_box_pointer_events ~dispatch el on_pointer_move on_pointer_leave
     on_pointer_down on_pointer_up on_wheel =
   wire_pointer_events ~dispatch el ?on_pointer_move ?on_pointer_leave
@@ -1171,11 +1180,13 @@ let rec create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
       let listeners = wire_file_change ~dispatch el on_change in
       Live_node
         { dom = el; element; children = []; listeners; base_id; interaction_id }
-  | Image { style; src; alt } ->
+  | Image { style; src; name } ->
       let el = Brr.El.v (Jstr.v "img") [] in
       apply_style ~parent_axis el style;
       Brr.El.set_at (Jstr.v "src") (Some (Jstr.v src)) el;
-      Brr.El.set_at (Jstr.v "alt") (Some (Jstr.v alt)) el;
+      Brr.El.set_at (Jstr.v "alt")
+        (Some (Jstr.v (Nopal_element.Graphic_name.image_alt name)))
+        el;
       Live_node
         {
           dom = el;
@@ -1238,17 +1249,14 @@ let rec create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
         on_pointer_up;
         on_wheel;
         cursor;
-        aria_label;
+        name;
       } ->
       let el = Brr.El.v (Jstr.v "canvas") [] in
       let canvas = Brr_canvas.Canvas.of_el el in
       let ctx = Brr_canvas.C2d.get_context canvas in
       Canvas_renderer.setup_hidpi el ctx ~width ~height;
       Style_css.apply_cursor el cursor;
-      (match aria_label with
-      | Some label ->
-          Brr.El.set_at (Jstr.v "aria-label") (Some (Jstr.v label)) el
-      | None -> ());
+      apply_draw_name el name;
       Canvas_renderer.render ctx scene;
       let listeners =
         wire_draw_pointer_events ~dispatch el on_pointer_move on_click
@@ -2367,13 +2375,15 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
       old_n.listeners <-
         wire_input_events ~dispatch el ~on_change ~on_submit ~on_focus ~on_blur
           ~on_keydown
-  | Image { src; alt; _ } -> (
+  | Image { src; name; _ } -> (
       match old_n.element with
-      | Image { src = old_src; alt = old_alt; _ } ->
+      | Image { src = old_src; name = old_name; _ } ->
           if not (String.equal old_src src) then
             Brr.El.set_at (Jstr.v "src") (Some (Jstr.v src)) el;
-          if not (String.equal old_alt alt) then
-            Brr.El.set_at (Jstr.v "alt") (Some (Jstr.v alt)) el
+          if not (Nopal_element.Graphic_name.equal old_name name) then
+            Brr.El.set_at (Jstr.v "alt")
+              (Some (Jstr.v (Nopal_element.Graphic_name.image_alt name)))
+              el
       | Empty
       | Text _
       | Box _
@@ -2394,7 +2404,9 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
           (* Unreachable: reconcile_node is only called when same_variant
              returns true, so old_n.element is always Image here *)
           Brr.El.set_at (Jstr.v "src") (Some (Jstr.v src)) el;
-          Brr.El.set_at (Jstr.v "alt") (Some (Jstr.v alt)) el)
+          Brr.El.set_at (Jstr.v "alt")
+            (Some (Jstr.v (Nopal_element.Graphic_name.image_alt name)))
+            el)
   | Scroll { reveal; child; _ } ->
       (* Derives no attributes of its own, so nothing to re-assert. *)
       ignore (maybe_apply_attrs el old_n.element new_el : bool);
@@ -2441,7 +2453,7 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
         on_pointer_up;
         on_wheel;
         cursor;
-        aria_label;
+        name;
       } ->
       let canvas = Brr_canvas.Canvas.of_el el in
       let ctx = Brr_canvas.C2d.get_context canvas in
@@ -2450,10 +2462,30 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
          resize and a dpr change, and is a no-op otherwise. *)
       Canvas_renderer.resize_if_needed el ctx ~width ~height;
       Style_css.apply_cursor el cursor;
-      (match aria_label with
-      | Some label ->
-          Brr.El.set_at (Jstr.v "aria-label") (Some (Jstr.v label)) el
-      | None -> Brr.El.set_at (Jstr.v "aria-label") None el);
+      (match old_n.element with
+      | Draw { name = old_name; _ } ->
+          if not (Nopal_element.Graphic_name.equal old_name name) then
+            apply_draw_name el name
+      | Empty
+      | Text _
+      | Box _
+      | Row _
+      | Column _
+      | Form _
+      | Button _
+      | Link _
+      | Input _
+      | Checkbox _
+      | Radio _
+      | Select _
+      | File_input _
+      | Image _
+      | Scroll _
+      | Keyed _
+      | Virtual_list _ ->
+          (* Unreachable: reconcile_node is only called when same_variant
+             returns true, so old_n.element is always Draw here *)
+          apply_draw_name el name);
       Canvas_renderer.render ctx scene;
       unlisten_all old_n.listeners;
       old_n.listeners <-

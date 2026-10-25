@@ -47,7 +47,7 @@ let test_heat_map_scene_matches_view () =
       ~row_count:2 ~col_count:3 ~scale:seq_scale ~width:400.0 ~height:300.0 ()
   in
   let view_el =
-    Heat_map.view ~data:sample_data
+    Heat_map.view ~name:Nopal_element.Graphic_name.decorative ~data:sample_data
       ~row:(fun d -> d.r)
       ~col:(fun d -> d.c)
       ~value:(fun d -> d.v)

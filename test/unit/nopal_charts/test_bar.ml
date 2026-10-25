@@ -7,10 +7,13 @@ type msg = Hovered of Hover.t | Left | Noop
 (* --- helpers --- *)
 
 let sample = [ ("A", 10.0); ("B", 20.0); ("C", 15.0) ]
+let chart_name = "Sales by region"
+let graphic_name = Chart_test_helpers.graphic_name
+let check_canvas_name = Chart_test_helpers.check_canvas_name
 
 let bar_view ?(on_hover = fun _ -> Noop) ?(on_leave = Noop) ?hover ?y_axis
     ?format_tooltip data =
-  Bar.view ~data ~label:fst ~value:snd
+  Bar.view ~name:(graphic_name chart_name) ~data ~label:fst ~value:snd
     ~color:(fun _ -> Color.categorical.(0))
     ~width:400.0 ~height:300.0 ~on_hover ~on_leave ?hover ?y_axis
     ?format_tooltip ()
@@ -49,6 +52,23 @@ let test_empty_data () =
   | Draw { scene; _ } ->
       Alcotest.(check int) "empty scene" 0 (List.length scene)
   | _ -> Alcotest.fail "expected Draw element for empty data"
+
+let decorative_bar data : msg Element.t =
+  Bar.view ~name:Graphic_name.decorative ~data ~label:fst ~value:snd
+    ~color:(fun _ -> Color.categorical.(0))
+    ~width:400.0 ~height:300.0 ()
+
+let bar_passes_name_on_empty_data () =
+  check_canvas_name "empty bar" (graphic_name chart_name) (bar_view [])
+
+let bar_passes_name_on_data () =
+  check_canvas_name "bar with data" (graphic_name chart_name) (bar_view sample)
+
+let bar_passes_decorative_through () =
+  check_canvas_name "empty decorative bar" Graphic_name.decorative
+    (decorative_bar []);
+  check_canvas_name "decorative bar with data" Graphic_name.decorative
+    (decorative_bar sample)
 
 let test_bar_count_in_scene () =
   let el = bar_view sample in
@@ -148,7 +168,7 @@ let test_hit_map_rect_count () =
      on_pointer_move is wired and the handler produces correct hits.
      We'll test by simulating a pointer move over each bar position. *)
   let el =
-    Bar.view ~data:sample ~label:fst ~value:snd
+    Bar.view ~name:(graphic_name chart_name) ~data:sample ~label:fst ~value:snd
       ~color:(fun _ -> Color.categorical.(0))
       ~width:400.0 ~height:300.0
       ~on_hover:(fun h -> Hovered h)
@@ -232,5 +252,11 @@ let () =
           Alcotest.test_case "custom_tooltip" `Quick test_custom_tooltip;
           Alcotest.test_case "category_labels_rendered" `Quick
             test_category_labels_rendered;
+          Alcotest.test_case "bar_passes_name_on_empty_data" `Quick
+            bar_passes_name_on_empty_data;
+          Alcotest.test_case "bar_passes_name_on_data" `Quick
+            bar_passes_name_on_data;
+          Alcotest.test_case "bar_passes_decorative_through" `Quick
+            bar_passes_decorative_through;
         ] );
     ]

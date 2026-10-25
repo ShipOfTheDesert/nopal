@@ -1,4 +1,4 @@
-(** Drawdown chart — inverted area from 0% baseline downward. REQ-F3.
+(** Drawdown chart — inverted area from 0% baseline downward.
 
     Renders drawdown percentage data as an area chart extending downward from a
     0% baseline. Y domain is [{min_drawdown, 0.0}]. When [domain_window] is
@@ -23,6 +23,7 @@ val scene :
     SVG export or embedding in composite scenes. *)
 
 val view :
+  name:Nopal_element.Graphic_name.t ->
   data:'a list ->
   x:('a -> float) ->
   y:('a -> float) ->
@@ -39,7 +40,12 @@ val view :
   ?domain_window:Domain_window.t ->
   unit ->
   'msg Nopal_element.Element.t
-(** [view ~data ~x ~y ~width ~height ()] renders an interactive drawdown chart.
-    [y] should return drawdown values (<= 0.0). [fill_color] defaults to a
-    semi-transparent red. [format_tooltip] receives the data index and the
-    drawdown value. *)
+(** [view ~name ~data ~x ~y ~width ~height ()] renders an interactive drawdown
+    chart. [y] should return drawdown values (<= 0.0). [fill_color] defaults to
+    a semi-transparent red. [format_tooltip] receives the data index and the
+    drawdown value.
+
+    [name] is the accessible-name decision for the chart's canvas. It is passed
+    to [Nopal_element.Element.draw] unchanged, including when there is no data
+    to draw. The view takes no attribute list; if one is added, [name] outranks
+    it, as on [Nopal_element.Element.draw]. *)

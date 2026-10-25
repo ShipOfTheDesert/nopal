@@ -17,6 +17,10 @@ val contains_fragment : string -> fragment:string -> bool
     of another field name in the same record; [string_contains] stays correct
     for everything else. *)
 
+val graphic_name : string -> Nopal_element.Graphic_name.t
+(** [graphic_name label] is [Graphic_name.named label], failing the test when
+    the label is refused. *)
+
 val pp_selector : Format.formatter -> Nopal_test.Test_renderer.selector -> unit
 val error_testable : Nopal_test.Test_renderer.error Alcotest.testable
 val node_pp : Format.formatter -> Nopal_test.Test_renderer.node -> unit

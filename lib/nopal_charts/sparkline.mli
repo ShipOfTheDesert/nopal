@@ -1,4 +1,4 @@
-(** Minimal inline sparkline chart. REQ-F6, REQ-F13.
+(** Minimal inline sparkline chart.
 
     Renders a small line chart with no axes, labels, or interaction. Suitable
     for embedding in table cells and list items. *)
@@ -16,6 +16,7 @@ val scene :
     scenes. Empty or single-point data produces an empty list. *)
 
 val view :
+  name:Nopal_element.Graphic_name.t ->
   data:float list ->
   width:float ->
   height:float ->
@@ -23,6 +24,11 @@ val view :
   ?stroke_width:float ->
   unit ->
   'msg Nopal_element.Element.t
-(** [view ~data ~width ~height ()] renders a sparkline. Defaults:
+(** [view ~name ~data ~width ~height ()] renders a sparkline. Defaults:
     [color = Color.categorical.(0)], [stroke_width = 1.5]. Empty data produces a
-    blank chart (Draw with empty scene). *)
+    blank chart (Draw with empty scene).
+
+    [name] is the accessible-name decision for the chart's canvas. It is passed
+    to [Nopal_element.Element.draw] unchanged, including when there is no data
+    to draw. The view takes no attribute list; if one is added, [name] outranks
+    it, as on [Nopal_element.Element.draw]. *)

@@ -13,7 +13,10 @@ let test_sparkline_scene_empty_data () =
 
 let test_sparkline_scene_matches_view () =
   let scene_nodes = Sparkline.scene ~data:sample ~width:100.0 ~height:30.0 () in
-  let view_el = Sparkline.view ~data:sample ~width:100.0 ~height:30.0 () in
+  let view_el =
+    Sparkline.view ~name:Nopal_element.Graphic_name.decorative ~data:sample
+      ~width:100.0 ~height:30.0 ()
+  in
   match Chart_test_helpers.extract_draw view_el with
   | Some (view_scene, _, _, _, _) ->
       Alcotest.(check int)

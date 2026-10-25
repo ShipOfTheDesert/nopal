@@ -50,3 +50,16 @@ val texts_of :
 val paint_color : Nopal_scene.Paint.t -> Nopal_scene.Color.t
 (** The colour of a [Solid] paint. Fails the running Alcotest case for any
     gradient or [No_paint], which chart chrome is never expected to use. *)
+
+val graphic_name : string -> Nopal_scene.Graphic_name.t
+(** [graphic_name label] is [label] accepted by
+    {!Nopal_scene.Graphic_name.named}, or an Alcotest failure naming the refused
+    input. *)
+
+val check_canvas_name :
+  string -> Nopal_scene.Graphic_name.t -> 'msg Nopal_element.Element.t -> unit
+(** [check_canvas_name message name view] renders [view] with the structural
+    renderer and checks that it holds exactly one canvas, carrying the pairs for
+    [name] and none of the other case's: [role]=[img] and [aria-label]=[n] with
+    no [aria-hidden] for [Named n], and [aria-hidden]=[true] with no [role] and
+    no [aria-label] for [Decorative]. *)

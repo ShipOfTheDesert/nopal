@@ -43,7 +43,8 @@ let test_trading_candlestick_scene_matches_view () =
       ~width:400.0 ~height:300.0 ()
   in
   let view_el =
-    Trading.Candlestick.view ~data:sample
+    Trading.Candlestick.view ~name:Nopal_element.Graphic_name.decorative
+      ~data:sample
       ~x:(fun (x, _, _, _, _) -> x)
       ~open_:(fun (_, o, _, _, _) -> o)
       ~high:(fun (_, _, h, _, _) -> h)

@@ -98,3 +98,27 @@ let paint_color (p : Paint.t) =
   | Radial_gradient _
   | No_paint ->
       Alcotest.fail "axis chrome must be painted with a solid paint"
+
+let graphic_name = Test_util.graphic_name
+
+let check_canvas_name message (name : Graphic_name.t) view =
+  let open Nopal_test.Test_renderer in
+  match find_all (By_tag "canvas") (tree (render view)) with
+  | [ canvas ] -> (
+      let check key expected =
+        Alcotest.(check (option string))
+          (Printf.sprintf "%s: %s" message key)
+          expected (attr key canvas)
+      in
+      match name with
+      | Named n ->
+          check "role" (Some "img");
+          check "aria-label" (Some n);
+          check "aria-hidden" None
+      | Decorative ->
+          check "aria-hidden" (Some "true");
+          check "role" None;
+          check "aria-label" None)
+  | canvases ->
+      Alcotest.failf "%s: expected exactly one canvas, found %d" message
+        (List.length canvases)

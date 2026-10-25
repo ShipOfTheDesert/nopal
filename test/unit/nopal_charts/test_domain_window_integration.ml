@@ -53,11 +53,13 @@ let test_line_domain_window () =
      That means x=1..6 visible. The chart should still produce scene nodes, but
      fewer than the full 10-point chart. *)
   let el_clipped =
-    Line.view ~series:[ line_series ] ~x:fst ~width:400.0 ~height:300.0
+    Line.view ~name:Nopal_element.Graphic_name.decorative
+      ~series:[ line_series ] ~x:fst ~width:400.0 ~height:300.0
       ~domain_window:window ()
   in
   let el_full =
-    Line.view ~series:[ line_series ] ~x:fst ~width:400.0 ~height:300.0 ()
+    Line.view ~name:Nopal_element.Graphic_name.decorative
+      ~series:[ line_series ] ~x:fst ~width:400.0 ~height:300.0 ()
   in
   let scene_clipped = extract_draw el_clipped in
   let scene_full = extract_draw el_full in
@@ -91,7 +93,8 @@ let test_line_y_rescale () =
      only. With buffer=1, visible data is x=1..6, y=10..60.
      Without clipping, Y range covers 0..90. *)
   let el_clipped =
-    Line.view ~series:[ line_series ] ~x:fst ~width:400.0 ~height:300.0
+    Line.view ~name:Nopal_element.Graphic_name.decorative
+      ~series:[ line_series ] ~x:fst ~width:400.0 ~height:300.0
       ~domain_window:window ()
   in
   let scene = extract_draw el_clipped in
@@ -129,11 +132,13 @@ let test_line_y_rescale () =
 
 let test_area_domain_window () =
   let el_clipped =
-    Area.view ~series:[ area_series ] ~x:fst ~width:400.0 ~height:300.0
+    Area.view ~name:Nopal_element.Graphic_name.decorative
+      ~series:[ area_series ] ~x:fst ~width:400.0 ~height:300.0
       ~domain_window:window ()
   in
   let el_full =
-    Area.view ~series:[ area_series ] ~x:fst ~width:400.0 ~height:300.0 ()
+    Area.view ~name:Nopal_element.Graphic_name.decorative
+      ~series:[ area_series ] ~x:fst ~width:400.0 ~height:300.0 ()
   in
   let scene_clipped = extract_draw el_clipped in
   let scene_full = extract_draw el_full in
@@ -148,7 +153,7 @@ let test_area_domain_window () =
 
 let test_bar_domain_window () =
   let el_clipped =
-    Bar.view ~data:bar_data
+    Bar.view ~name:Nopal_element.Graphic_name.decorative ~data:bar_data
       ~label:(fun (_, _, l) -> l)
       ~value:(fun (_, v, _) -> v)
       ~color:(fun _ -> Color.categorical.(0))
@@ -156,7 +161,7 @@ let test_bar_domain_window () =
       ~width:400.0 ~height:300.0 ~domain_window:window ()
   in
   let el_full =
-    Bar.view ~data:bar_data
+    Bar.view ~name:Nopal_element.Graphic_name.decorative ~data:bar_data
       ~label:(fun (_, _, l) -> l)
       ~value:(fun (_, v, _) -> v)
       ~color:(fun _ -> Color.categorical.(0))
@@ -176,12 +181,14 @@ let test_bar_domain_window () =
 
 let test_scatter_domain_window () =
   let el_clipped =
-    Scatter.view ~data:scatter_data ~x:fst ~y:snd
+    Scatter.view ~name:Nopal_element.Graphic_name.decorative ~data:scatter_data
+      ~x:fst ~y:snd
       ~color:(fun _ -> Color.categorical.(0))
       ~width:400.0 ~height:300.0 ~domain_window:window ()
   in
   let el_full =
-    Scatter.view ~data:scatter_data ~x:fst ~y:snd
+    Scatter.view ~name:Nopal_element.Graphic_name.decorative ~data:scatter_data
+      ~x:fst ~y:snd
       ~color:(fun _ -> Color.categorical.(0))
       ~width:400.0 ~height:300.0 ()
   in
@@ -199,7 +206,8 @@ let test_scatter_domain_window () =
 let test_no_domain_window_unchanged () =
   (* Without domain_window, all 10 data points should be rendered *)
   let el =
-    Line.view ~series:[ line_series ] ~x:fst ~width:400.0 ~height:300.0 ()
+    Line.view ~name:Nopal_element.Graphic_name.decorative
+      ~series:[ line_series ] ~x:fst ~width:400.0 ~height:300.0 ()
   in
   let scene = extract_draw el in
   match scene with

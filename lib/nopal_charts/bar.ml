@@ -114,7 +114,7 @@ let scene ~data ~label ~value ~color ?x ~width ~height
       bar_scenes @ category_label_scenes @ x_axis_line @ x_label_scene
       @ y_axis_scene
 
-let view ~data ~label ~value ~color ?x ~width ~height
+let view ~name ~data ~label ~value ~color ?x ~width ~height
     ?(padding = Padding.default) ?(x_axis = Axis.default_config)
     ?(y_axis = Axis.default_config) ?format_tooltip ?on_hover ?on_leave ?hover
     ?domain_window () =
@@ -123,7 +123,7 @@ let view ~data ~label ~value ~color ?x ~width ~height
       ?domain_window ()
   in
   match base_scene with
-  | [] -> Nopal_element.Element.draw ~width ~height []
+  | [] -> Nopal_element.Element.draw ~name ~width ~height []
   | _ ->
       (* Apply hover lightening to the hovered bar rect *)
       let all_scene =
@@ -231,8 +231,8 @@ let view ~data ~label ~value ~color ?x ~width ~height
         | _ -> None
       in
       let draw_el =
-        Nopal_element.Element.draw ?on_pointer_move ?on_pointer_leave:on_leave
-          ~width ~height all_scene
+        Nopal_element.Element.draw ~name ?on_pointer_move
+          ?on_pointer_leave:on_leave ~width ~height all_scene
       in
       let tooltip =
         match (hover, format_tooltip) with

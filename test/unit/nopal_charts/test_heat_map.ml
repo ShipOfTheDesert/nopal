@@ -35,9 +35,13 @@ let div_scale =
 
 (* --- helpers --- *)
 
+let chart_name = "Returns by month and year"
+let graphic_name = Chart_test_helpers.graphic_name
+let check_canvas_name = Chart_test_helpers.check_canvas_name
+
 let heat_map_view ?(scale = seq_scale) ?on_hover ?on_leave ?hover
     ?format_tooltip data =
-  Heat_map.view ~data
+  Heat_map.view ~name:(graphic_name chart_name) ~data
     ~row:(fun d -> d.r)
     ~col:(fun d -> d.c)
     ~value:(fun d -> d.v)
@@ -72,15 +76,24 @@ let find_texts (scene : Scene.t list) =
 
 (* --- tests --- *)
 
+let empty_heat_map name : msg Element.t =
+  Heat_map.view ~name ~data:[]
+    ~row:(fun _ -> 0)
+    ~col:(fun _ -> 0)
+    ~value:(fun _ -> 0.0)
+    ~row_count:0 ~col_count:0 ~scale:seq_scale ~width:400.0 ~height:300.0 ()
+
+let heat_map_passes_name_on_empty_data () =
+  let name = graphic_name "Returns by month and year, no data yet" in
+  check_canvas_name "empty heat map" name (empty_heat_map name)
+
+let heat_map_passes_name_on_data () =
+  check_canvas_name "heat map with data" (graphic_name chart_name)
+    (heat_map_view sample_data : msg Element.t)
+
 let test_empty_data () =
-  let el =
-    Heat_map.view ~data:[]
-      ~row:(fun _ -> 0)
-      ~col:(fun _ -> 0)
-      ~value:(fun _ -> 0.0)
-      ~row_count:0 ~col_count:0 ~scale:seq_scale ~width:400.0 ~height:300.0 ()
-  in
-  match (el : msg Element.t) with
+  let el = empty_heat_map (graphic_name chart_name) in
+  match el with
   | Draw { scene; _ } ->
       Alcotest.(check int) "empty scene" 0 (List.length scene)
   | _ -> Alcotest.fail "expected Draw element for empty data"
@@ -240,5 +253,9 @@ let () =
           Alcotest.test_case "hit_map_rect_count" `Quick test_hit_map_rect_count;
           Alcotest.test_case "tooltip_shows_cell_value" `Quick
             test_tooltip_shows_cell_value;
+          Alcotest.test_case "heat_map_passes_name_on_empty_data" `Quick
+            heat_map_passes_name_on_empty_data;
+          Alcotest.test_case "heat_map_passes_name_on_data" `Quick
+            heat_map_passes_name_on_data;
         ] );
     ]

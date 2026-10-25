@@ -60,7 +60,7 @@ let scene ~data ~value ~label ~color ~width ~height ?(inner_radius = 0.0)
       in
       List.rev scene_nodes
 
-let view ~data ~value ~label ~color ~width ~height ?(inner_radius = 0.0)
+let view ~name ~data ~value ~label ~color ~width ~height ?(inner_radius = 0.0)
     ?(label_threshold = default_label_threshold) ?format_tooltip ?on_hover
     ?on_leave ?hover () =
   let all_scene =
@@ -68,7 +68,7 @@ let view ~data ~value ~label ~color ~width ~height ?(inner_radius = 0.0)
       ~label_threshold ()
   in
   match all_scene with
-  | [] -> Nopal_element.Element.draw ~width ~height []
+  | [] -> Nopal_element.Element.draw ~name ~width ~height []
   | _ ->
       (* Recompute segments for hit map and hover offset *)
       let segments =
@@ -164,8 +164,8 @@ let view ~data ~value ~label ~color ~width ~height ?(inner_radius = 0.0)
         | _ -> None
       in
       let draw_el =
-        Nopal_element.Element.draw ?on_pointer_move ?on_pointer_leave:on_leave
-          ~width ~height scene_nodes
+        Nopal_element.Element.draw ~name ?on_pointer_move
+          ?on_pointer_leave:on_leave ~width ~height scene_nodes
       in
       (* Compose with tooltip if hovered *)
       let tooltip =

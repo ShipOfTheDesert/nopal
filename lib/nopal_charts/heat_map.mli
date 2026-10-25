@@ -1,4 +1,4 @@
-(** Heat map chart — renders a 2D grid of colored cells. REQ-F1, REQ-F2.
+(** Heat map chart — renders a 2D grid of colored cells.
 
     Each cell is colored by applying a [Color_scale] to its value. Empty data
     produces a blank chart. Hit map uses [Rect_region] per cell with
@@ -27,6 +27,7 @@ val scene :
     scenes. *)
 
 val view :
+  name:Nopal_element.Graphic_name.t ->
   data:'a list ->
   row:('a -> int) ->
   col:('a -> int) ->
@@ -45,8 +46,13 @@ val view :
   ?hover:Hover.t ->
   unit ->
   'msg Nopal_element.Element.t
-(** [view ~data ~row ~col ~value ~row_count ~col_count ~scale ~width ~height ()]
-    renders an interactive heat map. [data] is a flat list of data points;
-    [row], [col], and [value] are accessor functions that extract grid
+(** [view ~name ~data ~row ~col ~value ~row_count ~col_count ~scale ~width
+     ~height ()] renders an interactive heat map. [data] is a flat list of data
+    points; [row], [col], and [value] are accessor functions that extract grid
     coordinates and cell values from each datum. Cell colors are determined by
-    [scale] applied over the data range. *)
+    [scale] applied over the data range.
+
+    [name] is the accessible-name decision for the chart's canvas. It is passed
+    to [Nopal_element.Element.draw] unchanged, including when there is no data
+    to draw. The view takes no attribute list; if one is added, [name] outranks
+    it, as on [Nopal_element.Element.draw]. *)

@@ -520,12 +520,15 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             children = [];
             interaction;
           }
-    | Image { style; src; alt } ->
+    | Image { style; src; name } ->
         Element
           {
             tag = "image";
             style;
-            attrs = [ ("src", src); ("alt", alt) ];
+            attrs =
+              [
+                ("src", src); ("alt", Nopal_element.Graphic_name.image_alt name);
+              ];
             children = [];
             interaction = Nopal_style.Interaction.default;
           }
@@ -578,7 +581,8 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
           on_pointer_down;
           on_pointer_up;
           on_wheel;
-          _;
+          cursor = _;
+          name;
         } ->
         draw_handlers :=
           {
@@ -600,7 +604,10 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
                 ("width", string_of_float width);
                 ("height", string_of_float height);
                 ("scene-nodes", string_of_int (List.length scene));
-              ];
+              ]
+              @ List.filter_map
+                  (fun (key, value) -> Option.map (fun v -> (key, v)) value)
+                  (Nopal_element.Graphic_name.aria_attrs name);
             children = [];
             interaction = Nopal_style.Interaction.default;
           }

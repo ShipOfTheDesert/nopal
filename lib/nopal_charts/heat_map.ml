@@ -67,7 +67,7 @@ let scene ~data ~row ~col ~value ~row_count ~col_count ?(row_labels = [])
       in
       cell_scenes @ row_label_scenes @ col_label_scenes
 
-let view ~data ~row ~col ~value ~row_count ~col_count ?(row_labels = [])
+let view ~name ~data ~row ~col ~value ~row_count ~col_count ?(row_labels = [])
     ?(col_labels = []) ~scale ~width ~height ?(padding = Padding.default)
     ?format_tooltip ?on_hover ?on_leave ?hover () =
   let all_scene =
@@ -75,7 +75,7 @@ let view ~data ~row ~col ~value ~row_count ~col_count ?(row_labels = [])
       ~scale ~width ~height ~padding ()
   in
   match all_scene with
-  | [] -> Nopal_element.Element.draw ~width ~height []
+  | [] -> Nopal_element.Element.draw ~name ~width ~height []
   | _ ->
       (* Recompute for hit map and hover highlighting *)
       let chart_x = padding.left in
@@ -175,8 +175,8 @@ let view ~data ~row ~col ~value ~row_count ~col_count ?(row_labels = [])
         | _ -> None
       in
       let draw_el =
-        Nopal_element.Element.draw ?on_pointer_move ?on_pointer_leave:on_leave
-          ~width ~height all_scene
+        Nopal_element.Element.draw ~name ?on_pointer_move
+          ?on_pointer_leave:on_leave ~width ~height all_scene
       in
       (* Compose with tooltip if hovered *)
       let total_cells = row_count * col_count in

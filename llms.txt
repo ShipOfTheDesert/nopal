@@ -16,7 +16,7 @@ nopal_element   ← Element.t DSL — no platform deps
 nopal_style     ← Typed layout/paint — no platform deps
 nopal_storage   ← Backend-agnostic async key-value storage contract (module type S, In_memory, With_codec) — no platform deps
 nopal_platform  ← Type-safe bidirectional routing + platform-capability signatures (Platform.NAV, Platform.S) — depends on nopal_storage, and on nopal_element for Router.destination's Link.destination; no platform deps (renamed from nopal_router)
-nopal_scene     ← Pure scene types (Color, Paint, Transform, Path segments, Scene) — no platform deps
+nopal_scene     ← Pure scene types (Color, Paint, Transform, Path segments, Scene, Graphic_name) — no platform deps
 nopal_draw      ← 2D drawing DSL (Scale, the shared arc sweep resolver Arc, and higher-level Path algorithms) — depends on nopal_scene
 nopal_svg       ← Pure SVG 1.1 string renderer for nopal_scene — depends on nopal_scene and nopal_draw; no platform deps
 nopal_charts    ← Composable interactive charts (Bar, Line, Area, Pie, Scatter, Sparkline,
@@ -476,14 +476,17 @@ resolves — to the last pair. The first tier is shared by the two on the keys t
 web backend writes as real attributes: `disabled`, `accept`, `capture`,
 `multiple`, `placeholder`, a radio's `name`, a control's `type`, an input's
 `required`, `aria-required`, `autocomplete` and `name`, a form's `autocomplete` and
-`novalidate`, a button's `type` and `aria-disabled`, and a link's `href` and
-`rel`. Every one of them
+`novalidate`, a button's `type` and `aria-disabled`, a link's `href` and
+`rel`, a drawing's `role`, `aria-label` and `aria-hidden`, and an image's
+`alt`. Every one of them
 carries the same value in both renderers except `disabled`, `multiple`,
 `required` and `novalidate`, which are a presence attribute (`""`) in the DOM
 and `"true"` in the structural tree — the two agree on which side wins, not on
 the value. `aria-required` and a button's `aria-disabled` are `"true"` in both,
-a button's `type` is `"button"` or `"submit"` in both, and a link's `rel` is
-`"noopener noreferrer"` in both. A
+a button's `type` is `"button"` or `"submit"` in both, a link's `rel` is
+`"noopener noreferrer"` in both, a drawing's `role` is `"img"` and its
+`aria-hidden` `"true"` in both, and a decorative image's `alt` is present and
+`""` in both. A
 checkbox's, radio's or file picker's `type` is the structural node's tag; an
 input's `type` is a pair in both renderers. A container's
 `focusable` is a first-tier derivation in both, but each spells it in its own
@@ -493,8 +496,11 @@ are outside that — the browser carries all three as JS properties and
 never as attributes, so a caller's pair of one of those names is not overruled
 there. `nopal_test` still overlays them as derived pairs, so a structural
 assertion on one of the three states what that renderer answers and is not
-evidence about the browser. `Element.draw` carries neither a `Style.t` nor an
-`attrs` list and is structurally outside the rule. No backend that has not been
+evidence about the browser. `Element.draw` and `Element.image` take no `attrs`
+list, so the pairs each derives from its required `name` (see Graphic names,
+below) are the only source of those keys and there is no caller pair for them
+to outrank; should either gain an `attrs` list, its `name` outranks it under
+this rule. No backend that has not been
 written is bound by a test nobody has written.
 
 **Submit contract.** An Enter in an `Element.input` can be answered by more
@@ -800,7 +806,12 @@ Element.file_input : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(str
      application's: handles live for the page session until released. *)
 
 (* Media and scrolling *)
-Element.image  : ?style:Style.t -> src:string -> alt:string -> unit -> 'msg Element.t
+Element.image  : ?style:Style.t -> src:string -> name:Graphic_name.t -> unit -> 'msg Element.t
+  (* [name] is the only source of the text alternative: [Named n] writes
+     alt="n"; [Decorative] writes alt="" (present and empty, which removes the
+     image from the accessibility tree — an absent alt would not). An SVG shown
+     through an image is named here: assistive technology ignores the SVG
+     document's own attributes. *)
 Element.scroll : ?style:Style.t -> ?attrs:(string * string) list
   -> ?reveal:Reveal.t -> 'msg Element.t -> 'msg Element.t
   (* [reveal] names a keyed descendant that must be brought into view, and the
@@ -926,8 +937,47 @@ end
 Element.draw : ?on_pointer_move:(pointer_event -> 'msg) -> ?on_click:(pointer_event -> 'msg)
   -> ?on_pointer_leave:'msg -> ?on_pointer_down:(pointer_event -> 'msg)
   -> ?on_pointer_up:(pointer_event -> 'msg) -> ?on_wheel:(wheel_event -> 'msg)
-  -> ?cursor:Cursor.t -> ?aria_label:string
+  -> ?cursor:Cursor.t -> name:Graphic_name.t
   -> width:float -> height:float -> Scene.t list -> 'msg Element.t
+  (* [name] is the only source of the canvas's accessible attributes:
+     [Named n] writes role="img" and aria-label="n"; [Decorative] writes
+     aria-hidden="true" and neither of the other two. No other accessibility
+     attribute is derived. *)
+
+(* Graphic names — Nopal_element.Graphic_name, an alias of
+   Nopal_scene.Graphic_name. Required by draw, image, Nopal_svg.render and
+   every chart view; there is no default, so an author states which case a
+   graphic is at the call site. *)
+module Graphic_name : sig
+  type t = private
+    | Named of string   (* exposed as one image carrying this name *)
+    | Decorative        (* absent from the accessibility tree *)
+  type error = Blank of { input : string }
+    (* empty, or every byte is ASCII whitespace (HT, LF, FF, CR, SP), a C0
+       control (U+0000-U+001F) or DEL; NBSP and other Unicode spaces count
+       as content *)
+  val named : string -> (t, error) result   (* Ok keeps the input untrimmed *)
+  val decorative : t
+  val equal : t -> t -> bool
+  val aria_attrs : t -> (string * string option) list
+    (* the one name-to-attribute table every renderer answers from; a None
+       value is a key to remove: Named n -> role=img, aria-label=n, no
+       aria-hidden; Decorative -> aria-hidden=true, no role, no aria-label *)
+  val image_alt : t -> string   (* the label, or "" for Decorative *)
+end
+(* [private]: match Named/Decorative exhaustively, build Named only through
+   [named]. Decorative is a value of its own, never an empty name, so do not
+   turn a refused name into [decorative]: that is the silence the type exists
+   to prevent. The examples surface the refusal instead:
+
+   let named_graphic label graphic =
+     match Graphic_name.named label with
+     | Ok name -> graphic name
+     | Error (Graphic_name.Blank { input }) ->
+         Element.text (Printf.sprintf "Refused a blank graphic name: %S" input)
+
+   named_graphic "Monthly revenue, January to June" (fun name ->
+     Element.draw ~name ~width:400.0 ~height:250.0 scene) *)
 
 (* Virtualized list — renders only visible items for large datasets *)
 module Virtual_list : sig
@@ -2918,6 +2968,9 @@ Pure scene description types used by `Element.draw` and `nopal_draw`. No platfor
 ```ocaml
 (* Re-exports: Color, Paint, Transform, Path (segment types + builders), Scene *)
 (* These are also available via Nopal_draw.Color, Nopal_draw.Scene, etc. *)
+(* Graphic_name: the accessible-name decision every graphic route requires
+   (see Element DSL). Re-exported as Nopal_element.Graphic_name, not by
+   Nopal_draw. *)
 ```
 
 ### 2D Drawing (`nopal_draw`)
@@ -3011,9 +3064,16 @@ whatever is behind the chart, on canvas and in SVG.
 Pure SVG 1.1 string renderer for `nopal_scene` types. No platform deps — compiles native.
 
 ```ocaml
-Nopal_svg.render : width:float -> height:float -> Scene.t list -> string
+Nopal_svg.render : name:Graphic_name.t -> width:float -> height:float -> Scene.t list -> string
 (* Renders a list of scene nodes to a complete SVG document string.
-   Emits <defs> for gradients and clip paths. Output includes xmlns and viewBox. *)
+   Emits <defs> for gradients and clip paths. Output includes xmlns and viewBox.
+   [name] sets the root <svg>'s accessible attributes, after viewBox:
+   [Named n] gives role="img" aria-label="n" (n XML-escaped, TAB/LF/CR as char refs, other C0 dropped); [Decorative]
+   gives aria-hidden="true" alone. They count only where the string is used
+   inline or as a standalone file. A string loaded through Element.image is
+   named at the image (alt) and rendered with Graphic_name.decorative, because
+   assistive technology ignores an <img>'s internal SVG attributes.
+   Scene.text content is escaped the same way. *)
 
 (* Low-level formatting module, re-exported for unit testing *)
 module Svg_fmt : sig
@@ -3028,6 +3088,8 @@ module Svg_fmt : sig
     (* Arc_to -> cubic Béziers of at most π/2 each over Arc.resolve's sweep;
        reaches the arc start with L inside an open subpath, M otherwise;
        an Invalid arc emits nothing *)
+  val graphic_name_to_attrs : Graphic_name.t -> string
+    (* the root <svg> accessibility attributes, each preceded by a space *)
   val blend_to_css        : Scene.blend -> string
   val line_cap_to_string  : Paint.line_cap -> string
   val line_join_to_string : Paint.line_join -> string
@@ -3040,7 +3102,9 @@ Typical usage with charts:
 
 ```ocaml
 let scene = Bar.scene ~data ~label ~value ~color ~width:400.0 ~height:250.0 () in
-let svg_string = Nopal_svg.render ~width:400.0 ~height:250.0 scene
+let svg_string = Nopal_svg.render ~name ~width:400.0 ~height:250.0 scene
+(* name: a Graphic_name.t for inline use; Graphic_name.decorative when the
+   string becomes an Element.image source, which carries the name instead *)
 ```
 
 ### Charts (`nopal_charts`)
@@ -3049,7 +3113,7 @@ Composable interactive charts built on `nopal_draw`:
 
 ```ocaml
 (* Bar chart — ?domain_window clips data when ?x is also provided *)
-Bar.view : data:'a list -> label:('a -> string) -> value:('a -> float)
+Bar.view : name:Graphic_name.t -> data:'a list -> label:('a -> string) -> value:('a -> float)
   -> color:('a -> Color.t) -> ?x:('a -> float) -> width:float -> height:float
   -> ?padding:Padding.t -> ?x_axis:Axis.config -> ?y_axis:Axis.config
   -> ?format_tooltip:('a -> 'msg Element.t) -> ?on_hover:(Hover.t -> 'msg)
@@ -3057,7 +3121,7 @@ Bar.view : data:'a list -> label:('a -> string) -> value:('a -> float)
   -> unit -> 'msg Element.t
 
 (* Line chart — ?domain_window clips data with buffer=1, rescales Y *)
-Line.view : series:'a Line.series list -> x:('a -> float) -> width:float -> height:float
+Line.view : name:Graphic_name.t -> series:'a Line.series list -> x:('a -> float) -> width:float -> height:float
   -> ?padding:Padding.t -> ?x_axis:Axis.config -> ?y_axis:Axis.config
   -> ?format_tooltip:((string * float) list -> 'msg Element.t)
   -> ?on_hover:(Hover.t -> 'msg) -> ?on_leave:'msg -> ?hover:Hover.t
@@ -3068,21 +3132,21 @@ Line.view : series:'a Line.series list -> x:('a -> float) -> width:float -> heig
   -> unit -> 'msg Element.t
 
 (* Area chart — Stacked | Overlapping modes; ?domain_window clips with buffer=1 *)
-Area.view : series:'a Area.series list -> x:('a -> float) -> width:float -> height:float
+Area.view : name:Graphic_name.t -> series:'a Area.series list -> x:('a -> float) -> width:float -> height:float
   -> ?mode:Area.mode -> ?padding:Padding.t -> ?x_axis:Axis.config -> ?y_axis:Axis.config
   -> ?format_tooltip:((string * float) list -> 'msg Element.t)
   -> ?on_hover:(Hover.t -> 'msg) -> ?on_leave:'msg -> ?hover:Hover.t
   -> ?domain_window:Domain_window.t -> unit -> 'msg Element.t
 
 (* Pie/donut chart — inner_radius 0.0 = pie, >0.0 = donut *)
-Pie.view : data:'a list -> value:('a -> float) -> label:('a -> string)
+Pie.view : name:Graphic_name.t -> data:'a list -> value:('a -> float) -> label:('a -> string)
   -> color:('a -> Color.t) -> width:float -> height:float
   -> ?inner_radius:float -> ?label_threshold:float
   -> ?format_tooltip:('a -> 'msg Element.t) -> ?on_hover:(Hover.t -> 'msg)
   -> ?on_leave:'msg -> ?hover:Hover.t -> unit -> 'msg Element.t
 
 (* Scatter/bubble chart — ?domain_window clips data with buffer=0 *)
-Scatter.view : data:'a list -> x:('a -> float) -> y:('a -> float)
+Scatter.view : name:Graphic_name.t -> data:'a list -> x:('a -> float) -> y:('a -> float)
   -> ?radius:('a -> float) -> color:('a -> Color.t) -> width:float -> height:float
   -> ?padding:Padding.t -> ?x_axis:Axis.config -> ?y_axis:Axis.config
   -> ?format_tooltip:('a -> 'msg Element.t) -> ?on_hover:(Hover.t -> 'msg)
@@ -3090,7 +3154,7 @@ Scatter.view : data:'a list -> x:('a -> float) -> y:('a -> float)
   -> unit -> 'msg Element.t
 
 (* Sparkline — minimal inline chart *)
-Sparkline.view : data:float list -> width:float -> height:float
+Sparkline.view : name:Graphic_name.t -> data:float list -> width:float -> height:float
   -> ?color:Color.t -> ?stroke_width:float -> unit -> 'msg Element.t
 ```
 
@@ -3186,7 +3250,7 @@ let y_axis =
   { Axis.default_config with
     label = Some "Revenue"; appearance = axis_appearance }
 
-let chart = Bar.view ~data ~label ~value ~color ~width:400.0 ~height:250.0
+let chart = Bar.view ~name ~data ~label ~value ~color ~width:400.0 ~height:250.0
               ~x_axis ~y_axis ()
 ```
 
@@ -3248,7 +3312,7 @@ Renders a 2D grid of colored cells using `Color_scale`. Uses the accessor
 pattern for API consistency with other chart types:
 
 ```ocaml
-Heat_map.view : data:'a list -> row:('a -> int) -> col:('a -> int)
+Heat_map.view : name:Graphic_name.t -> data:'a list -> row:('a -> int) -> col:('a -> int)
   -> value:('a -> float) -> row_count:int -> col_count:int
   -> ?row_labels:string list -> ?col_labels:string list
   -> scale:Color_scale.t -> width:float -> height:float
@@ -3272,7 +3336,7 @@ end
 **Candlestick chart** — OHLC candles with wicks:
 
 ```ocaml
-Trading.Candlestick.view : data:'a list -> x:('a -> float)
+Trading.Candlestick.view : name:Graphic_name.t -> data:'a list -> x:('a -> float)
   -> open_:('a -> float) -> high:('a -> float) -> low:('a -> float) -> close:('a -> float)
   -> width:float -> height:float -> ?padding:Padding.t
   -> ?bullish_color:Color.t -> ?bearish_color:Color.t
@@ -3287,7 +3351,7 @@ Trading.Candlestick.view : data:'a list -> x:('a -> float)
 **Drawdown chart** — inverted area from 0% baseline downward:
 
 ```ocaml
-Trading.Drawdown.view : data:'a list -> x:('a -> float) -> y:('a -> float)
+Trading.Drawdown.view : name:Graphic_name.t -> data:'a list -> x:('a -> float) -> y:('a -> float)
   -> width:float -> height:float -> ?padding:Padding.t
   -> ?fill_color:Color.t -> ?x_axis:Axis.config -> ?y_axis:Axis.config
   -> ?format_tooltip:(int -> float -> 'msg Element.t)
@@ -3874,6 +3938,12 @@ Test_renderer.text_content : node -> string
 
 type selector = By_tag of string | By_text of string | By_attr of string * string
               | First_child | Nth_child of int
+  (* A graphic is found by its accessible name with By_attr: a "canvas" node
+     (Element.draw) carries ("role", "img") and ("aria-label", n) when Named,
+     ("aria-hidden", "true") alone when Decorative; an "image" node carries
+     ("alt", n), or ("alt", "") when Decorative. These are the pairs the web
+     backend writes, so a test can assert a decorative graphic exposes no role
+     and no aria-label. *)
 
 (* Simulate events *)
 Test_renderer.click        : selector -> 'msg rendered -> (unit, error) result
@@ -4258,6 +4328,59 @@ rows 7 and 15 say. `Circle` nodes, and every
 segment other than `Arc_to`, render as they did in both renderers, except a
 `Line_to`, `Bezier_to` or `Quad_to` with no current subpath (row 15). `Pie` fills
 without a stroke, so a full-turn donut shows no radial seam.
+
+**Graphic answers that moved — read this on a pin bump.**
+**Every call to `Element.draw`, `Element.image`, `Nopal_svg.render` and the
+nine chart views stops compiling** (rows 2–3 and 5–14): each now requires
+`~name:Graphic_name.t`, and there is no default. The one-line fix is to add
+`~name` built from `Graphic_name.named "…"`, or `~name:Graphic_name.decorative`
+for a graphic that carries no meaning of its own (a sparkline beside the number
+it plots). `?aria_label` on `draw` and `~alt` on `image` are removed, not kept
+beside the name: a `~alt:""` becomes `~name:Graphic_name.decorative`, and an
+`~alt:" "` has no spelling, because `Graphic_name.named` refuses an empty or
+blank string (ASCII whitespace, C0 controls, DEL only) with `Blank { input }`. **Every `Element.t`
+pattern or literal naming `Draw`'s `aria_label` or `Image`'s `alt` stops
+compiling** (row 4).
+
+"Before" is the tree at commit `0327683`. The Where column names the renderer
+whose answer moved: web, the structural `Test_renderer`, or SVG. Rows 15–19 are
+the only accessibility attributes these routes derive; no other is written. No
+test reads this table. The behaviour each row describes is tested in its
+renderer's suite and, for web, by the kitchen-sink Playwright and axe cases, but
+an edit to the text alone reddens no test.
+
+| # | Key | Visible | Where | When | Before | Now |
+|---|---|---|---|---|---|---|
+| 1 | `graphic-name-module` | compile, rarely | all | code doing `open Nopal_element` or `open Nopal_scene` that has its own `Graphic_name` module | not in scope | `Graphic_name` is in scope and can shadow it: `type t = private Named of string \| Decorative`, `type error = Blank of { input : string }`, `named`, `decorative`, `equal`, `aria_attrs`, `image_alt`. `Nopal_element.Graphic_name` is an alias of `Nopal_scene.Graphic_name`, so the types are equal |
+| 2 | `element-draw-requires-name` | compile | web, structural | a call to `Element.draw` | `?aria_label:string` | `?aria_label` removed, `~name:Graphic_name.t` required. Fix: `~aria_label:s` becomes `~name` from `Graphic_name.named s`; a call with no label adds `~name` with a real name or `Graphic_name.decorative` |
+| 3 | `element-image-requires-name` | compile | web, structural | a call to `Element.image` | `~alt:string` | `~alt` removed, `~name:Graphic_name.t` required. Fix: `~alt:s` becomes `~name` from `Graphic_name.named s`; `~alt:""` becomes `~name:Graphic_name.decorative` |
+| 4 | `element-t-draw-image-name-field` | compile | — | an `Element.t` pattern or literal naming `Draw { aria_label; … }` or `Image { alt; … }` | `aria_label : string option`, `alt : string` | both are `name : Graphic_name.t`. Fix: match or build `name` |
+| 5 | `nopal-svg-render-requires-name` | compile | SVG | a call to `Nopal_svg.render` | `width:float -> height:float -> Scene.t list -> string` | `name:Graphic_name.t -> width:float -> …`. Fix: add `~name:Graphic_name.decorative` when the string becomes an `Element.image` source (name it at the image), otherwise `~name` with a real name |
+| 6 | `charts-area-view-requires-name` | compile | web, structural | a call to `Area.view` | no name | `~name:Graphic_name.t` required, the first labelled argument. Fix: add `~name:(…)` or `~name:Graphic_name.decorative` |
+| 7 | `charts-bar-view-requires-name` | compile | web, structural | a call to `Bar.view` | no name | as row 6 |
+| 8 | `charts-heat-map-view-requires-name` | compile | web, structural | a call to `Heat_map.view` | no name | as row 6 |
+| 9 | `charts-line-view-requires-name` | compile | web, structural | a call to `Line.view` | no name | as row 6 |
+| 10 | `charts-pie-view-requires-name` | compile | web, structural | a call to `Pie.view` | no name | as row 6 |
+| 11 | `charts-scatter-view-requires-name` | compile | web, structural | a call to `Scatter.view` | no name | as row 6 |
+| 12 | `charts-sparkline-view-requires-name` | compile | web, structural | a call to `Sparkline.view` | no name | as row 6 |
+| 13 | `charts-candlestick-view-requires-name` | compile | web, structural | a call to `Trading.Candlestick.view` | no name | as row 6 |
+| 14 | `charts-drawdown-view-requires-name` | compile | web, structural | a call to `Trading.Drawdown.view` | no name | as row 6. Each chart view passes `name` unchanged to its canvas, in the empty-data branch too |
+| 15 | `web-canvas-name-attrs` | render | web | the `<canvas>` an `Element.draw` or chart view renders | `aria-label` when `?aria_label` was given, nothing otherwise; never a `role` | `Named n`: `role="img"` and `aria-label="n"`. `Decorative`: `aria-hidden="true"` and neither of the others. A reconcile that changes the name removes the previous case's keys |
+| 16 | `web-img-alt-from-name` | render | web | the `<img>` an `Element.image` renders | `alt` was the `~alt` string | `Named n`: `alt="n"`. `Decorative`: `alt=""`, present and empty. Rewritten on reconcile when the name changes |
+| 17 | `structural-canvas-name-pairs` | structural | structural | the `canvas` node | `width`, `height`, `scene-nodes` only; `aria_label` was dropped | also `("role", "img")` and `("aria-label", n)` for `Named n`, or `("aria-hidden", "true")` alone for `Decorative`. A whole-`attrs` equality on that node sees the new pairs |
+| 18 | `structural-image-alt-from-name` | structural | structural | the `image` node | `alt` was the `~alt` string | `alt` is `n`, or `""` for `Decorative` |
+| 19 | `svg-root-name-attrs` | bytes | SVG | the root `<svg>` of `Nopal_svg.render` | `xmlns` and `viewBox` only | after `viewBox`: ` role="img" aria-label="n"` for `Named n`, with `n` XML-escaped (`&`, `<`, `>`, `"`, `'`; TAB, LF and CR as `&#9;`, `&#10;`, `&#13;`; other C0 characters dropped), or ` aria-hidden="true"` for `Decorative` |
+| 20 | `svg-fmt-graphic-name-to-attrs` | additive | SVG | `Nopal_svg.Svg_fmt` | — | `graphic_name_to_attrs : Graphic_name.t -> string`, the root attributes of row 19, each preceded by a space |
+| 21 | `kitchen-sink-graphic-names` | example | web | anyone copying the kitchen sink or the dashboard | canvases mostly unnamed; the donut's SVG image used `~alt` | every kitchen-sink graphic is named through the one `Named_graphic.named_graphic` helper, and the dashboard (a separate example) keeps its own copy of the same helper; both render a refused name as visible text, and the second sparkline is the decorative example beside the value it plots |
+| 22 | `svg-text-content-escaping` | bytes | SVG | `Scene.text` content rendered by `Nopal_svg.render` | `&`, `<`, `>` escaped; control characters passed through | escaped as in row 19: TAB, LF and CR become `&#9;`, `&#10;`, `&#13;`, and other C0 characters are dropped |
+
+What did **not** move, recorded so a reader does not go looking.
+`Chart_pane.view`, `Chart_compose.compose` and `Legend.view` take no name:
+each pane's chart is already named by its own view, and a legend is text. Every
+`*.scene` function, `Canvas_renderer.render` and `nopal_image_web`'s
+`Canvas_ffi.draw` are unchanged. The `Test_renderer` selectors are unchanged;
+`By_attr ("aria-label", n)` finds a named canvas. A canvas located by
+`canvas[aria-label='…']` still matches when given that name.
 
 #### Telemetry harness (`Nopal_test.Telemetry_test`)
 

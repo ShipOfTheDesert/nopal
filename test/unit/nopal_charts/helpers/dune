@@ -1,3 +1,3 @@
 (library
  (name chart_test_helpers)
- (libraries nopal_element nopal_scene alcotest))
+ (libraries nopal_element nopal_scene nopal_test test_util alcotest))

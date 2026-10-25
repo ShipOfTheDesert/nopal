@@ -59,7 +59,8 @@ val render : 'msg Nopal_element.Element.t -> 'msg rendered
     ["capture"], ["multiple"], ["placeholder"], a radio's ["name"], a control's
     ["type"], an input's ["required"], ["aria-required"], ["autocomplete"] and
     ["name"], a form's ["autocomplete"] and ["novalidate"], a button's ["type"]
-    and ["aria-disabled"], and a link's ["href"] and ["rel"]. On ["disabled"],
+    and ["aria-disabled"], a link's ["href"] and ["rel"], a canvas's ["role"],
+    ["aria-label"] and ["aria-hidden"], and an image's ["alt"]. On ["disabled"],
     ["multiple"], ["required"] and ["novalidate"] the two agree on which side
     wins and not on the value: this renderer carries ["true"] where the browser
     carries a presence attribute. A checkbox's, radio's or file picker's
@@ -72,9 +73,17 @@ val render : 'msg Nopal_element.Element.t -> 'msg rendered
     caller's pair of one of those names is not overruled there. This renderer
     still overlays them, as a faithful read-out of the typed field, and an
     assertion on one of the three is a statement about this renderer alone.
-    [Element.draw] carries neither a style nor an attribute list, so it is
-    structurally outside the rule, and a backend nobody has written is bound by
+    [Element.draw] and [Element.image] take no attribute list, so the pairs they
+    derive from their [name] are the only source of those keys; should either
+    gain one, the name outranks it. A backend nobody has written is bound by
     nothing here: a rule holds where a test holds it.
+
+    A canvas's and an image's accessible pairs follow from their [name]. A
+    [Named n] canvas carries ["role"] ["img"] and ["aria-label"] [n], so
+    {!By_attr} [("aria-label", n)] finds it by its accessible name; a
+    [Decorative] canvas carries ["aria-hidden"] ["true"] and neither of the
+    other two. A [Named n] image carries ["alt"] [n], and a [Decorative] one
+    carries ["alt"] [""], present and empty.
 
     A derivation asserts a value and never denies one. Where a typed field
     declines — a picker configuring no [capture], a control that is not

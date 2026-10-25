@@ -1,4 +1,4 @@
-(** Candlestick chart — OHLC candles with wicks. REQ-F4.
+(** Candlestick chart — OHLC candles with wicks.
 
     Renders candlestick data with vertical wicks (high/low) and colored bodies
     (open/close). Bullish candles (close > open) and bearish candles (close <
@@ -28,6 +28,7 @@ val scene :
 *)
 
 val view :
+  name:Nopal_element.Graphic_name.t ->
   data:'a list ->
   x:('a -> float) ->
   open_:('a -> float) ->
@@ -49,6 +50,11 @@ val view :
   ?domain_window:Domain_window.t ->
   unit ->
   'msg Nopal_element.Element.t
-(** [view ~data ~x ~open_ ~high ~low ~close ~width ~height ()] renders an
+(** [view ~name ~data ~x ~open_ ~high ~low ~close ~width ~height ()] renders an
     interactive candlestick chart. [format_tooltip] receives the data index and
-    OHLC values (open, high, low, close). *)
+    OHLC values (open, high, low, close).
+
+    [name] is the accessible-name decision for the chart's canvas. It is passed
+    to [Nopal_element.Element.draw] unchanged, including when there is no data
+    to draw. The view takes no attribute list; if one is added, [name] outranks
+    it, as on [Nopal_element.Element.draw]. *)

@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { assertNoAxeViolations } from "./axe";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/kitchen_sink/");
@@ -305,4 +306,108 @@ test("dashboard cross-chart hover", async ({ page }) => {
   const barTooltip = barChart.locator("[data-testid='chart-tooltip']");
   await expect(barTooltip).toBeVisible({ timeout: 5000 });
   await expect(lineTooltip).toBeVisible({ timeout: 5000 });
+});
+
+// Every named canvas the kitchen sink draws, with the section it is drawn in.
+// The structural suite test/unit/kitchen_sink/test_graphic_names.ml holds the
+// same list; this one checks that Chromium's accessibility tree agrees.
+const NAMED_CANVASES: { section: string; names: string[] }[] = [
+  {
+    section: "[data-section='draw']",
+    names: [
+      "Rectangle, rounded rectangle, circle, ellipse, line, triangle and polyline",
+      "A smooth curve, a run of straight segments and an arc",
+      "Rectangles filled solid, with a linear gradient and with a radial gradient",
+      "Lines stroked solid, dashed and with round caps, and a bevel-joined polyline",
+      "Text anchored at start, middle and end, in bold and at size 18",
+      "A rectangle translated, scaled, rotated, rotated about a point and skewed",
+      "Overlapping rectangles at half opacity and under a multiply blend",
+      "Two rectangles clipped to a circle",
+      "Interactive drawing",
+    ],
+  },
+  {
+    section: "[data-section='charts']",
+    names: [
+      "Monthly totals, January to June, with hover details",
+      "Monthly revenue, January to June, on themed axes",
+      "Revenue and costs over six periods",
+      "Products A and B, stacked, over six periods",
+      "Device share: desktop 45%, mobile 35%, tablet 15%, other 5%",
+      "Device share as a donut: desktop 45%, mobile 35%, tablet 15%, other 5%",
+      "Device share donut and a single full ring, on a canvas over a checkerboard",
+      "Seven points, each sized by a third value",
+      "Trend, rising from 5 to 30 over ten points",
+    ],
+  },
+  {
+    section: "[data-section='chart-extensions']",
+    names: [
+      "Profit and loss by hour, 9am to 12pm, Monday to Friday",
+      "Correlation matrix of SPY, QQQ, TLT and GLD",
+      "Open, high, low and close prices over ten periods",
+      "Drawdown from peak over ten periods, deepest 8%",
+      "Synchronised panes: open, high, low and close prices",
+      "Synchronised panes: volume",
+      "Synchronised panes: drawdown from peak",
+      "Signal of 1,000 points, drag to pan and scroll to zoom",
+    ],
+  },
+  {
+    section: "[data-testid='svg-export-section']",
+    names: ["Monthly totals, January to June, as exported to SVG"],
+  },
+];
+
+test("each chart is an image with its name", async ({ page }) => {
+  for (const { section, names } of NAMED_CANVASES) {
+    const within = page.locator(section);
+    for (const name of names) {
+      const image = within.getByRole("img", { name, exact: true });
+      await expect(image, name).toHaveCount(1);
+      await expect(image, name).toHaveJSProperty("tagName", "CANVAS");
+    }
+  }
+});
+
+test("the donut svg image is named", async ({ page }) => {
+  const image = page
+    .locator("[data-section='charts'] [data-testid='donut-svg']")
+    .getByRole("img", {
+      name: "Device share donut and a single full ring, as an SVG image over a checkerboard",
+      exact: true,
+    });
+  await expect(image).toHaveCount(1);
+  await expect(image).toHaveJSProperty("tagName", "IMG");
+});
+
+// The growth value is spelled out beside its sparkline, so the sparkline is
+// hidden. The trend sparkline in the same row is named, which shows the row's
+// queries do reach a canvas when one is exposed.
+test("the decorative sparkline is absent from the accessibility tree", async ({
+  page,
+}) => {
+  const row = page.locator("[data-section='charts'] [data-testid='sparkline-row']");
+  const kpi = row.locator("[data-testid='growth-kpi']");
+  const sparkline = kpi.locator("canvas");
+  await expect(sparkline).toHaveCount(1);
+  await expect(sparkline).toHaveAttribute("aria-hidden", "true");
+  await expect(sparkline).not.toHaveAttribute("role");
+  await expect(sparkline).not.toHaveAttribute("aria-label");
+  await expect(kpi.getByRole("img")).toHaveCount(0);
+  await expect(kpi).toMatchAriaSnapshot(`- text: 5, down from 30`);
+  await expect(row.getByRole("img")).toHaveCount(1);
+  await expect(
+    row.getByRole("img", {
+      name: "Trend, rising from 5 to 30 over ten points",
+      exact: true,
+    })
+  ).toHaveCount(1);
+});
+
+test("graphic sections have no axe violations", async ({ page }, testInfo) => {
+  await assertNoAxeViolations(page, testInfo, "[data-section='charts']");
+  await assertNoAxeViolations(page, testInfo, "[data-section='draw']");
+  await assertNoAxeViolations(page, testInfo, "[data-section='chart-extensions']");
+  await assertNoAxeViolations(page, testInfo, "[data-testid='svg-export-section']");
 });

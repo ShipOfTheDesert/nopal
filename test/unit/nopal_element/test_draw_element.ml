@@ -3,9 +3,12 @@ open Nopal_element
 type msg = Moved of float * float | Clicked of float * float | Left
 
 let scene = [ Nopal_scene.Scene.rect ~x:0. ~y:0. ~w:100. ~h:50. () ]
+let chart_name = Test_util.graphic_name "chart"
 
 let test_draw_builder_defaults () =
-  let el = Element.draw ~width:200. ~height:100. scene in
+  let el =
+    Element.draw ~name:Graphic_name.decorative ~width:200. ~height:100. scene
+  in
   Alcotest.(check bool)
     "draw produces Draw with scene" true
     (match el with
@@ -30,7 +33,7 @@ let test_draw_builder_defaults () =
     | Element.Virtual_list _ ->
         false);
   Alcotest.(check bool)
-    "draw defaults: no callbacks, no cursor, no aria_label" true
+    "draw defaults: no callbacks, no cursor, the name as given" true
     (match el with
     | Element.Draw
         {
@@ -38,7 +41,7 @@ let test_draw_builder_defaults () =
           on_click = None;
           on_pointer_leave = None;
           cursor = None;
-          aria_label = None;
+          name = Graphic_name.Decorative;
           _;
         } ->
         true
@@ -66,9 +69,9 @@ let test_draw_with_callbacks () =
   let on_move (pe : Element.pointer_event) = Moved (pe.x, pe.y) in
   let on_click (pe : Element.pointer_event) = Clicked (pe.x, pe.y) in
   let el =
-    Element.draw ~width:100. ~height:50. ~on_pointer_move:on_move ~on_click
-      ~on_pointer_leave:Left ~cursor:Nopal_style.Cursor.Crosshair
-      ~aria_label:"chart" scene
+    Element.draw ~name:chart_name ~width:100. ~height:50.
+      ~on_pointer_move:on_move ~on_click ~on_pointer_leave:Left
+      ~cursor:Nopal_style.Cursor.Crosshair scene
   in
   Alcotest.(check bool)
     "draw with all callbacks set" true
@@ -79,7 +82,7 @@ let test_draw_with_callbacks () =
           on_click = Some g;
           on_pointer_leave = Some Left;
           cursor = Some Nopal_style.Cursor.Crosshair;
-          aria_label = Some "chart";
+          name = Graphic_name.Named "chart";
           _;
         } -> (
         let m =
@@ -117,16 +120,22 @@ type wrapper = Wrapped of msg
 let test_draw_map () =
   let on_move (pe : Element.pointer_event) = Moved (pe.x, pe.y) in
   let el =
-    Element.draw ~width:100. ~height:50. ~on_pointer_move:on_move
-      ~on_pointer_leave:Left scene
+    Element.draw
+      ~name:(Test_util.graphic_name "map")
+      ~width:100. ~height:50. ~on_pointer_move:on_move ~on_pointer_leave:Left
+      scene
   in
   let mapped = Element.map (fun m -> Wrapped m) el in
   Alcotest.(check bool)
     "map transforms draw callbacks" true
     (match mapped with
     | Element.Draw
-        { on_pointer_move = Some f; on_pointer_leave = Some (Wrapped Left); _ }
-      -> (
+        {
+          name = Graphic_name.Named "map";
+          on_pointer_move = Some f;
+          on_pointer_leave = Some (Wrapped Left);
+          _;
+        } -> (
         match f { Element.x = 1.; y = 2.; client_x = 1.; client_y = 2. } with
         | Wrapped (Moved (1., 2.)) -> true
         | Wrapped (Moved _ | Clicked _ | Left) -> false)
@@ -152,14 +161,17 @@ let test_draw_map () =
 
 let test_draw_equal () =
   let el1 =
-    Element.draw ~width:100. ~height:50. ~aria_label:"chart"
+    Element.draw ~name:chart_name ~width:100. ~height:50.
       ~cursor:Nopal_style.Cursor.Pointer scene
   in
   let el2 =
-    Element.draw ~width:100. ~height:50. ~aria_label:"chart"
+    Element.draw ~name:chart_name ~width:100. ~height:50.
       ~cursor:Nopal_style.Cursor.Pointer scene
   in
-  let el3 = Element.draw ~width:200. ~height:50. scene in
+  let el3 =
+    Element.draw ~name:chart_name ~width:200. ~height:50.
+      ~cursor:Nopal_style.Cursor.Pointer scene
+  in
   Alcotest.(check bool)
     "equal draw with same data fields" true (Element.equal el1 el2);
   Alcotest.(check bool)

@@ -39,7 +39,7 @@ let test_bar_scene_matches_view () =
       ~width:400.0 ~height:300.0 ()
   in
   let view_el =
-    Bar.view ~data:sample_data
+    Bar.view ~name:Nopal_element.Graphic_name.decorative ~data:sample_data
       ~label:(fun d -> d.label)
       ~value:(fun d -> d.value)
       ~color:(fun d -> d.color)

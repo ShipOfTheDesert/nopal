@@ -131,9 +131,9 @@ let processed_preview_label = "As uploaded"
 (* And what each is called to someone who cannot see it. Two photographs of one
    receipt described the same way are two photographs a screen reader cannot
    tell apart, so each says which of the two it is rather than what it is of. *)
-let original_preview_alt = "The receipt exactly as it was photographed"
+let original_preview_name = "The receipt exactly as it was photographed"
 
-let processed_preview_alt =
+let processed_preview_name =
   "The receipt as it will be uploaded, after scaling and re-encoding"
 
 let note_label = "Note for this receipt"
@@ -1029,12 +1029,13 @@ let note_input model =
 (* A photograph under the heading that says which of the two it is. Every field
    is supplied by the caller rather than derived from the other half, so the two
    cannot be produced from one description and end up naming the same picture. *)
-let preview_cell ~anchor ~label ~size_label ~alt ~src =
+let preview_cell ~anchor ~label ~size_label ~name ~src =
   Element.column ~style:preview_cell_style
     ~attrs:[ ("data-testid", anchor) ]
     [
       Element.styled_text ~text_style:preview_label_text label;
-      Element.image ~style:preview_image_style ~src ~alt ();
+      Named_graphic.named_graphic name (fun name ->
+          Element.image ~style:preview_image_style ~src ~name ());
       Element.text size_label;
     ]
 
@@ -1062,13 +1063,13 @@ let preview_cells model =
             preview_cell ~anchor:original_preview_anchor
               ~label:original_preview_label
               ~size_label:(size_text source_byte_size)
-              ~alt:original_preview_alt ~src:original;
+              ~name:original_preview_name ~src:original;
             preview_cell ~anchor:processed_preview_anchor
               ~label:processed_preview_label
               ~size_label:
                 (reduction_text ~original:source_byte_size
                    ~processed:info.Processing.byte_size)
-              ~alt:processed_preview_alt ~src:processed;
+              ~name:processed_preview_name ~src:processed;
           ])
 
 (* A before and an after are read against each other, so they go side by side
