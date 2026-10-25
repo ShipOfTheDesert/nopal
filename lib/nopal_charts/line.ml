@@ -146,7 +146,7 @@ let scene ~series ~x ~width ~height ?(padding = Padding.default)
       let clipped_data = Nopal_draw.Scene.clip ~shape:clip_shape scene_nodes in
       [ clipped_data ] @ x_axis_scene @ y_axis_scene
 
-let view ~series ~x ~width ~height ?(padding = Padding.default)
+let view ~name ~series ~x ~width ~height ?(padding = Padding.default)
     ?(x_axis = Axis.default_config) ?(y_axis = Axis.default_config)
     ?format_tooltip ?on_hover ?on_leave ?hover ?domain_window ?on_pointer_down
     ?on_pointer_up ?on_wheel () =
@@ -154,7 +154,7 @@ let view ~series ~x ~width ~height ?(padding = Padding.default)
     scene ~series ~x ~width ~height ~padding ~x_axis ~y_axis ?domain_window ()
   in
   match all_scene with
-  | [] -> Nopal_element.Element.draw ~width ~height []
+  | [] -> Nopal_element.Element.draw ~name ~width ~height []
   | _ ->
       (* Recompute hit map for interaction *)
       let clipped_series =
@@ -228,8 +228,9 @@ let view ~series ~x ~width ~height ?(padding = Padding.default)
         | _ -> None
       in
       let draw_el =
-        Nopal_element.Element.draw ?on_pointer_move ?on_pointer_leave:on_leave
-          ?on_pointer_down ?on_pointer_up ?on_wheel ~width ~height all_scene
+        Nopal_element.Element.draw ~name ?on_pointer_move
+          ?on_pointer_leave:on_leave ?on_pointer_down ?on_pointer_up ?on_wheel
+          ~width ~height all_scene
       in
       let tooltip =
         match (hover, format_tooltip) with

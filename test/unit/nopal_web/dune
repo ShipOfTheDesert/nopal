@@ -8,7 +8,8 @@
 ; dom_shim.js provides a minimal fake DOM (document, window, Event, etc.)
 ; so that Brr-based renderer tests can run under Node.js via js_of_ocaml
 ; without a headless browser. It covers element creation, child manipulation,
-; event dispatch, and style proxying — not layout or rendering.
+; event dispatch, and style proxying — not layout or rendering. canvas_shim.js
+; gives the Draw cases a <canvas> with a 2D context to render into.
 
 (test
  (name test_nopal_web)
@@ -25,7 +26,7 @@
   js_of_ocaml)
  (modes js)
  (js_of_ocaml
-  (javascript_files dom_shim.js stylesheet_shim.js)))
+  (javascript_files dom_shim.js stylesheet_shim.js canvas_shim.js)))
 
 (test
  (name test_style_sheet)

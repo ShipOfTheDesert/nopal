@@ -58,7 +58,9 @@ let scene =
 
 let svg_src =
   "data:image/svg+xml,"
-  ^ Nopal_fs_key.encode_key (Nopal_svg.render ~width ~height scene)
+  ^ Nopal_fs_key.encode_key
+      (Nopal_svg.render ~name:Nopal_element.Graphic_name.decorative ~width
+         ~height scene)
 
 let image_style =
   Style.default
@@ -75,13 +77,16 @@ let view () =
       Element.box
         ~attrs:[ ("data-testid", "donut-canvas") ]
         [
-          Element.draw ~aria_label:"Two donut charts over a checkerboard" ~width
-            ~height scene;
+          Named_graphic.named_graphic
+            "Device share donut and a single full ring, on a canvas over a \
+             checkerboard" (fun name -> Element.draw ~name ~width ~height scene);
         ];
       Element.box
         ~attrs:[ ("data-testid", "donut-svg") ]
         [
-          Element.image ~style:image_style ~src:svg_src
-            ~alt:"The same two donut charts, rendered as SVG" ();
+          Named_graphic.named_graphic
+            "Device share donut and a single full ring, as an SVG image over a \
+             checkerboard" (fun name ->
+              Element.image ~style:image_style ~src:svg_src ~name ());
         ];
     ]

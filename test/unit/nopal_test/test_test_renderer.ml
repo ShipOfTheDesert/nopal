@@ -6,6 +6,7 @@ module Ix = Nopal_style.Interaction
 let ix0 = Ix.default
 let s0 = Nopal_style.Style.default
 let check_node = Test_util.check_node
+let graphic_name = Test_util.graphic_name
 
 (* Task 1: Rendering tests *)
 
@@ -89,7 +90,7 @@ let render_input_attrs () =
     (tree r)
 
 let render_image_attrs () =
-  let r = render (E.image ~src:"a.png" ~alt:"pic" ()) in
+  let r = render (E.image ~src:"a.png" ~name:(graphic_name "pic") ()) in
   check_node "image renders with attrs"
     (Element
        {
@@ -100,6 +101,23 @@ let render_image_attrs () =
          interaction = ix0;
        })
     (tree r)
+
+let image_named_alt () =
+  let r =
+    render (E.image ~src:"chart.svg" ~name:(graphic_name "Revenue by month") ())
+  in
+  Alcotest.(check (option string))
+    "a named image's alt is its name" (Some "Revenue by month")
+    (attr "alt" (tree r))
+
+let image_decorative_alt_is_empty () =
+  let r =
+    render
+      (E.image ~src:"divider.svg" ~name:Nopal_element.Graphic_name.decorative ())
+  in
+  Alcotest.(check (option string))
+    "a decorative image carries an empty alt, not an absent one" (Some "")
+    (attr "alt" (tree r))
 
 let render_scroll () =
   let r = render (E.scroll (E.text "content")) in
@@ -186,6 +204,9 @@ let rendering_tests =
     Alcotest.test_case "render_button" `Quick render_button;
     Alcotest.test_case "render_input_attrs" `Quick render_input_attrs;
     Alcotest.test_case "render_image_attrs" `Quick render_image_attrs;
+    Alcotest.test_case "image_named_alt" `Quick image_named_alt;
+    Alcotest.test_case "image_decorative_alt_is_empty" `Quick
+      image_decorative_alt_is_empty;
     Alcotest.test_case "render_scroll" `Quick render_scroll;
     Alcotest.test_case "render_keyed" `Quick render_keyed;
     Alcotest.test_case "render_nested" `Quick render_nested;
@@ -200,7 +221,7 @@ let sample_tree =
       E.row [ E.text "hello"; E.text "world" ];
       E.column
         [ E.button (E.text "click"); E.input ~placeholder:"search" "query" ];
-      E.image ~src:"pic.png" ~alt:"photo" ();
+      E.image ~src:"pic.png" ~name:(graphic_name "photo") ();
     ]
 
 let find_by_tag () =
@@ -209,7 +230,9 @@ let find_by_tag () =
   Alcotest.(check bool) "finds row element" true (Option.is_some result);
   match result with
   | Some (Element { tag; _ }) -> Alcotest.(check string) "tag is row" "row" tag
-  | _ -> Alcotest.fail "expected Element"
+  | Some (Empty | Text _)
+  | None ->
+      Alcotest.fail "expected Element"
 
 let find_by_tag_nested () =
   let r = render sample_tree in
@@ -218,7 +241,9 @@ let find_by_tag_nested () =
   match result with
   | Some (Element { tag; _ }) ->
       Alcotest.(check string) "tag is button" "button" tag
-  | _ -> Alcotest.fail "expected Element"
+  | Some (Empty | Text _)
+  | None ->
+      Alcotest.fail "expected Element"
 
 let find_by_tag_not_found () =
   let r = render sample_tree in
@@ -232,7 +257,9 @@ let find_by_text () =
   match result with
   | Some (Text { content; _ }) ->
       Alcotest.(check string) "text matches" "hello" content
-  | _ -> Alcotest.fail "expected Text node"
+  | Some (Empty | Element _)
+  | None ->
+      Alcotest.fail "expected Text node"
 
 let find_by_text_substring () =
   let r = render (E.box [ E.text "hello world" ]) in
@@ -241,7 +268,9 @@ let find_by_text_substring () =
   match result with
   | Some (Text { content; _ }) ->
       Alcotest.(check string) "full text" "hello world" content
-  | _ -> Alcotest.fail "expected Text node"
+  | Some (Empty | Element _)
+  | None ->
+      Alcotest.fail "expected Text node"
 
 let find_by_attr () =
   let r = render sample_tree in
@@ -250,7 +279,9 @@ let find_by_attr () =
   match result with
   | Some (Element { tag; _ }) ->
       Alcotest.(check string) "tag is image" "image" tag
-  | _ -> Alcotest.fail "expected Element"
+  | Some (Empty | Text _)
+  | None ->
+      Alcotest.fail "expected Element"
 
 let find_first_child () =
   let r = render (E.box [ E.text "a"; E.text "b"; E.text "c" ]) in
@@ -310,21 +341,21 @@ let text_content_empty () =
   Alcotest.(check string) "empty text content" "" s
 
 let has_attr_present () =
-  let r = render (E.image ~src:"a.png" ~alt:"pic" ()) in
+  let r = render (E.image ~src:"a.png" ~name:(graphic_name "pic") ()) in
   Alcotest.(check bool) "has src attr" true (has_attr "src" (tree r))
 
 let has_attr_absent () =
-  let r = render (E.image ~src:"a.png" ~alt:"pic" ()) in
+  let r = render (E.image ~src:"a.png" ~name:(graphic_name "pic") ()) in
   Alcotest.(check bool) "no href attr" false (has_attr "href" (tree r))
 
 let attr_present () =
-  let r = render (E.image ~src:"a.png" ~alt:"pic" ()) in
+  let r = render (E.image ~src:"a.png" ~name:(graphic_name "pic") ()) in
   Alcotest.(check (option string))
     "attr src" (Some "a.png")
     (attr "src" (tree r))
 
 let attr_absent () =
-  let r = render (E.image ~src:"a.png" ~alt:"pic" ()) in
+  let r = render (E.image ~src:"a.png" ~name:(graphic_name "pic") ()) in
   Alcotest.(check (option string)) "attr href" None (attr "href" (tree r))
 
 let querying_tests =
@@ -610,7 +641,9 @@ let text_node_has_no_text_style () =
       Alcotest.(check bool)
         "plain text has no text_style" true
         (Option.is_none text_style)
-  | _ -> Alcotest.fail "expected Text node"
+  | Empty
+  | Element _ ->
+      Alcotest.fail "expected Text node"
 
 let styled_text_node_has_text_style () =
   let ts = T.default |> T.font_size 16.0 |> T.font_weight F.Bold in
@@ -628,7 +661,9 @@ let styled_text_node_has_text_style () =
       Alcotest.(check bool)
         "font_weight matches" true
         (Option.equal F.equal_weight ts'.font_weight (Some F.Bold))
-  | _ -> Alcotest.fail "expected Text node"
+  | Empty
+  | Element _ ->
+      Alcotest.fail "expected Text node"
 
 let text_style_accessor_returns_style () =
   let ts = T.default |> T.font_size 24.0 in

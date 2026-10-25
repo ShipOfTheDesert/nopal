@@ -126,7 +126,11 @@ type 'msg t =
       multiple : bool;
       on_change : (file_info list -> 'msg) option;
     }
-  | Image of { style : Nopal_style.Style.t; src : string; alt : string }
+  | Image of {
+      style : Nopal_style.Style.t;
+      src : string;
+      name : Nopal_scene.Graphic_name.t;
+    }
   | Scroll of {
       style : Nopal_style.Style.t;
       attrs : (string * string) list;
@@ -145,7 +149,7 @@ type 'msg t =
       on_pointer_up : (pointer_event -> 'msg) option;
       on_wheel : (wheel_event -> 'msg) option;
       cursor : Nopal_style.Cursor.t option;
-      aria_label : string option;
+      name : Nopal_scene.Graphic_name.t;
     }
   | Virtual_list of {
       style : Nopal_style.Style.t;
@@ -288,8 +292,8 @@ let file_input ?(style = Nopal_style.Style.empty)
     ?(accept = []) ?capture ?(multiple = false) ?on_change () =
   File_input { style; interaction; attrs; accept; capture; multiple; on_change }
 
-let image ?(style = Nopal_style.Style.empty) ~src ~alt () =
-  Image { style; src; alt }
+let image ?(style = Nopal_style.Style.empty) ~src ~name () =
+  Image { style; src; name }
 
 let scroll ?(style = Nopal_style.Style.empty) ?(attrs = []) ?reveal child =
   Scroll { style; attrs; reveal; child }
@@ -297,7 +301,7 @@ let scroll ?(style = Nopal_style.Style.empty) ?(attrs = []) ?reveal child =
 let keyed key child = Keyed { key; child }
 
 let draw ?on_pointer_move ?on_click ?on_pointer_leave ?on_pointer_down
-    ?on_pointer_up ?on_wheel ?cursor ?aria_label ~width ~height scene =
+    ?on_pointer_up ?on_wheel ?cursor ~name ~width ~height scene =
   Draw
     {
       width;
@@ -310,7 +314,7 @@ let draw ?on_pointer_move ?on_click ?on_pointer_leave ?on_pointer_down
       on_pointer_up;
       on_wheel;
       cursor;
-      aria_label;
+      name;
     }
 
 let virtual_list ?(style = Nopal_style.Style.empty) ?on_scroll ~item_count
@@ -494,7 +498,7 @@ let rec map f = function
           multiple;
           on_change = Option.map (fun g files -> f (g files)) on_change;
         }
-  | Image { style; src; alt } -> Image { style; src; alt }
+  | Image { style; src; name } -> Image { style; src; name }
   | Scroll { style; attrs; reveal; child } ->
       Scroll { style; attrs; reveal; child = map f child }
   | Keyed { key; child } -> Keyed { key; child = map f child }
@@ -510,7 +514,7 @@ let rec map f = function
         on_pointer_up;
         on_wheel;
         cursor;
-        aria_label;
+        name;
       } ->
       Draw
         {
@@ -524,7 +528,7 @@ let rec map f = function
           on_pointer_up = Option.map (fun g pe -> f (g pe)) on_pointer_up;
           on_wheel = Option.map (fun g we -> f (g we)) on_wheel;
           cursor;
-          aria_label;
+          name;
         }
   | Virtual_list
       {
@@ -817,11 +821,11 @@ let rec equal a b =
       && Option.equal String.equal ac1 ac2
       && Option.equal equal_input_type it1 it2
       && Option.equal String.equal n1 n2
-  | ( Image { style = s1; src = src1; alt = alt1 },
-      Image { style = s2; src = src2; alt = alt2 } ) ->
+  | ( Image { style = s1; src = src1; name = n1 },
+      Image { style = s2; src = src2; name = n2 } ) ->
       Nopal_style.Style.equal s1 s2
       && String.equal src1 src2
-      && String.equal alt1 alt2
+      && Nopal_scene.Graphic_name.equal n1 n2
   | ( Scroll { style = s1; attrs = a1; reveal = r1; child = ch1 },
       Scroll { style = s2; attrs = a2; reveal = r2; child = ch2 } ) ->
       Nopal_style.Style.equal s1 s2
@@ -836,7 +840,7 @@ let rec equal a b =
           height = h1;
           scene = s1;
           cursor = c1;
-          aria_label = al1;
+          name = n1;
           on_pointer_move = pm1;
           on_click = oc1;
           on_pointer_leave = pl1;
@@ -850,7 +854,7 @@ let rec equal a b =
           height = h2;
           scene = s2;
           cursor = c2;
-          aria_label = al2;
+          name = n2;
           on_pointer_move = pm2;
           on_click = oc2;
           on_pointer_leave = pl2;
@@ -862,7 +866,7 @@ let rec equal a b =
       && Float.equal h1 h2
       && List.equal Nopal_scene.Scene.equal s1 s2
       && Option.equal Nopal_style.Cursor.equal c1 c2
-      && Option.equal String.equal al1 al2
+      && Nopal_scene.Graphic_name.equal n1 n2
       && Option.equal ( == ) pm1 pm2
       && Option.equal ( == ) oc1 oc2
       && Option.equal ( == ) pl1 pl2

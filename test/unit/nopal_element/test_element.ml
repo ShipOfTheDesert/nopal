@@ -6,6 +6,8 @@ type msg = Click | Submit | Changed of string
    when it recurses into such a value; [equal] must stay total on it. *)
 type closure_msg = Handler of (unit -> unit)
 
+let graphic_name = Test_util.graphic_name
+
 let test_empty_builder () =
   Alcotest.(check bool)
     "empty is Empty" true
@@ -87,7 +89,7 @@ let test_default_styles () =
   check_style "box" (Element.box []);
   check_style "row" (Element.row []);
   check_style "column" (Element.column []);
-  check_style "image" (Element.image ~src:"a.png" ~alt:"pic" ());
+  check_style "image" (Element.image ~src:"a.png" ~name:(graphic_name "pic") ());
   check_style "scroll" (Element.scroll Element.empty)
 
 let test_box_preserves_children () =
@@ -376,8 +378,9 @@ let test_input_on_submit () =
 let test_image_required_fields () =
   Alcotest.(check bool)
     "image required fields" true
-    (match Element.image ~src:"a.png" ~alt:"pic" () with
-    | Element.Image { src = "a.png"; alt = "pic"; _ } -> true
+    (match Element.image ~src:"a.png" ~name:(graphic_name "pic") () with
+    | Element.Image { src = "a.png"; name = Graphic_name.Named "pic"; _ } ->
+        true
     | Element.Empty
     | Element.Text _
     | Element.Box _
@@ -826,12 +829,13 @@ let test_map_column () =
         false)
 
 let test_map_image () =
-  let el = Element.image ~src:"a.png" ~alt:"pic" () in
+  let el = Element.image ~src:"a.png" ~name:(graphic_name "pic") () in
   let mapped = Element.map (fun m -> Wrapped m) el in
   Alcotest.(check bool)
     "map preserves image fields" true
     (match mapped with
-    | Element.Image { src = "a.png"; alt = "pic"; _ } -> true
+    | Element.Image { src = "a.png"; name = Graphic_name.Named "pic"; _ } ->
+        true
     | Element.Empty
     | Element.Text _
     | Element.Box _
@@ -1126,17 +1130,15 @@ let test_equal_input_different_placeholder () =
     "different placeholder not equal" false (Element.equal a b)
 
 let test_equal_image_distinct () =
-  let make () = Element.image ~src:"a.png" ~alt:"pic" () in
+  let make () = Element.image ~src:"a.png" ~name:(graphic_name "pic") () in
   Alcotest.(check bool)
     "separately constructed images are equal" true
     (Element.equal (make ()) (make ()))
 
 let test_equal_image_different_fields () =
-  let a = Element.image ~src:"a.png" ~alt:"pic" () in
-  let b = Element.image ~src:"b.png" ~alt:"pic" () in
-  Alcotest.(check bool) "different src not equal" false (Element.equal a b);
-  let c = Element.image ~src:"a.png" ~alt:"photo" () in
-  Alcotest.(check bool) "different alt not equal" false (Element.equal a c)
+  let a = Element.image ~src:"a.png" ~name:(graphic_name "pic") () in
+  let b = Element.image ~src:"b.png" ~name:(graphic_name "pic") () in
+  Alcotest.(check bool) "different src not equal" false (Element.equal a b)
 
 let test_equal_scroll_distinct () =
   let make () = Element.scroll (Element.text "inner") in
@@ -1214,14 +1216,52 @@ let test_element_equal_no_raise_on_closures () =
     "distinct closure msgs compare unequal (no raise)" false (Element.equal a b)
 
 let test_element_equal_distinguishes_draw_handlers () =
-  let a = Element.draw ~width:10. ~height:10. ~on_click:(fun _ -> Click) [] in
-  let b = Element.draw ~width:10. ~height:10. ~on_click:(fun _ -> Submit) [] in
+  let a =
+    Element.draw ~name:Graphic_name.decorative ~width:10. ~height:10.
+      ~on_click:(fun _ -> Click)
+      []
+  in
+  let b =
+    Element.draw ~name:Graphic_name.decorative ~width:10. ~height:10.
+      ~on_click:(fun _ -> Submit)
+      []
+  in
   Alcotest.(check bool)
     "draw differing only in on_click handler is not equal" false
     (Element.equal a b);
-  let c = Element.draw ~width:10. ~height:10. [] in
+  let c =
+    Element.draw ~name:Graphic_name.decorative ~width:10. ~height:10. []
+  in
   Alcotest.(check bool)
     "draw with a handler vs one without is not equal" false (Element.equal a c)
+
+let draw_equal_compares_name () =
+  let draw name = Element.draw ~name ~width:10. ~height:10. [] in
+  Alcotest.(check bool)
+    "draws with the same name are equal" true
+    (Element.equal
+       (draw (graphic_name "Revenue"))
+       (draw (graphic_name "Revenue")));
+  Alcotest.(check bool)
+    "draws differing only in name are not equal" false
+    (Element.equal (draw (graphic_name "Revenue")) (draw (graphic_name "Cost")));
+  Alcotest.(check bool)
+    "a named draw and a decorative one are not equal" false
+    (Element.equal
+       (draw (graphic_name "Revenue"))
+       (draw Graphic_name.decorative))
+
+let image_equal_compares_name () =
+  let image name = Element.image ~src:"a.png" ~name () in
+  Alcotest.(check bool)
+    "images with the same name are equal" true
+    (Element.equal (image (graphic_name "pic")) (image (graphic_name "pic")));
+  Alcotest.(check bool)
+    "images differing only in name are not equal" false
+    (Element.equal (image (graphic_name "pic")) (image (graphic_name "photo")));
+  Alcotest.(check bool)
+    "a named image and a decorative one are not equal" false
+    (Element.equal (image (graphic_name "pic")) (image Graphic_name.decorative))
 
 let test_box_default_interaction () =
   Alcotest.(check bool)
@@ -1891,6 +1931,10 @@ let () =
             test_element_equal_no_raise_on_closures;
           Alcotest.test_case "equal_distinguishes_draw_handlers" `Quick
             test_element_equal_distinguishes_draw_handlers;
+          Alcotest.test_case "draw_equal_compares_name" `Quick
+            draw_equal_compares_name;
+          Alcotest.test_case "image_equal_compares_name" `Quick
+            image_equal_compares_name;
           Alcotest.test_case "equal distinguishes file_input config" `Quick
             test_equal_distinguishes_file_input_config;
           Alcotest.test_case "equal_input_type_exported" `Quick

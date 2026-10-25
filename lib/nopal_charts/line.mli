@@ -1,4 +1,4 @@
-(** Interactive line chart. REQ-F2, REQ-F9, REQ-F10, REQ-F11, REQ-F13.
+(** Interactive line chart.
 
     Renders one or more data series as polylines (straight) or Bezier paths
     (smooth). Supports optional area fill, point markers, vertical-band hit
@@ -42,6 +42,7 @@ val scene :
     handlers. Use for SVG export or embedding in composite scenes. *)
 
 val view :
+  name:Nopal_element.Graphic_name.t ->
   series:'a series list ->
   x:('a -> float) ->
   width:float ->
@@ -59,6 +60,11 @@ val view :
   ?on_wheel:(Nopal_element.Element.wheel_event -> 'msg) ->
   unit ->
   'msg Nopal_element.Element.t
-(** [view ~series ~x ~width ~height ()] renders a multi-series line chart. Hover
-    shows all series values at the hovered X position. [format_tooltip] receives
-    [(series_label, value)] pairs. *)
+(** [view ~name ~series ~x ~width ~height ()] renders a multi-series line chart.
+    Hover shows all series values at the hovered X position. [format_tooltip]
+    receives [(series_label, value)] pairs.
+
+    [name] is the accessible-name decision for the chart's canvas. It is passed
+    to [Nopal_element.Element.draw] unchanged, including when there is no data
+    to draw. The view takes no attribute list; if one is added, [name] outranks
+    it, as on [Nopal_element.Element.draw]. *)

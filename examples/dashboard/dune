@@ -1,6 +1,6 @@
 (library
  (name dashboard_app)
- (modules dashboard_app)
+ (modules dashboard_app named_graphic)
  (libraries nopal_element nopal_mvu nopal_style nopal_draw nopal_charts))
 
 (executable

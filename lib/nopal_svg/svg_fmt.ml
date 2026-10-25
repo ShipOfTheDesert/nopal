@@ -251,9 +251,23 @@ let xml_escape s =
       | '>' -> Buffer.add_string buf "&gt;"
       | '"' -> Buffer.add_string buf "&quot;"
       | '\'' -> Buffer.add_string buf "&#39;"
+      (* XML normalises a literal TAB, LF or CR in an attribute value to a
+         space, so each is written as a character reference. *)
+      | '\t' -> Buffer.add_string buf "&#9;"
+      | '\n' -> Buffer.add_string buf "&#10;"
+      | '\r' -> Buffer.add_string buf "&#13;"
+      (* The other C0 characters are not allowed in XML 1.0, even as
+         references, so they are dropped. *)
+      | '\x00' .. '\x1f' -> ()
       | c -> Buffer.add_char buf c)
     s;
   Buffer.contents buf
+
+let graphic_name_to_attrs (name : Graphic_name.t) =
+  Graphic_name.aria_attrs name
+  |> List.filter_map (fun (key, value) ->
+      Option.map (fun v -> Printf.sprintf " %s=\"%s\"" key (xml_escape v)) value)
+  |> String.concat ""
 
 let text_anchor_to_string (a : Scene.text_anchor) =
   match a with

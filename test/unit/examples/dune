@@ -22,3 +22,8 @@
   nopal_test
   test_util
   alcotest))
+
+(test
+ (name test_dashboard)
+ (modules test_dashboard)
+ (libraries dashboard_app nopal_test nopal_element nopal_charts alcotest))

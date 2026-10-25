@@ -6,7 +6,7 @@ open Nopal_charts
 module Make (Platform : Nopal_platform.Platform.S) = struct
   module Storage = (val Platform.storage)
 
-  (* Typed wrapper over the same backend (REQ-F4): persists an [int] through
+  (* Typed wrapper over the same backend: persists an [int] through
      encode/decode rather than raw strings. The storage section's "Typed
      counter" controls demonstrate it, including the [Decode] error path. *)
   module Codec = Nopal_storage.With_codec (Storage)
@@ -14,7 +14,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
   let codec_count_key = "codec:count"
 
   (* Key the storage section reads on [init] to demonstrate web persistence
-     across a page reload (RFC 0112 Step 6 / REQ-F3). The restore dispatch is
+     across a page reload. The restore dispatch is
      the E2E proof that a value survives reload, since the in-memory telemetry
      log is cleared by the reload itself. *)
   let restore_demo_key = "kitchen-sink:restore-demo"
@@ -71,7 +71,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         { l with gap = Some 4.0; cross_align = Some Center }
         |> Style.padding 8.0 0.0 8.0 0.0)
 
-  (* Page padding grows by the live safe-area insets (REQ-F4/N2) so content
+  (* Page padding grows by the live safe-area insets so content
      clears the status bar, navigation bar, and home indicator on mobile. On
      desktop and web the insets are zero, so this is identical to a flat 32px
      padding on every side. *)
@@ -97,7 +97,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | StorageOk of string  (** "Stored" / "Deleted" / "Cleared" *)
     | StorageValue of string  (** retrieved value *)
     | StorageRestoredValue of string
-        (** value re-read from storage on [init] (REQ-F3) *)
+        (** value re-read from storage on [init] *)
     | StorageNotFound
     | StorageKeys of string list
     | StorageError of string
@@ -119,7 +119,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | TauriStoreNotFound
     | TauriStoreError of string
 
-  (* Back-navigation demo (RFC 0116): a minimal two-step router-backed section
+  (* Back-navigation demo: a minimal two-step router-backed section
      whose only job is to give the Tauri hardware-back IPC a router consumer to
      drive. [Back_detail] is one push deep from [Back_home]; the real
      [window.history.back()] (or the [simulate_back_pressed] debug command) pops
@@ -159,13 +159,11 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     submitted_value : string;
     keyed_items : (int * string) list;
     next_keyed_id : int;
-    keyed_into_keyed : bool;  (** keyed-section into-keyed toggle (FR-1) *)
-    keyed_variant_text : bool;
-        (** keyed-section variant-change toggle (FR-2) *)
-    keyed_empty_shown : bool;  (** keyed-section keyed-[Empty] toggle (FR-4) *)
+    keyed_into_keyed : bool;  (** keyed-section into-keyed toggle *)
+    keyed_variant_text : bool;  (** keyed-section variant-change toggle *)
+    keyed_empty_shown : bool;  (** keyed-section keyed-[Empty] toggle *)
     interaction_toggled : bool;
-    style_bg_shown : bool;
-        (** FR-1 style-removal demo: box background on/off *)
+    style_bg_shown : bool;  (** style-removal demo: box background on/off *)
     telemetry_pings : int;
     sub_counter : Sub_counter.model;
     sub_wizard : Sub_wizard.model;
@@ -229,7 +227,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     button_semantics : Sub_button_semantics.model;
     clipboard : Sub_clipboard.model;
     links : Sub_links.model;
-    keyboard_height : int;  (** soft-keyboard height in logical px (REQ-N2) *)
+    keyboard_height : int;  (** soft-keyboard height in logical px *)
     back_route : back_route;  (** current route of the back-navigation demo *)
   }
 
@@ -247,8 +245,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | ToggleKeyedVariant
     | ToggleKeyedEmpty
     | ToggleInteraction
-    | ToggleStyleBackground
-        (** FR-1 style-removal demo: add/remove background *)
+    | ToggleStyleBackground  (** style-removal demo: add/remove background *)
     | TelemetryPing of string
     | SubCounterMsg of Sub_counter.msg
     | SubWizardMsg of Sub_wizard.msg
@@ -275,9 +272,9 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | Button_semantics_msg of Sub_button_semantics.msg
     | Clipboard_msg of Sub_clipboard.msg
     | Links_msg of Sub_links.msg
-    | KeyboardHeightChanged of int  (** native soft-keyboard height (REQ-F5) *)
+    | KeyboardHeightChanged of int  (** native soft-keyboard height *)
     | Back_demo_push  (** push the back-demo one step deep (to [Back_detail]) *)
-    | Route_changed of back_route  (** popstate-driven route update (REQ-F3) *)
+    | Route_changed of back_route  (** popstate-driven route update *)
     | DrawPointerMove of float * float
     | DrawPointerLeave
     | ChartHovered of Hover.t
@@ -521,7 +518,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           Nopal_mvu.Cmd.map (fun m -> Clipboard_msg m) clipboard_cmd;
           Nopal_mvu.Cmd.map (fun m -> Links_msg m) links_cmd;
           (* Re-read the persisted demo value so a reload dispatches a
-             [StorageRestored] message — the E2E persistence proof (REQ-F3). *)
+             [StorageRestored] message — the E2E persistence proof. *)
           Nopal_mvu.Cmd.task
             (Nopal_mvu.Task.map
                (fun r -> StorageRestored r)
@@ -1103,10 +1100,12 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         ( { model with tauri_store_state = TauriStoreError e },
           Nopal_mvu.Cmd.none )
 
-  (* Section wrapper (REQ-F10) *)
+  (* Section wrapper *)
   let view_section ?(attrs = []) title children =
     Element.column ~style:section_style ~attrs
       [ Element.text title; Element.column ~style:section_body_style children ]
+
+  let named_graphic = Named_graphic.named_graphic
 
   (* Section 1: Typography *)
   let view_typography _model =
@@ -1559,7 +1558,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           ];
       ]
 
-  (* Section 2: Layout (REQ-F2) *)
+  (* Section 2: Layout *)
   let view_layout _model =
     let bordered_box_style =
       Style.default
@@ -1644,7 +1643,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           ];
       ]
 
-  (* Section 3: Buttons (REQ-F3) *)
+  (* Section 3: Buttons *)
   let view_buttons model =
     let default_button_style =
       Style.default
@@ -1702,7 +1701,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
       ]
 
   (* Telemetry: a section whose interactions are recorded by the MVU telemetry
-     log (RFC 0110). When the kitchen sink is mounted with
+     log. When the kitchen sink is mounted with
      [Nopal_web.mount_with_telemetry], each ping is a [Message] in
      [window.__nopal_telemetry__]; the E2E bridge specs drive these buttons. *)
   let view_telemetry model =
@@ -1743,7 +1742,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           ];
       ]
 
-  (* Section 4: Inputs (REQ-F4) *)
+  (* Section 4: Inputs *)
   let view_inputs model =
     let input_style =
       Style.default
@@ -1789,14 +1788,15 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         | value -> Element.text ("Submitted: " ^ value));
       ]
 
-  (* Section 5: Images (REQ-F5) *)
+  (* Section 5: Images *)
   let view_images _model =
     view_section "Images"
       [
-        Element.image ~src:"assets/placeholder.png" ~alt:"Placeholder image" ();
+        named_graphic "Plain grey placeholder square" (fun name ->
+            Element.image ~src:"assets/placeholder.png" ~name ());
       ]
 
-  (* Section 6: Scroll (REQ-F6) *)
+  (* Section 6: Scroll *)
   let view_scroll _model =
     let scroll_style =
       Style.default
@@ -1830,7 +1830,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           (Element.column ~style:content_style items);
       ]
 
-  (* Section 7: Keyed Lists (REQ-F7) *)
+  (* Section 7: Keyed Lists *)
   let view_keyed model =
     let item_style =
       Style.default
@@ -1871,7 +1871,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                 };
           })
     in
-    (* FR-3: each row's label lives in an editable input keyed by the item id.
+    (* Each row's label lives in an editable input keyed by the item id.
        [on_change] edits the label in place (never reordering), and [on_submit]
        (Enter) moves the row up — so the browser e2e can edit and then reorder
        while keeping the very same input focused. *)
@@ -1897,7 +1897,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                ]))
         model.keyed_items
     in
-    (* FR-1: this container flips its entire child list between non-keyed and
+    (* This container flips its entire child list between non-keyed and
        all-keyed. The into-keyed reconcile must remove the old non-keyed boxes
        rather than leak them. *)
     let into_keyed_children =
@@ -1922,7 +1922,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
             [ Element.text "plain B" ];
         ]
     in
-    (* FR-2: the same key "vc" renders as a Box or a Text; the replacement must
+    (* The same key "vc" renders as a Box or a Text; the replacement must
        keep its key across the variant change. *)
     let variant_child =
       if model.keyed_variant_text then
@@ -1933,7 +1933,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
              ~attrs:[ ("data-testid", "vc-box") ]
              [ Element.text "variant as box" ])
     in
-    (* FR-4: the same key "ks" renders as [Empty] (a comment node) or a visible
+    (* The same key "ks" renders as [Empty] (a comment node) or a visible
        Box; the keyed [Empty] must be reused across reconciles, not leaked. *)
     let empty_child =
       if model.keyed_empty_shown then
@@ -1950,7 +1950,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         Element.button ~style:btn_style ~on_click:AddKeyedItem
           (Element.text "Add item");
         Element.column ~style:section_body_style items;
-        Element.text "Into-keyed transition (FR-1):";
+        Element.text "Into-keyed transition:";
         Element.button ~style:btn_style
           ~attrs:[ ("data-testid", "ik-toggle") ]
           ~on_click:ToggleKeyedIntoKeyed
@@ -1958,7 +1958,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         Element.column ~style:section_body_style
           ~attrs:[ ("data-testid", "ik-container") ]
           into_keyed_children;
-        Element.text "Variant change (FR-2):";
+        Element.text "Variant change:";
         Element.button ~style:btn_style
           ~attrs:[ ("data-testid", "vc-toggle") ]
           ~on_click:ToggleKeyedVariant
@@ -1966,7 +1966,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         Element.column ~style:section_body_style
           ~attrs:[ ("data-testid", "vc-container") ]
           [ variant_child ];
-        Element.text "Keyed empty (FR-4):";
+        Element.text "Keyed empty:";
         Element.button ~style:btn_style
           ~attrs:[ ("data-testid", "ke-toggle") ]
           ~on_click:ToggleKeyedEmpty
@@ -1976,7 +1976,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           [ empty_child ];
       ]
 
-  (* Section 8: Nested Layout (REQ-F8) *)
+  (* Section 8: Nested Layout *)
   let view_nested _model =
     let outer_style =
       Style.default
@@ -2049,7 +2049,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           ];
       ]
 
-  (* Section 9: Interaction States (PRD REQ-F7) *)
+  (* Section 9: Interaction States *)
   let view_interaction_states model =
     let btn_base_style =
       Style.default
@@ -2272,7 +2272,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           ];
       ]
 
-  (* Style removal (FR-1): a box painted with a background that the toggle
+  (* Style removal: a box painted with a background that the toggle
      removes *entirely* — when off, the background style prop is absent from the
      element (not merely changed), so the renderer must clear the stale inline
      background from the DOM. The structural test asserts the box carries a
@@ -2296,8 +2296,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     in
     view_section "Style Removal"
       [
-        Element.text
-          "Toggling removes the background style prop entirely (FR-1):";
+        Element.text "Toggling removes the background style prop entirely:";
         Element.button ~style:toggle_button_style
           ~attrs:[ ("data-testid", "style-removal-toggle") ]
           ~on_click:ToggleStyleBackground
@@ -2309,7 +2308,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           [ Element.text "Styled box" ];
       ]
 
-  (* Section 10: Map / Composition (REQ-F9) *)
+  (* Section 10: Map / Composition *)
   let view_composition vp model =
     view_section "Map / Composition"
       [
@@ -2319,7 +2318,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           (Sub_counter.view vp model.sub_counter);
       ]
 
-  (* Section: Router Wizard (RFC 0112) — visual reference for the router-demo
+  (* Section: Router Wizard — visual reference for the router-demo
      wizard's interaction anchors. *)
   let view_wizard vp model =
     view_section "Router Wizard"
@@ -2331,7 +2330,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           (Sub_wizard.view vp model.sub_wizard);
       ]
 
-  (* Section 10: 2D Drawing (REQ-F13) *)
+  (* Section 10: 2D Drawing *)
   let view_draw model =
     let pi = Float.pi in
     (* Helpers for gradient results *)
@@ -2594,28 +2593,51 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         Element.column ~style:section_body_style
           [
             Element.text "Basic shapes:";
-            Element.draw ~width:canvas_w ~height:canvas_h shapes_scene;
+            named_graphic
+              "Rectangle, rounded rectangle, circle, ellipse, line, triangle \
+               and polyline" (fun name ->
+                Element.draw ~name ~width:canvas_w ~height:canvas_h shapes_scene);
             Element.text "Path variants:";
-            Element.draw ~width:canvas_w ~height:small_h path_scene;
+            named_graphic
+              "A smooth curve, a run of straight segments and an arc"
+              (fun name ->
+                Element.draw ~name ~width:canvas_w ~height:small_h path_scene);
             Element.text "Fill types (solid, linear gradient, radial gradient):";
-            Element.draw ~width:canvas_w ~height:small_h fill_scene;
+            named_graphic
+              "Rectangles filled solid, with a linear gradient and with a \
+               radial gradient" (fun name ->
+                Element.draw ~name ~width:canvas_w ~height:small_h fill_scene);
             Element.text "Stroke styles:";
-            Element.draw ~width:canvas_w ~height:small_h stroke_scene;
+            named_graphic
+              "Lines stroked solid, dashed and with round caps, and a \
+               bevel-joined polyline" (fun name ->
+                Element.draw ~name ~width:canvas_w ~height:small_h stroke_scene);
             Element.text "Text:";
-            Element.draw ~width:canvas_w ~height:small_h text_scene;
+            named_graphic
+              "Text anchored at start, middle and end, in bold and at size 18"
+              (fun name ->
+                Element.draw ~name ~width:canvas_w ~height:small_h text_scene);
             Element.text "Transforms:";
-            Element.draw ~width:canvas_w ~height:small_h transform_scene;
+            named_graphic
+              "A rectangle translated, scaled, rotated, rotated about a point \
+               and skewed" (fun name ->
+                Element.draw ~name ~width:canvas_w ~height:small_h
+                  transform_scene);
             Element.text "Groups (opacity, blend):";
-            Element.draw ~width:canvas_w ~height:small_h group_scene;
+            named_graphic
+              "Overlapping rectangles at half opacity and under a multiply \
+               blend" (fun name ->
+                Element.draw ~name ~width:canvas_w ~height:small_h group_scene);
             Element.text "Clipping:";
-            Element.draw ~width:canvas_w ~height:small_h clip_scene;
+            named_graphic "Two rectangles clipped to a circle" (fun name ->
+                Element.draw ~name ~width:canvas_w ~height:small_h clip_scene);
             Element.text "Pointer interactivity:";
-            Element.draw ~aria_label:"Interactive drawing"
-              ~cursor:Nopal_style.Cursor.Crosshair
-              ~on_pointer_move:(fun (ev : Element.pointer_event) ->
-                DrawPointerMove (ev.x, ev.y))
-              ~on_pointer_leave:DrawPointerLeave ~width:400.0 ~height:canvas_h
-              interactive_scene;
+            named_graphic "Interactive drawing" (fun name ->
+                Element.draw ~name ~cursor:Nopal_style.Cursor.Crosshair
+                  ~on_pointer_move:(fun (ev : Element.pointer_event) ->
+                    DrawPointerMove (ev.x, ev.y))
+                  ~on_pointer_leave:DrawPointerLeave ~width:400.0
+                  ~height:canvas_h interactive_scene);
             Element.box
               ~attrs:[ ("data-section", "draw-coords") ]
               [ Element.text pointer_text ];
@@ -2752,15 +2774,18 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
             Element.box
               ~attrs:[ ("data-testid", "bar-chart") ]
               [
-                Bar.view ~data:bar_data
-                  ~label:(fun (l, _) -> l)
-                  ~value:(fun (_, v) -> v)
-                  ~color:(fun _ -> cat.(0))
-                  ~width:chart_w ~height:chart_h
-                  ~format_tooltip:(fun (l, v) ->
-                    Tooltip.text (Printf.sprintf "%s: %.0f" l v))
-                  ~on_hover:(fun h -> ChartHovered h)
-                  ~on_leave:ChartLeft ?hover:model.chart_hover ();
+                named_graphic
+                  "Monthly totals, January to June, with hover details"
+                  (fun name ->
+                    Bar.view ~name ~data:bar_data
+                      ~label:(fun (l, _) -> l)
+                      ~value:(fun (_, v) -> v)
+                      ~color:(fun _ -> cat.(0))
+                      ~width:chart_w ~height:chart_h
+                      ~format_tooltip:(fun (l, v) ->
+                        Tooltip.text (Printf.sprintf "%s: %.0f" l v))
+                      ~on_hover:(fun h -> ChartHovered h)
+                      ~on_leave:ChartLeft ?hover:model.chart_hover ());
               ];
             (* Themed axis chrome — the same appearance record on both axes.
                A bar chart is the chart type that draws its own X axis rather
@@ -2770,54 +2795,59 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
             Element.box
               ~attrs:[ ("data-testid", "themed-axis-chart") ]
               [
-                Bar.view ~data:bar_data
-                  ~label:(fun (l, _) -> l)
-                  ~value:(fun (_, v) -> v)
-                  ~color:(fun _ -> cat.(5))
-                  ~width:chart_w ~height:chart_h ~padding:themed_padding
-                  ~x_axis:themed_x_axis ~y_axis:themed_y_axis ();
+                named_graphic "Monthly revenue, January to June, on themed axes"
+                  (fun name ->
+                    Bar.view ~name ~data:bar_data
+                      ~label:(fun (l, _) -> l)
+                      ~value:(fun (_, v) -> v)
+                      ~color:(fun _ -> cat.(5))
+                      ~width:chart_w ~height:chart_h ~padding:themed_padding
+                      ~x_axis:themed_x_axis ~y_axis:themed_y_axis ());
               ];
             (* Line chart — multi-series, cross-chart hover + tooltip *)
             Element.text "Line chart (multi-series, cross-chart hover):";
             Element.box
               ~attrs:[ ("data-testid", "line-chart") ]
               [
-                Line.view
+                named_graphic "Revenue and costs over six periods" (fun name ->
+                    Line.view ~name
+                      ~series:
+                        [
+                          Line.series ~smooth:true ~show_points:true
+                            ~label:"Revenue" ~color:cat.(1)
+                            ~y:(fun (_, a, _) -> a)
+                            ts_data;
+                          Line.series ~label:"Costs" ~color:cat.(2)
+                            ~y:(fun (_, _, b) -> b)
+                            ts_data;
+                        ]
+                      ~x:(fun (x, _, _) -> x)
+                      ~width:chart_w ~height:chart_h
+                      ~format_tooltip:(fun entries ->
+                        Tooltip.text
+                          (String.concat ", "
+                             (List.map
+                                (fun (l, v) -> Printf.sprintf "%s: %.0f" l v)
+                                entries)))
+                      ~on_hover:(fun h -> ChartHovered h)
+                      ~on_leave:ChartLeft ?hover:model.chart_hover ());
+              ];
+            (* Area chart — stacked *)
+            Element.text "Area chart (stacked):";
+            named_graphic "Products A and B, stacked, over six periods"
+              (fun name ->
+                Area.view ~name
                   ~series:
                     [
-                      Line.series ~smooth:true ~show_points:true
-                        ~label:"Revenue" ~color:cat.(1)
+                      Area.series ~label:"Product A" ~color:cat.(3)
                         ~y:(fun (_, a, _) -> a)
                         ts_data;
-                      Line.series ~label:"Costs" ~color:cat.(2)
+                      Area.series ~label:"Product B" ~color:cat.(4)
                         ~y:(fun (_, _, b) -> b)
                         ts_data;
                     ]
                   ~x:(fun (x, _, _) -> x)
-                  ~width:chart_w ~height:chart_h
-                  ~format_tooltip:(fun entries ->
-                    Tooltip.text
-                      (String.concat ", "
-                         (List.map
-                            (fun (l, v) -> Printf.sprintf "%s: %.0f" l v)
-                            entries)))
-                  ~on_hover:(fun h -> ChartHovered h)
-                  ~on_leave:ChartLeft ?hover:model.chart_hover ();
-              ];
-            (* Area chart — stacked *)
-            Element.text "Area chart (stacked):";
-            Area.view
-              ~series:
-                [
-                  Area.series ~label:"Product A" ~color:cat.(3)
-                    ~y:(fun (_, a, _) -> a)
-                    ts_data;
-                  Area.series ~label:"Product B" ~color:cat.(4)
-                    ~y:(fun (_, _, b) -> b)
-                    ts_data;
-                ]
-              ~x:(fun (x, _, _) -> x)
-              ~width:chart_w ~height:chart_h ~mode:Area.Stacked ();
+                  ~width:chart_w ~height:chart_h ~mode:Area.Stacked ());
             (* Pie and donut side by side *)
             Element.text "Pie chart and donut chart:";
             Element.row ~style:row_style
@@ -2825,21 +2855,27 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                 Element.box
                   ~attrs:[ ("data-testid", "pie-chart") ]
                   [
-                    Pie.view ~data:pie_data
+                    named_graphic
+                      "Device share: desktop 45%, mobile 35%, tablet 15%, \
+                       other 5%" (fun name ->
+                        Pie.view ~name ~data:pie_data
+                          ~value:(fun (_, v, _) -> v)
+                          ~label:(fun (l, _, _) -> l)
+                          ~color:(fun (_, _, c) -> c)
+                          ~width:200.0 ~height:200.0
+                          ~format_tooltip:(fun (l, v, _) ->
+                            Tooltip.text (Printf.sprintf "%s: %.0f%%" l v))
+                          ~on_hover:(fun h -> PieHovered h)
+                          ~on_leave:PieLeft ?hover:model.pie_hover ());
+                  ];
+                named_graphic
+                  "Device share as a donut: desktop 45%, mobile 35%, tablet \
+                   15%, other 5%" (fun name ->
+                    Pie.view ~name ~data:pie_data
                       ~value:(fun (_, v, _) -> v)
                       ~label:(fun (l, _, _) -> l)
                       ~color:(fun (_, _, c) -> c)
-                      ~width:200.0 ~height:200.0
-                      ~format_tooltip:(fun (l, v, _) ->
-                        Tooltip.text (Printf.sprintf "%s: %.0f%%" l v))
-                      ~on_hover:(fun h -> PieHovered h)
-                      ~on_leave:PieLeft ?hover:model.pie_hover ();
-                  ];
-                Pie.view ~data:pie_data
-                  ~value:(fun (_, v, _) -> v)
-                  ~label:(fun (l, _, _) -> l)
-                  ~color:(fun (_, _, c) -> c)
-                  ~width:200.0 ~height:200.0 ~inner_radius:50.0 ();
+                      ~width:200.0 ~height:200.0 ~inner_radius:50.0 ());
               ];
             Sub_donut.view ();
             (* Scatter chart with variable radius + tooltip *)
@@ -2847,16 +2883,18 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
             Element.box
               ~attrs:[ ("data-testid", "scatter-chart") ]
               [
-                Scatter.view ~data:scatter_data
-                  ~x:(fun (x, _, _) -> x)
-                  ~y:(fun (_, y, _) -> y)
-                  ~radius:(fun (_, _, r) -> r)
-                  ~color:(fun _ -> cat.(7))
-                  ~width:chart_w ~height:chart_h
-                  ~format_tooltip:(fun (x, y, _) ->
-                    Tooltip.text (Printf.sprintf "(%.0f, %.0f)" x y))
-                  ~on_hover:(fun h -> ScatterHovered h)
-                  ~on_leave:ScatterLeft ?hover:model.scatter_hover ();
+                named_graphic "Seven points, each sized by a third value"
+                  (fun name ->
+                    Scatter.view ~name ~data:scatter_data
+                      ~x:(fun (x, _, _) -> x)
+                      ~y:(fun (_, y, _) -> y)
+                      ~radius:(fun (_, _, r) -> r)
+                      ~color:(fun _ -> cat.(7))
+                      ~width:chart_w ~height:chart_h
+                      ~format_tooltip:(fun (x, y, _) ->
+                        Tooltip.text (Printf.sprintf "(%.0f, %.0f)" x y))
+                      ~on_hover:(fun h -> ScatterHovered h)
+                      ~on_leave:ScatterLeft ?hover:model.scatter_hover ());
               ];
             (* Sparkline in a row *)
             Element.text "Sparkline (inline):";
@@ -2864,11 +2902,21 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
               ~attrs:[ ("data-testid", "sparkline-row") ]
               [
                 Element.text "Trend:";
-                Sparkline.view ~data:spark_data ~width:120.0 ~height:24.0
-                  ~color:cat.(0) ();
+                named_graphic "Trend, rising from 5 to 30 over ten points"
+                  (fun name ->
+                    Sparkline.view ~name ~data:spark_data ~width:120.0
+                      ~height:24.0 ~color:cat.(0) ());
                 Element.text "Growth:";
-                Sparkline.view ~data:(List.rev spark_data) ~width:120.0
-                  ~height:24.0 ~color:cat.(2) ();
+                (* The value is spelled out beside the sparkline, so the line
+                   adds nothing a screen reader should announce twice. *)
+                Element.row ~style:sparkline_row_style
+                  ~attrs:[ ("data-testid", "growth-kpi") ]
+                  [
+                    Element.text "5, down from 30";
+                    Sparkline.view ~name:Graphic_name.decorative
+                      ~data:(List.rev spark_data) ~width:120.0 ~height:24.0
+                      ~color:cat.(2) ();
+                  ];
               ];
             (* Legend *)
             Element.text "Legend:";
@@ -3033,72 +3081,82 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
             Element.box
               ~attrs:[ ("data-testid", "heat-map-sequential") ]
               [
-                Heat_map.view ~data:pnl_data
-                  ~row:(fun (r, _, _) -> r)
-                  ~col:(fun (_, c, _) -> c)
-                  ~value:(fun (_, _, v) -> v)
-                  ~row_count:4 ~col_count:5 ~row_labels:pnl_row_labels
-                  ~col_labels:pnl_col_labels ~scale:pnl_scale ~width:chart_w
-                  ~height:chart_h
-                  ~format_tooltip:(fun (r, c, v) ->
-                    Tooltip.text
-                      (Printf.sprintf "%s %s: $%.1fk"
-                         (label_at pnl_row_labels r)
-                         (label_at pnl_col_labels c)
-                         v))
-                  ~on_hover:(fun h -> HeatMapHovered h)
-                  ~on_leave:HeatMapLeft ?hover:model.heat_map_hover ();
+                named_graphic
+                  "Profit and loss by hour, 9am to 12pm, Monday to Friday"
+                  (fun name ->
+                    Heat_map.view ~name ~data:pnl_data
+                      ~row:(fun (r, _, _) -> r)
+                      ~col:(fun (_, c, _) -> c)
+                      ~value:(fun (_, _, v) -> v)
+                      ~row_count:4 ~col_count:5 ~row_labels:pnl_row_labels
+                      ~col_labels:pnl_col_labels ~scale:pnl_scale ~width:chart_w
+                      ~height:chart_h
+                      ~format_tooltip:(fun (r, c, v) ->
+                        Tooltip.text
+                          (Printf.sprintf "%s %s: $%.1fk"
+                             (label_at pnl_row_labels r)
+                             (label_at pnl_col_labels c)
+                             v))
+                      ~on_hover:(fun h -> HeatMapHovered h)
+                      ~on_leave:HeatMapLeft ?hover:model.heat_map_hover ());
               ];
             (* Heat map — diverging scale (correlation matrix) *)
             Element.text "Heat map (diverging scale — correlation matrix):";
             Element.box
               ~attrs:[ ("data-testid", "heat-map-diverging") ]
               [
-                Heat_map.view ~data:corr_data
-                  ~row:(fun (r, _, _) -> r)
-                  ~col:(fun (_, c, _) -> c)
-                  ~value:(fun (_, _, v) -> v)
-                  ~row_count:4 ~col_count:4 ~row_labels:corr_labels
-                  ~col_labels:corr_labels ~scale:corr_scale ~width:chart_w
-                  ~height:chart_h
-                  ~format_tooltip:(fun (r, c, v) ->
-                    Tooltip.text
-                      (Printf.sprintf "%s vs %s: %.2f" (label_at corr_labels r)
-                         (label_at corr_labels c) v))
-                  ~on_hover:(fun h -> HeatMapHovered h)
-                  ~on_leave:HeatMapLeft ?hover:model.heat_map_hover ();
+                named_graphic "Correlation matrix of SPY, QQQ, TLT and GLD"
+                  (fun name ->
+                    Heat_map.view ~name ~data:corr_data
+                      ~row:(fun (r, _, _) -> r)
+                      ~col:(fun (_, c, _) -> c)
+                      ~value:(fun (_, _, v) -> v)
+                      ~row_count:4 ~col_count:4 ~row_labels:corr_labels
+                      ~col_labels:corr_labels ~scale:corr_scale ~width:chart_w
+                      ~height:chart_h
+                      ~format_tooltip:(fun (r, c, v) ->
+                        Tooltip.text
+                          (Printf.sprintf "%s vs %s: %.2f"
+                             (label_at corr_labels r) (label_at corr_labels c) v))
+                      ~on_hover:(fun h -> HeatMapHovered h)
+                      ~on_leave:HeatMapLeft ?hover:model.heat_map_hover ());
               ];
             (* Candlestick chart *)
             Element.text "Candlestick chart (OHLC):";
             Element.box
               ~attrs:[ ("data-testid", "candlestick-chart") ]
               [
-                Trading.Candlestick.view ~data:ohlc_data
-                  ~x:(fun (x, _, _, _, _, _) -> x)
-                  ~open_:(fun (_, o, _, _, _, _) -> o)
-                  ~high:(fun (_, _, h, _, _, _) -> h)
-                  ~low:(fun (_, _, _, l, _, _) -> l)
-                  ~close:(fun (_, _, _, _, c, _) -> c)
-                  ~width:chart_w ~height:chart_h
-                  ~format_tooltip:(fun _i o h l c ->
-                    Tooltip.text
-                      (Printf.sprintf "O:%.0f H:%.0f L:%.0f C:%.0f" o h l c))
-                  ~on_hover:(fun h -> TradingHovered h)
-                  ~on_leave:TradingLeft ?hover:model.trading_hover ();
+                named_graphic
+                  "Open, high, low and close prices over ten periods"
+                  (fun name ->
+                    Trading.Candlestick.view ~name ~data:ohlc_data
+                      ~x:(fun (x, _, _, _, _, _) -> x)
+                      ~open_:(fun (_, o, _, _, _, _) -> o)
+                      ~high:(fun (_, _, h, _, _, _) -> h)
+                      ~low:(fun (_, _, _, l, _, _) -> l)
+                      ~close:(fun (_, _, _, _, c, _) -> c)
+                      ~width:chart_w ~height:chart_h
+                      ~format_tooltip:(fun _i o h l c ->
+                        Tooltip.text
+                          (Printf.sprintf "O:%.0f H:%.0f L:%.0f C:%.0f" o h l c))
+                      ~on_hover:(fun h -> TradingHovered h)
+                      ~on_leave:TradingLeft ?hover:model.trading_hover ());
               ];
             (* Drawdown chart *)
             Element.text "Drawdown chart:";
             Element.box
               ~attrs:[ ("data-testid", "drawdown-chart") ]
               [
-                Trading.Drawdown.view ~data:drawdown_data
-                  ~x:(fun (x, _) -> x)
-                  ~y:(fun (_, y) -> y)
-                  ~width:chart_w ~height:chart_h
-                  ~format_tooltip:(fun _i dd ->
-                    Tooltip.text (Printf.sprintf "Drawdown: %.1f%%" dd))
-                  ~on_hover:(fun h -> TradingHovered h)
-                  ~on_leave:TradingLeft ?hover:model.trading_hover ();
+                named_graphic "Drawdown from peak over ten periods, deepest 8%"
+                  (fun name ->
+                    Trading.Drawdown.view ~name ~data:drawdown_data
+                      ~x:(fun (x, _) -> x)
+                      ~y:(fun (_, y) -> y)
+                      ~width:chart_w ~height:chart_h
+                      ~format_tooltip:(fun _i dd ->
+                        Tooltip.text (Printf.sprintf "Drawdown: %.1f%%" dd))
+                      ~on_hover:(fun h -> TradingHovered h)
+                      ~on_leave:TradingLeft ?hover:model.trading_hover ());
               ];
             (* Multi-pane layout: candlestick (60%) + volume bar (20%) + drawdown (20%) *)
             Element.text
@@ -3112,27 +3170,34 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                     [
                       Chart_pane.pane ~height_ratio:0.6
                         (fun dw ~width ~height ->
-                          Trading.Candlestick.view ~data:ohlc_data
-                            ~x:(fun (x, _, _, _, _, _) -> x)
-                            ~open_:(fun (_, o, _, _, _, _) -> o)
-                            ~high:(fun (_, _, h, _, _, _) -> h)
-                            ~low:(fun (_, _, _, l, _, _) -> l)
-                            ~close:(fun (_, _, _, _, c, _) -> c)
-                            ~width ~height ~domain_window:dw ());
+                          named_graphic
+                            "Synchronised panes: open, high, low and close \
+                             prices" (fun name ->
+                              Trading.Candlestick.view ~name ~data:ohlc_data
+                                ~x:(fun (x, _, _, _, _, _) -> x)
+                                ~open_:(fun (_, o, _, _, _, _) -> o)
+                                ~high:(fun (_, _, h, _, _, _) -> h)
+                                ~low:(fun (_, _, _, l, _, _) -> l)
+                                ~close:(fun (_, _, _, _, c, _) -> c)
+                                ~width ~height ~domain_window:dw ()));
                       Chart_pane.pane ~height_ratio:0.2
                         (fun dw ~width ~height ->
-                          Bar.view ~data:volume_data
-                            ~x:(fun (x, _) -> x)
-                            ~label:(fun (x, _) -> Printf.sprintf "%.0f" x)
-                            ~value:(fun (_, v) -> v)
-                            ~color:(fun _ -> cat.(5))
-                            ~width ~height ~domain_window:dw ());
+                          named_graphic "Synchronised panes: volume"
+                            (fun name ->
+                              Bar.view ~name ~data:volume_data
+                                ~x:(fun (x, _) -> x)
+                                ~label:(fun (x, _) -> Printf.sprintf "%.0f" x)
+                                ~value:(fun (_, v) -> v)
+                                ~color:(fun _ -> cat.(5))
+                                ~width ~height ~domain_window:dw ()));
                       Chart_pane.pane ~height_ratio:0.2
                         (fun dw ~width ~height ->
-                          Trading.Drawdown.view ~data:drawdown_data
-                            ~x:(fun (x, _) -> x)
-                            ~y:(fun (_, y) -> y)
-                            ~width ~height ~domain_window:dw ());
+                          named_graphic "Synchronised panes: drawdown from peak"
+                            (fun name ->
+                              Trading.Drawdown.view ~name ~data:drawdown_data
+                                ~x:(fun (x, _) -> x)
+                                ~y:(fun (_, y) -> y)
+                                ~width ~height ~domain_window:dw ()));
                     ]
                   ~domain_window:model.pane_domain_window ~width:chart_w
                   ~height:(chart_h *. 2.0)
@@ -3163,19 +3228,22 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                   ~on_pointer_leave:LinePointerLeave
                   ~on_wheel:(fun we -> LineWheelZoom we)
                   [
-                    Line.view
-                      ~series:
-                        [
-                          Line.series ~smooth:true ~label:"Signal"
-                            ~color:cat.(1)
-                            ~y:(fun (_, y) -> y)
-                            panzoom_data;
-                        ]
-                      ~x:(fun (x, _) -> x)
-                      ~width:(chart_w *. 1.5) ~height:chart_h
-                      ~domain_window:model.line_domain_window
-                      ~on_hover:(fun h -> ChartHovered h)
-                      ~on_leave:ChartLeft ?hover:model.chart_hover ();
+                    named_graphic
+                      "Signal of 1,000 points, drag to pan and scroll to zoom"
+                      (fun name ->
+                        Line.view ~name
+                          ~series:
+                            [
+                              Line.series ~smooth:true ~label:"Signal"
+                                ~color:cat.(1)
+                                ~y:(fun (_, y) -> y)
+                                panzoom_data;
+                            ]
+                          ~x:(fun (x, _) -> x)
+                          ~width:(chart_w *. 1.5) ~height:chart_h
+                          ~domain_window:model.line_domain_window
+                          ~on_hover:(fun h -> ChartHovered h)
+                          ~on_leave:ChartLeft ?hover:model.chart_hover ());
                   ];
                 Element.column
                   ~style:
@@ -3193,7 +3261,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           ];
       ]
 
-  (* Section 14: Responsive Design (REQ-F11) *)
+  (* Section 14: Responsive Design *)
   let view_responsive vp _model =
     let module Viewport = Nopal_element.Viewport in
     (* Nav vs sidebar: bottom nav on compact, sidebar on expanded *)
@@ -3573,7 +3641,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
 
   (* Section: Tauri App *)
   let view_tauri_app model =
-    (* Surface the last failed Tauri op (REQ-F5): every Window/App/Os/Event op
+    (* Surface the last failed Tauri op: every Window/App/Os/Event op
        now resolves [Error msg] instead of hanging, and [main.ml] routes that to
        [TauriOpError]. Shown here as a single readout so a rejected op is visible
        rather than silently dropped. *)
@@ -3929,7 +3997,13 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         ~color:(fun _ -> cat.(0))
         ~width:chart_w ~height:chart_h ()
     in
-    let svg_string = Nopal_svg.render ~width:chart_w ~height:chart_h scene in
+    let label = "Monthly totals, January to June, as exported to SVG" in
+    let svg_string =
+      match Graphic_name.named label with
+      | Ok name -> Nopal_svg.render ~name ~width:chart_w ~height:chart_h scene
+      | Error (Graphic_name.Blank { input }) ->
+          Named_graphic.refusal_message input
+    in
     let code_style =
       Text.default |> Text.font_size 0.75 |> Text.font_family Monospace
     in
@@ -3957,14 +4031,15 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
       "SVG Export"
       [
         Element.text "Chart rendered to SVG string via Nopal_svg.render:";
-        Element.draw ~width:chart_w ~height:chart_h scene;
+        named_graphic label (fun name ->
+            Element.draw ~name ~width:chart_w ~height:chart_h scene);
         Element.text "Generated SVG output (truncated):";
         Element.box ~style:pre_style
           [ Element.styled_text ~text_style:code_style truncated ];
       ]
 
-  (* Main view — all sections in a scrollable column (REQ-F10, REQ-F12) *)
-  (* Mobile-signals section (RFC 0116): a keyboard-height debug readout fed by the
+  (* Main view — all sections in a scrollable column *)
+  (* Mobile-signals section: a keyboard-height debug readout fed by the
      [on_keyboard_height_change] subscription, plus the back-navigation demo the
      hardware-back IPC drives. Both are platform-agnostic — the native signals are
      wired in [main.ml] under [has_tauri ()]; on desktop the keyboard height stays
@@ -4266,7 +4341,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         Nopal_mvu.Sub.map
           (fun m -> Scroll_pane_msg m)
           (Sub_scroll_pane.subscriptions model.scroll_pane);
-        (* Back-demo router consumer (REQ-F3): a [popstate] (from
+        (* Back-demo router consumer: a [popstate] (from
            [window.history.back()], itself fired by the hardware-back IPC) parses
            the URL and dispatches [Route_changed], returning the demo to its prior
            route with no app-specific back handling. *)
@@ -4277,7 +4352,7 @@ end
 
 (* Re-export the component sub-apps so the thin [main.ml] mount file can name
    their message constructors when serialising the telemetry log for the
-   per-component E2E specs (RFC 0112, Step 5). These sub-apps are otherwise
+   per-component E2E specs. These sub-apps are otherwise
    wrapped inside this library and invisible to the executable. *)
 module Kitchen_sink_ui = Kitchen_sink_ui
 module Kitchen_sink_form_controls = Kitchen_sink_form_controls

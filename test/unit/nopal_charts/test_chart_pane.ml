@@ -12,7 +12,10 @@ type msg =
 (* --- helpers --- *)
 
 let window = Domain_window.create ~x_min:0.0 ~x_max:10.0
-let dummy_chart _dw ~width ~height = Element.draw ~width ~height []
+
+let dummy_chart _dw ~width ~height =
+  Element.draw ~name:Graphic_name.decorative ~width ~height []
+
 let make_pane ratio chart = Chart_pane.pane ~height_ratio:ratio chart
 
 (** Extract children of a Column element, searching through Box wrappers. *)
@@ -24,9 +27,42 @@ let get_column_children (el : msg Element.t) =
         (fun (child : msg Element.t) ->
           match child with
           | Column { children; _ } -> Some children
-          | _ -> None)
+          | Empty
+          | Text _
+          | Box _
+          | Row _
+          | Form _
+          | Button _
+          | Link _
+          | Input _
+          | Checkbox _
+          | Radio _
+          | Select _
+          | File_input _
+          | Image _
+          | Scroll _
+          | Keyed _
+          | Draw _
+          | Virtual_list _ ->
+              None)
         children
-  | _ -> None
+  | Empty
+  | Text _
+  | Row _
+  | Form _
+  | Button _
+  | Link _
+  | Input _
+  | Checkbox _
+  | Radio _
+  | Select _
+  | File_input _
+  | Image _
+  | Scroll _
+  | Keyed _
+  | Draw _
+  | Virtual_list _ ->
+      None
 
 (** Get the fixed height from a Box element's style. *)
 let get_fixed_height (el : msg Element.t) =
@@ -34,8 +70,27 @@ let get_fixed_height (el : msg Element.t) =
   | Box { style; _ } -> (
       match style.Style.layout.height with
       | Some (Fixed h) -> Some h
-      | _ -> None)
-  | _ -> None
+      | Some (Fill | Hug | Fraction _)
+      | None ->
+          None)
+  | Empty
+  | Text _
+  | Row _
+  | Column _
+  | Form _
+  | Button _
+  | Link _
+  | Input _
+  | Checkbox _
+  | Radio _
+  | Select _
+  | File_input _
+  | Image _
+  | Scroll _
+  | Keyed _
+  | Draw _
+  | Virtual_list _ ->
+      None
 
 (* --- tests --- *)
 
@@ -52,7 +107,24 @@ let test_single_pane () =
       match el with
       | Column { children; _ } ->
           Alcotest.(check int) "one pane child" 1 (List.length children)
-      | _ -> Alcotest.fail "expected Column layout")
+      | Empty
+      | Text _
+      | Box _
+      | Row _
+      | Form _
+      | Button _
+      | Link _
+      | Input _
+      | Checkbox _
+      | Radio _
+      | Select _
+      | File_input _
+      | Image _
+      | Scroll _
+      | Keyed _
+      | Draw _
+      | Virtual_list _ ->
+          Alcotest.fail "expected Column layout")
 
 let test_two_panes_equal () =
   let el =
@@ -103,7 +175,7 @@ let test_domain_window_passed () =
   let received_window = ref None in
   let chart dw ~width ~height =
     received_window := Some dw;
-    Element.draw ~width ~height []
+    Element.draw ~name:Graphic_name.decorative ~width ~height []
   in
   let _el =
     Chart_pane.view
@@ -142,8 +214,29 @@ let test_pointer_down_on_box () =
       in
       match msg with
       | PointerDown x -> Alcotest.(check (float 0.01)) "pointer down x" 150.0 x
-      | _ -> Alcotest.fail "expected PointerDown message")
-  | _ -> Alcotest.fail "expected Box with on_pointer_down handler"
+      | PointerMove _
+      | PointerUp
+      | PointerLeave ->
+          Alcotest.fail "expected PointerDown message")
+  | Empty
+  | Text _
+  | Box _
+  | Row _
+  | Column _
+  | Form _
+  | Button _
+  | Link _
+  | Input _
+  | Checkbox _
+  | Radio _
+  | Select _
+  | File_input _
+  | Image _
+  | Scroll _
+  | Keyed _
+  | Draw _
+  | Virtual_list _ ->
+      Alcotest.fail "expected Box with on_pointer_down handler"
 
 let test_pointer_leave_on_box () =
   let el =
@@ -156,8 +249,29 @@ let test_pointer_leave_on_box () =
   | Box { on_pointer_leave = Some msg; _ } -> (
       match msg with
       | PointerLeave -> Alcotest.(check pass) "got PointerLeave" () ()
-      | _ -> Alcotest.fail "expected PointerLeave message")
-  | _ -> Alcotest.fail "expected Box with on_pointer_leave"
+      | PointerDown _
+      | PointerMove _
+      | PointerUp ->
+          Alcotest.fail "expected PointerLeave message")
+  | Empty
+  | Text _
+  | Box _
+  | Row _
+  | Column _
+  | Form _
+  | Button _
+  | Link _
+  | Input _
+  | Checkbox _
+  | Radio _
+  | Select _
+  | File_input _
+  | Image _
+  | Scroll _
+  | Keyed _
+  | Draw _
+  | Virtual_list _ ->
+      Alcotest.fail "expected Box with on_pointer_leave"
 
 let test_pane_constructor () =
   let p = Chart_pane.pane ~height_ratio:0.75 dummy_chart in

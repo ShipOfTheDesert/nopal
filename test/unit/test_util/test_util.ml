@@ -172,3 +172,9 @@ let llms_txt () =
   match In_channel.with_open_text path In_channel.input_all with
   | text -> text
   | exception Sys_error e -> Alcotest.fail ("cannot read llms.txt: " ^ e)
+
+let graphic_name label =
+  match Nopal_element.Graphic_name.named label with
+  | Ok name -> name
+  | Error (Nopal_element.Graphic_name.Blank { input }) ->
+      Alcotest.failf "Graphic_name.named refused %S" input

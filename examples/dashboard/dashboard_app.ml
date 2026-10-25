@@ -119,13 +119,15 @@ let view _vp model =
   let chart_h = 220.0 in
   (* Detail panel: show hovered data point *)
   let detail_text =
-    match model.hover with
-    | Some h when h.Hover.index < List.length data ->
-        let d = List.nth data h.Hover.index in
+    let hovered (h : Hover.t) =
+      List.find_mapi (fun i d -> if i = h.index then Some d else None) data
+    in
+    match Option.bind model.hover hovered with
+    | Some d ->
         Printf.sprintf
           "Selected: %s — Revenue: %.0f, Costs: %.0f, Customers: %.0f" d.month
           d.revenue d.costs d.customers
-    | _ -> "Hover over a chart to see details"
+    | None -> "Hover over a chart to see details"
   in
   Element.scroll
     (Element.column ~style:page_style
@@ -147,15 +149,18 @@ let view _vp model =
                [
                  Element.styled_text ~text_style:card_heading_text
                    "Monthly Revenue";
-                 Bar.view ~data
-                   ~label:(fun d -> d.month)
-                   ~value:(fun d -> d.revenue)
-                   ~color:(fun _ -> cat.(0))
-                   ~width:chart_w ~height:chart_h
-                   ~format_tooltip:(fun d ->
-                     Tooltip.text (Printf.sprintf "%s: %.0f" d.month d.revenue))
-                   ~on_hover:(fun h -> ChartHovered h)
-                   ~on_leave:ChartLeft ?hover:model.hover ();
+                 Named_graphic.named_graphic "Monthly revenue, January to June"
+                   (fun name ->
+                     Bar.view ~name ~data
+                       ~label:(fun d -> d.month)
+                       ~value:(fun d -> d.revenue)
+                       ~color:(fun _ -> cat.(0))
+                       ~width:chart_w ~height:chart_h
+                       ~format_tooltip:(fun d ->
+                         Tooltip.text
+                           (Printf.sprintf "%s: %.0f" d.month d.revenue))
+                       ~on_hover:(fun h -> ChartHovered h)
+                       ~on_leave:ChartLeft ?hover:model.hover ());
                ];
              (* Line chart: revenue + costs *)
              Element.column ~style:card_style
@@ -163,36 +168,38 @@ let view _vp model =
                [
                  Element.styled_text ~text_style:card_heading_text
                    "Revenue vs Costs";
-                 Line.view
-                   ~series:
-                     [
-                       Line.series ~smooth:true ~show_points:true
-                         ~label:"Revenue" ~color:cat.(0)
-                         ~y:(fun d -> d.revenue)
-                         data;
-                       Line.series ~show_points:true ~label:"Costs"
-                         ~color:cat.(1)
-                         ~y:(fun d -> d.costs)
-                         data;
-                     ]
-                   ~x:(fun d ->
-                     Float.of_int
-                       (match
-                          List.find_index
-                            (fun d2 -> String.equal d2.month d.month)
-                            data
-                        with
-                       | Some i -> i
-                       | None -> 0))
-                   ~width:chart_w ~height:chart_h
-                   ~format_tooltip:(fun entries ->
-                     Tooltip.text
-                       (String.concat ", "
-                          (List.map
-                             (fun (l, v) -> Printf.sprintf "%s: %.0f" l v)
-                             entries)))
-                   ~on_hover:(fun h -> ChartHovered h)
-                   ~on_leave:ChartLeft ?hover:model.hover ();
+                 Named_graphic.named_graphic
+                   "Monthly revenue and costs, January to June" (fun name ->
+                     Line.view ~name
+                       ~series:
+                         [
+                           Line.series ~smooth:true ~show_points:true
+                             ~label:"Revenue" ~color:cat.(0)
+                             ~y:(fun d -> d.revenue)
+                             data;
+                           Line.series ~show_points:true ~label:"Costs"
+                             ~color:cat.(1)
+                             ~y:(fun d -> d.costs)
+                             data;
+                         ]
+                       ~x:(fun d ->
+                         Float.of_int
+                           (match
+                              List.find_index
+                                (fun d2 -> String.equal d2.month d.month)
+                                data
+                            with
+                           | Some i -> i
+                           | None -> 0))
+                       ~width:chart_w ~height:chart_h
+                       ~format_tooltip:(fun entries ->
+                         Tooltip.text
+                           (String.concat ", "
+                              (List.map
+                                 (fun (l, v) -> Printf.sprintf "%s: %.0f" l v)
+                                 entries)))
+                       ~on_hover:(fun h -> ChartHovered h)
+                       ~on_leave:ChartLeft ?hover:model.hover ());
                ];
            ];
          (* Row: pie chart + legend *)
@@ -202,14 +209,16 @@ let view _vp model =
                [
                  Element.styled_text ~text_style:card_heading_text
                    "Revenue Breakdown";
-                 Pie.view ~data:pie_data
-                   ~value:(fun (_, v, _) -> v)
-                   ~label:(fun (l, _, _) -> l)
-                   ~color:(fun (_, _, c) -> c)
-                   ~width:200.0 ~height:200.0
-                   ~format_tooltip:(fun (l, v, _) ->
-                     Tooltip.text (Printf.sprintf "%s: %.0f%%" l v))
-                   ();
+                 Named_graphic.named_graphic "Revenue breakdown by product"
+                   (fun name ->
+                     Pie.view ~name ~data:pie_data
+                       ~value:(fun (_, v, _) -> v)
+                       ~label:(fun (l, _, _) -> l)
+                       ~color:(fun (_, _, c) -> c)
+                       ~width:200.0 ~height:200.0
+                       ~format_tooltip:(fun (l, v, _) ->
+                         Tooltip.text (Printf.sprintf "%s: %.0f%%" l v))
+                       ());
                ];
              Element.column ~style:card_style
                ~attrs:[ ("data-testid", "dashboard-legend") ]

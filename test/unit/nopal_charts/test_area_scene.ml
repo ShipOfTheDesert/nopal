@@ -33,8 +33,8 @@ let test_area_scene_matches_view () =
       ()
   in
   let view_el =
-    Area.view ~series:[ series_a; series_b ] ~x:fst ~width:400.0 ~height:300.0
-      ()
+    Area.view ~name:Nopal_element.Graphic_name.decorative
+      ~series:[ series_a; series_b ] ~x:fst ~width:400.0 ~height:300.0 ()
   in
   match Chart_test_helpers.extract_draw view_el with
   | Some (view_scene, _, _, _, _) ->

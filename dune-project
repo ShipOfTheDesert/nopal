@@ -52,6 +52,14 @@
  (name nopal_scene)
  (synopsis "Pure scene description types for Nopal")
  (depends
+  (qcheck-core
+   (and
+    (>= 0.91)
+    :with-test))
+  (qcheck-alcotest
+   (and
+    (>= 0.91)
+    :with-test))
   (alcotest
    (and
     (>= 1.9.1)

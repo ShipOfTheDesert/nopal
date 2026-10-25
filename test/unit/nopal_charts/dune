@@ -36,6 +36,7 @@
   chart_test_helpers
   nopal_charts
   nopal_draw
+  nopal_scene
   nopal_element
   nopal_style
   nopal_svg

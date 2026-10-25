@@ -7,10 +7,13 @@ type msg = Hovered of Hover.t | Left | Noop
 (* --- helpers --- *)
 
 let sample = [ (1.0, 10.0); (2.0, 20.0); (3.0, 15.0); (4.0, 25.0) ]
+let chart_name = "Response time against load"
+let graphic_name = Chart_test_helpers.graphic_name
+let check_canvas_name = Chart_test_helpers.check_canvas_name
 
 let scatter_view ?(on_hover = fun _ -> Noop) ?(on_leave = Noop) ?hover ?radius
     ?format_tooltip data =
-  Scatter.view ~data ~x:fst ~y:snd
+  Scatter.view ~name:(graphic_name chart_name) ~data ~x:fst ~y:snd
     ~color:(fun _ -> Color.categorical.(0))
     ~width:400.0 ~height:300.0 ~on_hover ~on_leave ?hover ?radius
     ?format_tooltip ()
@@ -34,6 +37,13 @@ let get_circle_radii (scene : Scene.t list) =
     scene
 
 (* --- tests --- *)
+
+let scatter_passes_name_on_empty_data () =
+  check_canvas_name "empty scatter" (graphic_name chart_name) (scatter_view [])
+
+let scatter_passes_name_on_data () =
+  check_canvas_name "scatter with data" (graphic_name chart_name)
+    (scatter_view sample)
 
 let test_empty_data () =
   let el = scatter_view [] in
@@ -95,7 +105,7 @@ let test_hover_enlarged_point () =
 
 let test_hit_map_circle_regions () =
   let el =
-    Scatter.view ~data:sample ~x:fst ~y:snd
+    Scatter.view ~name:Graphic_name.decorative ~data:sample ~x:fst ~y:snd
       ~color:(fun _ -> Color.categorical.(0))
       ~width:400.0 ~height:300.0
       ~on_hover:(fun h -> Hovered h)
@@ -120,7 +130,7 @@ let test_topmost_overlap () =
      Last-drawn (index 2) should take hit priority over index 1. *)
   let data = [ (0.0, 0.0); (10.0, 10.0); (10.0, 10.0) ] in
   let el =
-    Scatter.view ~data ~x:fst ~y:snd
+    Scatter.view ~name:Graphic_name.decorative ~data ~x:fst ~y:snd
       ~color:(fun _ -> Color.categorical.(0))
       ~width:400.0 ~height:300.0
       ~on_hover:(fun h -> Hovered h)
@@ -153,5 +163,9 @@ let () =
           Alcotest.test_case "hit_map_circle_regions" `Quick
             test_hit_map_circle_regions;
           Alcotest.test_case "topmost_overlap" `Quick test_topmost_overlap;
+          Alcotest.test_case "scatter_passes_name_on_empty_data" `Quick
+            scatter_passes_name_on_empty_data;
+          Alcotest.test_case "scatter_passes_name_on_data" `Quick
+            scatter_passes_name_on_data;
         ] );
     ]

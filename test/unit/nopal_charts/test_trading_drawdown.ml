@@ -24,10 +24,15 @@ let custom_fill = Color.rgb ~r:0.8 ~g:0.2 ~b:0.2
 
 (* --- helpers --- *)
 
+let chart_name = "Portfolio drawdown"
+let graphic_name = Chart_test_helpers.graphic_name
+let check_canvas_name = Chart_test_helpers.check_canvas_name
+
 let drawdown_view ?fill_color ?on_hover ?on_leave ?hover ?format_tooltip
     ?domain_window data =
-  Trading.Drawdown.view ~data ~x:x_of ~y:dd_of ~width:400.0 ~height:300.0
-    ?fill_color ?on_hover ?on_leave ?hover ?format_tooltip ?domain_window ()
+  Trading.Drawdown.view ~name:(graphic_name chart_name) ~data ~x:x_of ~y:dd_of
+    ~width:400.0 ~height:300.0 ?fill_color ?on_hover ?on_leave ?hover
+    ?format_tooltip ?domain_window ()
 
 let extract_draw = Chart_test_helpers.extract_draw
 
@@ -49,10 +54,18 @@ let get_path_fills (scene : Scene.t list) =
 
 (* --- tests --- *)
 
+let drawdown_passes_name_on_empty_data () =
+  check_canvas_name "empty drawdown" (graphic_name chart_name)
+    (drawdown_view [])
+
+let drawdown_passes_name_on_data () =
+  check_canvas_name "drawdown with data" (graphic_name chart_name)
+    (drawdown_view sample_data)
+
 let test_empty_data () =
   let el =
-    Trading.Drawdown.view ~data:[] ~x:x_of ~y:dd_of ~width:400.0 ~height:300.0
-      ()
+    Trading.Drawdown.view ~name:(graphic_name chart_name) ~data:[] ~x:x_of
+      ~y:dd_of ~width:400.0 ~height:300.0 ()
   in
   match (el : msg Element.t) with
   | Draw { scene; _ } ->
@@ -151,5 +164,9 @@ let () =
           Alcotest.test_case "fill_color_applied" `Quick test_fill_color_applied;
           Alcotest.test_case "domain_window_clips" `Quick
             test_domain_window_clips;
+          Alcotest.test_case "drawdown_passes_name_on_empty_data" `Quick
+            drawdown_passes_name_on_empty_data;
+          Alcotest.test_case "drawdown_passes_name_on_data" `Quick
+            drawdown_passes_name_on_data;
         ] );
     ]

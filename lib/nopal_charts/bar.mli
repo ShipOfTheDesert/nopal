@@ -32,6 +32,7 @@ val scene :
     handlers. Use for SVG export or embedding in composite scenes. *)
 
 val view :
+  name:Nopal_element.Graphic_name.t ->
   data:'a list ->
   label:('a -> string) ->
   value:('a -> float) ->
@@ -49,6 +50,11 @@ val view :
   ?domain_window:Domain_window.t ->
   unit ->
   'msg Nopal_element.Element.t
-(** [view ~data ~label ~value ~color ~width ~height ()] renders an interactive
-    bar chart. When [~x] and [~domain_window] are both provided, data is clipped
-    to the visible window. *)
+(** [view ~name ~data ~label ~value ~color ~width ~height ()] renders an
+    interactive bar chart. When [~x] and [~domain_window] are both provided,
+    data is clipped to the visible window.
+
+    [name] is the accessible-name decision for the chart's canvas. It is passed
+    to [Nopal_element.Element.draw] unchanged, including when there is no data
+    to draw. The view takes no attribute list; if one is added, [name] outranks
+    it, as on [Nopal_element.Element.draw]. *)

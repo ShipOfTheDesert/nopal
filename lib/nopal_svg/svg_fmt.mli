@@ -38,6 +38,13 @@ val path_to_d : Nopal_scene.Path.segment list -> string
     a line with no subpath becomes a move to its point; a curve with no subpath
     is preceded by an [M] to its first point (the first control point). *)
 
+val graphic_name_to_attrs : Nopal_scene.Graphic_name.t -> string
+(** The root [<svg>] accessibility attributes, each preceded by a space.
+    [Named n] gives [role="img" aria-label="n"], with [n] XML-escaped. TAB, LF
+    and CR are written as character references and the other C0 characters,
+    which XML 1.0 forbids, are dropped. [Decorative] gives [aria-hidden="true"]
+    alone. *)
+
 val blend_to_css : Nopal_scene.Scene.blend -> string
 (** Blend mode to CSS [mix-blend-mode] value. *)
 

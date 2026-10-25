@@ -35,11 +35,16 @@ let custom_bearish = Color.rgb ~r:0.6 ~g:0.0 ~b:0.0
 
 (* --- helpers --- *)
 
+let chart_name = "Daily OHLC prices"
+let graphic_name = Chart_test_helpers.graphic_name
+let check_canvas_name = Chart_test_helpers.check_canvas_name
+
 let candle_view ?bullish_color ?bearish_color ?on_hover ?on_leave ?hover
     ?format_tooltip ?domain_window data =
-  Trading.Candlestick.view ~data ~x:x_of ~open_:open_of ~high:high_of
-    ~low:low_of ~close:close_of ~width:400.0 ~height:300.0 ?bullish_color
-    ?bearish_color ?on_hover ?on_leave ?hover ?format_tooltip ?domain_window ()
+  Trading.Candlestick.view ~name:(graphic_name chart_name) ~data ~x:x_of
+    ~open_:open_of ~high:high_of ~low:low_of ~close:close_of ~width:400.0
+    ~height:300.0 ?bullish_color ?bearish_color ?on_hover ?on_leave ?hover
+    ?format_tooltip ?domain_window ()
 
 let extract_draw = Chart_test_helpers.extract_draw
 
@@ -77,10 +82,19 @@ let get_rect_heights (scene : Scene.t list) =
 
 (* --- tests --- *)
 
+let candlestick_passes_name_on_empty_data () =
+  check_canvas_name "empty candlestick" (graphic_name chart_name)
+    (candle_view [])
+
+let candlestick_passes_name_on_data () =
+  check_canvas_name "candlestick with data" (graphic_name chart_name)
+    (candle_view sample_data)
+
 let test_empty_data () =
   let el =
-    Trading.Candlestick.view ~data:[] ~x:x_of ~open_:open_of ~high:high_of
-      ~low:low_of ~close:close_of ~width:400.0 ~height:300.0 ()
+    Trading.Candlestick.view ~name:(graphic_name chart_name) ~data:[] ~x:x_of
+      ~open_:open_of ~high:high_of ~low:low_of ~close:close_of ~width:400.0
+      ~height:300.0 ()
   in
   match (el : msg Element.t) with
   | Draw { scene; _ } ->
@@ -223,5 +237,9 @@ let () =
           Alcotest.test_case "domain_window_clips" `Quick
             test_domain_window_clips;
           Alcotest.test_case "doji_candle" `Quick test_doji_candle;
+          Alcotest.test_case "candlestick_passes_name_on_empty_data" `Quick
+            candlestick_passes_name_on_empty_data;
+          Alcotest.test_case "candlestick_passes_name_on_data" `Quick
+            candlestick_passes_name_on_data;
         ] );
     ]

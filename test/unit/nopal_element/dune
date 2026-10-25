@@ -1,6 +1,6 @@
 (test
  (name test_element)
- (libraries nopal_element nopal_style alcotest))
+ (libraries nopal_element nopal_style test_util alcotest))
 
 (test
  (name test_element_events)
@@ -12,7 +12,7 @@
 
 (test
  (name test_draw_element)
- (libraries nopal_element nopal_style nopal_scene alcotest))
+ (libraries nopal_element nopal_style nopal_scene test_util alcotest))
 
 (test
  (name test_size_class)

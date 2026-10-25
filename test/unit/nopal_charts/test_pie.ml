@@ -13,9 +13,13 @@ let sample =
     ("Cherry", 20.0, Color.categorical.(2));
   ]
 
+let chart_name = "Allocation by asset class"
+let graphic_name = Chart_test_helpers.graphic_name
+let check_canvas_name = Chart_test_helpers.check_canvas_name
+
 let pie_view ?(inner_radius = 0.0) ?label_threshold ?on_hover ?on_leave ?hover
     ?format_tooltip data =
-  Pie.view ~data
+  Pie.view ~name:(graphic_name chart_name) ~data
     ~value:(fun (_, v, _) -> v)
     ~label:(fun (l, _, _) -> l)
     ~color:(fun (_, _, c) -> c)
@@ -56,6 +60,14 @@ let test_empty_data () =
   | Draw { scene; _ } ->
       Alcotest.(check int) "empty scene" 0 (List.length scene)
   | _ -> Alcotest.fail "expected Draw element for empty data"
+
+let pie_passes_name_on_empty_data () =
+  check_canvas_name "empty pie" (graphic_name chart_name)
+    (pie_view [] : msg Element.t)
+
+let pie_passes_name_on_data () =
+  check_canvas_name "donut with data" (graphic_name chart_name)
+    (pie_view ~inner_radius:80.0 sample : msg Element.t)
 
 let test_single_segment_full_circle () =
   let data = [ ("Only", 100.0, Color.categorical.(0)) ] in
@@ -126,7 +138,7 @@ let test_hover_offset_segment () =
 
 let test_hit_map_wedge_regions () =
   let el =
-    Pie.view ~data:sample
+    Pie.view ~name:(graphic_name chart_name) ~data:sample
       ~value:(fun (_, v, _) -> v)
       ~label:(fun (l, _, _) -> l)
       ~color:(fun (_, _, c) -> c)
@@ -147,7 +159,7 @@ let test_hit_map_wedge_regions () =
 
 let test_donut_hit_map_inner_radius () =
   let el =
-    Pie.view ~data:sample
+    Pie.view ~name:(graphic_name chart_name) ~data:sample
       ~value:(fun (_, v, _) -> v)
       ~label:(fun (l, _, _) -> l)
       ~color:(fun (_, _, c) -> c)
@@ -233,5 +245,9 @@ let () =
             test_donut_hit_map_inner_radius;
           Alcotest.test_case "zero_value_segment" `Quick test_zero_value_segment;
           Alcotest.test_case "very_small_wedge" `Quick test_very_small_wedge;
+          Alcotest.test_case "pie_passes_name_on_empty_data" `Quick
+            pie_passes_name_on_empty_data;
+          Alcotest.test_case "pie_passes_name_on_data" `Quick
+            pie_passes_name_on_data;
         ] );
     ]

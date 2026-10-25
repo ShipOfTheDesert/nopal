@@ -1,4 +1,4 @@
-(** Legend component for chart series labels and colour swatches. REQ-F7. *)
+(** Legend component for chart series labels and colour swatches. *)
 
 type direction = Horizontal | Vertical
 type entry = { label : string; color : Nopal_draw.Color.t }

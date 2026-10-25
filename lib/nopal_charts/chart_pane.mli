@@ -1,4 +1,4 @@
-(** Multi-pane synchronized layout container. REQ-F5, REQ-F6.
+(** Multi-pane synchronized layout container.
 
     Renders vertically stacked chart panes sharing a single X axis domain
     window. Pane heights are proportional to their [height_ratio] values

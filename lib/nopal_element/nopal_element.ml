@@ -1,5 +1,6 @@
 module Attrs = Attrs
 module Element = Element
+module Graphic_name = Nopal_scene.Graphic_name
 module Link = Link
 module Reveal = Reveal
 module Route_path = Route_path

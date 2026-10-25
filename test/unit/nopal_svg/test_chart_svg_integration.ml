@@ -12,7 +12,10 @@ let test_line_scene_to_svg () =
   let scene =
     Line.scene ~series:[ series_a ] ~x:fst ~width:400.0 ~height:300.0 ()
   in
-  let svg = Nopal_svg.render ~width:400.0 ~height:300.0 scene in
+  let svg =
+    Nopal_svg.render ~name:Nopal_scene.Graphic_name.decorative ~width:400.0
+      ~height:300.0 scene
+  in
   Alcotest.(check bool)
     "starts with <svg" true
     (String.length svg > 0 && String.sub svg 0 4 = "<svg");
@@ -55,7 +58,10 @@ let test_line_scene_to_svg () =
 let test_sparkline_scene_to_svg () =
   let data = [ 10.0; 20.0; 15.0; 25.0; 18.0 ] in
   let scene = Sparkline.scene ~data ~width:100.0 ~height:30.0 () in
-  let svg = Nopal_svg.render ~width:100.0 ~height:30.0 scene in
+  let svg =
+    Nopal_svg.render ~name:Nopal_scene.Graphic_name.decorative ~width:100.0
+      ~height:30.0 scene
+  in
   Alcotest.(check bool)
     "starts with <svg" true
     (String.length svg > 0 && String.sub svg 0 4 = "<svg");

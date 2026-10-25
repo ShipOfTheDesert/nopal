@@ -302,10 +302,12 @@ the tick labels and the axis label. `test/e2e/tests/kitchen-sink-charts.spec.ts`
 asserts none of it, and will not.
 
 Observed on 2026-09-01 by reading the sources rather than inferred: charts are
-`Element.draw` nodes, which `backends/nopal_web/renderer.ml:746` turns into a
+`Element.draw` nodes, which the `Draw` create arm of `backends/nopal_web/renderer.ml` turns into a
 single `<canvas>`, and every axis line, tick and label is painted into that
 canvas's 2D context by `backends/nopal_web/canvas_renderer.ml`. None of them
-reaches a DOM node. So there is nothing for a DOM assertion to read, and the
+reaches a DOM node. So the canvas pixels give a DOM assertion nothing to read
+(the accessible-name attributes on the `<canvas>` element are readable, and are
+asserted by role and name), and the
 render-correctness carve-out this project reserves DOM assertions for has no
 target: the only browser-side assertion available at all is a pixel sample
 through `getImageData`.
@@ -700,7 +702,7 @@ nopal_element      ← depends on scene + style, no platform deps, no browser ty
 nopal_platform     ← depends on nopal_element (Router.destination's Link.destination)
 nopal_tauri.mount  ← depends on nopal_web
 nopal_style        ← no platform deps
-nopal_scene        ← depends on style, no platform deps (Color, Paint, Transform, Path, Scene)
+nopal_scene        ← depends on style, no platform deps (Color, Paint, Transform, Path, Scene, Graphic_name)
 nopal_draw         ← depends on scene + style (Scale + higher-level Path algorithms)
 nopal_http         ← depends on mvu, no platform deps
 nopal_image        ← depends on mvu, no platform deps (Buffer, Luma, Sharpness, Config, Processing, Preview, Retention)
@@ -817,7 +819,7 @@ Where an element builder takes both an `~attrs` list and a typed field a backend
 renders as an attribute — `placeholder`, a radio's `name`, a picker's
 `accept`/`capture`/`multiple`, `disabled`, a container's `focusable`, an input's
 `required`/`autocomplete`/`input_type`, a form's `autocomplete`/`novalidate`, a
-button's `button_type`/`disabled` — the rule is: **typed-field derivations
+button's `button_type`/`disabled`, a drawing's or an image's `name` — the rule is: **typed-field derivations
 beat the `~attrs` list; within the list, the last pair wins.** Those are two
 tiers and they are not the same tier. A typed field
 sits above the list, so `~attrs` is an escape hatch for keys the DSL does not
@@ -853,20 +855,24 @@ Two renderers enforce this and no more than two, by two different mechanisms:
 `nopal_test` appends derived pairs after the declared list and resolves every
 lookup to the last pair. The within-list half of the rule is one function,
 `Nopal_element.Attrs.resolve`, which both call, so there is a single definition
-of what a repeated key answers. `Element.draw` carries neither a `Style.t` nor an
-`attrs` list and is structurally outside the rule. A backend nobody has written
+of what a repeated key answers. `Element.draw` and `Element.image` take no `attrs`
+list, so the pairs each derives from its required `name` are the only source of
+those keys and there is no caller pair for them to outrank; should either gain
+an `attrs` list, its `name` outranks it under this rule. A backend nobody has written
 is bound by nothing here — a rule holds where a test holds it.
 
 The first tier is a rule both renderers hold on the keys `nopal_web` writes as
 real attributes: `disabled`, `accept`, `capture`, `multiple`, `placeholder`, a
 radio's `name`, a control's `type`, an input's `required`, `aria-required` and
-`autocomplete`, a form's `autocomplete` and `novalidate`, and a button's `type`
-and `aria-disabled`. Every one carries the same value in both renderers except
+`autocomplete`, a form's `autocomplete` and `novalidate`, a button's `type`
+and `aria-disabled`, a drawing's `role`, `aria-label` and `aria-hidden`, and an
+image's `alt`. Every one carries the same value in both renderers except
 `disabled`, `multiple`, `required` and `novalidate`, which are a presence
 attribute (`""`) in the DOM and `"true"` in the structural tree, so the two
 agree on which side wins and not on the value; `aria-required` and a button's
-`aria-disabled` are `"true"` in both, and a button's `type` is `"button"` or
-`"submit"` in both. A checkbox's, radio's or file picker's
+`aria-disabled` are `"true"` in both, a button's `type` is `"button"` or
+`"submit"` in both, a drawing's `role` is `"img"` and its `aria-hidden` `"true"`
+in both, and a decorative image's `alt` is present and `""` in both. A checkbox's, radio's or file picker's
 `type` is the structural node's tag, while an input's is a pair in both
 renderers. A container's `focusable` is a first-tier
 derivation in both, but each spells it in its own vocabulary — a tab-order

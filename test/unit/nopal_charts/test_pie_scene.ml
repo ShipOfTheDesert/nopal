@@ -37,7 +37,7 @@ let test_pie_scene_matches_view () =
       ~width:400.0 ~height:400.0 ()
   in
   let view_el =
-    Pie.view ~data:sample
+    Pie.view ~name:Nopal_element.Graphic_name.decorative ~data:sample
       ~value:(fun (_, v, _) -> v)
       ~label:(fun (l, _, _) -> l)
       ~color:(fun (_, _, c) -> c)

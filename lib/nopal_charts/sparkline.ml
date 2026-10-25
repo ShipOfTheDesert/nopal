@@ -32,8 +32,8 @@ let scene ~data ~width ~height ?(color = Nopal_draw.Color.categorical.(0))
       let line = Nopal_draw.Scene.polyline ~stroke points in
       [ line ]
 
-let view ~data ~width ~height ?(color = Nopal_draw.Color.categorical.(0))
+let view ~name ~data ~width ~height ?(color = Nopal_draw.Color.categorical.(0))
     ?(stroke_width = 1.5) () =
   match scene ~data ~width ~height ~color ~stroke_width () with
-  | [] -> Nopal_element.Element.draw ~width ~height []
-  | nodes -> Nopal_element.Element.draw ~width ~height nodes
+  | [] -> Nopal_element.Element.draw ~name ~width ~height []
+  | nodes -> Nopal_element.Element.draw ~name ~width ~height nodes

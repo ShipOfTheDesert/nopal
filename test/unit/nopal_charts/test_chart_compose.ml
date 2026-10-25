@@ -11,7 +11,10 @@ let sample_scene =
   ]
 
 let test_compose_with_tooltip () =
-  let draw_el = Element.draw ~width:400.0 ~height:300.0 sample_scene in
+  let draw_el =
+    Element.draw ~name:Graphic_name.decorative ~width:400.0 ~height:300.0
+      sample_scene
+  in
   let tooltip =
     Some
       (Tooltip.container ~x:50.0 ~y:50.0 ~chart_width:400.0 ~chart_height:300.0
@@ -22,10 +25,30 @@ let test_compose_with_tooltip () =
   | Box { children; _ } ->
       (* Should have both draw and tooltip children *)
       Alcotest.(check bool) "has children" true (List.length children >= 2)
-  | _ -> Alcotest.fail "expected Box element"
+  | Empty
+  | Text _
+  | Row _
+  | Column _
+  | Form _
+  | Button _
+  | Link _
+  | Input _
+  | Checkbox _
+  | Radio _
+  | Select _
+  | File_input _
+  | Image _
+  | Scroll _
+  | Keyed _
+  | Draw _
+  | Virtual_list _ ->
+      Alcotest.fail "expected Box element"
 
 let test_compose_dimensions () =
-  let draw_el = Element.draw ~width:400.0 ~height:300.0 sample_scene in
+  let draw_el =
+    Element.draw ~name:Graphic_name.decorative ~width:400.0 ~height:300.0
+      sample_scene
+  in
   let el =
     Chart_compose.compose ~draw_el ~width:400.0 ~height:300.0 ~tooltip:None
   in
@@ -38,11 +61,45 @@ let test_compose_dimensions () =
             match child with
             | Draw { width; height; _ } ->
                 Float.equal width 400.0 && Float.equal height 300.0
-            | _ -> false)
+            | Empty
+            | Text _
+            | Box _
+            | Row _
+            | Column _
+            | Form _
+            | Button _
+            | Link _
+            | Input _
+            | Checkbox _
+            | Radio _
+            | Select _
+            | File_input _
+            | Image _
+            | Scroll _
+            | Keyed _
+            | Virtual_list _ ->
+                false)
           children
       in
       Alcotest.(check bool) "draw child with correct dimensions" true has_draw
-  | _ -> Alcotest.fail "expected Box element"
+  | Empty
+  | Text _
+  | Row _
+  | Column _
+  | Form _
+  | Button _
+  | Link _
+  | Input _
+  | Checkbox _
+  | Radio _
+  | Select _
+  | File_input _
+  | Image _
+  | Scroll _
+  | Keyed _
+  | Draw _
+  | Virtual_list _ ->
+      Alcotest.fail "expected Box element"
 
 let () =
   Alcotest.run "Chart_compose"

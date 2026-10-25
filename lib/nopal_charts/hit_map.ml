@@ -16,7 +16,7 @@ type region =
 
 (* Regions stored in reverse draw order (most recent first) via cons.
    hit_test scans front-to-back, so the last-added region is tested first
-   (topmost priority, REQ-F15). *)
+   (topmost priority). *)
 type t = region list
 
 let empty = []

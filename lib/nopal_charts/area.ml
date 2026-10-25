@@ -164,7 +164,7 @@ let scene ~series ~x ~width ~height ?(mode = Overlapping)
       in
       scene_nodes @ x_axis_scene @ y_axis_scene
 
-let view ~series ~x ~width ~height ?(mode = Overlapping)
+let view ~name ~series ~x ~width ~height ?(mode = Overlapping)
     ?(padding = Padding.default) ?(x_axis = Axis.default_config)
     ?(y_axis = Axis.default_config) ?format_tooltip ?on_hover ?on_leave ?hover
     ?domain_window () =
@@ -173,7 +173,7 @@ let view ~series ~x ~width ~height ?(mode = Overlapping)
       ?domain_window ()
   in
   match all_scene with
-  | [] -> Nopal_element.Element.draw ~width ~height []
+  | [] -> Nopal_element.Element.draw ~name ~width ~height []
   | _ ->
       (* Recompute hit map for interaction *)
       let clipped_series =
@@ -247,8 +247,8 @@ let view ~series ~x ~width ~height ?(mode = Overlapping)
         | _ -> None
       in
       let draw_el =
-        Nopal_element.Element.draw ?on_pointer_move ?on_pointer_leave:on_leave
-          ~width ~height all_scene
+        Nopal_element.Element.draw ~name ?on_pointer_move
+          ?on_pointer_leave:on_leave ~width ~height all_scene
       in
       let tooltip =
         match (hover, format_tooltip) with

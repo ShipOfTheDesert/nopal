@@ -17,10 +17,14 @@ let series_b =
   mk_series ~label:"B" ~color:Color.categorical.(1)
     [ (0.0, 5.0); (1.0, 25.0); (2.0, 10.0) ]
 
+let chart_name = "Visitors per day"
+let graphic_name = Chart_test_helpers.graphic_name
+let check_canvas_name = Chart_test_helpers.check_canvas_name
+
 let area_view ?(series = [ series_a ]) ?(mode = Area.Overlapping) ?on_hover
     ?on_leave ?hover ?format_tooltip () =
-  Area.view ~series ~x:fst ~width:400.0 ~height:300.0 ~mode ?on_hover ?on_leave
-    ?hover ?format_tooltip ()
+  Area.view ~name:(graphic_name chart_name) ~series ~x:fst ~width:400.0
+    ~height:300.0 ~mode ?on_hover ?on_leave ?hover ?format_tooltip ()
 
 let extract_draw = Chart_test_helpers.extract_draw
 
@@ -49,11 +53,24 @@ let count_filled_paths (scene : Scene.t list) =
 (* --- tests --- *)
 
 let test_empty_series () =
-  let el = Area.view ~series:[] ~x:fst ~width:400.0 ~height:300.0 () in
+  let el =
+    Area.view ~name:(graphic_name chart_name) ~series:[] ~x:fst ~width:400.0
+      ~height:300.0 ()
+  in
   match (el : msg Element.t) with
   | Draw { scene; _ } ->
       Alcotest.(check int) "empty scene" 0 (List.length scene)
   | _ -> Alcotest.fail "expected Draw element for empty series"
+
+let area_passes_name_on_empty_data () =
+  let name = graphic_name "Visitors per day, no data yet" in
+  check_canvas_name "empty area" name
+    (Area.view ~name ~series:[] ~x:fst ~width:400.0 ~height:300.0 ()
+      : msg Element.t)
+
+let area_passes_name_on_data () =
+  check_canvas_name "area with data" (graphic_name chart_name)
+    (area_view ~series:[ series_a; series_b ] () : msg Element.t)
 
 let test_overlapping_mode () =
   let el = area_view ~series:[ series_a; series_b ] ~mode:Overlapping () in
@@ -145,5 +162,9 @@ let () =
             test_hover_vertical_band;
           Alcotest.test_case "blend_mode_overlapping" `Quick
             test_blend_mode_overlapping;
+          Alcotest.test_case "area_passes_name_on_empty_data" `Quick
+            area_passes_name_on_empty_data;
+          Alcotest.test_case "area_passes_name_on_data" `Quick
+            area_passes_name_on_data;
         ] );
     ]
