@@ -1,5 +1,6 @@
 type direction = Row_dir | Column_dir
-type align = Start | Center | End_ | Stretch | Space_between
+type align = Start | Center | End_ | Space_between
+type cross_align = Start | Center | End_ | Stretch
 type size = Fill | Hug | Fixed of float | Fraction of float
 
 type color = Color.t =
@@ -31,7 +32,7 @@ type position = Pos_static | Pos_relative | Pos_absolute | Pos_fixed
 type layout = {
   direction : direction option;
   main_align : align option;
-  cross_align : align option;
+  cross_align : cross_align option;
   wrap : bool option;
   gap : float option;
   padding_top : float option;
@@ -164,14 +165,21 @@ let equal_direction a b =
   | Column_dir, Column_dir -> true
   | (Row_dir | Column_dir), _ -> false
 
-let equal_align a b =
+let equal_align (a : align) (b : align) =
+  match (a, b) with
+  | Start, Start -> true
+  | Center, Center -> true
+  | End_, End_ -> true
+  | Space_between, Space_between -> true
+  | (Start | Center | End_ | Space_between), _ -> false
+
+let equal_cross_align (a : cross_align) (b : cross_align) =
   match (a, b) with
   | Start, Start -> true
   | Center, Center -> true
   | End_, End_ -> true
   | Stretch, Stretch -> true
-  | Space_between, Space_between -> true
-  | (Start | Center | End_ | Stretch | Space_between), _ -> false
+  | (Start | Center | End_ | Stretch), _ -> false
 
 let equal_position a b =
   match (a, b) with
@@ -184,7 +192,7 @@ let equal_position a b =
 let equal_layout a b =
   Option.equal equal_direction a.direction b.direction
   && Option.equal equal_align a.main_align b.main_align
-  && Option.equal equal_align a.cross_align b.cross_align
+  && Option.equal equal_cross_align a.cross_align b.cross_align
   && Option.equal Bool.equal a.wrap b.wrap
   && Option.equal Float.equal a.gap b.gap
   && Option.equal Float.equal a.padding_top b.padding_top

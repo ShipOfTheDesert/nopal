@@ -33,6 +33,7 @@
   sub_links
   sub_donut
   sub_headings
+  sub_alignment
   named_graphic
   tauri_op)
  (libraries

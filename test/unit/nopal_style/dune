@@ -3,6 +3,6 @@
  (libraries nopal_style alcotest))
 
 (cram
- (applies_to stack_needs_last_resort)
+ (applies_to stack_needs_last_resort axis_alignment_rejects_invalid)
  (deps
   (package nopal_style)))

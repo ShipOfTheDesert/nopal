@@ -64,7 +64,7 @@ dispatched and the model reflects them." Or: "Given an app that issues
 `Cmd.async fetch_data`, resolve the pending command with `Ok data`, assert
 the model updated correctly."
 
-### Split `align` Type in `nopal_style`
+### Split `align` Type in `nopal_style` [x]
 
 **Package:** `nopal_style`
 

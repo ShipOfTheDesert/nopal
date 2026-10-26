@@ -7,7 +7,30 @@
 (** {1 Supporting types} *)
 
 type direction = Row_dir | Column_dir
-type align = Start | Center | End_ | Stretch | Space_between
+
+(** Where children sit along the axis their container lays them out along. It is
+    the type of [layout.main_align].
+
+    Every value renders as written. There is no [Stretch] on this axis: the
+    platform accepts a stretch there and lays it out exactly as [Start], so the
+    value could only ever have meant [Start]. A child fills this axis through
+    [layout.flex_grow] or a [Fill] size instead. *)
+type align = Start | Center | End_ | Space_between
+
+(** Where children sit across the axis their container lays them out along. It
+    is the type of [layout.cross_align].
+
+    Every value renders as written. There is no [Space_between] on this axis:
+    the platform drops it there and stretches the children as though nothing had
+    been set. Distributing the lines of a wrapping container across this axis is
+    a different property, and it cannot be expressed with this type or with any
+    other field of {!type-layout}.
+
+    The constructors share their names with {!align}'s. Where the expected type
+    is known, as in a [layout] field, a bare constructor resolves to the right
+    one. A binding with no annotation resolves to [cross_align], the type
+    defined last, so a value bound for [main_align] is annotated [align]. *)
+type cross_align = Start | Center | End_ | Stretch
 
 (** How much room one dimension of an element asks for.
 
@@ -73,7 +96,7 @@ type position = Pos_static | Pos_relative | Pos_absolute | Pos_fixed
 type layout = {
   direction : direction option;
   main_align : align option;
-  cross_align : align option;
+  cross_align : cross_align option;
   wrap : bool option;
   gap : float option;
   padding_top : float option;
@@ -194,6 +217,14 @@ val padding_all : float -> layout -> layout
 
 val equal_color : color -> color -> bool
 (** Structural equality for colors. Uses [Float.equal] for alpha. *)
+
+val equal_align : align -> align -> bool
+(** [equal_align a b] holds exactly when [a] and [b] are the same constructor.
+*)
+
+val equal_cross_align : cross_align -> cross_align -> bool
+(** [equal_cross_align a b] holds exactly when [a] and [b] are the same
+    constructor. *)
 
 val equal_layout : layout -> layout -> bool
 (** Structural equality for layouts. Uses [Float.equal] for float fields. *)
