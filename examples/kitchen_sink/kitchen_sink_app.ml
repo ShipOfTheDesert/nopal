@@ -4138,6 +4138,10 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
              "Headings"
              [ Sub_headings.view () ];
            view_layout model;
+           view_section
+             ~attrs:[ ("data-testid", "alignment-section") ]
+             "Alignment"
+             [ Sub_alignment.view () ];
            view_buttons model;
            view_telemetry model;
            view_inputs model;
@@ -4427,4 +4431,5 @@ module Sub_clipboard = Sub_clipboard
 module Sub_links = Sub_links
 module Sub_donut = Sub_donut
 module Sub_headings = Sub_headings
+module Sub_alignment = Sub_alignment
 module Tauri_op = Tauri_op

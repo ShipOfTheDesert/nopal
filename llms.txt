@@ -1130,7 +1130,17 @@ All styling is typed — no CSS strings in view code.
 ```ocaml
 (* Layout — all fields are optional; None means "no opinion" *)
 type direction = Row_dir | Column_dir
-type align = Start | Center | End_ | Stretch | Space_between
+type align = Start | Center | End_ | Space_between
+(* The main axis (layout.main_align): justify-content flex-start, center,
+   flex-end, space-between. No Stretch: the platform lays a main-axis stretch out
+   exactly as Start, so a child fills this axis through flex_grow or Fill. *)
+type cross_align = Start | Center | End_ | Stretch
+(* The cross axis (layout.cross_align): align-items flex-start, center,
+   flex-end, stretch. No Space_between: the platform drops it there and
+   stretches. The constructor names are shared. In a layout field a bare
+   constructor resolves to the field's type; an unannotated binding resolves to
+   cross_align, the type defined last, so a value bound for main_align is
+   annotated Style.align. *)
 type size = Fill | Hug | Fixed of float | Fraction of float
 (* Fixed is honoured on the axis the parent lays its children out along: the
    element is not squeezed below that size, whatever a sibling's content would
@@ -1155,7 +1165,7 @@ type size = Fill | Hug | Fixed of float | Fraction of float
 
 type layout = {
   direction : direction option; main_align : align option;
-  cross_align : align option; wrap : bool option; gap : float option;
+  cross_align : cross_align option; wrap : bool option; gap : float option;
   padding_top : float option; padding_right : float option;
   padding_bottom : float option; padding_left : float option;
   width : size option; height : size option; flex_grow : float option;
@@ -4607,6 +4617,52 @@ caller's choice. The Typography section's "Heading scale" rows are a type-scale
 demonstration and stay styled text, not headings. The `Test_renderer` selectors
 are unchanged; `By_tag "h2"` finds a level-2 heading, but `find_heading` is the
 documented query.
+
+**Alignment answers that moved — read this on a pin bump.**
+`layout.main_align` and `layout.cross_align` no longer share a type: the main
+axis keeps `Style.align`, now `Start | Center | End_ | Space_between`, and the
+cross axis takes the new `Style.cross_align`, `Start | Center | End_ | Stretch`.
+**Every `Stretch` written for the main axis stops compiling** (row 1): the
+error says there is no constructor `Stretch` within `Style.align`. **Every
+`Space_between` written for the cross axis stops compiling** (row 2): the error
+says there is no constructor `Space_between` within `Style.cross_align`. **Every
+exhaustive `match` that names a removed value stops compiling** (row 3): an arm
+for `Stretch` on a main-axis value, or for `Space_between` on a cross-axis
+value. **A binding whose type no longer matches the field it reaches stops
+compiling** (row 4). Code that wrote `cross_align = Some Space_between` or
+`main_align = Some Stretch` compiled before but never rendered as written: the
+browser dropped the first and stretched the children as though nothing had
+been set, and laid the second out exactly as `Start`. Each "Now" says what to
+write instead, and the replacement keeps what actually rendered.
+
+"Before" is the tree at commit `9870b5b`. The Where column names the output
+whose answer moved: web (the CSS the DOM backend writes, inline and in class
+rules), or all of them for a compile break. No test reads this table. The
+behaviour each row describes is tested in `nopal_style`'s `Style` suite and its
+compile-fail cram test, the web `Style_css` suite, the kitchen-sink alignment
+suite and the kitchen-sink Playwright cases, but an edit to the text alone
+reddens no test.
+
+| # | Key | Visible | Where | When | Before | Now |
+|---|---|---|---|---|---|---|
+| 1 | `main-align-stretch-removed` | compile | all | a `main_align = Some Stretch` literal, or any `Stretch` of type `Style.align` | compiled; the web backend emitted `justify-content: stretch`, which the browser accepts and lays out exactly as `flex-start` | removed. Replace with `Start` for the same geometry, or with `flex_grow` or a `Fill` size on the children if filling the axis was meant |
+| 2 | `cross-align-space-between-removed` | compile | all | a `cross_align = Some Space_between` literal | compiled; the web backend emitted `align-items: space-between`, which the browser drops, so the children stretched | removed. Replace with `Some Stretch` or `None`, which is what rendered. Distributing a wrapping container's lines has no replacement: no field of `Style.layout` expresses it |
+| 3 | `align-match-removed-arm` | compile | all | an exhaustive `match` on a `Style.align` naming `Stretch`, or on a `layout.cross_align` naming `Space_between` | compiled | the arm is a compile error. Fix: delete it |
+| 4 | `layout-cross-align-retyped` | compile | all | a value annotated `Style.align` passed to `cross_align`, or an unannotated binding (which now resolves to `Style.cross_align`) passed to `main_align` | `cross_align : align option` | `cross_align : cross_align option`. Fix: annotate the binding `: Style.align` or `: Style.cross_align`, or retype it. A kept constructor written straight into either field compiles unchanged |
+| 5 | `style-cross-align` | additive | all | `Nopal_style.Style` | — | `type cross_align = Start \| Center \| End_ \| Stretch` `equal_align : align -> align -> bool` and `equal_cross_align : cross_align -> cross_align -> bool`, each of which holds exactly when both are the same constructor. `equal_layout` compares `main_align` and `cross_align` with them |
+| 6 | `web-alignment-tokens` | bytes | web | the `justify-content` and `align-items` the DOM backend writes, inline and in interaction rules | `justify-content: stretch` and `align-items: space-between` could be emitted | neither can. Every kept value emits the bytes it emitted before: `justify-content` `flex-start`, `center`, `flex-end`, `space-between`; `align-items` `flex-start`, `center`, `flex-end`, `stretch` |
+| 7 | `kitchen-sink-alignment-section` | example | web | anyone copying the kitchen sink | no Alignment section | an "Alignment" section (`data-testid="alignment-section"`) right after Layout: one row per main-axis value (`align-main-start`, `-center`, `-end`, `-space-between`) and one per cross-axis value (`align-cross-start`, `-center`, `-end`, `-stretch`), the cross rows holding boxes of unequal height (`examples/kitchen_sink/sub_alignment.ml`) |
+
+What did **not** move, recorded so a reader does not go looking. A constructor
+written straight into a `layout` field compiles unchanged where its value is
+kept: `Start`, `Center` and `End_` on either axis, `Space_between` in
+`main_align` and `Stretch` in `cross_align`. The field's type picks the
+constructor, with no warning, and the emitted bytes are those listed in row 6.
+The name `Style.align` still names the main axis, so an existing `: Style.align`
+annotation on a main-axis value compiles. Nothing emits `align-content` or
+`align-self`, before or now, and no element takes per-child alignment. The
+structural `Test_renderer` carries `Style.t` as written and interprets no
+alignment, so a structural test reads the value the browser applies.
 
 #### Telemetry harness (`Nopal_test.Telemetry_test`)
 

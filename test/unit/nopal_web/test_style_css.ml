@@ -225,6 +225,84 @@ let test_cross_align_stretch_produces_css () =
   let props = of_style ~parent_axis:None style in
   check_has_prop "align-items" "stretch" props
 
+(* The tokens each axis's property renders as written in the browser. A token
+   outside its set is either dropped by the parser or laid out as another. *)
+let main_axis_tokens = [ "flex-start"; "center"; "flex-end"; "space-between" ]
+let cross_axis_tokens = [ "flex-start"; "center"; "flex-end"; "stretch" ]
+
+(* Each list sits beside an exhaustive or-pattern, so a constructor added to the
+   type stops this compiling, which points at the list to extend. *)
+let every_main_align =
+  let listed : align -> align list = function
+    | Start
+    | Center
+    | End_
+    | Space_between ->
+        [ Start; Center; End_; Space_between ]
+  in
+  listed Start
+
+let every_cross_align =
+  let listed : cross_align -> cross_align list = function
+    | Start
+    | Center
+    | End_
+    | Stretch ->
+        [ Start; Center; End_; Stretch ]
+  in
+  listed Start
+
+let justify_written_as : align -> string = function
+  | Start -> "flex-start"
+  | Center -> "center"
+  | End_ -> "flex-end"
+  | Space_between -> "space-between"
+
+let items_written_as : cross_align -> string = function
+  | Start -> "flex-start"
+  | Center -> "center"
+  | End_ -> "flex-end"
+  | Stretch -> "stretch"
+
+let emitted_value property set_layout =
+  let props = of_style ~parent_axis:None (with_layout set_layout default) in
+  match find_prop property props with
+  | Some p -> p.value
+  | None ->
+      Alcotest.failf "expected property %S but not found in [%s]" property
+        (String.concat "; " (List.map css_prop_to_string props))
+
+let check_renders_as_written ~property ~accepted token =
+  Alcotest.(check bool)
+    (Printf.sprintf "%s:%s is a token the browser renders as written" property
+       token)
+    true
+    (List.exists (String.equal token) accepted)
+
+let test_main_align_tokens_render_as_written () =
+  List.iter
+    (fun a ->
+      let token =
+        emitted_value "justify-content" (fun l ->
+            { l with main_align = Some a })
+      in
+      check_renders_as_written ~property:"justify-content"
+        ~accepted:main_axis_tokens token;
+      Alcotest.(check string)
+        "justify-content bytes" (justify_written_as a) token)
+    every_main_align
+
+let test_cross_align_tokens_render_as_written () =
+  List.iter
+    (fun a ->
+      let token =
+        emitted_value "align-items" (fun l -> { l with cross_align = Some a })
+      in
+      check_renders_as_written ~property:"align-items"
+        ~accepted:cross_axis_tokens token;
+      Alcotest.(check string) "align-items bytes" (items_written_as a) token)
+    every_cross_align
+
 (* 17 *)
 let test_wrap_produces_css () =
   let style = with_layout (fun l -> { l with wrap = Some true }) default in
@@ -346,6 +424,30 @@ let test_interaction_rules_default_empty () =
     interaction_rules ~class_name:"_nopal_ix_0" Nopal_style.Interaction.default
   in
   Alcotest.(check string) "default produces empty" "" result
+
+let test_interaction_rule_cross_align () =
+  let interaction =
+    {
+      Nopal_style.Interaction.hover =
+        Some
+          (with_layout (fun l -> { l with cross_align = Some Center }) default);
+      pressed = None;
+      focused = None;
+    }
+  in
+  match
+    split_css_rules (interaction_rules ~class_name:"_nopal_ix_0" interaction)
+  with
+  | [ rule ] ->
+      Alcotest.(check bool)
+        "hover selector" true
+        (contains rule "._nopal_ix_0:hover{");
+      Alcotest.(check bool)
+        "cross alignment in the rule" true
+        (contains rule "align-items:center;")
+  | rules ->
+      Alcotest.failf "expected one hover rule, got %d: [%s]" (List.length rules)
+        (String.concat " | " rules)
 
 (* An interaction state never carries the shrink guard. Every state is resolved
    against no parent axis, so a size introduced by a hover, focused or pressed
@@ -1485,6 +1587,10 @@ let () =
             test_align_center_produces_css;
           Alcotest.test_case "cross align stretch produces css" `Quick
             test_cross_align_stretch_produces_css;
+          Alcotest.test_case "main_align_tokens_render_as_written" `Quick
+            test_main_align_tokens_render_as_written;
+          Alcotest.test_case "cross_align_tokens_render_as_written" `Quick
+            test_cross_align_tokens_render_as_written;
           Alcotest.test_case "wrap produces css" `Quick test_wrap_produces_css;
           Alcotest.test_case "wrap false produces nowrap" `Quick
             test_wrap_false_produces_nowrap;
@@ -1542,6 +1648,8 @@ let () =
             test_interaction_rules_all_states;
           Alcotest.test_case "default produces empty" `Quick
             test_interaction_rules_default_empty;
+          Alcotest.test_case "interaction_rule_cross_align" `Quick
+            test_interaction_rule_cross_align;
           Alcotest.test_case "focused only" `Quick
             test_interaction_rules_focused_only;
           Alcotest.test_case "no shrink guard in any state" `Quick

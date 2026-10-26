@@ -27,24 +27,19 @@ let size_to_css s =
   | Fixed f -> Printf.sprintf "%gpx" f
   | Fraction f -> Printf.sprintf "%g%%" (f *. 100.)
 
-let align_to_justify a =
+let align_to_justify (a : Nopal_style.Style.align) =
   match a with
   | Start -> "flex-start"
   | Center -> "center"
   | End_ -> "flex-end"
-  | Stretch -> "stretch"
   | Space_between -> "space-between"
 
-let align_to_items a =
-  (* NOTE: Space_between is not a valid CSS value for align-items. The shared
-     align type in nopal_style permits it, but no current view code uses it
-     in cross_align. Flag for nopal_style follow-up. *)
+let align_to_items (a : Nopal_style.Style.cross_align) =
   match a with
   | Start -> "flex-start"
   | Center -> "center"
   | End_ -> "flex-end"
   | Stretch -> "stretch"
-  | Space_between -> "space-between"
 
 let figure_spacing_to_keyword = function
   | Nopal_style.Text.Tabular -> Some "tabular-nums"

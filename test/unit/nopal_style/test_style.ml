@@ -298,7 +298,9 @@ let test_with_layout_applies_fn () =
     "wrap is Some true" true
     (match s.layout.wrap with
     | Some true -> true
-    | _ -> false)
+    | Some false
+    | None ->
+        false)
 
 let test_with_paint_returns_new_style () =
   let s = with_paint (fun p -> { p with opacity = 0.5 }) default in
@@ -496,6 +498,98 @@ let test_equal_layout_distinguishes_min_height () =
     (equal_layout
        (layout_with_min ~min_width:(Some 24.) ~min_height:(Some 120.))
        (layout_with_min ~min_width:(Some 24.) ~min_height:(Some 120.)))
+
+(* [main_align] is held at the same set value on both sides, so a conjunct that
+   compared the main axis in place of the cross axis would report these equal. *)
+let layout_with_cross cross_align =
+  {
+    (layout_with_min ~min_width:(Some 24.) ~min_height:(Some 24.)) with
+    cross_align;
+  }
+
+let test_equal_layout_distinguishes_cross_align () =
+  Alcotest.(check bool)
+    "cross_align-only difference is unequal" false
+    (equal_layout
+       (layout_with_cross (Some Center))
+       (layout_with_cross (Some Stretch)));
+  Alcotest.(check bool)
+    "a set cross_align differs from an unset one" false
+    (equal_layout (layout_with_cross (Some Center)) (layout_with_cross None));
+  Alcotest.(check bool)
+    "equal cross_aligns are equal" true
+    (equal_layout
+       (layout_with_cross (Some Center))
+       (layout_with_cross (Some Center)))
+
+(* The list sits beside an exhaustive or-pattern, so a constructor added to
+   [cross_align] stops this compiling, which points at the list to extend. *)
+let every_cross_align =
+  let listed : cross_align -> cross_align list = function
+    | Start
+    | Center
+    | End_
+    | Stretch ->
+        [ Start; Center; End_; Stretch ]
+  in
+  listed Start
+
+let test_equal_cross_align_is_exhaustive () =
+  List.iteri
+    (fun i a ->
+      List.iteri
+        (fun j b ->
+          Alcotest.(check bool)
+            (Printf.sprintf "value %d against value %d" i j)
+            (Int.equal i j) (equal_cross_align a b))
+        every_cross_align)
+    every_cross_align
+
+(* [cross_align] is held at the same set value on both sides, so a conjunct that
+   compared the cross axis in place of the main axis would report these equal. *)
+let layout_with_main main_align =
+  {
+    (layout_with_min ~min_width:(Some 24.) ~min_height:(Some 24.)) with
+    main_align;
+  }
+
+let test_equal_layout_distinguishes_main_align () =
+  Alcotest.(check bool)
+    "main_align-only difference is unequal" false
+    (equal_layout
+       (layout_with_main (Some Center))
+       (layout_with_main (Some Space_between)));
+  Alcotest.(check bool)
+    "a set main_align differs from an unset one" false
+    (equal_layout (layout_with_main (Some Center)) (layout_with_main None));
+  Alcotest.(check bool)
+    "equal main_aligns are equal" true
+    (equal_layout
+       (layout_with_main (Some Center))
+       (layout_with_main (Some Center)))
+
+(* The list sits beside an exhaustive or-pattern, so a constructor added to
+   [align] stops this compiling, which points at the list to extend. *)
+let every_align =
+  let listed : align -> align list = function
+    | Start
+    | Center
+    | End_
+    | Space_between ->
+        [ Start; Center; End_; Space_between ]
+  in
+  listed Start
+
+let test_equal_align_is_exhaustive () =
+  List.iteri
+    (fun i a ->
+      List.iteri
+        (fun j b ->
+          Alcotest.(check bool)
+            (Printf.sprintf "value %d against value %d" i j)
+            (Int.equal i j) (equal_align a b))
+        every_align)
+    every_align
 
 (* --- Text integration tests --- *)
 
@@ -795,6 +889,14 @@ let () =
             test_equal_layout_distinguishes_min_width;
           Alcotest.test_case "equal_layout_distinguishes_min_height" `Quick
             test_equal_layout_distinguishes_min_height;
+          Alcotest.test_case "equal_layout_distinguishes_cross_align" `Quick
+            test_equal_layout_distinguishes_cross_align;
+          Alcotest.test_case "equal_cross_align_is_exhaustive" `Quick
+            test_equal_cross_align_is_exhaustive;
+          Alcotest.test_case "equal_layout_distinguishes_main_align" `Quick
+            test_equal_layout_distinguishes_main_align;
+          Alcotest.test_case "equal_align_is_exhaustive" `Quick
+            test_equal_align_is_exhaustive;
         ] );
       ( "Optional layout fields",
         [

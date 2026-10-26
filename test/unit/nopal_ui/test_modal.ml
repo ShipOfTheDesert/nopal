@@ -240,7 +240,6 @@ let test_root_style_reaches_the_modal_root () =
         | Some End_ -> true
         | Some Start
         | Some Center
-        | Some Stretch
         | Some Space_between
         | None ->
             false);
