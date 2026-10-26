@@ -21,6 +21,7 @@ let test_draw_builder_defaults () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -52,6 +53,7 @@ let test_draw_builder_defaults () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -102,6 +104,7 @@ let test_draw_with_callbacks () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -146,6 +149,7 @@ let test_draw_map () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _

@@ -819,7 +819,7 @@ Where an element builder takes both an `~attrs` list and a typed field a backend
 renders as an attribute — `placeholder`, a radio's `name`, a picker's
 `accept`/`capture`/`multiple`, `disabled`, a container's `focusable`, an input's
 `required`/`autocomplete`/`input_type`, a form's `autocomplete`/`novalidate`, a
-button's `button_type`/`disabled`, a drawing's or an image's `name` — the rule is: **typed-field derivations
+button's `button_type`/`disabled`, a link's `destination`, a heading's `level`, a drawing's or an image's `name` — the rule is: **typed-field derivations
 beat the `~attrs` list; within the list, the last pair wins.** Those are two
 tiers and they are not the same tier. A typed field
 sits above the list, so `~attrs` is an escape hatch for keys the DSL does not

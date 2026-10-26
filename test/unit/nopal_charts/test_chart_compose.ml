@@ -32,6 +32,7 @@ let test_compose_with_tooltip () =
   | Form _
   | Button _
   | Link _
+  | Heading _
   | Input _
   | Checkbox _
   | Radio _
@@ -69,6 +70,7 @@ let test_compose_dimensions () =
             | Form _
             | Button _
             | Link _
+            | Heading _
             | Input _
             | Checkbox _
             | Radio _
@@ -89,6 +91,7 @@ let test_compose_dimensions () =
   | Form _
   | Button _
   | Link _
+  | Heading _
   | Input _
   | Checkbox _
   | Radio _

@@ -117,6 +117,9 @@ let derived_flag name flag =
   | true -> [ (name, "true") ]
   | false -> []
 
+let heading_tag level =
+  "h" ^ string_of_int (Nopal_element.Element.heading_level_to_int level)
+
 let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
   let handlers = ref [] in
   let form_handlers = ref [] in
@@ -315,6 +318,26 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             tag = "a";
             style;
             attrs = attrs @ link_config;
+            children = [ go ~form (0 :: rev_path) child ];
+            interaction;
+          }
+    | Heading { style; interaction; attrs; level; child } ->
+        (* None of the three has an absent form, so a caller's pair of the same
+           key never stands. *)
+        let heading_config =
+          [
+            ("role", "heading");
+            ( "aria-level",
+              string_of_int (Nopal_element.Element.heading_level_to_int level)
+            );
+            ("data-nopal-heading", "");
+          ]
+        in
+        Element
+          {
+            tag = heading_tag level;
+            style;
+            attrs = attrs @ heading_config;
             children = [ go ~form (0 :: rev_path) child ];
             interaction;
           }
@@ -786,6 +809,25 @@ and find_in_children sel children =
       match find sel c with
       | Some _ as result -> result
       | None -> find_in_children sel rest)
+
+let rec find_heading level text node =
+  match node with
+  | Element { tag; _ }
+    when String.equal tag (heading_tag level)
+         && String.equal (text_content node) text ->
+      Some node
+  | Element { children; _ } -> find_heading_in_children level text children
+  | Empty
+  | Text _ ->
+      None
+
+and find_heading_in_children level text children =
+  match children with
+  | [] -> None
+  | c :: rest -> (
+      match find_heading level text c with
+      | Some _ as result -> result
+      | None -> find_heading_in_children level text rest)
 
 let find_all sel node =
   let rec go acc n =

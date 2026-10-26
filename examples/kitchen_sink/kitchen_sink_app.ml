@@ -1103,7 +1103,10 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
   (* Section wrapper *)
   let view_section ?(attrs = []) title children =
     Element.column ~style:section_style ~attrs
-      [ Element.text title; Element.column ~style:section_body_style children ]
+      [
+        Element.heading Element.H2 (Element.text title);
+        Element.column ~style:section_body_style children;
+      ]
 
   let named_graphic = Named_graphic.named_graphic
 
@@ -1319,7 +1322,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     Element.column ~style:section_style
       ~attrs:[ ("data-section", "typography") ]
       [
-        Element.text "Typography";
+        Element.heading Element.H2 (Element.text "Typography");
         Element.column ~style:section_body_style
           [
             Element.text "Heading scale:";
@@ -1760,7 +1763,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     Element.column ~style:section_style
       ~attrs:[ ("data-section", "telemetry") ]
       [
-        Element.text "Telemetry";
+        Element.heading Element.H2 (Element.text "Telemetry");
         Element.column ~style:section_body_style
           [
             Element.text
@@ -2632,7 +2635,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     Element.column ~style:section_style
       ~attrs:[ ("data-section", "draw") ]
       [
-        Element.text "2D Drawing";
+        Element.heading Element.H2 (Element.text "2D Drawing");
         Element.column ~style:section_body_style
           [
             Element.text "Basic shapes:";
@@ -2809,7 +2812,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     Element.column ~style:section_style
       ~attrs:[ ("data-section", "charts") ]
       [
-        Element.text "Charts";
+        Element.heading Element.H2 (Element.text "Charts");
         Element.column ~style:section_body_style
           [
             (* Bar chart with hover + tooltip *)
@@ -3116,7 +3119,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     Element.column ~style:section_style
       ~attrs:[ ("data-section", "chart-extensions") ]
       [
-        Element.text "Chart Extensions";
+        Element.heading Element.H2 (Element.text "Chart Extensions");
         Element.column ~style:section_body_style
           [
             (* Heat map — sequential scale (P&L by hour × day) *)
@@ -3432,8 +3435,8 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
       Element.box ~style:section_padding
         ~attrs:[ ("data-testid", "responsive-text") ]
         [
-          Element.box ~style:title_text_style
-            [ Element.text "Responsive typography" ];
+          Element.heading ~style:title_text_style Element.H3
+            (Element.text "Responsive typography");
           Element.text "Padding and font size scale with viewport.";
         ]
     in
@@ -3470,9 +3473,10 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
               }))
         ~attrs:[ ("data-testid", "viewport-info") ]
         [
-          Element.styled_text
-            ~text_style:(Text.default |> Text.font_weight Font.Bold)
-            "Viewport Info";
+          Element.heading Element.H3
+            (Element.styled_text
+               ~text_style:(Text.default |> Text.font_weight Font.Bold)
+               "Viewport Info");
           Element.text ("Width: " ^ string_of_int (Viewport.width vp) ^ "px");
           Element.text ("Height: " ^ string_of_int (Viewport.height vp) ^ "px");
           Element.text ("Class: " ^ size_class_str);
@@ -3517,9 +3521,10 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
               }))
         ~attrs:[ ("data-testid", "safe-area-viz") ]
         [
-          Element.styled_text
-            ~text_style:(Text.default |> Text.font_weight Font.Bold)
-            "Safe Area Insets";
+          Element.heading Element.H3
+            (Element.styled_text
+               ~text_style:(Text.default |> Text.font_weight Font.Bold)
+               "Safe Area Insets");
           inset_row "Top" (Viewport.safe_area_top safe);
           inset_row "Right" (Viewport.safe_area_right safe);
           inset_row "Bottom" (Viewport.safe_area_bottom safe);
@@ -4091,7 +4096,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     Element.column ~style:section_style
       ~attrs:[ ("data-section", "mobile") ]
       [
-        Element.text "Mobile Signals";
+        Element.heading Element.H2 (Element.text "Mobile Signals");
         Element.column ~style:section_body_style
           [
             Element.box
@@ -4122,11 +4127,16 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
          [
            Element.column ~style:page_header_style
              [
-               Element.styled_text ~text_style:page_title_text "Kitchen Sink";
+               Element.heading Element.H1
+                 (Element.styled_text ~text_style:page_title_text "Kitchen Sink");
                Element.styled_text ~text_style:page_subtitle_text
                  "A living reference of every Nopal feature.";
              ];
            view_typography model;
+           view_section
+             ~attrs:[ ("data-testid", "headings-section") ]
+             "Headings"
+             [ Sub_headings.view () ];
            view_layout model;
            view_buttons model;
            view_telemetry model;
@@ -4416,4 +4426,5 @@ module Sub_button_semantics = Sub_button_semantics
 module Sub_clipboard = Sub_clipboard
 module Sub_links = Sub_links
 module Sub_donut = Sub_donut
+module Sub_headings = Sub_headings
 module Tauri_op = Tauri_op

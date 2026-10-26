@@ -34,6 +34,7 @@ let get_column_children (el : msg Element.t) =
           | Form _
           | Button _
           | Link _
+          | Heading _
           | Input _
           | Checkbox _
           | Radio _
@@ -52,6 +53,7 @@ let get_column_children (el : msg Element.t) =
   | Form _
   | Button _
   | Link _
+  | Heading _
   | Input _
   | Checkbox _
   | Radio _
@@ -80,6 +82,7 @@ let get_fixed_height (el : msg Element.t) =
   | Form _
   | Button _
   | Link _
+  | Heading _
   | Input _
   | Checkbox _
   | Radio _
@@ -114,6 +117,7 @@ let test_single_pane () =
       | Form _
       | Button _
       | Link _
+      | Heading _
       | Input _
       | Checkbox _
       | Radio _
@@ -226,6 +230,7 @@ let test_pointer_down_on_box () =
   | Form _
   | Button _
   | Link _
+  | Heading _
   | Input _
   | Checkbox _
   | Radio _
@@ -261,6 +266,7 @@ let test_pointer_leave_on_box () =
   | Form _
   | Button _
   | Link _
+  | Heading _
   | Input _
   | Checkbox _
   | Radio _

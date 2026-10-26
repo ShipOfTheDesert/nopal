@@ -76,6 +76,58 @@ let render_button () =
        })
     (tree r)
 
+(* Tag and children only: the pairs a heading derives are a separate case. *)
+let heading_renders_its_level_tag () =
+  List.iter
+    (fun (level, expected_tag) ->
+      match tree (render (E.heading level (E.text "Title"))) with
+      | Element { tag; children; _ } ->
+          Alcotest.(check string) "the tag is the level's" expected_tag tag;
+          Alcotest.(check (list Test_util.node_testable))
+            (expected_tag ^ ": the child is an ordinary node")
+            [ Text { content = "Title"; text_style = None } ]
+            children
+      | Empty
+      | Text _ ->
+          Alcotest.fail (expected_tag ^ ": a heading renders as an element"))
+    E.[ (H1, "h1"); (H2, "h2"); (H3, "h3"); (H4, "h4"); (H5, "h5"); (H6, "h6") ]
+
+let heading_carries_style_interaction_and_attrs () =
+  let hover_ix =
+    Ix.
+      {
+        hover = Some Test_util.bold_label_style;
+        pressed = None;
+        focused = None;
+      }
+  in
+  check_node "the heading's own fields reach the node, derived pairs last"
+    (Element
+       {
+         tag = "h2";
+         style = Test_util.bold_label_style;
+         attrs =
+           [
+             ("id", "t");
+             ("role", "heading");
+             ("aria-level", "2");
+             ("data-nopal-heading", "");
+           ];
+         children = [ Text { content = "Title"; text_style = None } ];
+         interaction = hover_ix;
+       })
+    (tree
+       (render
+          (E.heading ~style:Test_util.bold_label_style ~interaction:hover_ix
+             ~attrs:[ ("id", "t") ]
+             E.H2 (E.text "Title"))))
+
+let unstyled_heading_carries_no_style () =
+  Alcotest.(check (option Test_util.style_testable))
+    "an unstyled heading is styled like an unstyled box"
+    (style (tree (render (E.box [ E.text "Title" ]))))
+    (style (tree (render (E.heading E.H2 (E.text "Title")))))
+
 let render_input_attrs () =
   let r = render (E.input ~placeholder:"ph" "val") in
   check_node "input renders with attrs"
@@ -202,6 +254,12 @@ let rendering_tests =
     Alcotest.test_case "render_row" `Quick render_row;
     Alcotest.test_case "render_column" `Quick render_column;
     Alcotest.test_case "render_button" `Quick render_button;
+    Alcotest.test_case "heading_renders_its_level_tag" `Quick
+      heading_renders_its_level_tag;
+    Alcotest.test_case "heading_carries_style_interaction_and_attrs" `Quick
+      heading_carries_style_interaction_and_attrs;
+    Alcotest.test_case "unstyled_heading_carries_no_style" `Quick
+      unstyled_heading_carries_no_style;
     Alcotest.test_case "render_input_attrs" `Quick render_input_attrs;
     Alcotest.test_case "render_image_attrs" `Quick render_image_attrs;
     Alcotest.test_case "image_named_alt" `Quick image_named_alt;
@@ -358,8 +416,65 @@ let attr_absent () =
   let r = render (E.image ~src:"a.png" ~name:(graphic_name "pic") ()) in
   Alcotest.(check (option string)) "attr href" None (attr "href" (tree r))
 
+let heading_outline =
+  E.column
+    [
+      E.heading ~attrs:[ ("id", "h2-alpha") ] E.H2 (E.text "Alpha");
+      E.heading ~attrs:[ ("id", "h3-alpha") ] E.H3 (E.text "Alpha");
+      E.heading ~attrs:[ ("id", "h2-beta") ] E.H2 (E.text "Beta");
+      E.heading
+        ~attrs:[ ("id", "h4-runs") ]
+        E.H4
+        (E.row [ E.text "Gam"; E.text "ma" ]);
+      E.row
+        [ E.heading ~attrs:[ ("id", "h2-alpha-later") ] E.H2 (E.text "Alpha") ];
+    ]
+
+let find_heading_by_level_and_text () =
+  let root = tree (render heading_outline) in
+  let found level text =
+    Option.bind (find_heading level text root) (attr "id")
+  in
+  Alcotest.(check (option string))
+    "the first H2 Alpha in document order" (Some "h2-alpha")
+    (found E.H2 "Alpha");
+  Alcotest.(check (option string))
+    "the same text at another level" (Some "h3-alpha") (found E.H3 "Alpha");
+  Alcotest.(check (option string))
+    "another text at the same level" (Some "h2-beta") (found E.H2 "Beta");
+  Alcotest.(check (option string))
+    "the text is the whole content, across runs" (Some "h4-runs")
+    (found E.H4 "Gamma");
+  Alcotest.(check (option string))
+    "no heading of that level holds the text" None (found E.H4 "Alpha");
+  Alcotest.(check (option string))
+    "no heading holds the text" None (found E.H2 "Gamma");
+  Alcotest.(check (option string))
+    "a prefix of the text does not match" None (found E.H2 "Alph")
+
+let find_heading_is_depth_first () =
+  let root =
+    tree
+      (render
+         (E.column
+            [
+              E.row
+                [
+                  E.heading ~attrs:[ ("id", "deep-first") ] E.H2 (E.text "Dup");
+                ];
+              E.heading ~attrs:[ ("id", "shallow-later") ] E.H2 (E.text "Dup");
+            ]))
+  in
+  Alcotest.(check (option string))
+    "the earlier nested match wins over a later shallow one" (Some "deep-first")
+    (Option.bind (find_heading E.H2 "Dup" root) (attr "id"))
+
 let querying_tests =
   [
+    Alcotest.test_case "find_heading_is_depth_first" `Quick
+      find_heading_is_depth_first;
+    Alcotest.test_case "find_heading_by_level_and_text" `Quick
+      find_heading_by_level_and_text;
     Alcotest.test_case "find_by_tag" `Quick find_by_tag;
     Alcotest.test_case "find_by_tag_nested" `Quick find_by_tag_nested;
     Alcotest.test_case "find_by_tag_not_found" `Quick find_by_tag_not_found;
@@ -1805,6 +1920,7 @@ let button_record_fields = function
   | E.Row _
   | E.Column _
   | E.Link _
+  | E.Heading _
   | E.Form _
   | E.Input _
   | E.Checkbox _
@@ -2028,8 +2144,30 @@ let input_name_absent_uncovers () =
     "an absent name leaves the caller's pair standing" (Some "x")
     (input_name_read (input_with_a_caller_name_pair ()))
 
+let heading_semantics_outrank_attrs () =
+  let node =
+    tree
+      (render
+         (E.heading
+            ~attrs:
+              [
+                ("role", "presentation");
+                ("aria-level", "5");
+                ("data-nopal-heading", "x");
+              ]
+            E.H2 (E.text "Title")))
+  in
+  Alcotest.(check (list (option string)))
+    "the level's pairs beat the caller's"
+    [ Some "heading"; Some "2"; Some "" ]
+    (List.map
+       (fun name -> attr name node)
+       [ "role"; "aria-level"; "data-nopal-heading" ])
+
 let attr_precedence_tests =
   [
+    Alcotest.test_case "heading_semantics_outrank_attrs" `Quick
+      heading_semantics_outrank_attrs;
     Alcotest.test_case "input_name_derived" `Quick input_name_derived;
     Alcotest.test_case "input_name_outranks_attrs" `Quick
       input_name_outranks_attrs;

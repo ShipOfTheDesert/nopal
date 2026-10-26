@@ -15,6 +15,7 @@ let test_button_dblclick_some () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -40,6 +41,7 @@ let test_input_blur_some () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -71,6 +73,7 @@ let test_input_keydown_some () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -101,6 +104,7 @@ let test_box_focus_handlers_some () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -126,6 +130,7 @@ let test_input_focus_some () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -165,6 +170,7 @@ let test_map_preserves_box_focus () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -192,6 +198,7 @@ let test_map_preserves_dblclick () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -219,6 +226,7 @@ let test_map_preserves_blur () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -252,6 +260,7 @@ let test_map_preserves_keydown () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -293,6 +302,7 @@ let test_map_rewrites_file_input_handler () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -339,6 +349,7 @@ let test_map_preserves_handlerless_file_input () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _

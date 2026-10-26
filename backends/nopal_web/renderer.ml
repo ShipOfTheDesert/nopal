@@ -154,6 +154,7 @@ let container_main_axis (el : 'msg Nopal_element.Element.t) :
   | Text _
   | Button _
   | Link _
+  | Heading _
   | Input _
   | Checkbox _
   | Radio _
@@ -233,6 +234,7 @@ let interaction_of (el : 'msg Nopal_element.Element.t) =
   | Column { interaction; _ }
   | Button { interaction; _ }
   | Link { interaction; _ }
+  | Heading { interaction; _ }
   | Input { interaction; _ } ->
       Some interaction
   | Checkbox { interaction; _ }
@@ -525,6 +527,19 @@ let apply_link_config el ~declared (href, rel) =
   let set = set_derived el ~declared in
   set "href" (Some href);
   set "rel" rel
+
+(* A heading's three derived attributes, on the same terms. None has an absent
+   form, so all three are written on every application: [role] and
+   [aria-level] keep a caller's pairs from erasing or re-levelling the heading
+   for assistive technology, and [data-nopal-heading] is the marker the style
+   sheet's heading reset selects on. The structural renderer appends the same
+   three pairs. *)
+let apply_heading_config el ~declared level =
+  let set = set_derived el ~declared in
+  set "role" (Some "heading");
+  set "aria-level"
+    (Some (string_of_int (Nopal_element.Element.heading_level_to_int level)));
+  set Style_sheet.heading_marker (Some "")
 
 (* An input's four derived configurations, on the same terms as a form's:
    written over the declared list and uncovering it when absent. [required]
@@ -1038,6 +1053,34 @@ let rec create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
           element;
           children = [ live_child ];
           listeners = wire_link_clicks ~link_host ~dispatch el destination;
+          base_id;
+          interaction_id;
+        }
+  | Heading { style; interaction; attrs; level; child } ->
+      let el =
+        Brr.El.v
+          (Jstr.v
+             ("h"
+             ^ string_of_int (Nopal_element.Element.heading_level_to_int level)
+             ))
+          []
+      in
+      let base_id, interaction_id =
+        apply_styles_for_element ~sheet ~parent_axis el style interaction
+      in
+      apply_attrs el attrs;
+      apply_heading_config el ~declared:attrs level;
+      let children_axis = container_main_axis element in
+      let live_child =
+        create_and_append ~sheet ~reveals ~link_host ~dispatch
+          ~parent_axis:children_axis el child
+      in
+      Live_node
+        {
+          dom = el;
+          element;
+          children = [ live_child ];
+          listeners = [];
           base_id;
           interaction_id;
         }
@@ -1556,9 +1599,12 @@ let same_variant (a : 'msg Nopal_element.Element.t)
   | File_input _, File_input _
   | Virtual_list _, Virtual_list _ ->
       true
+  (* A heading's level is its tag, which a node cannot change in place. *)
+  | Heading { level = a; _ }, Heading { level = b; _ } ->
+      Nopal_element.Element.equal_heading_level a b
   | ( ( Empty | Text _ | Box _ | Row _ | Column _ | Form _ | Button _ | Link _
-      | Input _ | Checkbox _ | Radio _ | Select _ | File_input _ | Image _
-      | Scroll _ | Keyed _ | Draw _ | Virtual_list _ ),
+      | Heading _ | Input _ | Checkbox _ | Radio _ | Select _ | File_input _
+      | Image _ | Scroll _ | Keyed _ | Draw _ | Virtual_list _ ),
       _ ) ->
       false
 
@@ -1567,8 +1613,8 @@ let extract_keyed_pairs elements =
     | [] -> Some (List.rev acc)
     | Keyed { key; child } :: rest -> go ((key, child) :: acc) rest
     | ( Empty | Text _ | Box _ | Row _ | Column _ | Form _ | Button _ | Link _
-      | Input _ | Checkbox _ | Radio _ | Select _ | File_input _ | Image _
-      | Scroll _ | Draw _ | Virtual_list _ )
+      | Heading _ | Input _ | Checkbox _ | Radio _ | Select _ | File_input _
+      | Image _ | Scroll _ | Draw _ | Virtual_list _ )
       :: _ ->
         None
   in
@@ -1599,6 +1645,7 @@ let attrs_of (el : 'msg Nopal_element.Element.t) =
   | Column { attrs; _ }
   | Button { attrs; _ }
   | Link { attrs; _ }
+  | Heading { attrs; _ }
   | Input { attrs; _ }
   | Checkbox { attrs; _ }
   | Radio { attrs; _ }
@@ -1646,6 +1693,7 @@ let focusable_of (el : 'msg Nopal_element.Element.t) =
   | Form _
   | Button _
   | Link _
+  | Heading _
   | Input _
   | Checkbox _
   | Radio _
@@ -1698,6 +1746,7 @@ let previous_disabled (el : 'msg Nopal_element.Element.t) =
   | Form _
   | Button _
   | Link _
+  | Heading _
   | Input _
   | File_input _
   | Image _
@@ -1719,6 +1768,7 @@ let previous_placeholder (el : 'msg Nopal_element.Element.t) =
   | Form _
   | Button _
   | Link _
+  | Heading _
   | Checkbox _
   | Radio _
   | Select _
@@ -1748,6 +1798,7 @@ let style_of (el : 'msg Nopal_element.Element.t) =
   | Column { style; _ }
   | Button { style; _ }
   | Link { style; _ }
+  | Heading { style; _ }
   | Input { style; _ }
   | Image { style; _ }
   | Scroll { style; _ }
@@ -1981,13 +2032,13 @@ and reconcile_live ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
         ~parent_axis old_n new_el;
       Live_node old_n
   | ( Live_text _,
-      ( Empty | Box _ | Row _ | Column _ | Form _ | Button _ | Link _ | Input _
-      | Checkbox _ | Radio _ | Select _ | File_input _ | Image _ | Scroll _
-      | Keyed _ | Draw _ | Virtual_list _ ) )
+      ( Empty | Box _ | Row _ | Column _ | Form _ | Button _ | Link _
+      | Heading _ | Input _ | Checkbox _ | Radio _ | Select _ | File_input _
+      | Image _ | Scroll _ | Keyed _ | Draw _ | Virtual_list _ ) )
   | ( Live_comment _,
-      ( Text _ | Box _ | Row _ | Column _ | Form _ | Button _ | Link _ | Input _
-      | Checkbox _ | Radio _ | Select _ | File_input _ | Image _ | Scroll _
-      | Keyed _ | Draw _ | Virtual_list _ ) )
+      ( Text _ | Box _ | Row _ | Column _ | Form _ | Button _ | Link _
+      | Heading _ | Input _ | Checkbox _ | Radio _ | Select _ | File_input _
+      | Image _ | Scroll _ | Keyed _ | Draw _ | Virtual_list _ ) )
   | Live_node _, _ ->
       (* Different variant or same_variant returned false — replace *)
       let new_live =
@@ -2204,6 +2255,7 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
       | Form _
       | Button _
       | Link _
+      | Heading _
       | Input _
       | Checkbox _
       | Radio _
@@ -2244,6 +2296,7 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
       | Form _
       | Button _
       | Link _
+      | Heading _
       | Input _
       | Checkbox _
       | Radio _
@@ -2280,6 +2333,7 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
       | Form _
       | Button _
       | Link _
+      | Heading _
       | Input _
       | Checkbox _
       | Radio _
@@ -2293,6 +2347,16 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
           apply_link_config el ~declared:attrs config);
       unlisten_all old_n.listeners;
       old_n.listeners <- wire_link_clicks ~link_host ~dispatch el destination;
+      old_n.children <-
+        reconcile_children ~sheet ~reveals ~link_host ~dispatch
+          ~old_parent_axis:old_children_axis ~parent_axis:children_axis el
+          old_n.children [ child ]
+  | Heading { attrs; level; child; _ } ->
+      (* The level is unchanged here, because [same_variant] replaces a heading
+         whose level moved, so the derivation needs re-asserting only over a
+         re-applied declared list. *)
+      if maybe_apply_attrs el old_n.element new_el then
+        apply_heading_config el ~declared:attrs level;
       old_n.children <-
         reconcile_children ~sheet ~reveals ~link_host ~dispatch
           ~old_parent_axis:old_children_axis ~parent_axis:children_axis el
@@ -2344,6 +2408,7 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
       | Form _
       | Button _
       | Link _
+      | Heading _
       | Input _
       | Checkbox _
       | Radio _
@@ -2392,6 +2457,7 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
       | Form _
       | Button _
       | Link _
+      | Heading _
       | Input _
       | Checkbox _
       | Radio _
@@ -2421,6 +2487,7 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
         | Form _
         | Button _
         | Link _
+        | Heading _
         | Input _
         | Checkbox _
         | Radio _
@@ -2474,6 +2541,7 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
       | Form _
       | Button _
       | Link _
+      | Heading _
       | Input _
       | Checkbox _
       | Radio _
@@ -2719,6 +2787,7 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
       | Form _
       | Button _
       | Link _
+      | Heading _
       | Input _
       | Checkbox _
       | Radio _

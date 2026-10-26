@@ -90,6 +90,19 @@ val button_type_to_string : button_type -> string
 val equal_button_type : button_type -> button_type -> bool
 (** Structural equality over the closed variant. The sole definition. *)
 
+(** The level of a {!heading}, from the top of a view's outline ([H1]) to its
+    deepest ([H6]). Six constructors and no more, so a level 0 or 7 cannot be
+    built and nothing checks for one at run time. *)
+type heading_level = H1 | H2 | H3 | H4 | H5 | H6
+
+val heading_level_to_int : heading_level -> int
+(** [heading_level_to_int l] is [l]'s number, [1] for [H1] through [6] for [H6].
+    The sole producer of that digit — a backend's tag and its ["aria-level"]
+    both spell it from here, never from a bare literal. *)
+
+val equal_heading_level : heading_level -> heading_level -> bool
+(** Structural equality over the closed variant. The sole definition. *)
+
 type file_info = {
   blob_id : string;
       (** Opaque handle issued by the web blob store, valid for the page
@@ -178,6 +191,15 @@ type 'msg t =
       attrs : (string * string) list;
       destination : 'msg Link.destination;
           (** Where the link goes; the link's address is derived from it. *)
+      child : 'msg t;
+    }
+  | Heading of {
+      style : Nopal_style.Style.t;
+      interaction : Nopal_style.Interaction.t;
+      attrs : (string * string) list;
+      level : heading_level;
+          (** The heading's place in the outline. Semantics only: how the
+              heading looks comes from [style]. *)
       child : 'msg t;
     }
   | Input of {
@@ -285,7 +307,7 @@ type 'msg t =
     Several builders take both an [?attrs] list and typed fields a backend turns
     into attributes of its own — an input's [placeholder], a radio's [name], a
     picker's [accept], a container's [focusable], a button's [button_type] and
-    [disabled], a link's [destination]. The rule is:
+    [disabled], a link's [destination], a heading's [level]. The rule is:
     {b typed-field derivations beat the [~attrs] list; within the list, the last
        pair wins.}
 
@@ -313,19 +335,21 @@ type 'msg t =
     than left standing, empty default included — as is a radio's required
     [name], a checkbox's, radio's or file picker's ["type"], and a button's
     ["type"], which [button_type] derives as ["button"] when the button names
-    none, and a link's ["href"], which its [destination] always spells.
-    Uncovering is the behaviour of the derivations that can decline, and they
-    decline in one of two shapes. A [bool] cannot say "no attribute": [true]
-    asserts the key and [false] emits nothing, so a [false] uncovers a caller's
-    pair rather than removing it — a control's ["disabled"], a file picker's
-    ["multiple"], an input's ["required"] together with the ["aria-required"] it
-    carries, a form's ["novalidate"], and a button's ["aria-disabled"] from its
-    [disabled]. An option, or an empty list, asserts nothing when absent and
-    uncovers the caller's pair the same way — a file picker's ["accept"] and
-    ["capture"], an input's ["autocomplete"], its ["type"] from [input_type] and
-    its ["name"], and a form's ["autocomplete"]. A link's ["rel"] declines by
-    destination: an [External] link asserts it and a [Route] link derives none,
-    so a caller's ["rel"] pair stands on a [Route] link only.
+    none, a link's ["href"], which its [destination] always spells, and a
+    heading's ["role"], ["aria-level"] and ["data-nopal-heading"], which its
+    [level] always spells. Uncovering is the behaviour of the derivations that
+    can decline, and they decline in one of two shapes. A [bool] cannot say "no
+    attribute": [true] asserts the key and [false] emits nothing, so a [false]
+    uncovers a caller's pair rather than removing it — a control's ["disabled"],
+    a file picker's ["multiple"], an input's ["required"] together with the
+    ["aria-required"] it carries, a form's ["novalidate"], and a button's
+    ["aria-disabled"] from its [disabled]. An option, or an empty list, asserts
+    nothing when absent and uncovers the caller's pair the same way — a file
+    picker's ["accept"] and ["capture"], an input's ["autocomplete"], its
+    ["type"] from [input_type] and its ["name"], and a form's ["autocomplete"].
+    A link's ["rel"] declines by destination: an [External] link asserts it and
+    a [Route] link derives none, so a caller's ["rel"] pair stands on a [Route]
+    link only.
 
     Two renderers enforce this and no more than two, by two different
     mechanisms. The web backend applies the declared list before it writes any
@@ -345,21 +369,24 @@ type 'msg t =
     ["placeholder"], a radio's ["name"], a control's ["type"], an input's
     ["required"], ["aria-required"], ["autocomplete"] and ["name"], a form's
     ["autocomplete"] and ["novalidate"], a button's ["type"] and
-    ["aria-disabled"], a link's ["href"] and ["rel"], a drawing's ["role"],
+    ["aria-disabled"], a link's ["href"] and ["rel"], a heading's ["role"],
+    ["aria-level"] and ["data-nopal-heading"], a drawing's ["role"],
     ["aria-label"] and ["aria-hidden"], and an image's ["alt"]. Of those,
     ["disabled"], ["multiple"], ["required"] and ["novalidate"] are spelled
     differently by the two — a presence attribute in the browser, a ["true"]
     pair in the structural tree — so they agree on which side wins and not on
     the value; the rest carry the same value in both, a button's
     ["aria-disabled"] being ["true"] and its ["type"] ["button"] or ["submit"],
-    and a link's ["rel"] ["noopener noreferrer"]. A checkbox's, radio's or file
-    picker's ["type"] is the structural node's tag rather than a pair, while an
-    input's is a pair in both. A container's [focusable] is a first-tier
-    derivation in both renderers, but each spells it in its own vocabulary — a
-    tab-order attribute in the browser, ["focusable"] in the structural tree —
-    so there is no shared key to compare. A checkbox's or radio's [checked], an
-    input's or select's value, and an option's selection are JS {e properties}
-    in the browser and never attributes, so a caller's ["checked"], ["value"] or
+    a link's ["rel"] ["noopener noreferrer"], and a heading's ["role"]
+    ["heading"], its ["aria-level"] the level's digit and its
+    ["data-nopal-heading"] empty. A checkbox's, radio's or file picker's
+    ["type"] is the structural node's tag rather than a pair, while an input's
+    is a pair in both. A container's [focusable] is a first-tier derivation in
+    both renderers, but each spells it in its own vocabulary — a tab-order
+    attribute in the browser, ["focusable"] in the structural tree — so there is
+    no shared key to compare. A checkbox's or radio's [checked], an input's or
+    select's value, and an option's selection are JS {e properties} in the
+    browser and never attributes, so a caller's ["checked"], ["value"] or
     ["selected"] pair in [attrs] lands on the DOM as an ordinary attribute and
     is not overruled there. The structural renderer still overlays those three,
     as a faithful read-out of the typed field, but a structural assertion on
@@ -589,6 +616,36 @@ val link :
     both, as the click propagates. The web backend renders the anchor
     [display: inline], so under a [button] or [scroll] its width, height and
     vertical padding have no effect; wrap it in a [box] to size it. *)
+
+val heading :
+  ?style:Nopal_style.Style.t ->
+  ?interaction:Nopal_style.Interaction.t ->
+  ?attrs:(string * string) list ->
+  heading_level ->
+  'msg t ->
+  'msg t
+(** [heading level child] is a heading at [level], with [child] as its content.
+    A backend with headings renders a native one of that level, so the heading
+    is in the document outline and in assistive technology's heading navigation.
+    A heading made of several runs takes a {!row} as its child. A heading is a
+    block, not a flex container: its [style]'s direction, gap and alignment have
+    no effect; lay out several runs in a {!row} child.
+
+    The level is semantics, not appearance. How the heading looks — its size,
+    weight, colour and spacing — comes from [style], so a type scale applies to
+    the heading itself with no wrapper, and two headings of different levels
+    with the same [style] look the same.
+
+    The level is typed, so a ["role"] or ["aria-level"] pair in [attrs] never
+    takes effect: a heading is always announced as a heading of [level]. See
+    {{!section-attribute_precedence} attribute precedence}.
+
+    Order the headings of a view as an outline: one [H1] for the view, and no
+    level skipped on the way down, so an [H2] is followed by an [H3] and not an
+    [H4]. Going back up may skip, as an [H4] closing a section followed by the
+    next [H2] does. Nopal does not check this, and nothing rejects a view that
+    breaks it: the type cannot express it, and a run-time check could only log
+    the breach. axe's [heading-order] rule checks it in a browser. *)
 
 val input :
   ?style:Nopal_style.Style.t ->

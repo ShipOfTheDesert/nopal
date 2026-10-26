@@ -11,6 +11,7 @@ type capture = User | Environment
 type autocomplete_mode = On | Off
 type input_type = Plain | Password | Email | Tel | Url | Number | Search
 type button_type = Submit | Push
+type heading_level = H1 | H2 | H3 | H4 | H5 | H6
 
 type file_info = {
   blob_id : string;
@@ -73,6 +74,13 @@ type 'msg t =
       interaction : Nopal_style.Interaction.t;
       attrs : (string * string) list;
       destination : 'msg Link.destination;
+      child : 'msg t;
+    }
+  | Heading of {
+      style : Nopal_style.Style.t;
+      interaction : Nopal_style.Interaction.t;
+      attrs : (string * string) list;
+      level : heading_level;
       child : 'msg t;
     }
   | Input of {
@@ -222,6 +230,10 @@ let link ?(style = Nopal_style.Style.empty)
     child =
   Link { style; interaction; attrs; destination; child }
 
+let heading ?(style = Nopal_style.Style.empty)
+    ?(interaction = Nopal_style.Interaction.default) ?(attrs = []) level child =
+  Heading { style; interaction; attrs; level; child }
+
 let input ?(style = Nopal_style.Style.empty)
     ?(interaction = Nopal_style.Interaction.default) ?(attrs = [])
     ?(placeholder = "") ?on_change ?on_submit ?on_focus ?on_blur ?on_keydown
@@ -283,6 +295,15 @@ let button_type_to_string (t : button_type) =
   match t with
   | Submit -> "submit"
   | Push -> "button"
+
+let heading_level_to_int (l : heading_level) =
+  match l with
+  | H1 -> 1
+  | H2 -> 2
+  | H3 -> 3
+  | H4 -> 4
+  | H5 -> 5
+  | H6 -> 6
 
 let file_info ~blob_id ~name ~size ~mime ~last_modified =
   { blob_id; name; size; mime; last_modified }
@@ -419,6 +440,8 @@ let rec map f = function
           destination = Link.map_destination f destination;
           child = map f child;
         }
+  | Heading { style; interaction; attrs; level; child } ->
+      Heading { style; interaction; attrs; level; child = map f child }
   | Input
       {
         style;
@@ -609,6 +632,17 @@ let equal_button_type (t1 : button_type) (t2 : button_type) =
       true
   | (Submit | Push), _ -> false
 
+let equal_heading_level (l1 : heading_level) (l2 : heading_level) =
+  match (l1, l2) with
+  | H1, H1
+  | H2, H2
+  | H3, H3
+  | H4, H4
+  | H5, H5
+  | H6, H6 ->
+      true
+  | (H1 | H2 | H3 | H4 | H5 | H6), _ -> false
+
 let equal_destination (d1 : 'msg Link.destination) (d2 : 'msg Link.destination)
     =
   match (d1, d2) with
@@ -772,6 +806,16 @@ let rec equal a b =
       && Nopal_style.Interaction.equal i1 i2
       && equal_attrs a1 a2
       && equal_destination d1 d2
+      && equal ch1 ch2
+  | ( Heading
+        { style = s1; interaction = i1; attrs = a1; level = l1; child = ch1 },
+      Heading
+        { style = s2; interaction = i2; attrs = a2; level = l2; child = ch2 } )
+    ->
+      Nopal_style.Style.equal s1 s2
+      && Nopal_style.Interaction.equal i1 i2
+      && equal_attrs a1 a2
+      && equal_heading_level l1 l2
       && equal ch1 ch2
   | ( Input
         {
@@ -1018,8 +1062,8 @@ let rec equal a b =
       && Bool.equal m1 m2
       && Option.equal ( == ) oc1 oc2
   | ( ( Empty | Text _ | Box _ | Row _ | Column _ | Form _ | Button _ | Link _
-      | Input _ | Checkbox _ | Radio _ | Select _ | File_input _ | Image _
-      | Scroll _ | Keyed _ | Draw _ | Virtual_list _ ),
+      | Heading _ | Input _ | Checkbox _ | Radio _ | Select _ | File_input _
+      | Image _ | Scroll _ | Keyed _ | Draw _ | Virtual_list _ ),
       _ ) ->
       false
 

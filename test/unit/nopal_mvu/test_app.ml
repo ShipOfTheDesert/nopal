@@ -41,6 +41,7 @@ let app_module_roundtrip () =
     | Nopal_element.Element.Column _
     | Nopal_element.Element.Button _
     | Nopal_element.Element.Link _
+    | Nopal_element.Element.Heading _
     | Nopal_element.Element.Input _
     | Nopal_element.Element.Checkbox _
     | Nopal_element.Element.Radio _

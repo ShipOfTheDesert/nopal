@@ -83,7 +83,8 @@ let view _vp model =
   Element.column ~style:section_style
     ~attrs:[ ("data-testid", "ui-section") ]
     [
-      Element.styled_text ~text_style:section_title_text "UI Components";
+      Element.heading Element.H2
+        (Element.styled_text ~text_style:section_title_text "UI Components");
       view_variant_row Button.Primary;
       view_variant_row Button.Secondary;
       view_variant_row Button.Destructive;

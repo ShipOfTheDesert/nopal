@@ -19,6 +19,7 @@ let test_empty_builder () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -44,6 +45,7 @@ let test_text_builder () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -74,6 +76,7 @@ let test_default_styles () =
       | Element.File_input _
       | Element.Button _
       | Element.Link _
+      | Element.Heading _
       | Element.Input _
       | Element.Keyed _
       | Element.Draw _
@@ -114,6 +117,7 @@ let test_box_preserves_children () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -139,6 +143,7 @@ let test_button_no_handler () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -164,6 +169,7 @@ let test_button_with_handler () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -191,6 +197,7 @@ let test_button_child () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -224,6 +231,7 @@ let button_semantics (el : 'msg Element.t) =
   | Element.Row _
   | Element.Column _
   | Element.Link _
+  | Element.Heading _
   | Element.Input _
   | Element.Image _
   | Element.Checkbox _
@@ -248,6 +256,25 @@ let test_button_without_button_type_is_push () =
     (button_semantics
        (Element.button ~button_type:Element.Submit ~disabled:true
           ~on_click:Click (Element.text "ok")))
+
+let all_heading_levels = Element.[ H1; H2; H3; H4; H5; H6 ]
+
+(* Spelled by the test itself, so a case reading a level back depends on
+   neither [heading_level_to_int] nor [equal_heading_level]. *)
+let heading_level_name (l : Element.heading_level) =
+  match l with
+  | Element.H1 -> "H1"
+  | Element.H2 -> "H2"
+  | Element.H3 -> "H3"
+  | Element.H4 -> "H4"
+  | Element.H5 -> "H5"
+  | Element.H6 -> "H6"
+
+let test_heading_level_to_int_is_one_to_six () =
+  Alcotest.(check (list int))
+    "H1 through H6 are 1 through 6, so all six are distinct"
+    [ 1; 2; 3; 4; 5; 6 ]
+    (List.map Element.heading_level_to_int all_heading_levels)
 
 let test_button_type_to_string_is_the_html_token () =
   Alcotest.(check string)
@@ -280,6 +307,7 @@ let test_input_defaults () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -305,6 +333,7 @@ let test_input_placeholder () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -337,6 +366,7 @@ let test_input_on_change () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -362,6 +392,7 @@ let test_input_on_submit () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -388,6 +419,7 @@ let test_image_required_fields () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -414,6 +446,7 @@ let test_scroll_child () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -440,6 +473,7 @@ let test_scroll_without_reveal_unchanged () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -468,6 +502,7 @@ let test_scroll_without_reveal_unchanged () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -494,6 +529,7 @@ let scroll_attrs el =
   | Element.Column _
   | Element.Button _
   | Element.Link _
+  | Element.Heading _
   | Element.Input _
   | Element.Image _
   | Element.Checkbox _
@@ -540,6 +576,7 @@ let test_scroll_carries_attrs () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -633,6 +670,7 @@ let test_keyed_preserves_fields () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -656,6 +694,7 @@ let test_keyed_preserves_fields () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -688,6 +727,83 @@ let test_map_preserves_button_type_and_disabled () =
     (Some (Element.Push, true))
     (mapped Element.Push true)
 
+let heading_style =
+  Nopal_style.Style.with_layout
+    (Nopal_style.Style.padding_all 4.0)
+    Nopal_style.Style.empty
+
+let heading_interaction =
+  { Nopal_style.Interaction.default with hover = Some heading_style }
+
+let heading_attrs = [ ("id", "title"); ("data-testid", "t") ]
+
+let test_heading_map_preserves_level_and_child () =
+  (* Two levels, neither the first, so a map that pinned the level to any one
+     constant reads back wrong on at least one of them. *)
+  let check_mapped level =
+    let label = heading_level_name level in
+    match
+      Element.map
+        (fun m -> Wrapped m)
+        (Element.heading ~style:heading_style ~interaction:heading_interaction
+           ~attrs:heading_attrs level
+           (Element.button ~on_click:Click (Element.text "Title")))
+    with
+    | Element.Heading
+        {
+          style;
+          interaction;
+          attrs;
+          level = mapped;
+          child = Element.Button { on_click; _ };
+        } ->
+        Alcotest.(check bool)
+          (label ^ ": the style is unchanged")
+          true
+          (Nopal_style.Style.equal style heading_style);
+        Alcotest.(check bool)
+          (label ^ ": the interaction is unchanged")
+          true
+          (Nopal_style.Interaction.equal interaction heading_interaction);
+        Alcotest.(check (list (pair string string)))
+          (label ^ ": the attrs are unchanged")
+          heading_attrs attrs;
+        Alcotest.(check string)
+          (label ^ ": the level is unchanged")
+          label
+          (heading_level_name mapped);
+        Alcotest.(check bool)
+          (label ^ ": the child's message is mapped")
+          true
+          (match on_click with
+          | Some (Wrapped Click) -> true
+          | Some (Wrapped (Submit | Changed _))
+          | None ->
+              false)
+    | Element.Heading _
+    | Element.Empty
+    | Element.Text _
+    | Element.Box _
+    | Element.Row _
+    | Element.Column _
+    | Element.Button _
+    | Element.Link _
+    | Element.Input _
+    | Element.Image _
+    | Element.Checkbox _
+    | Element.Radio _
+    | Element.Select _
+    | Element.File_input _
+    | Element.Scroll _
+    | Element.Keyed _
+    | Element.Draw _
+    | Element.Form _
+    | Element.Virtual_list _ ->
+        Alcotest.fail (label ^ ": a mapped heading is a heading of a button")
+  in
+  check_mapped Element.H2;
+  check_mapped Element.H5
+
 let test_map_transforms_click () =
   let el = Element.button ~on_click:Click (Element.text "ok") in
   let mapped = Element.map (fun m -> Wrapped m) el in
@@ -702,6 +818,7 @@ let test_map_transforms_click () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -734,6 +851,7 @@ let test_map_transforms_input () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -781,6 +899,7 @@ let test_map_recursive () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -815,6 +934,7 @@ let test_map_column () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -843,6 +963,7 @@ let test_map_image () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -872,6 +993,7 @@ let test_map_scroll () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -912,6 +1034,7 @@ let test_map_preserves_scroll_attrs () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -951,6 +1074,7 @@ let test_scroll_reveal_roundtrip () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -984,6 +1108,7 @@ let test_map_keyed () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -1009,6 +1134,7 @@ let test_map_empty_noop () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -1035,6 +1161,7 @@ let test_map_text_noop () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -1110,6 +1237,42 @@ let test_equal_distinguishes_button_type_and_disabled () =
   Alcotest.(check bool)
     "a different disabled state is not equal" false
     (Element.equal (make ~disabled:true ()) (make ~disabled:false ()))
+
+let test_heading_equal_distinguishes_level () =
+  let make ?style ?interaction ?attrs ?(child = "Title") level =
+    Element.heading ?style ?interaction ?attrs level (Element.text child)
+  in
+  Alcotest.(check bool)
+    "the same level and child, separately built, are equal" true
+    (Element.equal (make Element.H1) (make Element.H1));
+  Alcotest.(check bool)
+    "H1 and H2 with the same child are not equal" false
+    (Element.equal (make Element.H1) (make Element.H2));
+  Alcotest.(check bool)
+    "headings differing only in style are not equal" false
+    (Element.equal (make Element.H1) (make ~style:heading_style Element.H1));
+  Alcotest.(check bool)
+    "headings differing only in interaction are not equal" false
+    (Element.equal (make Element.H1)
+       (make ~interaction:heading_interaction Element.H1));
+  Alcotest.(check bool)
+    "headings differing only in attrs are not equal" false
+    (Element.equal (make Element.H1) (make ~attrs:heading_attrs Element.H1));
+  Alcotest.(check bool)
+    "headings differing only in child are not equal" false
+    (Element.equal (make Element.H1) (make ~child:"Other" Element.H1))
+
+let test_equal_heading_level_matches_numbers () =
+  List.iter
+    (fun a ->
+      List.iter
+        (fun b ->
+          Alcotest.(check bool)
+            (heading_level_name a ^ " vs " ^ heading_level_name b)
+            (Element.heading_level_to_int a = Element.heading_level_to_int b)
+            (Element.equal_heading_level a b))
+        all_heading_levels)
+    all_heading_levels
 
 let test_equal_input_distinct () =
   let make () = Element.input ~on_submit:Submit ~placeholder:"p" "v" in
@@ -1276,6 +1439,7 @@ let test_box_default_interaction () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -1307,6 +1471,7 @@ let test_button_with_interaction () =
     | Element.Row _
     | Element.Column _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -1334,6 +1499,7 @@ let test_input_with_interaction () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Image _
     | Element.Checkbox _
     | Element.Radio _
@@ -1362,6 +1528,7 @@ let test_map_preserves_interaction () =
       | Element.Empty
       | Element.Text _
       | Element.Link _
+      | Element.Heading _
       | Element.File_input _
       | Element.Image _
       | Element.Scroll _
@@ -1420,6 +1587,7 @@ let test_styled_text_carries_style () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -1446,6 +1614,7 @@ let test_styled_text_with_default_is_some () =
     | Element.Column _
     | Element.Button _
     | Element.Link _
+    | Element.Heading _
     | Element.Input _
     | Element.Image _
     | Element.Checkbox _
@@ -1478,6 +1647,7 @@ let test_file_input_carries_accept_capture_multiple () =
   | Element.Column _
   | Element.Button _
   | Element.Link _
+  | Element.Heading _
   | Element.Input _
   | Element.Image _
   | Element.Checkbox _
@@ -1528,6 +1698,7 @@ let test_file_input_carries_accept_capture_multiple () =
   | Element.Column _
   | Element.Button _
   | Element.Link _
+  | Element.Heading _
   | Element.Input _
   | Element.Image _
   | Element.Checkbox _
@@ -1702,6 +1873,7 @@ let link_destination_parts (el : 'msg Element.t) =
   | Element.Row _
   | Element.Column _
   | Element.Button _
+  | Element.Heading _
   | Element.Input _
   | Element.Image _
   | Element.Checkbox _
@@ -1839,6 +2011,8 @@ let () =
             test_button_without_button_type_is_push;
           Alcotest.test_case "button_type_to_string_is_the_html_token" `Quick
             test_button_type_to_string_is_the_html_token;
+          Alcotest.test_case "heading_level_to_int_is_one_to_six" `Quick
+            test_heading_level_to_int_is_one_to_six;
           Alcotest.test_case "input_defaults" `Quick test_input_defaults;
           Alcotest.test_case "input_placeholder" `Quick test_input_placeholder;
           Alcotest.test_case "input_on_change" `Quick test_input_on_change;
@@ -1879,6 +2053,8 @@ let () =
             test_map_preserves_scroll_attrs;
           Alcotest.test_case "map_preserves_button_type_and_disabled" `Quick
             test_map_preserves_button_type_and_disabled;
+          Alcotest.test_case "heading_map_preserves_level_and_child" `Quick
+            test_heading_map_preserves_level_and_child;
           Alcotest.test_case "map_keyed" `Quick test_map_keyed;
           Alcotest.test_case "link_map_maps_destination_and_child" `Quick
             test_link_map_maps_destination_and_child;
@@ -1901,6 +2077,10 @@ let () =
             test_equal_button_different_click;
           Alcotest.test_case "equal_distinguishes_button_type_and_disabled"
             `Quick test_equal_distinguishes_button_type_and_disabled;
+          Alcotest.test_case "heading_equal_distinguishes_level" `Quick
+            test_heading_equal_distinguishes_level;
+          Alcotest.test_case "equal_heading_level_matches_numbers" `Quick
+            test_equal_heading_level_matches_numbers;
           Alcotest.test_case "equal_input_distinct" `Quick
             test_equal_input_distinct;
           Alcotest.test_case "equal_input_different_value" `Quick
