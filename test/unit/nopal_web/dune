@@ -31,7 +31,7 @@
 (test
  (name test_style_sheet)
  (package nopal_web)
- (libraries nopal_web nopal_style alcotest brr)
+ (libraries nopal_web nopal_style test_util alcotest brr)
  (modes js)
  (js_of_ocaml
   (javascript_files dom_shim.js stylesheet_shim.js)))
@@ -58,7 +58,9 @@
 
 ; mount_shim.js adds a ResizeObserver stub and a no-op requestAnimationFrame on
 ; top of dom_shim.js, so the mount/drive path can be exercised synchronously
-; without an infinite rAF loop. See mount_shim.js for the rationale.
+; without an infinite rAF loop. See mount_shim.js for the rationale. Every
+; mount stanza also loads stylesheet_shim.js, because mounting creates a style
+; sheet and Style_sheet.create writes the heading reset into it.
 
 (test
  (name test_mount_telemetry)
@@ -74,7 +76,7 @@
   js_of_ocaml)
  (modes js)
  (js_of_ocaml
-  (javascript_files dom_shim.js mount_shim.js)))
+  (javascript_files dom_shim.js stylesheet_shim.js mount_shim.js)))
 
 (test
  (name test_mount_safe_area)
@@ -90,7 +92,7 @@
   js_of_ocaml)
  (modes js)
  (js_of_ocaml
-  (javascript_files dom_shim.js mount_shim.js)))
+  (javascript_files dom_shim.js stylesheet_shim.js mount_shim.js)))
 
 ; subs_shim.js adds window/document event-listener registries and a capturable
 ; setInterval on top of dom_shim.js, so web_interpret_atom's browser-backed
@@ -152,13 +154,29 @@
  (js_of_ocaml
   (javascript_files dom_shim.js stylesheet_shim.js)))
 
+; test_heading_render reads the node a heading renders to and reconciles it
+; across a level change and a text change. stylesheet_shim is loaded because
+; Renderer.create builds a style sheet.
+
+(test
+ (name test_heading_render)
+ (package nopal_web)
+ (libraries nopal_web nopal_element alcotest brr)
+ (modes js)
+ (js_of_ocaml
+  (javascript_files dom_shim.js stylesheet_shim.js)))
+
 (test
  (name test_mount_unmount)
  (package nopal_web)
  (libraries nopal_web nopal_element nopal_runtime nopal_mvu alcotest brr)
  (modes js)
  (js_of_ocaml
-  (javascript_files dom_shim.js mount_shim.js subs_shim.js)))
+  (javascript_files
+   dom_shim.js
+   stylesheet_shim.js
+   mount_shim.js
+   subs_shim.js)))
 
 ; test_mount_scroll_by drives the full mount/drive path to pin WHERE the
 ; relative-scroll drain runs inside a frame, so it needs mount_shim (captured
@@ -170,7 +188,7 @@
  (libraries nopal_web nopal_element nopal_style nopal_mvu alcotest brr)
  (modes js)
  (js_of_ocaml
-  (javascript_files dom_shim.js mount_shim.js)))
+  (javascript_files dom_shim.js stylesheet_shim.js mount_shim.js)))
 
 ; test_attr_precedence asserts that a component-derived attribute wins over a
 ; caller pair of the same key, and that within the caller's own list the last
@@ -212,7 +230,11 @@
  (libraries nopal_web nopal_element nopal_mvu test_util alcotest brr)
  (modes js)
  (js_of_ocaml
-  (javascript_files dom_shim.js mount_shim.js clipboard_shim.js)))
+  (javascript_files
+   dom_shim.js
+   stylesheet_shim.js
+   mount_shim.js
+   clipboard_shim.js)))
 
 ; test_mount_link_host mounts an app whose view is one External link, with and
 ; without an opener, on a page that defines the Tauri runtime's global, so it
@@ -225,4 +247,4 @@
  (libraries nopal_web nopal_element nopal_mvu nopal_runtime alcotest brr)
  (modes js)
  (js_of_ocaml
-  (javascript_files dom_shim.js mount_shim.js)))
+  (javascript_files dom_shim.js stylesheet_shim.js mount_shim.js)))

@@ -3,7 +3,25 @@ type t
 val create : unit -> t
 (** Creates the stylesheet manager. Inserts a single [<style>] element into the
     document [<head>] that will hold all base-style and interaction CSS rules.
-*)
+
+    The sheet opens with one heading reset,
+    [:where([data-nopal-heading]){margin:0;font-size:inherit;font-weight:inherit}],
+    so a heading Nopal renders carries none of the user agent's heading margin,
+    size or weight. It is scoped to the [data-nopal-heading] marker the renderer
+    writes on its own headings, so headings on the host page that Nopal did not
+    render are left alone. The whole selector sits inside [:where], which gives
+    the rule zero specificity: it beats only the user agent's defaults, and a
+    heading's own style beats it whether that style is written inline or as a
+    class rule. Each sheet carries its own copy, so a second mount adds a
+    second, identical reset. The reset is never removed.
+
+    This is the only user-agent default Nopal neutralises: [Style.layout] has no
+    margin, so a heading's browser margin could not otherwise be removed, while
+    an unstyled button or link still shows the browser's defaults. *)
+
+val heading_marker : string
+(** The attribute name the heading reset selects on. The renderer writes it,
+    with an empty value, on every heading it renders. *)
 
 type base_id
 (** Opaque identifier for a base-style class rule. Each interactive element gets

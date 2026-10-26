@@ -221,3 +221,24 @@
 (test
  (name test_named_graphic)
  (libraries kitchen_sink_app nopal_test nopal_element alcotest))
+
+(test
+ (name test_section_headings)
+ (libraries
+  kitchen_sink_app
+  nopal_test
+  nopal_element
+  nopal_platform
+  nopal_storage
+  alcotest))
+
+(test
+ (name test_headings_section)
+ (libraries
+  kitchen_sink_app
+  nopal_test
+  nopal_element
+  nopal_style
+  nopal_platform
+  nopal_storage
+  alcotest))

@@ -38,7 +38,9 @@
   (javascript_files tauri_shim.js)))
 
 ; test_nopal_tauri_mount mounts a whole app, so over tauri_shim it needs the
-; nopal_web suite's dom_shim and mount_shim (captured rAF, so no frame runs).
+; nopal_web suite's dom_shim and mount_shim (captured rAF, so no frame runs),
+; and its stylesheet_shim, because mounting writes the heading reset into a new
+; style sheet.
 
 (test
  (name test_nopal_tauri_mount)
@@ -49,6 +51,7 @@
  (js_of_ocaml
   (javascript_files
    ../nopal_web/dom_shim.js
+   ../nopal_web/stylesheet_shim.js
    ../nopal_web/mount_shim.js
    tauri_shim.js)))
 

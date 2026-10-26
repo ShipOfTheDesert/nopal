@@ -59,7 +59,8 @@ val render : 'msg Nopal_element.Element.t -> 'msg rendered
     ["capture"], ["multiple"], ["placeholder"], a radio's ["name"], a control's
     ["type"], an input's ["required"], ["aria-required"], ["autocomplete"] and
     ["name"], a form's ["autocomplete"] and ["novalidate"], a button's ["type"]
-    and ["aria-disabled"], a link's ["href"] and ["rel"], a canvas's ["role"],
+    and ["aria-disabled"], a link's ["href"] and ["rel"], a heading's ["role"],
+    ["aria-level"] and ["data-nopal-heading"], a canvas's ["role"],
     ["aria-label"] and ["aria-hidden"], and an image's ["alt"]. On ["disabled"],
     ["multiple"], ["required"] and ["novalidate"] the two agree on which side
     wins and not on the value: this renderer carries ["true"] where the browser
@@ -100,8 +101,9 @@ val render : 'msg Nopal_element.Element.t -> 'msg rendered
     and its ["name"], and a form's ["autocomplete"]. A link's ["rel"] is
     contributed for an [External] link only, so a [Route] link uncovers a
     caller's ["rel"]. An input's ["placeholder"], a radio's ["name"], a button's
-    ["type"] and a link's ["href"] have no absent form and are contributed on
-    every render.
+    ["type"], a link's ["href"] and a heading's ["role"], ["aria-level"] and
+    ["data-nopal-heading"] have no absent form and are contributed on every
+    render.
 
     A scroll container's [reveal] declaration is surfaced for inspection as the
     derived attribute pairs ["reveal"] and ["reveal-align"], carried exactly as
@@ -152,6 +154,14 @@ val find_all : selector -> node -> node list
     depth-first order. [First_child] and [Nth_child] always return [[]] —
     positional selectors are meaningful only for single-node lookup via [find].
 *)
+
+val find_heading :
+  Nopal_element.Element.heading_level -> string -> node -> node option
+(** [find_heading level text node] returns the first heading of [level] whose
+    {!text_content} equals [text], searching depth-first in document order, so a
+    test names a heading by its level and text rather than by a tag or an ARIA
+    pair. The match is exact: a heading whose text merely contains [text] is not
+    found. A heading made of several runs matches on their concatenation. *)
 
 val text_content : node -> string
 (** [text_content node] returns the concatenated text of all [Text] descendants.

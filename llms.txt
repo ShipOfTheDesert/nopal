@@ -431,7 +431,8 @@ a backend renders as an attribute — `placeholder`, a radio's `name`, a picker'
 `accept`/`capture`/`multiple`, `disabled`, a container's `focusable`, an
 input's `required`/`autocomplete`/`input_type`/`name`, a form's
 `autocomplete`/`novalidate`, a button's `button_type`/`disabled`, a link's
-`destination` (its `href` and `rel`) — the rule is: **typed-field derivations beat the `~attrs` list; within the list, the
+`destination` (its `href` and `rel`), a heading's `level` (its `role`,
+`aria-level` and `data-nopal-heading`) — the rule is: **typed-field derivations beat the `~attrs` list; within the list, the
 last pair wins.**
 
 Those are two tiers, and they are not the same tier. A typed field sits *above*
@@ -465,8 +466,10 @@ declines in one of two shapes:
 Some derivations have no absent form and are derived on every render, so a
 caller's pair of that key is always replaced: `placeholder`, a radio's `name`,
 a checkbox's, radio's or file picker's `type`, a button's `type` (from
-`button_type`, which is `"button"` when the button names none), and a link's
-`href` (the `Route` path or the `External` URL).
+`button_type`, which is `"button"` when the button names none), a link's
+`href` (the `Route` path or the `External` URL), and a heading's `role`
+(`"heading"`), `aria-level` (the level's digit, `"1"` to `"6"`) and
+`data-nopal-heading` (`""`).
 
 `nopal_web` and `nopal_test` are the two renderers that enforce this: the web
 backend applies `?attrs` before it writes any derivation, and the structural
@@ -477,14 +480,17 @@ web backend writes as real attributes: `disabled`, `accept`, `capture`,
 `multiple`, `placeholder`, a radio's `name`, a control's `type`, an input's
 `required`, `aria-required`, `autocomplete` and `name`, a form's `autocomplete` and
 `novalidate`, a button's `type` and `aria-disabled`, a link's `href` and
-`rel`, a drawing's `role`, `aria-label` and `aria-hidden`, and an image's
+`rel`, a heading's `role`, `aria-level` and `data-nopal-heading`, a drawing's
+`role`, `aria-label` and `aria-hidden`, and an image's
 `alt`. Every one of them
 carries the same value in both renderers except `disabled`, `multiple`,
 `required` and `novalidate`, which are a presence attribute (`""`) in the DOM
 and `"true"` in the structural tree — the two agree on which side wins, not on
 the value. `aria-required` and a button's `aria-disabled` are `"true"` in both,
 a button's `type` is `"button"` or `"submit"` in both, a link's `rel` is
-`"noopener noreferrer"` in both, a drawing's `role` is `"img"` and its
+`"noopener noreferrer"` in both, a heading's `role` is `"heading"`, its
+`aria-level` the level's digit and its `data-nopal-heading` `""` in both, a
+drawing's `role` is `"img"` and its
 `aria-hidden` `"true"` in both, and a decorative image's `alt` is present and
 `""` in both. A
 checkbox's, radio's or file picker's `type` is the structural node's tag; an
@@ -640,6 +646,50 @@ primary click, and a link is in the tab order natively. Which host a link is
 rendered for is the mount's choice: `Nopal_web.mount` renders for `Browser`,
 and for `Webview` when given `~open_external` (Tauri apps: `Nopal_tauri_mount`).
 
+**Headings.** `Element.heading level child` is a heading wherever the platform
+has one: a native `<h1>`–`<h6>` of its level in a browser or webview, so it is
+in the document outline and in assistive technology's heading navigation. The
+level is the closed `heading_level`, `H1` to `H6`, so a level 0 or 7 cannot be
+built. A heading takes one child, as `button` and `link` do; a heading made of
+several runs takes a `row` as its child. A heading is not a flex container.
+
+The level is semantics, not appearance. Nopal ships no type scale. How a
+heading looks — its size, weight, colour and spacing — comes from its own
+`style`, applied to the heading itself with no wrapper, and two headings of
+different levels with the same `style` look the same. The level is typed, so a
+`role` or `aria-level` pair in `~attrs` never takes effect (see Attribute
+precedence above): a heading is always announced as a heading of its level.
+
+On the web the browser's own heading margin, font size and weight are
+neutralised, so an unstyled heading looks like the text around it. **This is the
+only user-agent default Nopal neutralises.** An unstyled `button` still shows
+the browser's padding, border and background, and an unstyled `link` its
+colour and underline. The heading does not follow them because `Style.layout`
+has no margin, so a leaked heading margin could not be removed by any style.
+The reset is one rule at the top of every mount's `<style data-nopal>` sheet:
+
+```css
+:where([data-nopal-heading]){margin:0;font-size:inherit;font-weight:inherit}
+```
+
+It selects only the `data-nopal-heading` marker Nopal writes on its own
+headings, so a heading on the host page around the mount point keeps the
+browser's defaults. The whole selector sits inside `:where`, which gives it zero
+specificity: it beats the user agent and nothing else, and a heading's own
+style wins whether it is written inline or, when it has interaction states, as
+a class rule. A second mount carries a second, identical copy.
+
+**Heading order is guidance, not enforcement.** Order the headings of a view as
+an outline: one `H1` for the view, and no level skipped on the way down, so an
+`H2` is followed by an `H3` and not an `H4`. Going back up may skip, as an `H4`
+closing a section followed by the next `H2` does. Nopal does not check this,
+and nothing rejects a view that breaks it: the type cannot express it, and a
+run-time check could only log the breach. Check it in a browser with axe's
+`heading-order` rule. That is a best-practice rule, not a WCAG one, so an axe
+run restricted to the WCAG tags, as `test/e2e/tests/axe.ts` is, does not run
+it. Name it by rule id instead, as `test/e2e/tests/kitchen-sink-headings.spec.ts`
+does with `withRules(["heading-order", "empty-heading", "aria-allowed-role"])`.
+
 ```ocaml
 Element.empty                                                    (* renders nothing *)
 Element.text : string -> 'msg Element.t                          (* plain text *)
@@ -746,6 +796,20 @@ Element.link : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * 
      or the External URL, with rel="noopener noreferrer" on External only. Both
      keys are typed: an ("href", _) pair in [attrs] never takes effect, and a
      ("rel", _) pair only on a Route link. *)
+
+(* Headings — see "Headings" above for the reset and the order guidance. *)
+type heading_level = H1 | H2 | H3 | H4 | H5 | H6
+Element.heading_level_to_int : heading_level -> int   (* 1 … 6 — sole producer of the tag digit and aria-level *)
+Element.equal_heading_level : heading_level -> heading_level -> bool
+Element.heading : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
+  -> heading_level -> 'msg Element.t -> 'msg Element.t
+  (* Renders tag "h1" … "h6" in both renderers, with role="heading",
+     aria-level="<1-6>" and data-nopal-heading="" written after [attrs], so a
+     ("role", _), ("aria-level", _) or ("data-nopal-heading", _) pair in
+     [attrs] never takes effect. The level is semantics only: the look is
+     [style]. A level change on update replaces the web node with a new <hN>.
+     Arm: Heading of { style; interaction; attrs; level : heading_level;
+     child : 'msg t }, after Link. *)
 
 module Url : sig                       (* Nopal_element.Url — pure, native *)
   type t                               (* abstract: only of_string makes one *)
@@ -3999,6 +4063,13 @@ Test_renderer.messages : 'msg rendered -> 'msg list
 Test_renderer.find     : selector -> node -> node option
 Test_renderer.find_all : selector -> node -> node list
 Test_renderer.text_content : node -> string
+Test_renderer.find_heading : Element.heading_level -> string -> node -> node option
+  (* The first heading of that level, pre-order depth-first, whose text_content
+     is exactly the string — a test names a heading by level and text, never by
+     a tag or an ARIA pair. A heading of several runs matches on their
+     concatenation. A heading node's tag is "h1" … "h6", and its attrs are the
+     view's own followed by ("role", "heading"), ("aria-level", digit) and
+     ("data-nopal-heading", ""). There is no heading selector constructor. *)
 
 type selector = By_tag of string | By_text of string | By_attr of string * string
               | First_child | Nth_child of int
@@ -4489,6 +4560,54 @@ No font is loaded: there is no `@font-face` registration. A `("style", …)` pai
 in `~attrs` is still written after the typed inline styles and replaces them,
 for a font stack as for every other `Style.t` field.
 
+**Heading answers that moved — read this on a pin bump.**
+**Every exhaustive `match` on `Element.t` stops compiling** (row 1): the type
+gains a `Heading` arm, placed after `Link`, and the missing arm trips warning 8,
+an error under dune's default dev profile. Add the arm; a renderer that walks
+the tree visits its one `child`, as it does a `Link`'s. A match ending in a
+`_ ->` catch-all compiles unchanged and sends every heading to that branch.
+Nothing else stops compiling: every other row is additive, or changes what a
+renderer writes or what the kitchen sink renders.
+
+"Before" is the tree at commit `8c39fad`. The Where column names the renderer
+whose answer moved: web, the structural `Test_renderer`, or both. Rows 8–14 are
+the kitchen sink's rendered tree, which consumers copy: every title that read as
+a heading is now one, and each title's own text node is unchanged inside it, so
+a selector on the title's `span` or its text still finds it. No test reads this
+table. The behaviour each row describes is tested in the `nopal_element`,
+`nopal_test`, `nopal_web` and kitchen-sink suites and, for web, by the
+kitchen-sink Playwright and axe cases, but an edit to the text alone reddens no
+test.
+
+| # | Key | Visible | Where | When | Before | Now |
+|---|---|---|---|---|---|---|
+| 1 | `element-t-heading-arm` | compile | all | an exhaustive `match` on `Element.t` | no heading arm | `Heading of { style : Style.t; interaction : Interaction.t; attrs : (string * string) list; level : heading_level; child : 'msg t }`, after `Link`. Fix: add the arm |
+| 2 | `element-heading` | additive | all | `Nopal_element.Element` | — | `type heading_level = H1 \| H2 \| H3 \| H4 \| H5 \| H6`, `heading_level_to_int` (1 to 6, the sole producer of the tag digit and `aria-level`), `equal_heading_level`, and `heading : ?style -> ?interaction -> ?attrs -> heading_level -> 'msg t -> 'msg t`, the level positional as a link's destination is |
+| 3 | `test-renderer-find-heading` | additive | structural | `Nopal_test.Test_renderer` | — | `find_heading : heading_level -> string -> node -> node option`: the first heading of that level, pre-order depth-first, whose `text_content` equals the string. `selector` gains no constructor, so an exhaustive match on it compiles unchanged |
+| 4 | `structural-heading-node` | structural | structural | the node a heading renders to | — | tag `"h1"` … `"h6"`; `attrs` are the view's own followed by `("role", "heading")`, `("aria-level", "<1-6>")` and `("data-nopal-heading", "")`, so a caller's pair of any of those keys is outranked. An unstyled heading's node style equals an unstyled box's |
+| 5 | `web-heading-element` | render | web | the element a heading renders to | — | a native `<h1>` … `<h6>`, with `role="heading"`, `aria-level="<1-6>"` and `data-nopal-heading=""` written after `~attrs` on create, and re-asserted whenever a reconcile re-applies `~attrs`, so a caller's `role`, `aria-level` or `data-nopal-heading` never stands |
+| 6 | `web-heading-level-change-replaces` | render | web | a heading whose level changes between renders | — | the node is replaced by a new `<hN>` of the new level; a heading whose level is unchanged is patched in place |
+| 7 | `web-style-sheet-heading-reset` | render | web | every mount's `<style data-nopal>` | class rules only | opens with one rule at index 0, `:where([data-nopal-heading]){margin:0;font-size:inherit;font-weight:inherit}`, before any class rule. It matches no element Nopal did not mark, so host-page headings and every other Nopal element are unaffected. `Style_sheet.create` now calls the sheet's `insertRule`, so a DOM shim that mounts under Node must implement it |
+| 8 | `kitchen-sink-page-title` | example | web | the kitchen sink's "Kitchen Sink" title | `span` | `h1 > span`; the `page_title_text` style stays on the span |
+| 9 | `kitchen-sink-view-section-title` | example | web | every section built by `view_section` | `span` | `h2 > span`, unstyled, so the title still looks like the section's text |
+| 10 | `kitchen-sink-own-column-section-titles` | example | web | the Typography, Telemetry, 2D Drawing, Charts, Chart Extensions and Mobile Signals titles | `span` | `h2 > span` |
+| 11 | `kitchen-sink-ui-components-title` | example | web | the UI Components title, in `kitchen_sink_ui.ml` | `span` styled by `section_title_text` | `h2 > span`; the span keeps `section_title_text` |
+| 12 | `kitchen-sink-responsive-typography-title` | example | web | "Responsive typography" in Responsive Design | `div > span`, the style on the `div` | `h3 > span`, with `title_text_style` moved to the `h3` as its `~style` |
+| 13 | `kitchen-sink-responsive-panel-titles` | example | web | "Viewport Info" and "Safe Area Insets" in Responsive Design | bold `span` | `h3 > span`; the bold `styled_text` child is unchanged |
+| 14 | `kitchen-sink-headings-section` | example | web | anyone copying the kitchen sink | no Headings section | a "Headings" section (`data-testid="headings-section"`) right after Typography: an `H2` title, an `H3`–`H6` chain sized from one scale, an unstyled `H3` beside plain text, and an `H3` with a 1.5rem size and a hover underline, so its style goes to a class rule (`examples/kitchen_sink/sub_headings.ml`) |
+
+What did **not** move, recorded so a reader does not go looking.
+`Element.text` and `styled_text` still render a `span`, and no existing
+element's rendered output changes outside rows 8–14. An unstyled `button` or
+`link` still shows the browser's defaults: the reset reaches headings only.
+`Style.t` gains no field, and `Style.layout` still has no margin. Nopal still
+checks no heading order. `nopal_ui` renders no heading: `Modal`'s title is
+still authored by its caller inside `body`, and making it a heading is the
+caller's choice. The Typography section's "Heading scale" rows are a type-scale
+demonstration and stay styled text, not headings. The `Test_renderer` selectors
+are unchanged; `By_tag "h2"` finds a level-2 heading, but `find_heading` is the
+documented query.
+
 #### Telemetry harness (`Nopal_test.Telemetry_test`)
 
 Native, browser-free harness that drives a real app through the recording MVU
@@ -4549,7 +4668,10 @@ Nopal_web.mount :
       mount was given no ~open_external, so a link would navigate the webview
       away from the app. Mount through Nopal_tauri_mount, which supplies one."
    Reading that one global is all nopal_web knows of Tauri; it depends on no
-   Tauri package. *)
+   Tauri package.
+   Each mount appends its own <style data-nopal> to <head>, opening with the
+   scoped heading reset (see Element DSL -> Headings). A DOM shim that mounts
+   under Node must implement the sheet's insertRule. *)
 
 (* Telemetry sibling of mount — see the E2E Telemetry section (Layer 2) *)
 Nopal_web.mount_with_telemetry :

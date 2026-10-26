@@ -32,6 +32,7 @@
   sub_clipboard
   sub_links
   sub_donut
+  sub_headings
   named_graphic
   tauri_op)
  (libraries

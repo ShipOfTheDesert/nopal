@@ -822,6 +822,32 @@ let test_input_name_removed_on_reconcile () =
        ~first:(E.input ~name:"email" "v")
        ~second:(E.input "v") "name")
 
+(* A heading's level derives [role], [aria-level] and the [data-nopal-heading]
+   marker, so a caller's pair of any of the three keys loses to it, on first
+   render and when the caller's pairs arrive or leave on an update. *)
+let heading_keys = [ "role"; "aria-level"; "data-nopal-heading" ]
+
+let heading_callers_pairs =
+  [ ("role", "presentation"); ("aria-level", "5"); ("data-nopal-heading", "x") ]
+
+let heading_with ?(attrs = []) () = E.heading ~attrs E.H2 (E.text "Title")
+let heading_resolved = [ Some "heading"; Some "2"; Some "" ]
+
+let heading_semantics_outrank_attrs () =
+  let check label read =
+    Alcotest.(check (list (option string)))
+      label heading_resolved
+      (List.map read heading_keys)
+  in
+  let authored = heading_with ~attrs:heading_callers_pairs () in
+  check "web: the level's pairs beat the caller's" (web_attr authored);
+  check "structural: the level's pairs beat the caller's"
+    (structural_attr authored);
+  check "web: re-asserted over the caller's pairs arriving on update"
+    (web_attr_after_update ~first:(heading_with ()) ~second:authored);
+  check "web: re-asserted when the caller's pairs leave on update"
+    (web_attr_after_update ~first:authored ~second:(heading_with ()))
+
 (* A form's typed [autocomplete] and [novalidate], on the same terms as an
    input's typed fields above: both are spelled identically in both backends
    ([autocomplete] as its wire token, [novalidate] as a presence attribute),
@@ -1184,6 +1210,8 @@ let () =
           Alcotest.test_case "input_name_tier" `Quick test_input_name_tier;
           Alcotest.test_case "input_name_removed_on_reconcile" `Quick
             test_input_name_removed_on_reconcile;
+          Alcotest.test_case "heading_semantics_outrank_attrs" `Quick
+            heading_semantics_outrank_attrs;
         ] );
       ( "the submit contract",
         [

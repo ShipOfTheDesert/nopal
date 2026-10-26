@@ -40,6 +40,12 @@ type t = {
 type base_id = base_entry
 type interaction_id = interaction_entry
 
+let heading_marker = "data-nopal-heading"
+
+let heading_reset_rule =
+  ":where([" ^ heading_marker
+  ^ "]){margin:0;font-size:inherit;font-weight:inherit}"
+
 let create () =
   let doc = Jv.get Jv.global "document" in
   let head = Jv.get doc "head" in
@@ -49,12 +55,15 @@ let create () =
   |> ignore;
   ignore (Jv.call head "appendChild" [| style_el |]);
   let sheet = Jv.get style_el "sheet" in
+  ignore
+    (Jv.call sheet "insertRule"
+       [| Jv.of_string heading_reset_rule; Jv.of_int 0 |]);
   {
     sheet;
     counter = 0;
     interaction_cache = Hashtbl.create 16;
     base_entries = Hashtbl.create 16;
-    total_rules = 0;
+    total_rules = 1;
   }
 
 let adjust_indices_after_delete t deleted_start deleted_count =
