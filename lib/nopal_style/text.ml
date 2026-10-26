@@ -7,9 +7,10 @@ type text_overflow = Clip | Ellipsis | Wrap | No_wrap
 type whitespace = Collapse | Preserve
 type figure_spacing = Tabular | Proportional | Normal_spacing
 type figure_style = Lining | Oldstyle | Normal_style
+type font = Single of Font.family | Stack of Font.stack
 
 type t = {
-  font_family : Font.family option;
+  font_family : font option;
   font_size : float option;
   font_weight : Font.weight option;
   line_height : line_height option;
@@ -23,6 +24,7 @@ type t = {
   whitespace : whitespace option;
   figure_spacing : figure_spacing option;
   figure_style : figure_style option;
+  underline_offset : float option;
 }
 
 let default =
@@ -41,9 +43,11 @@ let default =
     whitespace = None;
     figure_spacing = None;
     figure_style = None;
+    underline_offset = None;
   }
 
-let font_family v t = { t with font_family = Some v }
+let font_family v t = { t with font_family = Some (Single v) }
+let font_stack v t = { t with font_family = Some (Stack v) }
 let font_size v t = { t with font_size = Some v }
 let font_weight v t = { t with font_weight = Some v }
 let line_height v t = { t with line_height = Some v }
@@ -57,6 +61,7 @@ let color v t = { t with color = Some v }
 let whitespace v t = { t with whitespace = Some v }
 let figure_spacing v t = { t with figure_spacing = Some v }
 let figure_style v t = { t with figure_style = Some v }
+let underline_offset v t = { t with underline_offset = Some v }
 
 let equal_line_height a b =
   match (a, b) with
@@ -123,8 +128,14 @@ let equal_figure_style a b =
   | Normal_style, Normal_style -> true
   | (Lining | Oldstyle | Normal_style), _ -> false
 
+let equal_font a b =
+  match (a, b) with
+  | Single x, Single y -> Font.equal_family x y
+  | Stack x, Stack y -> Font.equal_stack x y
+  | (Single _ | Stack _), _ -> false
+
 let equal a b =
-  Option.equal Font.equal_family a.font_family b.font_family
+  Option.equal equal_font a.font_family b.font_family
   && Option.equal Float.equal a.font_size b.font_size
   && Option.equal Font.equal_weight a.font_weight b.font_weight
   && Option.equal equal_line_height a.line_height b.line_height
@@ -138,3 +149,4 @@ let equal a b =
   && Option.equal equal_whitespace a.whitespace b.whitespace
   && Option.equal equal_figure_spacing a.figure_spacing b.figure_spacing
   && Option.equal equal_figure_style a.figure_style b.figure_style
+  && Option.equal Float.equal a.underline_offset b.underline_offset

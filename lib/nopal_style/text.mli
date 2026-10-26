@@ -85,8 +85,13 @@ type figure_spacing = Tabular | Proportional | Normal_spacing
     [Normal_spacing] and distinct from leaving the field unset. *)
 type figure_style = Lining | Oldstyle | Normal_style
 
+(** The font a text style names. [Single] is one family with no last resort:
+    when that face is missing, the engine falls back to its own default face.
+    [Stack] is an ordered {!Font.type-stack} ending in a generic last resort. *)
+type font = Single of Font.family | Stack of Font.stack
+
 type t = {
-  font_family : Font.family option;
+  font_family : font option;
   font_size : float option;
   font_weight : Font.weight option;
   line_height : line_height option;
@@ -100,6 +105,7 @@ type t = {
   whitespace : whitespace option;
   figure_spacing : figure_spacing option;
   figure_style : figure_style option;
+  underline_offset : float option;
 }
 
 (** {1 Defaults} *)
@@ -110,7 +116,11 @@ val default : t
 (** {1 Builders} *)
 
 val font_family : Font.family -> t -> t
-(** [font_family fam t] sets [font_family] to [Some fam]. *)
+(** [font_family fam t] sets [font_family] to [Some (Single fam)]. *)
+
+val font_stack : Font.stack -> t -> t
+(** [font_stack s t] sets [font_family] to [Some (Stack s)], replacing any
+    single family. *)
 
 val font_size : float -> t -> t
 (** [font_size rem t] sets [font_size] to [Some rem]. *)
@@ -157,12 +167,28 @@ val figure_style : figure_style -> t -> t
     renders exactly as before; it does not mean [Normal_style], which emits a
     declaration of its own. *)
 
+val underline_offset : float -> t -> t
+(** [underline_offset px t] sets [underline_offset] to [Some px]: the distance,
+    in pixels, from the text to its underline. A negative value is valid and
+    moves the line toward the text. A non-finite value ([nan], [infinity],
+    [neg_infinity]) emits nothing, as if the field were unset.
+
+    This is web-only. It takes effect only where an underline is drawn, at rest
+    or in an interaction state, so a link can gain an offset underline on hover.
+    It is inert on scene and canvas text, which draw no text decoration at all.
+*)
+
 (** {1 Comparison} *)
 
 val equal : t -> t -> bool
-(** Field-by-field equality. Uses [Float.equal] for [font_size] and float fields
-    inside [line_height] and [letter_spacing], and [Color.equal] for [color], so
-    the alpha component is compared float-safely too. *)
+(** Field-by-field equality. Uses [Float.equal] for [font_size],
+    [underline_offset] and float fields inside [line_height] and
+    [letter_spacing], and [Color.equal] for [color], so the alpha component is
+    compared float-safely too. *)
+
+val equal_font : font -> font -> bool
+(** Equal when both are [Single] with equal families, or both are [Stack] with
+    equal stacks. A [Single] never equals a [Stack], even a one-entry one. *)
 
 val equal_line_height : line_height -> line_height -> bool
 val equal_letter_spacing : letter_spacing -> letter_spacing -> bool

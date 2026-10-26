@@ -1,4 +1,5 @@
 (tests
+ (package nopal_svg)
  (names test_svg_fmt test_nopal_svg test_chart_svg_integration)
  (libraries
   nopal_svg
@@ -8,4 +9,5 @@
   nopal_draw
   arc_cases
   test_util
+  xmlm
   alcotest))

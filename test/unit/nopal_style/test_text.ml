@@ -17,15 +17,42 @@ let test_default_all_none () =
   Alcotest.(check (option reject)) "color" None t.color;
   Alcotest.(check (option reject)) "whitespace" None t.whitespace;
   Alcotest.(check (option reject)) "figure_spacing" None t.figure_spacing;
-  Alcotest.(check (option reject)) "figure_style" None t.figure_style
+  Alcotest.(check (option reject)) "figure_style" None t.figure_style;
+  Alcotest.(check (option reject)) "underline_offset" None t.underline_offset
 
 (* --- Builders --- *)
 
-let test_font_family_sets () =
-  let t = font_family Nopal_style.Font.Sans_serif default in
+let test_font_family_builder_wraps_single () =
+  let t = font_family Nopal_style.Font.Monospace default in
   Alcotest.(check bool)
     "font_family set" true
-    (t.font_family = Some Nopal_style.Font.Sans_serif)
+    (Option.equal equal_font t.font_family
+       (Some (Single Nopal_style.Font.Monospace)))
+
+let test_font_stack_builder_sets_stack () =
+  let geist () =
+    Nopal_style.Font.stack
+      [ Custom "Geist"; System_ui ]
+      ~last_resort:Nopal_style.Font.Generic.Sans_serif
+  in
+  let t = default |> italic true |> font_stack (geist ()) in
+  Alcotest.(check bool)
+    "font_family holds the stack" true
+    (Option.equal equal_font t.font_family (Some (Stack (geist ()))));
+  Alcotest.(check bool) "italic preserved" true (t.italic = Some true);
+  let mono =
+    Nopal_style.Font.stack
+      [ Custom "Geist Mono"; Ui_monospace ]
+      ~last_resort:Nopal_style.Font.Generic.Monospace
+  in
+  Alcotest.(check bool)
+    "a second stack replaces the first" true
+    (Option.equal equal_font (font_stack mono t).font_family (Some (Stack mono)));
+  Alcotest.(check bool)
+    "a stack replaces a single family" true
+    (Option.equal equal_font
+       (default |> font_family Nopal_style.Font.Serif |> font_stack mono)
+         .font_family (Some (Stack mono)))
 
 let test_font_size_sets () =
   let t = font_size 1.5 default in
@@ -135,6 +162,18 @@ let test_figure_style_builder () =
   Alcotest.(check (option reject)) "whitespace" None t.whitespace;
   Alcotest.(check (option reject)) "font_size" None t.font_size
 
+let test_underline_offset_builder () =
+  let t = default |> italic true |> underline_offset 3. in
+  Alcotest.(check (option (float 0.)))
+    "underline_offset set" (Some 3.) t.underline_offset;
+  let t2 = underline_offset (-2.) t in
+  Alcotest.(check (option (float 0.)))
+    "negative overwrites" (Some (-2.)) t2.underline_offset;
+  Alcotest.(check bool) "italic preserved" true (t.italic = Some true);
+  Alcotest.(check (option reject))
+    "text_decoration untouched" None t.text_decoration;
+  Alcotest.(check (option reject)) "font_size" None t.font_size
+
 let test_builders_compose () =
   let t =
     default
@@ -151,7 +190,8 @@ let test_builders_compose () =
   in
   Alcotest.(check bool)
     "font_family" true
-    (t.font_family = Some Nopal_style.Font.Monospace);
+    (Option.equal equal_font t.font_family
+       (Some (Single Nopal_style.Font.Monospace)));
   Alcotest.(check bool) "font_size" true (t.font_size = Some 2.0);
   Alcotest.(check bool)
     "font_weight" true
@@ -291,6 +331,68 @@ let test_equal_distinguishes_whitespace () =
     "constructor reflexive" true
     (equal_whitespace Collapse Collapse)
 
+let test_equal_distinguishes_stack () =
+  let open Nopal_style.Font in
+  let st families last_resort =
+    font_stack (stack families ~last_resort) Nopal_style.Text.default
+  in
+  let single f = font_family f Nopal_style.Text.default in
+  Alcotest.(check bool)
+    "same stack" true
+    (equal
+       (st [ Custom "Geist"; System_ui ] Generic.Sans_serif)
+       (st [ Custom "Geist"; System_ui ] Generic.Sans_serif));
+  Alcotest.(check bool)
+    "order differs" false
+    (equal
+       (st [ Custom "Geist"; System_ui ] Generic.Sans_serif)
+       (st [ System_ui; Custom "Geist" ] Generic.Sans_serif));
+  Alcotest.(check bool)
+    "last resort differs" false
+    (equal
+       (st [ Custom "Geist" ] Generic.Sans_serif)
+       (st [ Custom "Geist" ] Generic.Serif));
+  Alcotest.(check bool)
+    "single vs one-entry stack" false
+    (equal (single Monospace) (st [] Generic.Monospace));
+  Alcotest.(check bool)
+    "stack set vs unset" false
+    (equal (st [] Generic.Monospace) Nopal_style.Text.default);
+  Alcotest.(check bool)
+    "same single" true
+    (equal (single (Custom "Inter")) (single (Custom "Inter")));
+  Alcotest.(check bool)
+    "different single" false
+    (equal (single (Custom "Inter")) (single (Custom "Geist")));
+  Alcotest.(check bool)
+    "single set vs unset" false
+    (equal (single Monospace) Nopal_style.Text.default);
+  Alcotest.(check bool)
+    "equal_stack: same" true
+    (equal_stack
+       (stack [ Custom "Geist"; System_ui ] ~last_resort:Generic.Sans_serif)
+       (stack [ Custom "Geist"; System_ui ] ~last_resort:Generic.Sans_serif));
+  Alcotest.(check bool)
+    "equal_stack: order" false
+    (equal_stack
+       (stack [ Custom "Geist"; System_ui ] ~last_resort:Generic.Sans_serif)
+       (stack [ System_ui; Custom "Geist" ] ~last_resort:Generic.Sans_serif));
+  Alcotest.(check bool)
+    "equal_stack: last resort" false
+    (equal_stack
+       (stack [ Custom "Geist" ] ~last_resort:Generic.Sans_serif)
+       (stack [ Custom "Geist" ] ~last_resort:Generic.Monospace))
+
+let test_equal_distinguishes_underline_offset () =
+  let off v = underline_offset v default in
+  Alcotest.(check bool) "same offset" true (equal (off 3.) (off 3.));
+  Alcotest.(check bool) "different offset" false (equal (off 3.) (off 4.));
+  Alcotest.(check bool) "set vs unset" false (equal (off 3.) default);
+  (* Pins the comparator: [Stdlib.(=)] reports two NaN offsets unequal. *)
+  Alcotest.(check bool)
+    "nan offset" true
+    (equal (off Float.nan) (off Float.nan))
+
 (* Each fixture is rebuilt on every call, so no assertion below can pass on
    physical identity: the renderer's restyle gate compares whole records by
    value, and a missing conjunct in [equal] shows up only against fresh ones. *)
@@ -384,7 +486,10 @@ let () =
       );
       ( "builders",
         [
-          Alcotest.test_case "font_family_sets" `Quick test_font_family_sets;
+          Alcotest.test_case "font_family_builder_wraps_single" `Quick
+            test_font_family_builder_wraps_single;
+          Alcotest.test_case "font_stack_builder_sets_stack" `Quick
+            test_font_stack_builder_sets_stack;
           Alcotest.test_case "font_size_sets" `Quick test_font_size_sets;
           Alcotest.test_case "font_weight_sets" `Quick test_font_weight_sets;
           Alcotest.test_case "line_height_sets" `Quick test_line_height_sets;
@@ -402,6 +507,8 @@ let () =
             test_whitespace_builder_sets_only_its_field;
           Alcotest.test_case "figure_spacing_builder" `Quick
             test_figure_spacing_builder;
+          Alcotest.test_case "underline_offset_builder" `Quick
+            test_underline_offset_builder;
           Alcotest.test_case "figure_style_builder" `Quick
             test_figure_style_builder;
           Alcotest.test_case "builders_compose" `Quick test_builders_compose;
@@ -446,6 +553,10 @@ let () =
             test_equal_color_differs;
           Alcotest.test_case "equal_distinguishes_whitespace" `Quick
             test_equal_distinguishes_whitespace;
+          Alcotest.test_case "equal_distinguishes_stack" `Quick
+            test_equal_distinguishes_stack;
+          Alcotest.test_case "equal_distinguishes_underline_offset" `Quick
+            test_equal_distinguishes_underline_offset;
           Alcotest.test_case "equal_distinguishes_figures" `Quick
             test_equal_distinguishes_figures;
           Alcotest.test_case "equal_figure_spacing" `Quick

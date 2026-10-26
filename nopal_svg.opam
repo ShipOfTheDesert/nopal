@@ -10,6 +10,7 @@ bug-reports: "https://github.com/ShipOfTheDesert/nopal/issues"
 depends: [
   "dune" {>= "3.20"}
   "alcotest" {>= "1.9.1" & with-test}
+  "xmlm" {with-test}
   "ocaml"
   "nopal_draw"
   "nopal_scene"

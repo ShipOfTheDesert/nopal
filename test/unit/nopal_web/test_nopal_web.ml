@@ -2473,6 +2473,7 @@ let text_style_with ~whitespace ~text_overflow ~figure_spacing ~figure_style =
     whitespace;
     figure_spacing;
     figure_style;
+    underline_offset = None;
   }
 
 (* Changing only the whitespace field must repaint the declaration it resolves

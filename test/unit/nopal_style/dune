@@ -1,3 +1,8 @@
 (tests
  (names test_style test_font test_cursor test_text test_color)
  (libraries nopal_style alcotest))
+
+(cram
+ (applies_to stack_needs_last_resort)
+ (deps
+  (package nopal_style)))

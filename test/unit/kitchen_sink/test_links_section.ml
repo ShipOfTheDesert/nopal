@@ -8,6 +8,7 @@
 
 open Nopal_test.Test_renderer
 module Link = Nopal_element.Link
+module Text = Nopal_style.Text
 module Sub = Kitchen_sink_app.Sub_links
 
 (* mutable: the recording platform stub appends each path the router pushes;
@@ -142,6 +143,50 @@ let test_open_failure_shows_status () =
     (Some "failed", "Not opened: no browser installed")
     (after (Link.Failed "no browser installed"))
 
+let hover_text label node =
+  match interaction node with
+  | Some { Nopal_style.Interaction.hover = Some hover; _ } ->
+      hover.Nopal_style.Style.text
+  | Some { Nopal_style.Interaction.hover = None; _ }
+  | None ->
+      Alcotest.fail (label ^ " has no hover style")
+
+(* Both links underline on hover, so the offset is the one thing that tells
+   them apart; reading the underline on the plain link too is what keeps its
+   absent offset from passing for a link that lost its hover style. *)
+let test_offset_link_and_plain_link () =
+  let s = section_of (model0 ()) in
+  let offset =
+    hover_text "the route link" (node_in "the route link" route_link s)
+  in
+  let plain =
+    hover_text "the external link" (node_in "the external link" external_link s)
+  in
+  let decoration =
+    Alcotest.testable
+      (fun ppf (d : Text.text_decoration) ->
+        Format.pp_print_string ppf
+          (match d with
+          | Underline -> "Underline"
+          | Line_through -> "Line_through"
+          | Overline -> "Overline"
+          | No_decoration -> "No_decoration"))
+      Text.equal_text_decoration
+  in
+  let px = Alcotest.testable Format.pp_print_float Float.equal in
+  Alcotest.(check (option decoration))
+    "the route link underlines on hover" (Some Text.Underline)
+    offset.Text.text_decoration;
+  Alcotest.(check (option px))
+    "the route link's underline sits 3px from the text" (Some 3.)
+    offset.Text.underline_offset;
+  Alcotest.(check (option decoration))
+    "the external link underlines on hover" (Some Text.Underline)
+    plain.Text.text_decoration;
+  Alcotest.(check (option px))
+    "the external link's underline carries no offset" None
+    plain.Text.underline_offset
+
 let () =
   Alcotest.run "kitchen_sink_links_section"
     [
@@ -153,5 +198,7 @@ let () =
             test_links_route_click_follows_via_router;
           Alcotest.test_case "open_failure_shows_status" `Quick
             test_open_failure_shows_status;
+          Alcotest.test_case "offset_link_and_plain_link" `Quick
+            test_offset_link_and_plain_link;
         ] );
     ]

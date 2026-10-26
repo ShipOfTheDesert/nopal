@@ -145,4 +145,26 @@ test.describe("links section", () => {
     expect(sectionMessages(await telemetry.events())).toEqual([FOLLOWED]);
     expect(pathOf(page)).toEqual(TARGET_PATH);
   });
+
+  // Computed style rather than telemetry: hovering dispatches nothing, and
+  // what is under test is the declaration the hover rule puts on the anchor.
+  test("underline offset on hover", async ({ page }) => {
+    const routeLink = page.locator(ROUTE_LINK);
+    const externalLink = page.locator(EXTERNAL_LINK);
+
+    // At rest the offset is the initial value, so the one read under hover
+    // below comes from the hover rule and not from the link's base style.
+    await expect(routeLink).toHaveCSS("text-underline-offset", "auto");
+
+    await routeLink.hover();
+    await expect(routeLink).toHaveCSS("text-decoration-line", "underline");
+    await expect(routeLink).toHaveCSS("text-underline-offset", "3px");
+
+    // The plain link is hovered too, and its underline is read before its
+    // offset, so "auto" can only mean its hover rule set no offset, never that
+    // the hover rule did not apply.
+    await externalLink.hover();
+    await expect(externalLink).toHaveCSS("text-decoration-line", "underline");
+    await expect(externalLink).toHaveCSS("text-underline-offset", "auto");
+  });
 });
