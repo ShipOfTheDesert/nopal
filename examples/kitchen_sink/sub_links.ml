@@ -84,6 +84,19 @@ let link_interaction =
     focused = None;
   }
 
+let offset_link_interaction =
+  {
+    Interaction.hover =
+      Some
+        (Style.default
+        |> Style.with_text (fun t ->
+            t
+            |> Text.text_decoration Text.Underline
+            |> Text.underline_offset 3.0));
+    pressed = None;
+    focused = None;
+  }
+
 let error_line testid text =
   Element.box
     ~attrs:[ ("data-testid", testid); ("role", "alert") ]
@@ -95,7 +108,7 @@ let route_link router =
         Followed route)
   with
   | Ok destination ->
-      Element.link ~interaction:link_interaction
+      Element.link ~interaction:offset_link_interaction
         ~attrs:[ ("data-testid", "links-route-link") ]
         destination
         (Element.text "Follow an in-app link")
@@ -116,7 +129,9 @@ let view router _vp model =
     [
       Element.text
         "A link to a route of this page, followed without loading it, and a \
-         link to another site. Hover either to underline it.";
+         link to another site. Hover either to underline it: the in-app link's \
+         underline sits 3px below the text, the other's where the browser puts \
+         it.";
       route_link router;
       external_link ();
       Element.box

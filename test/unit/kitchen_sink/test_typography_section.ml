@@ -97,6 +97,10 @@ let pp_font_family ppf (f : Font.family) =
     | Sans_serif -> "Sans_serif"
     | Serif -> "Serif"
     | Monospace -> "Monospace"
+    | Ui_sans_serif -> "Ui_sans_serif"
+    | Ui_serif -> "Ui_serif"
+    | Ui_monospace -> "Ui_monospace"
+    | Ui_rounded -> "Ui_rounded"
     | Custom name -> "Custom " ^ name)
 
 let pp_font_weight ppf (w : Font.weight) =
@@ -141,7 +145,17 @@ let pp_color ppf (c : Color.t) =
   | Named spelling -> Format.fprintf ppf "Named %s" spelling
   | Transparent -> Format.pp_print_string ppf "Transparent"
 
-let font_family = Alcotest.(option (testable pp_font_family Font.equal_family))
+let pp_font ppf (f : Text.font) =
+  match f with
+  | Single family -> Format.fprintf ppf "Single %a" pp_font_family family
+  | Stack stack ->
+      Format.fprintf ppf "Stack [%a]"
+        (Format.pp_print_list
+           ~pp_sep:(fun ppf () -> Format.pp_print_string ppf "; ")
+           pp_font_family)
+        (Font.families stack)
+
+let font_family = Alcotest.(option (testable pp_font Text.equal_font))
 let font_weight = Alcotest.(option (testable pp_font_weight Font.equal_weight))
 
 (* [Float.equal] rather than Alcotest's own float testable: the sizes here are
@@ -241,7 +255,7 @@ let check_whitespace_rows group expected =
         expected_overflow style.Text.text_overflow;
       Alcotest.check font_family
         (testid ^ ": the family the helper sets on every row")
-        (Some Font.Monospace) style.Text.font_family)
+        (Some (Text.Single Font.Monospace)) style.Text.font_family)
     expected
 
 (* The same shape for the two numeric-figures groups. The preserved whitespace
@@ -415,7 +429,8 @@ let test_body_copy_authors_its_size_and_line_height () =
     (Some (Text.Lh_multiplier 1.6)) style.Text.line_height
 
 let test_monospace_block_authors_its_family () =
-  Alcotest.check font_family "monospace block: family" (Some Font.Monospace)
+  Alcotest.check font_family "monospace block: family"
+    (Some (Text.Single Font.Monospace))
     (row_text_style (section ()) "monospace-block").Text.font_family
 
 (* The one row in the section that authors [Ellipsis]. The narrow container it
@@ -514,6 +529,51 @@ let test_section_whitespace_rows_author_their_axes () =
       ("whitespace-preserve-nowrap", (Some Text.Preserve, Some Text.No_wrap));
     ]
 
+(* The stack row's whole chain, last resort included and in order: a stack
+   whose families were reordered still compiles and still renders some face,
+   and only the order says which one a reader is meant to see. *)
+let test_stack_row_carries_chain () =
+  Alcotest.check font_family "font stack: the chain, last resort last"
+    (Some
+       (Text.Stack
+          (Font.stack
+             [ Font.Custom "Geist"; Font.System_ui ]
+             ~last_resort:Font.Generic.Sans_serif)))
+    (row_text_style (section ()) "font-stack").Text.font_family
+
+(* The fallback row names a face no host carries, so what renders is its last
+   resort, and the reference row names that last resort alone. The pair is one
+   claim — the fallback row draws what the reference row draws — so both are
+   read here, beside the probe each renders: a width comparison between two
+   rows means nothing unless they draw the same text. *)
+let test_missing_face_row_and_reference () =
+  let rendered = section () in
+  Alcotest.check font_family "font fallback: the missing face, then monospace"
+    (Some
+       (Text.Stack
+          (Font.stack
+             [ Font.Custom "Nopal Missing Face" ]
+             ~last_resort:Font.Generic.Monospace)))
+    (row_text_style rendered "font-fallback").Text.font_family;
+  Alcotest.check font_family "font fallback reference: monospace alone"
+    (Some (Text.Single Font.Monospace))
+    (row_text_style rendered "font-fallback-reference").Text.font_family;
+  let probe testid =
+    match find (By_attr ("data-testid", testid)) rendered with
+    | Some node -> text_content node
+    | None -> Alcotest.fail (testid ^ ": the section renders no such row")
+  in
+  Alcotest.(check bool)
+    "the rows render a probe" true
+    (String.length (probe "font-fallback") > 0);
+  Alcotest.(check string)
+    "the fallback and reference rows render the same probe"
+    (probe "font-fallback")
+    (probe "font-fallback-reference");
+  Alcotest.(check string)
+    "the stack row renders the same probe" (probe "font-fallback")
+    (probe "font-stack")
+
 let () =
   Alcotest.run "kitchen_sink_typography_section"
     [
@@ -568,6 +628,13 @@ let () =
             `Quick test_unset_row_reaches_the_text_style_path;
           Alcotest.test_case "each row authors its own figure axes" `Quick
             test_figures_rows_author_their_axes;
+        ] );
+      ( "font stacks",
+        [
+          Alcotest.test_case "stack_row_carries_chain" `Quick
+            test_stack_row_carries_chain;
+          Alcotest.test_case "missing_face_row_and_reference" `Quick
+            test_missing_face_row_and_reference;
         ] );
       ( "inherited numeric figures",
         [

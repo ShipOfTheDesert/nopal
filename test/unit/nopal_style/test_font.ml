@@ -6,6 +6,10 @@ let test_family_sans_serif () =
   | System_ui
   | Serif
   | Monospace
+  | Ui_sans_serif
+  | Ui_serif
+  | Ui_monospace
+  | Ui_rounded
   | Custom _ ->
       Alcotest.fail "expected Sans_serif"
 
@@ -15,7 +19,11 @@ let test_family_custom () =
   | System_ui
   | Sans_serif
   | Serif
-  | Monospace ->
+  | Monospace
+  | Ui_sans_serif
+  | Ui_serif
+  | Ui_monospace
+  | Ui_rounded ->
       Alcotest.fail "expected Custom"
 
 let test_weight_normal_bold () =
@@ -116,6 +124,99 @@ let test_equal_family_system_ui () =
     "Sans_serif <> System_ui" false
     (equal_family Sans_serif System_ui)
 
+let family =
+  Alcotest.testable
+    (fun ppf f -> Format.pp_print_string ppf (family_to_css_string f))
+    equal_family
+
+let test_stack_css_order () =
+  let sans =
+    stack [ Custom "Geist"; System_ui ] ~last_resort:Generic.Sans_serif
+  in
+  let mono =
+    stack [ Custom "Geist Mono"; Ui_monospace ] ~last_resort:Generic.Monospace
+  in
+  Alcotest.(check string)
+    "sans stack" {|"Geist", system-ui, sans-serif|} (stack_to_css_string sans);
+  Alcotest.(check string)
+    "mono stack" {|"Geist Mono", ui-monospace, monospace|}
+    (stack_to_css_string mono);
+  Alcotest.(check (list family))
+    "sans families"
+    [ Custom "Geist"; System_ui; Sans_serif ]
+    (families sans);
+  Alcotest.(check (list family))
+    "mono families"
+    [ Custom "Geist Mono"; Ui_monospace; Monospace ]
+    (families mono)
+
+let test_ui_generics_bare () =
+  List.iter
+    (fun (f, expected) ->
+      Alcotest.(check string) expected expected (family_to_css_string f))
+    [
+      (Ui_sans_serif, "ui-sans-serif");
+      (Ui_serif, "ui-serif");
+      (Ui_monospace, "ui-monospace");
+      (Ui_rounded, "ui-rounded");
+    ]
+
+(* Scans the serialised name as a CSS string token: after the opening quote,
+   a backslash consumes the next byte, so only an unescaped quote ends it. *)
+let check_no_raw_structure name css =
+  let last = String.length css - 1 in
+  let escaped = ref false in
+  String.iteri
+    (fun i c ->
+      let code = Char.code c in
+      if code < 0x20 || code = 0x7f then
+        Alcotest.failf "%S: raw control character at %d in %S" name i css;
+      match c with
+      | ';'
+      | '{'
+      | '}' ->
+          Alcotest.failf "%S: raw %C in %S" name c css
+      | '"' when i = 0 || i = last -> ()
+      | '"' when not !escaped ->
+          Alcotest.failf "%S: unescaped quote at %d in %S" name i css
+      | '\\' when not !escaped -> escaped := true
+      | _ -> escaped := false)
+    css
+
+let test_custom_name_escaped () =
+  List.iter
+    (fun (name, expected) ->
+      let css = family_to_css_string (Custom name) in
+      Alcotest.(check string) (String.escaped name) expected css;
+      check_no_raw_structure name css)
+    [
+      ("Two Words", {|"Two Words"|});
+      ({|a"b|}, {|"a\"b"|});
+      ({|a\b|}, {|"a\\b"|});
+      ("a;b", {|"a\3b b"|});
+      ("a{b}c", {|"a\7b b\7d c"|});
+      ("a,b", {|"a,b"|});
+      ("a&b<c", {|"a&b<c"|});
+      ("x\ny\tz", {|"x\a y\9 z"|});
+    ]
+
+let test_custom_keyword_stays_quoted () =
+  Alcotest.(check string)
+    "Custom serif" {|"serif"|}
+    (family_to_css_string (Custom "serif"))
+
+let test_existing_generics_unchanged () =
+  List.iter
+    (fun (f, expected) ->
+      Alcotest.(check string) expected expected (family_to_css_string f))
+    [
+      (System_ui, "system-ui");
+      (Sans_serif, "sans-serif");
+      (Serif, "serif");
+      (Monospace, "monospace");
+      (Custom "Inter", {|"Inter"|});
+    ]
+
 let () =
   Alcotest.run "nopal_style_font"
     [
@@ -146,5 +247,13 @@ let () =
             test_equal_weight_all_nine;
           Alcotest.test_case "equal_family_system_ui" `Quick
             test_equal_family_system_ui;
+          Alcotest.test_case "stack_css_order" `Quick test_stack_css_order;
+          Alcotest.test_case "ui_generics_bare" `Quick test_ui_generics_bare;
+          Alcotest.test_case "custom_name_escaped" `Quick
+            test_custom_name_escaped;
+          Alcotest.test_case "custom_keyword_stays_quoted" `Quick
+            test_custom_keyword_stays_quoted;
+          Alcotest.test_case "existing_generics_unchanged" `Quick
+            test_existing_generics_unchanged;
         ] );
     ]

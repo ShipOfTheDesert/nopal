@@ -464,6 +464,57 @@ let test_graphic_name_to_attrs_named () =
     (Nopal_svg.Svg_fmt.graphic_name_to_attrs
        (Test_util.graphic_name "Q & \"A\""))
 
+let render_text family =
+  Nopal_svg.render ~name:Graphic_name.decorative ~width:100.0 ~height:100.0
+    [ Scene.text ~font_family:family ~x:0.0 ~y:0.0 "label" ]
+
+let parsed_text_font_family svg =
+  let input = Xmlm.make_input (`String (0, svg)) in
+  let rec next found =
+    match Xmlm.eoi input with
+    | true -> Option.to_result ~none:"no font-family on a <text>" found
+    | false -> (
+        match Xmlm.input input with
+        | `El_start ((_, "text"), attrs) ->
+            next
+              (List.find_map
+                 (fun ((_, key), value) ->
+                   match key with
+                   | "font-family" -> Some value
+                   | _ -> None)
+                 attrs)
+        | `El_start _
+        | `El_end
+        | `Data _
+        | `Dtd _ ->
+            next found)
+  in
+  try next None with
+  | Xmlm.Error ((line, col), e) ->
+      Error (Printf.sprintf "%d:%d %s" line col (Xmlm.error_message e))
+
+let test_custom_family_well_formed () =
+  List.iter
+    (fun name ->
+      let family = Nopal_style.Font.Custom name in
+      Alcotest.(check (result string string))
+        (Printf.sprintf "%S parses and decodes to its CSS serialisation" name)
+        (Ok (Nopal_style.Font.family_to_css_string family))
+        (parsed_text_font_family (render_text family)))
+    [ "Inter"; "a\"b&c<d" ];
+  List.iter
+    (fun (family, expected) ->
+      Alcotest.(check bool)
+        (Printf.sprintf "generic bytes %s" expected)
+        true
+        (Test_util.string_contains (render_text family) ~sub:expected))
+    [
+      (Nopal_style.Font.System_ui, "font-family=\"system-ui\"");
+      (Nopal_style.Font.Sans_serif, "font-family=\"sans-serif\"");
+      (Nopal_style.Font.Serif, "font-family=\"serif\"");
+      (Nopal_style.Font.Monospace, "font-family=\"monospace\"");
+    ]
+
 let test_graphic_name_to_attrs_decorative () =
   check_string "aria-hidden alone" " aria-hidden=\"true\""
     (Nopal_svg.Svg_fmt.graphic_name_to_attrs Graphic_name.decorative)
@@ -531,6 +582,11 @@ let () =
             test_graphic_name_to_attrs_named;
           Alcotest.test_case "decorative" `Quick
             test_graphic_name_to_attrs_decorative;
+        ] );
+      ( "font_family",
+        [
+          Alcotest.test_case "custom_family_well_formed" `Quick
+            test_custom_family_well_formed;
         ] );
       ("blend", [ Alcotest.test_case "all modes" `Quick test_blend_modes ]);
       ("line_cap", [ Alcotest.test_case "mapping" `Quick test_line_cap_mapping ]);

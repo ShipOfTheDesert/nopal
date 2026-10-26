@@ -18,6 +18,14 @@ val of_text : Nopal_style.Text.t -> css_prop list
     which paints the glyphs; the box background is [of_style]'s concern.
     Ellipsis overflow emits [text-overflow:ellipsis] and [overflow:hidden].
 
+    [font-family] carries [Font]'s bytes unchanged: a single family as
+    [Font.family_to_css_string] writes it, a stack as [Font.stack_to_css_string]
+    writes it, in order with the last resort last. No quoting or escaping
+    happens here. [text-underline-offset] is the offset in pixels, a negative
+    one included, and a non-finite offset emits no declaration rather than an
+    invalid one. It moves an underline only where one is drawn, so on an element
+    with no underline it changes nothing visible.
+
     [white-space] is the first of two properties two fields feed, because CSS
     folds two independent axes into it: whether runs of spaces and tabs collapse
     ([Text.whitespace]) and whether a line breaks ([Text.text_overflow]'s [Wrap]

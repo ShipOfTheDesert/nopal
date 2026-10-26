@@ -407,3 +407,59 @@ test("whitespace preservation keeps real indentation", async ({ page }) => {
   const collapsedInsideContainer = await measure("whitespace-collapse-nowrap");
   expect(collapsedInsideContainer.inkWidth).toBe(collapsed.inkWidth);
 });
+
+// Font stacks. Computed style and geometry, for the reason the testing
+// strategy carves out: these rows are a pure view derivation with no model
+// state, so there is nothing for telemetry to report.
+test("font stack computes the full chain", async ({ page }) => {
+  const span = page.locator(`${SECTION} [data-testid="font-stack"] span`);
+  await expect(span).toBeVisible();
+
+  // The engine's serialisation, not the authored bytes: the style layer quotes
+  // every custom name, and Chromium drops the quotes from a name that is a
+  // single identifier. Observed on this runner, not assumed. The authored
+  // quoting is pinned in the style unit tests.
+  const fontFamily = await span.evaluate(
+    (el) => getComputedStyle(el).fontFamily
+  );
+  expect(fontFamily).toBe("Geist, system-ui, sans-serif");
+});
+
+test("missing first face renders in the next family", async ({ page }) => {
+  const section = page.locator(SECTION);
+  await expect(section).toBeVisible();
+
+  // Each probe box is sized to its text, and every probe renders the same
+  // string at the same authored size, so two boxes differ in width only by the
+  // face each resolved to.
+  const rowWidth = async (testid: string) => {
+    const row = section.locator(`[data-testid="${testid}"]`);
+    await expect(row).toBeVisible();
+    return row.evaluate((el) => el.getBoundingClientRect().width);
+  };
+
+  const fallback = await rowWidth("font-fallback");
+  const reference = await rowWidth("font-fallback-reference");
+  expect(Math.abs(fallback - reference)).toBeLessThanOrEqual(0.5);
+
+  // What the row would draw had the stack no fallback: the browser's default
+  // face, measured on a detached copy of the same text at the same size. It is
+  // positioned out of flow so that no layout stretches it past its text. Were
+  // the default face as wide as the fallback, the equality above would hold
+  // whether or not the fallback was emitted, so the gap is asserted too.
+  const defaultFace = await section
+    .locator('[data-testid="font-fallback"] span')
+    .evaluate((el) => {
+      const probe = document.createElement("span");
+      probe.textContent = el.textContent;
+      probe.style.position = "absolute";
+      probe.style.whiteSpace = "nowrap";
+      probe.style.fontSize = getComputedStyle(el).fontSize;
+      probe.style.fontFamily = "initial";
+      document.body.appendChild(probe);
+      const width = probe.getBoundingClientRect().width;
+      probe.remove();
+      return width;
+    });
+  expect(Math.abs(fallback - defaultFace)).toBeGreaterThan(5);
+});

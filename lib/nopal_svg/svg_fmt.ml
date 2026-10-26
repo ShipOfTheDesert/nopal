@@ -283,7 +283,7 @@ let text_baseline_to_string (b : Scene.text_baseline) =
   | Alphabetic -> "alphabetic"
 
 let font_family_to_attr (f : Nopal_style.Font.family) =
-  Nopal_style.Font.family_to_css_string f
+  xml_escape (Nopal_style.Font.family_to_css_string f)
 
 let font_weight_to_attr (w : Nopal_style.Font.weight) =
   string_of_int (Nopal_style.Font.weight_to_int w)
@@ -388,7 +388,9 @@ let rec render_node ctx buf (node : Scene.t) =
           (Printf.sprintf " opacity=\"%s\"" (fmt_float opacity));
       (match blend with
       | Normal -> ()
-      | b ->
+      | ( Multiply | Screen | Overlay | Darken | Lighten | Color_dodge
+        | Color_burn | Hard_light | Soft_light | Difference | Exclusion ) as b
+        ->
           Buffer.add_string buf
             (Printf.sprintf " style=\"mix-blend-mode:%s\"" (blend_to_css b)));
       (match transforms with

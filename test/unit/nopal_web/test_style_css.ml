@@ -446,6 +446,7 @@ let text_style_with ~whitespace ~text_overflow ~figure_spacing ~figure_style =
     whitespace;
     figure_spacing;
     figure_style;
+    underline_offset = None;
   }
 
 let whitespace_row_label whitespace text_overflow =
@@ -515,6 +516,18 @@ let test_text_font_family_custom_quoted () =
   in
   let props = text_props ts in
   check_has_prop "font-family" "\"Inter\"" props
+
+let test_text_font_stack_emits_chain () =
+  let ts =
+    Nopal_style.Text.default
+    |> Nopal_style.Text.font_stack
+         (Nopal_style.Font.stack
+            [ Custom "Geist Mono"; Ui_monospace ]
+            ~last_resort:Nopal_style.Font.Generic.Monospace)
+  in
+  let props = text_props ts in
+  Alcotest.(check int) "one declaration" 1 (count_prop "font-family" props);
+  check_has_prop "font-family" "\"Geist Mono\", ui-monospace, monospace" props
 
 let test_text_font_size_rem () =
   let ts = Nopal_style.Text.default |> Nopal_style.Text.font_size 1.5 in
@@ -602,6 +615,84 @@ let test_text_decoration_underline () =
   in
   let props = text_props ts in
   check_has_prop "text-decoration" "underline" props
+
+let test_underline_offset_inline_and_hover () =
+  let text =
+    Nopal_style.Text.default
+    |> Nopal_style.Text.text_decoration Nopal_style.Text.Underline
+    |> Nopal_style.Text.underline_offset 3.
+  in
+  check_has_prop "text-underline-offset" "3px" (text_props text);
+  let interaction =
+    {
+      Nopal_style.Interaction.default with
+      hover = Some { Nopal_style.Style.default with text };
+    }
+  in
+  match
+    split_css_rules (interaction_rules ~class_name:"_nopal_ix_0" interaction)
+  with
+  | [ rule ] ->
+      Alcotest.(check bool)
+        "hover selector" true
+        (contains rule "._nopal_ix_0:hover{");
+      Alcotest.(check bool)
+        "underline in the rule" true
+        (contains rule "text-decoration:underline;");
+      Alcotest.(check bool)
+        "offset beside it" true
+        (contains rule "text-underline-offset:3px;")
+  | rules ->
+      Alcotest.failf "expected one hover rule, got %d: [%s]" (List.length rules)
+        (String.concat " | " rules)
+
+let test_underline_offset_non_finite_emits_nothing () =
+  let props v =
+    text_props (Nopal_style.Text.default |> Nopal_style.Text.underline_offset v)
+  in
+  check_no_prop "text-underline-offset" (props Float.nan);
+  check_no_prop "text-underline-offset" (props Float.infinity);
+  check_no_prop "text-underline-offset" (props Float.neg_infinity);
+  check_has_prop "text-underline-offset" "-2px" (props (-2.));
+  check_has_prop "text-underline-offset" "3px" (props 3.)
+
+let count_substring haystack needle =
+  let nlen = String.length needle in
+  let rec go i n =
+    match
+      find_substring (String.sub haystack i (String.length haystack - i)) needle
+    with
+    | -1 -> n
+    | j -> go (i + j + nlen) (n + 1)
+  in
+  go 0 0
+
+(* The class-rule path builds rule text as a string and splits it by counting
+   braces, so a family name is the one place user text meets that splitter. *)
+let test_hostile_name_one_rule () =
+  let stack =
+    Nopal_style.Font.stack
+      [ Custom "a\";}.x{color:red}"; Custom "b{" ]
+      ~last_resort:Nopal_style.Font.Generic.Sans_serif
+  in
+  let text = Nopal_style.Text.default |> Nopal_style.Text.font_stack stack in
+  let interaction =
+    {
+      Nopal_style.Interaction.default with
+      hover = Some { Nopal_style.Style.default with text };
+    }
+  in
+  match
+    split_css_rules (interaction_rules ~class_name:"_nopal_ix_0" interaction)
+  with
+  | [ rule ] ->
+      Alcotest.(check int)
+        "one font-family declaration" 1
+        (count_substring rule "font-family:")
+  | rules ->
+      Alcotest.failf "expected exactly one rule, got %d: [%s]"
+        (List.length rules)
+        (String.concat " | " rules)
 
 let test_text_transform_uppercase () =
   let ts =
@@ -1468,6 +1559,8 @@ let () =
             test_text_font_family_system_ui;
           Alcotest.test_case "font family custom quoted" `Quick
             test_text_font_family_custom_quoted;
+          Alcotest.test_case "font stack emits chain" `Quick
+            test_text_font_stack_emits_chain;
           Alcotest.test_case "font size rem" `Quick test_text_font_size_rem;
           Alcotest.test_case "font weight thin" `Quick
             test_text_font_weight_thin;
@@ -1487,6 +1580,12 @@ let () =
           Alcotest.test_case "text align center" `Quick test_text_align_center;
           Alcotest.test_case "text decoration underline" `Quick
             test_text_decoration_underline;
+          Alcotest.test_case "underline offset inline and hover" `Quick
+            test_underline_offset_inline_and_hover;
+          Alcotest.test_case "underline offset non-finite emits nothing" `Quick
+            test_underline_offset_non_finite_emits_nothing;
+          Alcotest.test_case "hostile name one rule" `Quick
+            test_hostile_name_one_rule;
           Alcotest.test_case "text transform uppercase" `Quick
             test_text_transform_uppercase;
           Alcotest.test_case "text overflow ellipsis" `Quick

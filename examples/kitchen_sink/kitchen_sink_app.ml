@@ -1294,6 +1294,28 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
             [ Element.styled_text ~text_style figures_sample ];
         ]
     in
+    (* Probe every font-stack row renders, so two rows' widths compare the faces
+       they resolved to and nothing else. The size is authored rather than
+       inherited: Chromium shrinks an inherited default size for a family that is
+       monospace alone, which would set the reference row apart from the
+       fallback row by size instead of by face. *)
+    let font_probe_sample = "Sphinx of black quartz, judge my vow" in
+    let font_probe (font : Text.t -> Text.t) ~testid =
+      Element.box
+        ~attrs:[ ("data-testid", testid) ]
+        [
+          Element.styled_text
+            ~text_style:(Text.default |> Text.font_size 2.5 |> font)
+            font_probe_sample;
+        ]
+    in
+    (* Start alignment sizes each probe box to its text, so a row's width is
+       the width of what it drew. *)
+    let font_probe_group_style =
+      Style.default
+      |> Style.with_layout (fun l ->
+          { l with gap = Some 8.0; cross_align = Some Start })
+    in
     Element.column ~style:section_style
       ~attrs:[ ("data-section", "typography") ]
       [
@@ -1332,6 +1354,27 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                 Element.styled_text
                   ~text_style:(Text.default |> Text.font_family Monospace)
                   "let x = 42 in x + 1";
+              ];
+            Element.text
+              "Font stacks (the second names a face no host carries, so its \
+               monospace last resort is what renders, matching the third):";
+            Element.column ~style:font_probe_group_style
+              [
+                font_probe
+                  (Text.font_stack
+                     (Font.stack
+                        [ Custom "Geist"; System_ui ]
+                        ~last_resort:Sans_serif))
+                  ~testid:"font-stack";
+                font_probe
+                  (Text.font_stack
+                     (Font.stack
+                        [ Custom "Nopal Missing Face" ]
+                        ~last_resort:Monospace))
+                  ~testid:"font-fallback";
+                font_probe
+                  (Text.font_family Monospace)
+                  ~testid:"font-fallback-reference";
               ];
             Element.text "Full 9-weight scale:";
             Element.column ~style:section_body_style

@@ -187,6 +187,7 @@
   kitchen_sink_app
   nopal_test
   nopal_element
+  nopal_style
   nopal_platform
   nopal_storage
   nopal_mvu

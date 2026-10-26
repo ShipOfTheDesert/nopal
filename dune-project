@@ -46,6 +46,7 @@
    (and
     (>= 1.9.1)
     :with-test))
+  (ocamlfind :with-test)
   ocaml))
 
 (package
@@ -380,6 +381,7 @@
    (and
     (>= 1.9.1)
     :with-test))
+  (xmlm :with-test)
   ocaml
   nopal_draw
   nopal_scene))

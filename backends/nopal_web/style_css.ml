@@ -61,7 +61,10 @@ let of_text (text : Nopal_style.Text.t) =
   let add acc property value = { property; value } :: acc in
   let acc =
     match text.font_family with
-    | Some f -> add acc "font-family" (Nopal_style.Font.family_to_css_string f)
+    | Some (Nopal_style.Text.Single f) ->
+        add acc "font-family" (Nopal_style.Font.family_to_css_string f)
+    | Some (Nopal_style.Text.Stack s) ->
+        add acc "font-family" (Nopal_style.Font.stack_to_css_string s)
     | None -> acc
   in
   let acc =
@@ -117,6 +120,14 @@ let of_text (text : Nopal_style.Text.t) =
     | Some Nopal_style.Text.Overline -> add acc "text-decoration" "overline"
     | Some Nopal_style.Text.No_decoration -> add acc "text-decoration" "none"
     | None -> acc
+  in
+  let acc =
+    match text.underline_offset with
+    | Some px when Float.is_finite px ->
+        add acc "text-underline-offset" (Printf.sprintf "%gpx" px)
+    | Some _
+    | None ->
+        acc
   in
   let acc =
     match text.text_transform with
