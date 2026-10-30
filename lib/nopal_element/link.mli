@@ -14,15 +14,18 @@
     dispatched, so in-app navigation runs through the application's [update].
     Every other click is left to the browser and dispatches nothing — a modified
     (Ctrl, Meta, Shift or Alt) click, a middle click, a click with any other
-    button, and every click on an {!External} link — so the user gets a new tab,
-    window or page as the browser decides.
+    button, and every click on an {!External} or a {!New_tab} link — so the user
+    gets a new tab, window or page as the browser decides.
 
     {b In a webview}, a primary or middle click is always taken over, whatever
     modifiers are held: on a {!Route} link it dispatches [on_follow], and on an
     {!External} link it hands the URL to the host's opener, which shows it in
     the system browser while the webview stays where it is. A webview has no
     tabs, so a modified click on a {!Route} link is a plain click. A click with
-    any other button is left to the platform.
+    any other button is left to the platform, and so is every click on a
+    {!New_tab} link: the link carries no message to dispatch and no URL an
+    opener could show, so what the webview does with its [target="_blank"] is
+    the platform's, and no test here holds it.
 
     Keyboard activation (Enter on a focused link) reaches {!decide} as an
     unmodified primary click. *)
@@ -47,6 +50,14 @@ type 'msg destination =
       (** A destination outside the app. [on_open_failed] is dispatched with the
           reason when a host's opener cannot show [url]. A browser follows an
           external link itself, so it never dispatches [on_open_failed]. *)
+  | New_tab of { path : Route_path.t }
+      (** A path on the page's own origin, opened in a new tab: a photo, a file
+          or a page the server serves beside the app, which a [Route] link would
+          take over and navigate to in place. Rendered with ["target"]
+          ["_blank"] and ["rel"] ["noopener noreferrer"], and never taken over:
+          {!decide} leaves every click on it to the platform, on either host.
+          [path] is a {!Route_path.t}, so it starts with a single [/] and cannot
+          name another host. *)
 
 (** The mouse button a click was made with. *)
 type button =

@@ -431,7 +431,7 @@ a backend renders as an attribute — `placeholder`, a radio's `name`, a picker'
 `accept`/`capture`/`multiple`, `disabled`, a container's `focusable`, an
 input's `required`/`autocomplete`/`input_type`/`name`, a form's
 `autocomplete`/`novalidate`, a button's `button_type`/`disabled`, a link's
-`destination` (its `href` and `rel`), a heading's `level` (its `role`,
+`destination` (its `href`, `rel` and `target`), a heading's `level` (its `role`,
 `aria-level` and `data-nopal-heading`) — the rule is: **typed-field derivations beat the `~attrs` list; within the list, the
 last pair wins.**
 
@@ -460,14 +460,16 @@ declines in one of two shapes:
   pair: `accept`, `capture`, an input's `autocomplete`, an input's `type` (from
   `input_type`), an input's `name`, a form's `autocomplete`.
 - **By destination** — a link's `rel` is `"noopener noreferrer"` on an
-  `External` link and absent on a `Route` link, so a caller's `rel` pair stands
-  on a `Route` link only.
+  `External` or a `New_tab` link and absent on a `Route` link, and its `target`
+  is `"_blank"` on a `New_tab` link and absent on the other two, so a caller's
+  `rel` pair stands on a `Route` link only and a caller's `target` on a `Route`
+  or an `External` link.
 
 Some derivations have no absent form and are derived on every render, so a
 caller's pair of that key is always replaced: `placeholder`, a radio's `name`,
 a checkbox's, radio's or file picker's `type`, a button's `type` (from
 `button_type`, which is `"button"` when the button names none), a link's
-`href` (the `Route` path or the `External` URL), and a heading's `role`
+`href` (the `Route` or `New_tab` path, or the `External` URL), and a heading's `role`
 (`"heading"`), `aria-level` (the level's digit, `"1"` to `"6"`) and
 `data-nopal-heading` (`""`).
 
@@ -606,8 +608,15 @@ from the platform. A link never takes a raw `href`. Its destination is one of:
   `Link.open_error` when a host's opener cannot show the URL. A browser follows
   an external link itself and never dispatches it. An external anchor carries
   `rel="noopener noreferrer"`, so the opened page cannot reach back.
+- `Link.New_tab { path }` — a path on the page's own origin (a photo, a file,
+  a page the server serves beside the app), opened in a new tab. `path` is a
+  `Route_path.t`, so it starts with a single `/`. The anchor carries
+  `target="_blank"` and `rel="noopener noreferrer"`, and `decide` leaves every
+  click on it to the platform on either host, so it dispatches nothing. Reach
+  for it where a `Route` link would be taken over and navigate in place, and
+  an `External` link cannot carry the path because it has no scheme.
 
-Both are checked at construction and neither has an unchecked constructor, so
+All three are checked at construction and neither has an unchecked constructor, so
 `javascript:`, `data:` and protocol-relative paths are unconstructible:
 
 - `Url.of_string` accepts a scheme of `http`, `https`, `mailto` or `tel`
@@ -628,19 +637,20 @@ What a click does is `Link.decide ~host click destination`, one pure, native
 function every renderer calls, so the browser, the webview and the structural
 renderer cannot answer differently:
 
-| Host | Click | `Route` | `External` |
-|---|---|---|---|
-| `Browser` | `Primary`, no modifier | `Navigate on_follow` | `Leave_to_platform` |
-| `Browser` | `Primary` with Ctrl, Meta, Shift or Alt; `Middle`; `Other` | `Leave_to_platform` | `Leave_to_platform` |
-| `Webview` | `Primary` or `Middle`, any modifiers | `Navigate on_follow` | `Open_externally url` |
-| `Webview` | `Other` | `Leave_to_platform` | `Leave_to_platform` |
+| Host | Click | `Route` | `External` | `New_tab` |
+|---|---|---|---|---|
+| `Browser` | `Primary`, no modifier | `Navigate on_follow` | `Leave_to_platform` | `Leave_to_platform` |
+| `Browser` | `Primary` with Ctrl, Meta, Shift or Alt; `Middle`; `Other` | `Leave_to_platform` | `Leave_to_platform` | `Leave_to_platform` |
+| `Webview` | `Primary` or `Middle`, any modifiers | `Navigate on_follow` | `Open_externally url` | `Leave_to_platform` |
+| `Webview` | `Other` | `Leave_to_platform` | `Leave_to_platform` | `Leave_to_platform` |
 
 `Navigate` prevents the platform default and dispatches the message once;
 `Leave_to_platform` neither prevents nor dispatches, so the browser opens a
 tab, window or page as it decides; `Open_externally` prevents the default and
 hands the URL to the host's opener, dispatching `on_open_failed` when that
 fails. A webview has no tabs, so a modified or middle click on a `Route` link
-is a plain click there, and a click on an external link never navigates the webview off
+is a plain click there, a click on a `New_tab` link is the webview's to handle
+(nopal does not test what it does with `target="_blank"`), and a click on an external link never navigates the webview off
 the app (the context menu's "Open Link" and a dragged link are not guarded). Keyboard Enter on a focused link reaches `decide` as an unmodified
 primary click, and a link is in the tab order natively. Which host a link is
 rendered for is the mount's choice: `Nopal_web.mount` renders for `Browser`,
@@ -792,10 +802,12 @@ Element.select : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string 
    table. *)
 Element.link : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
   -> 'msg Link.destination -> 'msg Element.t -> 'msg Element.t
-  (* Renders an anchor (tag "a" in both renderers) whose href is the Route path
-     or the External URL, with rel="noopener noreferrer" on External only. Both
-     keys are typed: an ("href", _) pair in [attrs] never takes effect, and a
-     ("rel", _) pair only on a Route link. *)
+  (* Renders an anchor (tag "a" in both renderers) whose href is the Route or
+     New_tab path or the External URL, with rel="noopener noreferrer" on
+     External and New_tab, and target="_blank" on New_tab only. All three keys
+     are typed: an ("href", _) pair in [attrs] never takes effect, a ("rel", _)
+     pair only on a Route link, and a ("target", _) pair only on a Route or an
+     External link. *)
 
 (* Headings — see "Headings" above for the reset and the order guidance. *)
 type heading_level = H1 | H2 | H3 | H4 | H5 | H6
@@ -838,6 +850,7 @@ module Link : sig                      (* Nopal_element.Link — pure, native *)
   type 'msg destination =
     | Route of { path : Route_path.t; on_follow : 'msg }
     | External of { url : Url.t; on_open_failed : open_error -> 'msg }
+    | New_tab of { path : Route_path.t }   (* same origin, new tab; never taken over *)
   type button = Primary | Middle | Other
   type click = { button : button; ctrl : bool; meta : bool; shift : bool; alt : bool }
   type host = Browser | Webview
@@ -870,12 +883,22 @@ Element.file_input : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(str
      application's: handles live for the page session until released. *)
 
 (* Media and scrolling *)
-Element.image  : ?style:Style.t -> src:string -> name:Graphic_name.t -> unit -> 'msg Element.t
+Element.image  : ?style:Style.t -> ?fit:Element.image_fit -> src:string
+  -> name:Graphic_name.t -> unit -> 'msg Element.t
   (* [name] is the only source of the text alternative: [Named n] writes
      alt="n"; [Decorative] writes alt="" (present and empty, which removes the
      image from the accessibility tree — an absent alt would not). An SVG shown
      through an image is named here: assistive technology ignores the SVG
-     document's own attributes. *)
+     document's own attributes.
+     [fit] says how the picture is drawn into the box [style] sizes; the web
+     backend writes it as object-fit. Absent, the platform default stands, which
+     on the web stretches the picture to the box. It is the image's own field,
+     not a style one, because it means nothing on any other element. *)
+type Element.image_fit =
+  | Contain   (* the whole picture, as large as the box allows *)
+  | Cover     (* the box filled; what falls outside it is cut off *)
+val Element.image_fit_to_string : image_fit -> string   (* "contain" | "cover" *)
+val Element.equal_image_fit : image_fit -> image_fit -> bool
 Element.scroll : ?style:Style.t -> ?attrs:(string * string) list
   -> ?reveal:Reveal.t -> 'msg Element.t -> 'msg Element.t
   (* [reveal] names a keyed descendant that must be brought into view, and the
@@ -4065,7 +4088,9 @@ Test_renderer.render   : 'msg Element.t -> 'msg rendered
      attr "focusable" = "true"; a box that is not focusable carries no such pair
      and reads back None. Only the flag is surfaced — this renderer models no
      propagation, so the subtree scoping of a box's focus edges is not
-     observable here. *)
+     observable here.
+     An image's [fit] is surfaced as the derived attr "fit" = "contain" or
+     "cover"; an image with no fit carries no such pair and reads back None. *)
 Test_renderer.tree     : 'msg rendered -> node
 Test_renderer.messages : 'msg rendered -> 'msg list
 

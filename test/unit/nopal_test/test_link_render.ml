@@ -1,6 +1,6 @@
-(* Structural rendering of [Element.link]: the anchor node, the [href] and [rel]
-   it derives from its destination, and the precedence of those two over the
-   view's own [attrs]. *)
+(* Structural rendering of [Element.link]: the anchor node, the [href], [rel]
+   and [target] it derives from its destination, and the precedence of those
+   over the view's own [attrs]. *)
 
 open Nopal_element
 module TR = Nopal_test.Test_renderer
@@ -35,6 +35,11 @@ let external_link ?(attrs = []) () =
   Element.link ~attrs
     (Link.External { url; on_open_failed = (fun _ -> Open_failed) })
     (Element.text "Docs")
+
+let new_tab_link ?(attrs = []) () =
+  Element.link ~attrs
+    (Link.New_tab { path = route_path })
+    (Element.text "Photo")
 
 let tag_of node =
   match node with
@@ -80,6 +85,29 @@ let test_link_href_and_rel_outrank_attrs () =
   check_opt "a Route link leaves a caller's rel standing" (Some "opener")
     (TR.attr "rel" route)
 
+let test_new_tab_link_derives_target_and_rel () =
+  let check node =
+    check_opt "a New_tab link's href is its path" (Some path_text)
+      (TR.attr "href" node);
+    check_opt "a New_tab link opens a new tab" (Some "_blank")
+      (TR.attr "target" node);
+    check_opt "a New_tab link keeps the opened page from its opener"
+      (Some "noopener noreferrer") (TR.attr "rel" node)
+  in
+  let plain = TR.tree (TR.render (new_tab_link ())) in
+  Alcotest.(check string) "a New_tab link is an anchor" "a" (tag_of plain);
+  check plain;
+  check
+    (TR.tree
+       (TR.render
+          (new_tab_link
+             ~attrs:[ ("href", "/x"); ("rel", "opener"); ("target", "_self") ]
+             ())));
+  (* A Route link derives no [target], so a caller's stands on it. *)
+  check_opt "a Route link leaves a caller's target standing" (Some "_self")
+    (TR.attr "target"
+       (TR.tree (TR.render (route_link ~attrs:[ ("target", "_self") ] ()))))
+
 let () =
   Alcotest.run "nopal_test link render"
     [
@@ -89,5 +117,7 @@ let () =
             test_link_renders_a_with_href_and_rel;
           Alcotest.test_case "link_href_and_rel_outrank_attrs" `Quick
             test_link_href_and_rel_outrank_attrs;
+          Alcotest.test_case "new_tab_link_derives_target_and_rel" `Quick
+            test_new_tab_link_derives_target_and_rel;
         ] );
     ]

@@ -97,6 +97,24 @@ let apply_style ~parent_axis el (style : Nopal_style.Style.t) =
       Brr.El.set_inline_style (Jstr.v property) (Jstr.v value) el)
     props
 
+(* An image's [object-fit], written outside [apply_style] because it is the
+   image's own field and not a style one. [Style_css] never emits the property,
+   so the style reconcile, which clears only what the previous style emitted,
+   never touches it. A fresh image with no fit writes nothing; a reconcile that
+   drops one clears it through [reconcile_image_fit]. *)
+let apply_image_fit el fit =
+  match fit with
+  | Some f ->
+      Brr.El.set_inline_style (Jstr.v "object-fit")
+        (Jstr.v (Nopal_element.Element.image_fit_to_string f))
+        el
+  | None -> ()
+
+let reconcile_image_fit el fit =
+  match fit with
+  | Some _ -> apply_image_fit el fit
+  | None -> Brr.El.set_inline_style (Jstr.v "object-fit") (Jstr.v "") el
+
 let apply_text_style el text_style =
   match text_style with
   | Some ts ->
@@ -509,24 +527,46 @@ let apply_button_config el ~declared ~button_type ~disabled =
     | true -> Some "true"
     | false -> None)
 
-(* A link's two derived attributes, on the same terms. [href] has no absent
+(* A link's three derived attributes, on the same terms. [href] has no absent
    form, so it is written on every application; [rel] only for an [External]
-   link, so a [Route] link uncovers a caller's pair. The structural renderer
-   derives the same pairs from the same destination. *)
+   or a [New_tab] link, and [target] only for a [New_tab] link, so a [Route]
+   link uncovers a caller's pair for either. The structural renderer derives
+   the same pairs from the same destination. *)
+type link_config = {
+  href : string;
+  rel : string option;
+  target : string option;
+}
+
+let no_opener = Some "noopener noreferrer"
+
 let link_config (destination : 'msg Nopal_element.Link.destination) =
   match destination with
   | Nopal_element.Link.Route { path; _ } ->
-      (Nopal_element.Route_path.to_string path, None)
+      {
+        href = Nopal_element.Route_path.to_string path;
+        rel = None;
+        target = None;
+      }
   | Nopal_element.Link.External { url; _ } ->
-      (Nopal_element.Url.to_string url, Some "noopener noreferrer")
+      { href = Nopal_element.Url.to_string url; rel = no_opener; target = None }
+  | Nopal_element.Link.New_tab { path } ->
+      {
+        href = Nopal_element.Route_path.to_string path;
+        rel = no_opener;
+        target = Some "_blank";
+      }
 
-let equal_link_config (href1, rel1) (href2, rel2) =
-  String.equal href1 href2 && Option.equal String.equal rel1 rel2
+let equal_link_config c1 c2 =
+  String.equal c1.href c2.href
+  && Option.equal String.equal c1.rel c2.rel
+  && Option.equal String.equal c1.target c2.target
 
-let apply_link_config el ~declared (href, rel) =
+let apply_link_config el ~declared { href; rel; target } =
   let set = set_derived el ~declared in
   set "href" (Some href);
-  set "rel" rel
+  set "rel" rel;
+  set "target" target
 
 (* A heading's three derived attributes, on the same terms. None has an absent
    form, so all three are written on every application: [role] and
@@ -1223,9 +1263,10 @@ let rec create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
       let listeners = wire_file_change ~dispatch el on_change in
       Live_node
         { dom = el; element; children = []; listeners; base_id; interaction_id }
-  | Image { style; src; name } ->
+  | Image { style; src; name; fit } ->
       let el = Brr.El.v (Jstr.v "img") [] in
       apply_style ~parent_axis el style;
+      apply_image_fit el fit;
       Brr.El.set_at (Jstr.v "src") (Some (Jstr.v src)) el;
       Brr.El.set_at (Jstr.v "alt")
         (Some (Jstr.v (Nopal_element.Graphic_name.image_alt name)))
@@ -2440,15 +2481,18 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
       old_n.listeners <-
         wire_input_events ~dispatch el ~on_change ~on_submit ~on_focus ~on_blur
           ~on_keydown
-  | Image { src; name; _ } -> (
+  | Image { src; name; fit; _ } -> (
       match old_n.element with
-      | Image { src = old_src; name = old_name; _ } ->
+      | Image { src = old_src; name = old_name; fit = old_fit; _ } ->
           if not (String.equal old_src src) then
             Brr.El.set_at (Jstr.v "src") (Some (Jstr.v src)) el;
           if not (Nopal_element.Graphic_name.equal old_name name) then
             Brr.El.set_at (Jstr.v "alt")
               (Some (Jstr.v (Nopal_element.Graphic_name.image_alt name)))
-              el
+              el;
+          if
+            not (Option.equal Nopal_element.Element.equal_image_fit old_fit fit)
+          then reconcile_image_fit el fit
       | Empty
       | Text _
       | Box _
@@ -2472,7 +2516,8 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
           Brr.El.set_at (Jstr.v "src") (Some (Jstr.v src)) el;
           Brr.El.set_at (Jstr.v "alt")
             (Some (Jstr.v (Nopal_element.Graphic_name.image_alt name)))
-            el)
+            el;
+          reconcile_image_fit el fit)
   | Scroll { reveal; child; _ } ->
       (* Derives no attributes of its own, so nothing to re-assert. *)
       ignore (maybe_apply_attrs el old_n.element new_el : bool);

@@ -1,6 +1,7 @@
 (* The web renderer's anchor for [Element.link], read beside the structural
-   renderer's on the same element: the tag, the [href] and [rel] derived from
-   the destination, and the child's text must be the same in both. *)
+   renderer's on the same element: the tag, the [href], [rel] and [target]
+   derived from the destination, and the child's text must be the same in
+   both. *)
 
 open Nopal_element
 module TR = Nopal_test.Test_renderer
@@ -10,6 +11,7 @@ type msg = Followed | Open_failed of Link.open_error
 let dispatch (_ : msg) = ()
 let path_text = "/inbox"
 let url_text = "https://nopal-test-7Q2.example/"
+let photo_text = "/api/invoices/7/photo"
 
 let route_path text =
   match Route_path.of_string text with
@@ -37,30 +39,39 @@ let external_link ?(attrs = []) () =
     (Link.External { url; on_open_failed = (fun error -> Open_failed error) })
     (Element.text "Docs")
 
+let new_tab_link ?(attrs = []) () =
+  Element.link ~attrs
+    (Link.New_tab { path = route_path photo_text })
+    (Element.text "Photo")
+
 let fresh_parent () = Brr.El.v (Jstr.v "div") []
 
 let dom_attr node name =
   let v = Jv.call node "getAttribute" [| Jv.of_string name |] in
   if Jv.is_null v then None else Some (Jv.to_string v)
 
-(* What one renderer shows of an anchor: its tag, [href], [rel] and text. *)
+(* What one renderer shows of an anchor: its tag, [href], [rel], [target] and
+   text. *)
 type anchor = {
   tag : string;
   href : string option;
   rel : string option;
+  target : string option;
   text : string;
 }
 
 let anchor_t =
   Alcotest.testable
-    (fun ppf { tag; href; rel; text } ->
+    (fun ppf { tag; href; rel; target; text } ->
       let opt = Option.value ~default:"<none>" in
-      Format.fprintf ppf "{ tag = %S; href = %s; rel = %s; text = %S }" tag
-        (opt href) (opt rel) text)
+      Format.fprintf ppf
+        "{ tag = %S; href = %s; rel = %s; target = %s; text = %S }" tag
+        (opt href) (opt rel) (opt target) text)
     (fun a b ->
       String.equal a.tag b.tag
       && Option.equal String.equal a.href b.href
       && Option.equal String.equal a.rel b.rel
+      && Option.equal String.equal a.target b.target
       && String.equal a.text b.text)
 
 let dom_anchor node =
@@ -68,6 +79,7 @@ let dom_anchor node =
     tag = String.lowercase_ascii (Jv.to_string (Jv.get node "tagName"));
     href = dom_attr node "href";
     rel = dom_attr node "rel";
+    target = dom_attr node "target";
     text = Jv.to_string (Jv.get node "textContent");
   }
 
@@ -87,18 +99,35 @@ let structural_anchor element =
       | TR.Empty -> "empty");
     href = TR.attr "href" node;
     rel = TR.attr "rel" node;
+    target = TR.attr "target" node;
     text = TR.text_content node;
   }
 
 let route_anchor =
-  { tag = "a"; href = Some path_text; rel = None; text = "Inbox" }
+  {
+    tag = "a";
+    href = Some path_text;
+    rel = None;
+    target = None;
+    text = "Inbox";
+  }
 
 let external_anchor =
   {
     tag = "a";
     href = Some url_text;
     rel = Some "noopener noreferrer";
+    target = None;
     text = "Docs";
+  }
+
+let new_tab_anchor =
+  {
+    tag = "a";
+    href = Some photo_text;
+    rel = Some "noopener noreferrer";
+    target = Some "_blank";
+    text = "Photo";
   }
 
 let check_both label expected element =
@@ -109,6 +138,15 @@ let check_both label expected element =
 let test_link_dom_anchor_matches_structural () =
   check_both "a Route link" route_anchor (route_link ());
   check_both "an External link" external_anchor (external_link ())
+
+let test_new_tab_link_renders_href_target_and_rel () =
+  check_both "a New_tab link" new_tab_anchor (new_tab_link ());
+  (* All three keys are derived, so a caller's pair for any of them never
+     stands: a ["target"] of ["_self"] would open the path in place. *)
+  check_both "a New_tab link over colliding attrs" new_tab_anchor
+    (new_tab_link
+       ~attrs:[ ("href", "/x"); ("rel", "opener"); ("target", "_self") ]
+       ())
 
 (* The web renderer applies the declared list before it writes the derived
    keys, so the derivation is what stands; a Route link derives no [rel] and
@@ -145,6 +183,15 @@ let test_link_dom_reconcile_rewrites_href_and_rel () =
   frame "becoming External writes the URL and rel" external_anchor
     (external_link ());
   frame "becoming a Route link again removes the derived rel" route_anchor
+    (route_link ());
+  frame "becoming New_tab writes the path, rel and target" new_tab_anchor
+    (new_tab_link ());
+  let before_unchanged = writes () in
+  frame "an unchanged New_tab link keeps its keys" new_tab_anchor
+    (new_tab_link ());
+  Alcotest.(check int)
+    "an unchanged New_tab link is not rewritten" before_unchanged (writes ());
+  frame "becoming a Route link again removes the derived target" route_anchor
     (route_link ());
   Alcotest.(check bool)
     "every frame patched the same anchor node" true
@@ -338,6 +385,36 @@ let test_link_left_to_platform_clicks () =
         [ 2; 3 ])
     [ false; true ]
 
+(* A new-tab link is the browser's to open on either host: no click on it is
+   prevented, and nothing is dispatched or handed to the opener. The route link
+   on the same webview fixture is the affirmative arm: its listener is live and
+   dispatches, so the empty lists are the destination's doing. *)
+let test_new_tab_link_clicks_left_to_platform () =
+  List.iter
+    (fun webview ->
+      let host = if webview then "webview" else "browser" in
+      let c = render_clicked ~webview (new_tab_link ()) in
+      check_prevented
+        ("a plain click on a " ^ host ^ " New_tab link")
+        false (mouse "click" c.anchor);
+      check_prevented
+        ("a Ctrl-click on a " ^ host ^ " New_tab link")
+        false
+        (mouse ~ctrl:true "click" c.anchor);
+      check_prevented
+        ("a middle auxclick on a " ^ host ^ " New_tab link")
+        false
+        (mouse ~button:1 "auxclick" c.anchor);
+      check_dispatched ("clicks on a " ^ host ^ " New_tab link") [] c;
+      Alcotest.(check (list string))
+        ("a " ^ host ^ " New_tab link opens nothing")
+        [] !(c.opened))
+    [ false; true ];
+  let c = render_clicked ~webview:true (route_link ()) in
+  check_prevented "a plain click on a webview Route link" true
+    (mouse "click" c.anchor);
+  check_dispatched "a plain click on a webview Route link" [ Followed ] c
+
 (* An opener that raises before answering is a failure the link reports, and
    the exception's text, which here carries the URL, does not reach the
    reason. *)
@@ -372,6 +449,10 @@ let () =
         [
           Alcotest.test_case "link_dom_anchor_matches_structural" `Quick
             test_link_dom_anchor_matches_structural;
+          Alcotest.test_case
+            "a same-origin new-tab link renders href, target _blank and rel \
+             noopener"
+            `Quick test_new_tab_link_renders_href_target_and_rel;
           Alcotest.test_case "link_dom_href_and_rel_outrank_attrs" `Quick
             test_link_dom_href_and_rel_outrank_attrs;
           Alcotest.test_case "link_dom_reconcile_rewrites_href_and_rel" `Quick
@@ -395,6 +476,8 @@ let () =
             test_link_click_after_reconcile_follows_new_destination;
           Alcotest.test_case "link_left_to_platform_clicks" `Quick
             test_link_left_to_platform_clicks;
+          Alcotest.test_case "new_tab_link_clicks_left_to_platform" `Quick
+            test_new_tab_link_clicks_left_to_platform;
           Alcotest.test_case "link_webview_opener_raise_fails_without_url"
             `Quick test_link_webview_opener_raise_fails_without_url;
         ] );

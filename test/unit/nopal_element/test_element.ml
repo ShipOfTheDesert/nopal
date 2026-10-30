@@ -1426,6 +1426,24 @@ let image_equal_compares_name () =
     "a named image and a decorative one are not equal" false
     (Element.equal (image (graphic_name "pic")) (image Graphic_name.decorative))
 
+let image_equal_compares_fit () =
+  let image ?fit () =
+    Element.image ?fit ~src:"a.png" ~name:(graphic_name "pic") ()
+  in
+  Alcotest.(check bool)
+    "images with the same fit are equal" true
+    (Element.equal
+       (image ~fit:Element.Contain ())
+       (image ~fit:Element.Contain ()));
+  Alcotest.(check bool)
+    "images differing only in fit are not equal" false
+    (Element.equal
+       (image ~fit:Element.Contain ())
+       (image ~fit:Element.Cover ()));
+  Alcotest.(check bool)
+    "a fitted image and an unfitted one are not equal" false
+    (Element.equal (image ~fit:Element.Contain ()) (image ()))
+
 let test_box_default_interaction () =
   Alcotest.(check bool)
     "box defaults to Interaction.default" true
@@ -1867,6 +1885,8 @@ let link_destination_parts (el : 'msg Element.t) =
         ( `External (Url.to_string url, on_open_failed Link.Not_permitted),
           attrs,
           child )
+  | Element.Link { destination = Link.New_tab { path }; attrs; child; _ } ->
+      Some (`New_tab (Route_path.to_string path), attrs, child)
   | Element.Empty
   | Element.Text _
   | Element.Box _
@@ -1919,7 +1939,7 @@ let test_link_map_maps_destination_and_child () =
             })
          (Element.text "Docs"))
   in
-  match link_destination_parts mapped_external with
+  (match link_destination_parts mapped_external with
   | Some
       ( `External (shown, Wrapped (Changed "open failed")),
         [],
@@ -1930,7 +1950,22 @@ let test_link_map_maps_destination_and_child () =
   | None ->
       Alcotest.fail
         "a mapped External link wraps what on_open_failed produces and keeps \
-         its child"
+         its child");
+  let mapped_new_tab =
+    Element.map
+      (fun m -> Wrapped m)
+      (Element.link
+         (Link.New_tab { path = route_path "/photo" })
+         (Element.button ~on_click:Submit (Element.text "Photo")))
+  in
+  match link_destination_parts mapped_new_tab with
+  | Some
+      (`New_tab path, [], Element.Button { on_click = Some (Wrapped Submit); _ })
+    ->
+      Alcotest.(check string) "the new-tab path is unchanged" "/photo" path
+  | Some _
+  | None ->
+      Alcotest.fail "a mapped New_tab link keeps its path and maps its child"
 
 (* [equal] gates reconciliation skipping, so each field it compares needs a
    case that differs in that field alone, beside one that rebuilds the same
@@ -1978,6 +2013,17 @@ let test_link_equal_compares_destination_closure_safely () =
        (external_ ~text:"https://other.example/" on_open_failed));
   check "a Route link is not equal to an External one" false
     (Element.equal (route ()) (external_ on_open_failed));
+  let new_tab ?(path = "/inbox") () =
+    Element.link
+      (Link.New_tab { path = route_path path })
+      (Element.text "Inbox")
+  in
+  check "the same New_tab link, separately built, is equal" true
+    (Element.equal (new_tab ()) (new_tab ()));
+  check "a New_tab link to a different path is not equal" false
+    (Element.equal (new_tab ()) (new_tab ~path:"/outbox" ()));
+  check "a New_tab link is not equal to a Route link to its path" false
+    (Element.equal (new_tab ()) (route ()));
   (* Totality: neither a functional [on_open_failed] nor a closure-valued
      [on_follow] may make equal raise. *)
   check "distinct on_open_failed functions compare unequal (no raise)" false
@@ -2115,6 +2161,8 @@ let () =
             draw_equal_compares_name;
           Alcotest.test_case "image_equal_compares_name" `Quick
             image_equal_compares_name;
+          Alcotest.test_case "image_equal_compares_fit" `Quick
+            image_equal_compares_fit;
           Alcotest.test_case "equal distinguishes file_input config" `Quick
             test_equal_distinguishes_file_input_config;
           Alcotest.test_case "equal_input_type_exported" `Quick

@@ -3,6 +3,7 @@ type open_error = Not_permitted | Failed of string
 type 'msg destination =
   | Route of { path : Route_path.t; on_follow : 'msg }
   | External of { url : Url.t; on_open_failed : open_error -> 'msg }
+  | New_tab of { path : Route_path.t }
 
 type button = Primary | Middle | Other
 
@@ -36,7 +37,8 @@ let in_browser click destination =
       | false -> Navigate on_follow
       | true -> Leave_to_platform)
   | Route _, (Middle | Other)
-  | External _, (Primary | Middle | Other) ->
+  | External _, (Primary | Middle | Other)
+  | New_tab _, (Primary | Middle | Other) ->
       Leave_to_platform
 
 let in_webview click destination =
@@ -44,7 +46,9 @@ let in_webview click destination =
   | (Primary | Middle), Route { path = _; on_follow } -> Navigate on_follow
   | (Primary | Middle), External { url; on_open_failed } ->
       Open_externally { url; on_open_failed }
-  | Other, (Route _ | External _) -> Leave_to_platform
+  | (Primary | Middle | Other), New_tab _
+  | Other, (Route _ | External _) ->
+      Leave_to_platform
 
 let decide ~host click destination =
   match host with
@@ -55,3 +59,4 @@ let map_destination f = function
   | Route { path; on_follow } -> Route { path; on_follow = f on_follow }
   | External { url; on_open_failed } ->
       External { url; on_open_failed = (fun error -> f (on_open_failed error)) }
+  | New_tab { path } -> New_tab { path }

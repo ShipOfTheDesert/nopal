@@ -21,6 +21,10 @@ type model = { route : route; open_failure : Link.open_error option }
 type msg = Followed of route | Open_failed of Link.open_error
 
 let external_url = "https://ocaml.org/"
+
+(* The kitchen sink's own page again, so the tab the link opens loads; the
+   query only tells the two addresses apart. *)
+let new_tab_path = "/kitchen_sink/?links=new-tab"
 let init () = ({ route = Start; open_failure = None }, Nopal_mvu.Cmd.none)
 
 let update router model msg =
@@ -53,13 +57,14 @@ let status_text open_failure =
       "Not opened: the platform refused to open the link"
   | Some (Link.Failed reason) -> "Not opened: " ^ reason
 
-let route_error_text error =
+(* [link] names the link that is missing, as in "route link". *)
+let path_error_text ~link error =
   match error with
-  | Route_path.Not_absolute _ -> "No route link: its path is not rooted"
+  | Route_path.Not_absolute _ -> "No " ^ link ^ ": its path is not rooted"
   | Route_path.Protocol_relative _ ->
-      "No route link: its path would leave for another host"
+      "No " ^ link ^ ": its path would leave for another host"
   | Route_path.Control_character _ ->
-      "No route link: its path has a control character or surrounding space"
+      "No " ^ link ^ ": its path has a control character or surrounding space"
 
 let url_error_text error =
   match error with
@@ -112,7 +117,8 @@ let route_link router =
         ~attrs:[ ("data-testid", "links-route-link") ]
         destination
         (Element.text "Follow an in-app link")
-  | Error error -> error_line "links-route-error" (route_error_text error)
+  | Error error ->
+      error_line "links-route-error" (path_error_text ~link:"route link" error)
 
 let external_link () =
   match Url.of_string external_url with
@@ -124,16 +130,28 @@ let external_link () =
         (Element.text "OCaml's website")
   | Error error -> error_line "links-external-error" (url_error_text error)
 
+let new_tab_link () =
+  match Route_path.of_string new_tab_path with
+  | Ok path ->
+      Element.link ~interaction:link_interaction
+        ~attrs:[ ("data-testid", "links-new-tab-link") ]
+        (Link.New_tab { path })
+        (Element.text "Open this page in a new tab")
+  | Error error ->
+      error_line "links-new-tab-error"
+        (path_error_text ~link:"new-tab link" error)
+
 let view router _vp model =
   Element.column ~style:column_style
     [
       Element.text
-        "A link to a route of this page, followed without loading it, and a \
-         link to another site. Hover either to underline it: the in-app link's \
-         underline sits 3px below the text, the other's where the browser puts \
-         it.";
+        "A link to a route of this page, followed without loading it, a link \
+         to another site, and a link that opens this page in a new tab. Hover \
+         one to underline it: the in-app link's underline sits 3px below the \
+         text, the others' where the browser puts it.";
       route_link router;
       external_link ();
+      new_tab_link ();
       Element.box
         ~attrs:
           [
