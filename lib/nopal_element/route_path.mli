@@ -1,4 +1,5 @@
-(** A checked in-app path — the only destination an in-app link can carry.
+(** A checked path on the page's own origin — the only destination an in-app
+    ({!Link.Route}) or a new-tab ({!Link.New_tab}) link can carry.
 
     The accepted set is every string that starts with exactly one [/], where the
     character after it, if there is one, is neither [/] nor a backslash.

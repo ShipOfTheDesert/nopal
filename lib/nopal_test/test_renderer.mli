@@ -99,16 +99,24 @@ val render : 'msg Nopal_element.Element.t -> 'msg rendered
     ["aria-disabled"]. An option, or an empty list, contributes nothing when
     absent: ["accept"], ["capture"], an input's ["autocomplete"], its ["type"]
     and its ["name"], and a form's ["autocomplete"]. A link's ["rel"] is
-    contributed for an [External] link only, so a [Route] link uncovers a
-    caller's ["rel"]. An input's ["placeholder"], a radio's ["name"], a button's
-    ["type"], a link's ["href"] and a heading's ["role"], ["aria-level"] and
-    ["data-nopal-heading"] have no absent form and are contributed on every
-    render.
+    contributed for an [External] or a [New_tab] link, and its ["target"]
+    (["_blank"]) for a [New_tab] link only, so a [Route] link uncovers a
+    caller's pair for either. An input's ["placeholder"], a radio's ["name"], a
+    button's ["type"], a link's ["href"] and a heading's ["role"],
+    ["aria-level"] and ["data-nopal-heading"] have no absent form and are
+    contributed on every render.
 
     A scroll container's [reveal] declaration is surfaced for inspection as the
     derived attribute pairs ["reveal"] and ["reveal-align"], carried exactly as
     the view wrote them. A container that declares neither carries no attributes
     at all.
+
+    An image's [fit] is surfaced the same way, as the derived pair ["fit"]
+    carrying {!Nopal_element.Element.image_fit_to_string} of it: ["contain"] or
+    ["cover"]. An image that declares no fit carries no ["fit"] pair. On the web
+    a fit is the image's [object-fit] style declaration rather than an
+    attribute, so this pair is a read-out of the typed field and not a claim
+    about the browser's attributes.
 
     Nothing marks a pair as derived, so the precedence does not run the other
     way: a container that supplies [("reveal", "decoy")] in [attrs] and declares

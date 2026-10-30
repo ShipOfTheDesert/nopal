@@ -299,8 +299,9 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
           }
     | Link { style; interaction; attrs; destination; child } ->
         (* ["href"] has no absent form, so a caller's pair never stands. ["rel"]
-           is derived for an [External] link only, so a [Route] link uncovers a
-           caller's ["rel"]. *)
+           is derived for an [External] or a [New_tab] link and ["target"] for
+           a [New_tab] link only, so a [Route] link uncovers a caller's pair
+           for either. *)
         let link_config =
           match destination with
           | Nopal_element.Link.Route { path; _ } ->
@@ -309,6 +310,12 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
               [
                 ("href", Nopal_element.Url.to_string url);
                 ("rel", "noopener noreferrer");
+              ]
+          | Nopal_element.Link.New_tab { path } ->
+              [
+                ("href", Nopal_element.Route_path.to_string path);
+                ("rel", "noopener noreferrer");
+                ("target", "_blank");
               ]
         in
         link_handlers :=
@@ -543,15 +550,20 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             children = [];
             interaction;
           }
-    | Image { style; src; name } ->
+    | Image { style; src; name; fit } ->
         Element
           {
             tag = "image";
             style;
+            (* The fit is surfaced for inspection under the DSL's own name, the
+               way a scroll's [reveal] is: it is a style declaration on the web,
+               not an attribute, so no platform attribute name would be true. *)
             attrs =
               [
                 ("src", src); ("alt", Nopal_element.Graphic_name.image_alt name);
-              ];
+              ]
+              @ derived_pair "fit"
+                  (Option.map Nopal_element.Element.image_fit_to_string fit);
             children = [];
             interaction = Nopal_style.Interaction.default;
           }

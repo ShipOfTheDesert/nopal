@@ -1836,10 +1836,31 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
 
   (* Section 5: Images *)
   let view_images _model =
+    (* A wide box around a square picture, with a background so the room a
+       contained picture leaves is visible beside the cropping a covering one
+       does. *)
+    let wide_box =
+      Style.default
+      |> Style.with_layout (fun l ->
+          { l with width = Some (Fixed 160.0); height = Some (Fixed 80.0) })
+      |> Style.with_paint (fun p ->
+          {
+            p with
+            background = Some (Style.hex "#d9d9d9");
+            opacity = 1.0;
+            overflow = Visible;
+          })
+    in
     view_section "Images"
       [
         named_graphic "Plain grey placeholder square" (fun name ->
             Element.image ~src:"assets/placeholder.png" ~name ());
+        named_graphic "Placeholder square contained in a wide box" (fun name ->
+            Element.image ~style:wide_box ~fit:Element.Contain
+              ~src:"assets/placeholder.png" ~name ());
+        named_graphic "Placeholder square covering a wide box" (fun name ->
+            Element.image ~style:wide_box ~fit:Element.Cover
+              ~src:"assets/placeholder.png" ~name ());
       ]
 
   (* Section 6: Scroll *)

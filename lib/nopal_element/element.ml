@@ -12,6 +12,7 @@ type autocomplete_mode = On | Off
 type input_type = Plain | Password | Email | Tel | Url | Number | Search
 type button_type = Submit | Push
 type heading_level = H1 | H2 | H3 | H4 | H5 | H6
+type image_fit = Contain | Cover
 
 type file_info = {
   blob_id : string;
@@ -138,6 +139,7 @@ type 'msg t =
       style : Nopal_style.Style.t;
       src : string;
       name : Nopal_scene.Graphic_name.t;
+      fit : image_fit option;
     }
   | Scroll of {
       style : Nopal_style.Style.t;
@@ -296,6 +298,11 @@ let button_type_to_string (t : button_type) =
   | Submit -> "submit"
   | Push -> "button"
 
+let image_fit_to_string (f : image_fit) =
+  match f with
+  | Contain -> "contain"
+  | Cover -> "cover"
+
 let heading_level_to_int (l : heading_level) =
   match l with
   | H1 -> 1
@@ -313,8 +320,8 @@ let file_input ?(style = Nopal_style.Style.empty)
     ?(accept = []) ?capture ?(multiple = false) ?on_change () =
   File_input { style; interaction; attrs; accept; capture; multiple; on_change }
 
-let image ?(style = Nopal_style.Style.empty) ~src ~name () =
-  Image { style; src; name }
+let image ?(style = Nopal_style.Style.empty) ?fit ~src ~name () =
+  Image { style; src; name; fit }
 
 let scroll ?(style = Nopal_style.Style.empty) ?(attrs = []) ?reveal child =
   Scroll { style; attrs; reveal; child }
@@ -521,7 +528,7 @@ let rec map f = function
           multiple;
           on_change = Option.map (fun g files -> f (g files)) on_change;
         }
-  | Image { style; src; name } -> Image { style; src; name }
+  | Image { style; src; name; fit } -> Image { style; src; name; fit }
   | Scroll { style; attrs; reveal; child } ->
       Scroll { style; attrs; reveal; child = map f child }
   | Keyed { key; child } -> Keyed { key; child = map f child }
@@ -632,6 +639,13 @@ let equal_button_type (t1 : button_type) (t2 : button_type) =
       true
   | (Submit | Push), _ -> false
 
+let equal_image_fit (f1 : image_fit) (f2 : image_fit) =
+  match (f1, f2) with
+  | Contain, Contain
+  | Cover, Cover ->
+      true
+  | (Contain | Cover), _ -> false
+
 let equal_heading_level (l1 : heading_level) (l2 : heading_level) =
   match (l1, l2) with
   | H1, H1
@@ -653,7 +667,9 @@ let equal_destination (d1 : 'msg Link.destination) (d2 : 'msg Link.destination)
   | ( Link.External { url = u1; on_open_failed = o1 },
       Link.External { url = u2; on_open_failed = o2 } ) ->
       String.equal (Url.to_string u1) (Url.to_string u2) && o1 == o2
-  | (Link.Route _ | Link.External _), _ -> false
+  | Link.New_tab { path = p1 }, Link.New_tab { path = p2 } ->
+      String.equal (Route_path.to_string p1) (Route_path.to_string p2)
+  | (Link.Route _ | Link.External _ | Link.New_tab _), _ -> false
 
 (* Equality strategy for handler and message fields:
    Both function-typed handlers (on_click, on_toggle, on_change, ...) and plain
@@ -865,11 +881,12 @@ let rec equal a b =
       && Option.equal String.equal ac1 ac2
       && Option.equal equal_input_type it1 it2
       && Option.equal String.equal n1 n2
-  | ( Image { style = s1; src = src1; name = n1 },
-      Image { style = s2; src = src2; name = n2 } ) ->
+  | ( Image { style = s1; src = src1; name = n1; fit = f1 },
+      Image { style = s2; src = src2; name = n2; fit = f2 } ) ->
       Nopal_style.Style.equal s1 s2
       && String.equal src1 src2
       && Nopal_scene.Graphic_name.equal n1 n2
+      && Option.equal equal_image_fit f1 f2
   | ( Scroll { style = s1; attrs = a1; reveal = r1; child = ch1 },
       Scroll { style = s2; attrs = a2; reveal = r2; child = ch2 } ) ->
       Nopal_style.Style.equal s1 s2

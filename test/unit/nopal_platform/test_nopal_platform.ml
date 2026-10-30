@@ -259,6 +259,8 @@ let test_destination_path_matches_push () =
         on_follow
   | Ok (Nopal_element.Link.External _) ->
       Alcotest.fail "expected a Route destination, got External"
+  | Ok (Nopal_element.Link.New_tab _) ->
+      Alcotest.fail "expected a Route destination, got New_tab"
   | Error
       ( Nopal_element.Route_path.Not_absolute { input }
       | Nopal_element.Route_path.Protocol_relative { input }
@@ -282,7 +284,9 @@ let test_destination_rejects_bad_to_path () =
       ( Nopal_element.Route_path.Not_absolute _
       | Nopal_element.Route_path.Control_character _ ) ->
       Alcotest.fail "expected Protocol_relative for //evil.example"
-  | Ok (Nopal_element.Link.Route _ | Nopal_element.Link.External _) ->
+  | Ok
+      ( Nopal_element.Link.Route _ | Nopal_element.Link.External _
+      | Nopal_element.Link.New_tab _ ) ->
       Alcotest.fail "expected //evil.example to be refused");
   match destination_with_path "javascript:x" with
   | Error (Nopal_element.Route_path.Not_absolute { input }) ->
@@ -291,7 +295,9 @@ let test_destination_rejects_bad_to_path () =
       ( Nopal_element.Route_path.Protocol_relative _
       | Nopal_element.Route_path.Control_character _ ) ->
       Alcotest.fail "expected Not_absolute for javascript:x"
-  | Ok (Nopal_element.Link.Route _ | Nopal_element.Link.External _) ->
+  | Ok
+      ( Nopal_element.Link.Route _ | Nopal_element.Link.External _
+      | Nopal_element.Link.New_tab _ ) ->
       Alcotest.fail "expected javascript:x to be refused"
 
 let () =

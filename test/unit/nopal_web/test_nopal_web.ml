@@ -177,7 +177,13 @@ let test_image_creates_img () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
   let el =
-    Image { style = default; src = "pic.png"; name = graphic_name "A pic" }
+    Image
+      {
+        style = default;
+        src = "pic.png";
+        name = graphic_name "A pic";
+        fit = None;
+      }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el in
   let node = Nopal_web.Renderer.dom_node handle in
@@ -1772,12 +1778,14 @@ let test_reconcile_image_attributes () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
   let el1 =
-    Image { style = default; src = "a.png"; name = graphic_name "old" }
+    Image
+      { style = default; src = "a.png"; name = graphic_name "old"; fit = None }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
   let node = Nopal_web.Renderer.dom_node handle in
   let el2 =
-    Image { style = default; src = "b.png"; name = graphic_name "new" }
+    Image
+      { style = default; src = "b.png"; name = graphic_name "new"; fit = None }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
   let node_after = Nopal_web.Renderer.dom_node handle in
@@ -1796,13 +1804,25 @@ let test_reconcile_image_skips_unchanged_src () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
   let el1 =
-    Image { style = default; src = "same.png"; name = graphic_name "same" }
+    Image
+      {
+        style = default;
+        src = "same.png";
+        name = graphic_name "same";
+        fit = None;
+      }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
   let node = Nopal_web.Renderer.dom_node handle in
   let count = spy_set_attr node in
   let el2 =
-    Image { style = default; src = "same.png"; name = graphic_name "same" }
+    Image
+      {
+        style = default;
+        src = "same.png";
+        name = graphic_name "same";
+        fit = None;
+      }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
   Alcotest.(check int) "setAttribute not called for unchanged image" 0 !count
@@ -1812,13 +1832,15 @@ let test_reconcile_image_updates_only_changed_attr () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
   let el1 =
-    Image { style = default; src = "a.png"; name = graphic_name "same" }
+    Image
+      { style = default; src = "a.png"; name = graphic_name "same"; fit = None }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent el1 in
   let node = Nopal_web.Renderer.dom_node handle in
   let count = spy_set_attr node in
   let el2 =
-    Image { style = default; src = "b.png"; name = graphic_name "same" }
+    Image
+      { style = default; src = "b.png"; name = graphic_name "same"; fit = None }
   in
   Nopal_web.Renderer.update ~dispatch handle el2;
   Alcotest.(check int) "setAttribute called once (src only)" 1 !count;
@@ -1847,7 +1869,8 @@ let canvas_named name =
       name;
     }
 
-let image_named name = Image { style = default; src = "chart.svg"; name }
+let image_named name =
+  Image { style = default; src = "chart.svg"; name; fit = None }
 
 (* The canvas's accessibility row as (role, aria-label, aria-hidden), so one
    check pins both the attributes the row writes and the ones it must not. *)
@@ -1948,6 +1971,59 @@ let test_image_name_reconciles () =
   in
   step "to decorative" Nopal_element.Graphic_name.decorative (Some "");
   step "to another name" (graphic_name "Exposure") (Some "Exposure")
+
+(* One fixture for every fit case, so the absence arm below reads the same
+   declaration through the same key that the affirmative arms read a value
+   from: an [object-fit] the shim spelled differently would fail those, rather
+   than pass the absence for the wrong reason. *)
+let image_fitted fit =
+  Image
+    { style = default; src = "receipt.jpg"; name = graphic_name "Receipt"; fit }
+
+let object_fit_of node =
+  Jv.Jstr.get (Jv.get node "style") "object-fit" |> Jstr.to_string
+
+let rendered_object_fit fit =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  Nopal_web.Renderer.create ~dispatch ~parent (image_fitted fit)
+  |> Nopal_web.Renderer.dom_node
+  |> object_fit_of
+
+let test_image_fit_contain () =
+  Alcotest.(check string)
+    "object-fit" "contain"
+    (rendered_object_fit (Some Contain))
+
+let test_image_fit_cover () =
+  Alcotest.(check string)
+    "object-fit" "cover"
+    (rendered_object_fit (Some Cover))
+
+let test_image_no_fit () =
+  Alcotest.(check string) "no object-fit" "" (rendered_object_fit None)
+
+(* The same img is kept across every step, so each read is the reconcile's
+   doing and not a fresh node's. Dropping the fit must clear the declaration the
+   previous render wrote; the reads before it are what make that absence mean
+   something. *)
+let test_image_fit_reconciles () =
+  let parent = fresh_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent (image_fitted (Some Contain))
+  in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let step label fit expected =
+    Nopal_web.Renderer.update ~dispatch handle (image_fitted fit);
+    Alcotest.(check bool)
+      (label ^ ": same img") true
+      (node == Nopal_web.Renderer.dom_node handle);
+    Alcotest.(check string) label expected (object_fit_of node)
+  in
+  step "to cover" (Some Cover) "cover";
+  step "dropped" None "";
+  step "back to contain" (Some Contain) "contain"
 
 (* Box: unchanged attrs must not trigger setAttribute *)
 let test_reconcile_box_skips_unchanged_attrs () =
@@ -2405,7 +2481,9 @@ let test_reconcile_input_updates_changed_value () =
 let test_reconcile_removes_dropped_inline_style () =
   let parent = fresh_parent () in
   let dispatch, _msgs = fresh_dispatch () in
-  let mk style = Image { style; src = "a.png"; name = graphic_name "a" } in
+  let mk style =
+    Image { style; src = "a.png"; name = graphic_name "a"; fit = None }
+  in
   let styled =
     with_paint
       (fun p -> { p with background = Some (rgba 255 0 0 1.0) })
@@ -2745,7 +2823,7 @@ let test_reconcile_unchanged_style_no_write () =
         (fun p -> { p with background = Some (rgba 255 0 0 1.0) })
         default
     in
-    Image { style = styled; src = "a.png"; name = graphic_name "a" }
+    Image { style = styled; src = "a.png"; name = graphic_name "a"; fit = None }
   in
   let handle = Nopal_web.Renderer.create ~dispatch ~parent (mk ()) in
   let node = Nopal_web.Renderer.dom_node handle in
@@ -4879,7 +4957,8 @@ let test_container_main_axis_non_container_is_none () =
          child = Empty;
        });
   check_axis "an image is not a flex container" "no axis"
-    (Image { style = default; src = "a.png"; name = graphic_name "a" });
+    (Image
+       { style = default; src = "a.png"; name = graphic_name "a"; fit = None });
   (* Affirmative arm: the resolver is not answering "no axis" to everything. *)
   check_axis "a box still is one" "vertical"
     (plain_box ~style:down ~children:[])
@@ -5448,6 +5527,16 @@ let () =
             test_image_named_and_decorative_alt;
           Alcotest.test_case "image_name_reconciles" `Quick
             test_image_name_reconciles;
+          Alcotest.test_case
+            "an image with fit Contain renders object-fit: contain" `Quick
+            test_image_fit_contain;
+          Alcotest.test_case "an image with fit Cover renders object-fit: cover"
+            `Quick test_image_fit_cover;
+          Alcotest.test_case "an image with no fit renders no object-fit" `Quick
+            test_image_no_fit;
+          Alcotest.test_case
+            "an image's fit is rewritten on change and cleared when dropped"
+            `Quick test_image_fit_reconciles;
         ] );
       ( "checkbox reconciliation",
         [
