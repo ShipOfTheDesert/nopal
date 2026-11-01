@@ -171,6 +171,23 @@ let image_decorative_alt_is_empty () =
     "a decorative image carries an empty alt, not an absent one" (Some "")
     (attr "alt" (tree r))
 
+(* The fit is surfaced as a derived pair named for the DSL's own concept, so a
+   structural test can read back which fit a view declared. The absent arm is
+   the same image with no fit, read through the same key. *)
+let image_fit_surfaced () =
+  let fitted fit =
+    tree (render (E.image ?fit ~src:"receipt.jpg" ~name:(graphic_name "r") ()))
+  in
+  Alcotest.(check (option string))
+    "a contained image reads back its fit" (Some "contain")
+    (attr "fit" (fitted (Some E.Contain)));
+  Alcotest.(check (option string))
+    "a covering image reads back its fit" (Some "cover")
+    (attr "fit" (fitted (Some E.Cover)));
+  Alcotest.(check (option string))
+    "an image with no fit carries no fit pair" None
+    (attr "fit" (fitted None))
+
 let render_scroll () =
   let r = render (E.scroll (E.text "content")) in
   check_node "scroll renders correctly"
@@ -265,6 +282,7 @@ let rendering_tests =
     Alcotest.test_case "image_named_alt" `Quick image_named_alt;
     Alcotest.test_case "image_decorative_alt_is_empty" `Quick
       image_decorative_alt_is_empty;
+    Alcotest.test_case "image_fit_surfaced" `Quick image_fit_surfaced;
     Alcotest.test_case "render_scroll" `Quick render_scroll;
     Alcotest.test_case "render_keyed" `Quick render_keyed;
     Alcotest.test_case "render_nested" `Quick render_nested;

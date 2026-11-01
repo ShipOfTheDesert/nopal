@@ -33,6 +33,7 @@ let vp = Nopal_element.Viewport.desktop
 let section = By_attr ("data-testid", "links-section")
 let route_link = By_attr ("data-testid", "links-route-link")
 let external_link = By_attr ("data-testid", "links-external-link")
+let new_tab_link = By_attr ("data-testid", "links-new-tab-link")
 let current_route = By_attr ("data-testid", "links-current-route")
 let open_status = By_attr ("data-testid", "links-open-status")
 
@@ -125,6 +126,36 @@ let test_links_route_click_follows_via_router () =
   Alcotest.(check (option string))
     "the model holds the followed route" (Some "target") (route_readout model)
 
+(* The new-tab link is the browser's to open: its anchor says so, and a plain
+   primary click — the one a route link takes over — asks for nothing. *)
+let test_links_new_tab_link_left_to_browser () =
+  let model = model0 () in
+  let rendered = render (K.view vp model) in
+  let link =
+    node_in "the new-tab link" new_tab_link
+      (node_in "the links section" section (tree rendered))
+  in
+  Alcotest.(check (list (option string)))
+    "the new-tab link's address, target and rel"
+    [
+      Some "/kitchen_sink/?links=new-tab";
+      Some "_blank";
+      Some "noopener noreferrer";
+    ]
+    [ attr "href" link; attr "target" link; attr "rel" link ];
+  (match click_link ~host:Link.Browser plain_primary new_tab_link rendered with
+  | Ok Link.Leave_to_platform -> ()
+  | Ok (Link.Navigate _) ->
+      Alcotest.fail "a plain click on the new-tab link was taken over"
+  | Ok (Link.Open_externally _) ->
+      Alcotest.fail "a plain click on the new-tab link opened externally"
+  | Error (Not_found _) -> Alcotest.fail "the new-tab link is missing"
+  | Error (No_handler { tag; event }) ->
+      Alcotest.failf "the new-tab link is a %s with no %s" tag event);
+  Alcotest.(check int)
+    "the click dispatches nothing" 0
+    (List.length (messages rendered))
+
 (* Each failure is fed back through the section's own message, as the opener's
    callback would deliver it. *)
 let test_open_failure_shows_status () =
@@ -196,6 +227,8 @@ let () =
             test_links_section_has_route_and_external;
           Alcotest.test_case "links_route_click_follows_via_router" `Quick
             test_links_route_click_follows_via_router;
+          Alcotest.test_case "links_new_tab_link_left_to_browser" `Quick
+            test_links_new_tab_link_left_to_browser;
           Alcotest.test_case "open_failure_shows_status" `Quick
             test_open_failure_shows_status;
           Alcotest.test_case "offset_link_and_plain_link" `Quick

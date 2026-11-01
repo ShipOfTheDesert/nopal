@@ -11,6 +11,7 @@ type msg = Followed | Open_failed of Link.open_error
 
 let url_text = "https://nopal-test-7Q2.example/"
 let path_text = "/inbox"
+let new_tab_text = "/api/invoices/7/photo"
 
 let url =
   match Url.of_string url_text with
@@ -28,7 +29,16 @@ let path =
       | Route_path.Control_character _ ) ->
       Alcotest.fail "fixture path is refused"
 
+let new_tab_path =
+  match Route_path.of_string new_tab_text with
+  | Ok path -> path
+  | Error
+      ( Route_path.Not_absolute _ | Route_path.Protocol_relative _
+      | Route_path.Control_character _ ) ->
+      Alcotest.fail "fixture new-tab path is refused"
+
 let route = Link.Route { path; on_follow = Followed }
+let new_tab : msg Link.destination = Link.New_tab { path = new_tab_path }
 
 let external_ =
   Link.External { url; on_open_failed = (fun error -> Open_failed error) }
@@ -75,7 +85,7 @@ let equal_action (a : msg Link.action) (b : msg Link.action) =
 let action = Alcotest.testable pp_action equal_action
 
 type expected = Navigates | Leaves | Opens
-type kind = To_route | To_external
+type kind = To_route | To_external | To_new_tab
 
 (** The contract, one row per host, button and destination kind:
     [(host, button, kind, unmodified click, modified click)]. A modified click
@@ -89,21 +99,28 @@ let table : (Link.host * Link.button * kind * expected * expected) list =
     (Link.Browser, Link.Middle, To_external, Leaves, Leaves);
     (Link.Browser, Link.Other, To_route, Leaves, Leaves);
     (Link.Browser, Link.Other, To_external, Leaves, Leaves);
+    (Link.Browser, Link.Primary, To_new_tab, Leaves, Leaves);
+    (Link.Browser, Link.Middle, To_new_tab, Leaves, Leaves);
+    (Link.Browser, Link.Other, To_new_tab, Leaves, Leaves);
     (Link.Webview, Link.Primary, To_route, Navigates, Navigates);
     (Link.Webview, Link.Primary, To_external, Opens, Opens);
     (Link.Webview, Link.Middle, To_route, Navigates, Navigates);
     (Link.Webview, Link.Middle, To_external, Opens, Opens);
     (Link.Webview, Link.Other, To_route, Leaves, Leaves);
     (Link.Webview, Link.Other, To_external, Leaves, Leaves);
+    (Link.Webview, Link.Primary, To_new_tab, Leaves, Leaves);
+    (Link.Webview, Link.Middle, To_new_tab, Leaves, Leaves);
+    (Link.Webview, Link.Other, To_new_tab, Leaves, Leaves);
   ]
 
 let hosts = [ Link.Browser; Link.Webview ]
 let buttons = [ Link.Primary; Link.Middle; Link.Other ]
-let kinds = [ To_route; To_external ]
+let kinds = [ To_route; To_external; To_new_tab ]
 
 let destination_of = function
   | To_route -> route
   | To_external -> external_
+  | To_new_tab -> new_tab
 
 let action_of = function
   | Navigates -> Link.Navigate Followed
@@ -122,6 +139,7 @@ let button_name = function
 let kind_name = function
   | To_route -> "Route"
   | To_external -> "External"
+  | To_new_tab -> "New_tab"
 
 (** All sixteen modifier combinations, as clicks of [button]. *)
 let clicks button =
@@ -179,7 +197,57 @@ let test_decide_exhaustive () =
             kinds)
         buttons)
     hosts;
-  Alcotest.(check int) "every combination is checked" 192 !checked
+  Alcotest.(check int) "every combination is checked" 288 !checked
+
+(* The table above holds this too; it is spelled out on its own because it is
+   the whole of what a new-tab link is for: the browser opens the tab, so no
+   click on one — of any button, under any modifiers — is taken over. *)
+let test_decide_leaves_new_tab_to_browser () =
+  List.iter
+    (fun button ->
+      List.iter
+        (fun (click : Link.click) ->
+          Alcotest.check action
+            (Printf.sprintf "%s ctrl=%b meta=%b shift=%b alt=%b"
+               (button_name button) click.ctrl click.meta click.shift click.alt)
+            Link.Leave_to_platform
+            (Link.decide ~host:Link.Browser click new_tab))
+        (clicks button))
+    buttons
+
+(* A new-tab link carries a [Route_path.t], so the only way to one is
+   [Route_path.of_string]; the strings below are the ones a same-origin path
+   could plausibly be mistyped as, each of which names something other than a
+   path on this origin. *)
+let test_new_tab_path_refused_unless_single_slash () =
+  let refused =
+    [
+      "api/invoices/7/photo";
+      "./api/invoices/7/photo";
+      "";
+      "//cdn.example/photo";
+      "/\\cdn.example/photo";
+      "https://cdn.example/photo";
+      " /api/invoices/7/photo";
+    ]
+  in
+  List.iter
+    (fun input ->
+      Alcotest.(check bool)
+        (Printf.sprintf "%S is refused" input)
+        true
+        (Result.is_error (Route_path.of_string input)))
+    refused;
+  (* The affirmative arm: the check refuses those, not everything. *)
+  match Route_path.of_string new_tab_text with
+  | Ok path ->
+      Alcotest.(check string)
+        "a single-slash path is accepted unchanged" new_tab_text
+        (Route_path.to_string path)
+  | Error
+      ( Route_path.Not_absolute _ | Route_path.Protocol_relative _
+      | Route_path.Control_character _ ) ->
+      Alcotest.fail "a single-slash path is refused"
 
 let test_enter_shape_is_plain_primary () =
   let enter =
@@ -200,15 +268,17 @@ let describe = function
   | Open_failed Link.Not_permitted -> "open_failed:not_permitted"
   | Open_failed (Link.Failed reason) -> "open_failed:" ^ reason
 
-let test_map_destination_maps_both_arms () =
+let test_map_destination_maps_every_arm () =
   (match Link.map_destination describe route with
   | Link.Route { path; on_follow } ->
       Alcotest.(check string)
         "path is unchanged" path_text
         (Route_path.to_string path);
       Alcotest.(check string) "on_follow is mapped" "followed" on_follow
-  | Link.External _ -> Alcotest.fail "a mapped Route became External");
-  match Link.map_destination describe external_ with
+  | Link.External _
+  | Link.New_tab _ ->
+      Alcotest.fail "a mapped Route changed kind");
+  (match Link.map_destination describe external_ with
   | Link.External { url; on_open_failed } ->
       Alcotest.(check string) "url is unchanged" url_text (Url.to_string url);
       Alcotest.(check string)
@@ -217,7 +287,17 @@ let test_map_destination_maps_both_arms () =
       Alcotest.(check string)
         "Failed is mapped with its reason" "open_failed:boom"
         (on_open_failed (Link.Failed "boom"))
-  | Link.Route _ -> Alcotest.fail "a mapped External became Route"
+  | Link.Route _
+  | Link.New_tab _ ->
+      Alcotest.fail "a mapped External changed kind");
+  match Link.map_destination describe new_tab with
+  | Link.New_tab { path } ->
+      Alcotest.(check string)
+        "a New_tab path is unchanged" new_tab_text
+        (Route_path.to_string path)
+  | Link.Route _
+  | Link.External _ ->
+      Alcotest.fail "a mapped New_tab changed kind"
 
 let test_button_of_index () =
   let check label expected n =
@@ -237,10 +317,16 @@ let () =
       ( "link",
         [
           Alcotest.test_case "decide_exhaustive" `Quick test_decide_exhaustive;
+          Alcotest.test_case
+            "decide leaves every click on a new-tab link to the browser" `Quick
+            test_decide_leaves_new_tab_to_browser;
+          Alcotest.test_case
+            "a new-tab path is refused unless it starts with a single /" `Quick
+            test_new_tab_path_refused_unless_single_slash;
           Alcotest.test_case "enter_shape_is_plain_primary" `Quick
             test_enter_shape_is_plain_primary;
           Alcotest.test_case "button_of_index" `Quick test_button_of_index;
-          Alcotest.test_case "map_destination_maps_both_arms" `Quick
-            test_map_destination_maps_both_arms;
+          Alcotest.test_case "map_destination_maps_every_arm" `Quick
+            test_map_destination_maps_every_arm;
         ] );
     ]

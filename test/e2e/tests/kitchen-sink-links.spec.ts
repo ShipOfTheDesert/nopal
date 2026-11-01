@@ -10,11 +10,13 @@ import { NopalTelemetry, type TelemetryEvent } from "./nopal-telemetry";
 const SECTION = '[data-testid="links-section"]';
 const ROUTE_LINK = `${SECTION} [data-testid="links-route-link"]`;
 const EXTERNAL_LINK = `${SECTION} [data-testid="links-external-link"]`;
+const NEW_TAB_LINK = `${SECTION} [data-testid="links-new-tab-link"]`;
 const CURRENT_ROUTE = `${SECTION} [data-testid="links-current-route"]`;
 const PREFIX = "Links:";
 const FOLLOWED = `${PREFIX}Followed:Target;`;
 const START_PATH = "/kitchen_sink/";
 const TARGET_PATH = "/kitchen_sink/?links=target";
+const NEW_TAB_PATH = "/kitchen_sink/?links=new-tab";
 
 // Generous: the first model→DOM frame in a worker can lag while the rAF loop
 // warms up on a machine with no display server.
@@ -56,10 +58,11 @@ async function readMarker(page: Page): Promise<unknown> {
   );
 }
 
-// A click the browser keeps opens the route in a new page, and the original
-// page dispatches nothing and stays where it was.
+// A click the browser keeps opens `path` in a new page, and the original page
+// dispatches nothing and stays where it was.
 async function expectLeftToBrowser(
   page: Page,
+  path: string,
   click: () => Promise<void>,
 ): Promise<void> {
   const telemetry = new NopalTelemetry(page);
@@ -68,7 +71,7 @@ async function expectLeftToBrowser(
 
   await click();
   const newPage = await opened;
-  await newPage.waitForURL(new URL(TARGET_PATH, page.url()).href, {
+  await newPage.waitForURL(new URL(path, page.url()).href, {
     timeout: SETTLE,
   });
   await settleFrames(page);
@@ -144,6 +147,28 @@ test.describe("links section", () => {
 
     expect(sectionMessages(await telemetry.events())).toEqual([FOLLOWED]);
     expect(pathOf(page)).toEqual(TARGET_PATH);
+  });
+
+  test("the new-tab link opens its path in a new tab, from a plain click", async ({
+    page,
+  }) => {
+    const link = page.locator(NEW_TAB_LINK);
+    expect(await link.getAttribute("href")).toEqual(NEW_TAB_PATH);
+    expect(await link.getAttribute("target")).toEqual("_blank");
+    expect(await link.getAttribute("rel")).toEqual("noopener noreferrer");
+    await setMarker(page);
+
+    await expectLeftToBrowser(page, NEW_TAB_PATH, () => link.click());
+    expect(await readMarker(page), "the page was reloaded").toBe(1);
+  });
+
+  test("Enter on the new-tab link opens it in a new tab too", async ({
+    page,
+  }) => {
+    await page.locator(NEW_TAB_LINK).focus();
+    await expectLeftToBrowser(page, NEW_TAB_PATH, () =>
+      page.keyboard.press("Enter"),
+    );
   });
 
   // Computed style rather than telemetry: hovering dispatches nothing, and

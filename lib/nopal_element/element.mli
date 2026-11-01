@@ -103,6 +103,27 @@ val heading_level_to_int : heading_level -> int
 val equal_heading_level : heading_level -> heading_level -> bool
 (** Structural equality over the closed variant. The sole definition. *)
 
+(** How an {!image} is drawn into the box its style gives it, when the box and
+    the picture do not share a shape. Both keep the picture's proportions. An
+    image that names no fit is stretched to the box, which distorts it whenever
+    the two shapes differ. *)
+type image_fit =
+  | Contain
+      (** The whole picture is shown, as large as the box allows; the rest of
+          the box is left empty. *)
+  | Cover
+      (** The box is filled, and whatever of the picture falls outside it is cut
+          off. *)
+
+val image_fit_to_string : image_fit -> string
+(** [image_fit_to_string f] is the token for [f]: ["contain"] or ["cover"]. The
+    sole producer of that token — the web backend writes it as the image's
+    [object-fit], the structural renderer as its ["fit"] pair, and no call site
+    spells it as a bare string. *)
+
+val equal_image_fit : image_fit -> image_fit -> bool
+(** Structural equality over the closed variant. The sole definition. *)
+
 type file_info = {
   blob_id : string;
       (** Opaque handle issued by the web blob store, valid for the page
@@ -262,6 +283,8 @@ type 'msg t =
       src : string;
       name : Nopal_scene.Graphic_name.t;
           (** The image's accessible name, or that it is decorative. *)
+      fit : image_fit option;
+          (** How the picture is drawn into its box. [None] asks for nothing. *)
     }
   | Scroll of {
       style : Nopal_style.Style.t;
@@ -347,9 +370,10 @@ type 'msg t =
     nothing when absent and uncovers the caller's pair the same way — a file
     picker's ["accept"] and ["capture"], an input's ["autocomplete"], its
     ["type"] from [input_type] and its ["name"], and a form's ["autocomplete"].
-    A link's ["rel"] declines by destination: an [External] link asserts it and
-    a [Route] link derives none, so a caller's ["rel"] pair stands on a [Route]
-    link only.
+    A link's ["rel"] and ["target"] decline by destination: an [External] link
+    asserts ["rel"], a [New_tab] link asserts both, and a [Route] link derives
+    neither, so a caller's ["rel"] or ["target"] pair stands on a [Route] link
+    only, and a caller's ["target"] on an [External] link.
 
     Two renderers enforce this and no more than two, by two different
     mechanisms. The web backend applies the declared list before it writes any
@@ -369,8 +393,8 @@ type 'msg t =
     ["placeholder"], a radio's ["name"], a control's ["type"], an input's
     ["required"], ["aria-required"], ["autocomplete"] and ["name"], a form's
     ["autocomplete"] and ["novalidate"], a button's ["type"] and
-    ["aria-disabled"], a link's ["href"] and ["rel"], a heading's ["role"],
-    ["aria-level"] and ["data-nopal-heading"], a drawing's ["role"],
+    ["aria-disabled"], a link's ["href"], ["rel"] and ["target"], a heading's
+    ["role"], ["aria-level"] and ["data-nopal-heading"], a drawing's ["role"],
     ["aria-label"] and ["aria-hidden"], and an image's ["alt"]. Of those,
     ["disabled"], ["multiple"], ["required"] and ["novalidate"] are spelled
     differently by the two — a presence attribute in the browser, a ["true"]
@@ -604,10 +628,12 @@ val link :
     content. A backend with links renders a native one, whose address is derived
     from [destination]: a [Route] link's ["href"] is its path, and an [External]
     link's is its URL, with ["rel"] ["noopener noreferrer"] so the opened page
-    cannot reach back to this one. Both keys are typed, so an ["href"] pair in
-    [attrs] never takes effect, and a ["rel"] pair only on a [Route] link; see
-    {{!section-attribute_precedence} attribute precedence}. What a click on the
-    link does is {!Link.decide}'s answer.
+    cannot reach back to this one. A [New_tab] link's ["href"] is its path, with
+    the same ["rel"] and with ["target"] ["_blank"]. The three keys are typed,
+    so an ["href"] pair in [attrs] never takes effect, a ["rel"] pair only on a
+    [Route] link, and a ["target"] pair only on a [Route] or an [External] link;
+    see {{!section-attribute_precedence} attribute precedence}. What a click on
+    the link does is {!Link.decide}'s answer.
 
     Give a link no interactive children (a button, checkbox or input): HTML does
     not allow interactive content inside an anchor, and on the web backend a
@@ -769,6 +795,7 @@ val file_input :
 
 val image :
   ?style:Nopal_style.Style.t ->
+  ?fit:image_fit ->
   src:string ->
   name:Nopal_scene.Graphic_name.t ->
   unit ->
@@ -781,7 +808,14 @@ val image :
     empty, which removes it from the accessibility tree; an absent ["alt"] would
     not. An SVG document shown through an image has its own internal attributes
     ignored by assistive technology, so a scene rendered to SVG and shown here
-    is named here. *)
+    is named here.
+
+    [fit] says how the picture is drawn into the box [style] sizes. It changes
+    what is seen only when that box's shape can differ from the picture's — a
+    box fixed on both axes is the usual case. It belongs to the image rather
+    than to its style because it means nothing on any other element. Absent, the
+    platform's default stands, which on the web stretches the picture to the
+    box. *)
 
 val scroll :
   ?style:Nopal_style.Style.t ->

@@ -110,13 +110,14 @@ val mount :
     middle click on an [External] link, modified or not, is handed to it and the
     click does not navigate the page (the context menu's "Open Link" and a
     dragged link are not guarded), and a click on a [Route] link with either
-    button dispatches the link's message whatever modifiers are held. The first
-    answer settles the outcome: if it is [Error], the link's [on_open_failed]
-    message is dispatched once; later answers are absorbed; a raise before any
-    answer is [Failed], with a reason naming the exception's constructor and
-    never its message, which may carry the URL. Omitted, links are rendered for
-    a browser, which follows every click a link does not take over itself
-    ({!Nopal_element.Link}).
+    button dispatches the link's message whatever modifiers are held. A click on
+    a [New_tab] link is never handed to it: the webview gets the click, as a
+    browser does. The first answer settles the outcome: if it is [Error], the
+    link's [on_open_failed] message is dispatched once; later answers are
+    absorbed; a raise before any answer is [Failed], with a reason naming the
+    exception's constructor and never its message, which may carry the URL.
+    Omitted, links are rendered for a browser, which follows every click a link
+    does not take over itself ({!Nopal_element.Link}).
 
     Omitting it is refused on a page that runs in a Tauri webview, where a
     followed link would take the webview away from the app with no way back.

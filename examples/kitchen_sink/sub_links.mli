@@ -1,15 +1,17 @@
 (** In-app and external links — kitchen sink subapp.
 
     The section shows a link to a route of its own, a link to an external site,
-    and two status lines: the route the section last followed, and whether the
-    platform could open the external link.
+    a link that opens the kitchen sink's own page in a new tab, and two status
+    lines: the route the section last followed, and whether the platform could
+    open the external link.
 
     A plain primary click on the route link dispatches [Followed], and [update]
     answers it with {!Nopal_platform.Router.push}. The link's address comes from
     the same route through {!Nopal_platform.Router.destination}, so the address
     and the navigation cannot drift apart. A browser follows the external link
     itself, so [Open_failed] only arrives from a host that hands the link to a
-    system browser and could not. *)
+    system browser and could not. The new-tab link dispatches nothing: the
+    browser opens its tab. *)
 
 (** The section's routes. Both are the kitchen sink's own page, under the
     [/kitchen_sink/] prefix the browser suite and the site serve it from:
@@ -52,13 +54,13 @@ val view :
   Nopal_element.Viewport.t ->
   model ->
   msg Nopal_element.Element.t
-(** Renders both links and both status lines. Every element a browser case
+(** Renders the three links and both status lines. Every element a browser case
     reaches carries a [data-testid]: [links-route-link], [links-external-link],
-    [links-current-route] and [links-open-status]. The route line also carries
-    [data-route], [start] or [target]; the opener line carries [data-status],
-    one of [idle], [not-permitted] or [failed]. A destination the router or the
-    URL check refuses is shown as an error line in the link's place, never
-    replaced by a default. *)
+    [links-new-tab-link], [links-current-route] and [links-open-status]. The
+    route line also carries [data-route], [start] or [target]; the opener line
+    carries [data-status], one of [idle], [not-permitted] or [failed]. A
+    destination the router or a path or URL check refuses is shown as an error
+    line in the link's place, never replaced by a default. *)
 
 val serialize_msg : msg -> string
 (** Telemetry serializer for the section's messages, prefixed with [Links:] and

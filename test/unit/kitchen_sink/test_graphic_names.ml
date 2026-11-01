@@ -83,6 +83,8 @@ let named_canvases =
 let named_images =
   [
     "Plain grey placeholder square";
+    "Placeholder square contained in a wide box";
+    "Placeholder square covering a wide box";
     "Device share donut and a single full ring, as an SVG image over a \
      checkerboard";
   ]
