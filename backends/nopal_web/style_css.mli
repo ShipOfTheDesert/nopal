@@ -12,6 +12,13 @@ type css_prop = { property : string; value : string }
     attaches to the last constructor instead of to the type. *)
 type main_axis = Horizontal | Vertical
 
+val color_to_css : Nopal_style.Color.t -> string
+(** [color_to_css c] is [c] as a CSS colour value: a hex or named colour
+    verbatim, an RGBA colour as [rgba(r,g,b,a)] with the alpha written by [%g],
+    and [Transparent] as [transparent]. No validation or escaping happens here;
+    a caller embedding the result anywhere but a declaration value encodes it
+    itself. Public only because the unit tests sit outside the library. *)
+
 val of_text : Nopal_style.Text.t -> css_prop list
 (** [of_text text] returns the CSS properties for [text]. Only [Some] fields
     emit properties — [Text.default] produces [[]]. A set colour emits [color],
@@ -194,3 +201,20 @@ val interaction_rules : class_name:string -> Nopal_style.Interaction.t -> string
     to press Tab — assumed: nothing in this repository exercises it. A check
     that focuses by clicking asserts the absence the browser is supposed to
     produce, so it passes whether or not the rule was ever emitted. *)
+
+val ticked_rule :
+  class_name:string -> tick_image:string -> Nopal_style.Style.t -> string
+(** [ticked_rule ~class_name ~tick_image style] is the one rule a drawn checkbox
+    paints its ticked state with: [style]'s own declarations, as {!of_style}
+    emits them with no parent axis, followed by [background-image] set to
+    [tick_image] and [background-size:100% 100%], so the tick scales to the box.
+    Every background is a longhand. A [background] shorthand would reset the
+    longhands it does not name, so a ticked fill written that way would erase
+    the tick.
+
+    The selector is [.class_name.class_name:checked]. The doubled class gives it
+    a specificity of three, one above every rule {!interaction_rules} emits, so
+    while the box is ticked its own declarations win over a hover, focused or
+    pressed style whatever order the rules were inserted in. A property the
+    ticked style leaves unset falls through to those states as usual. The rule
+    is never empty, because the tick is always declared. *)

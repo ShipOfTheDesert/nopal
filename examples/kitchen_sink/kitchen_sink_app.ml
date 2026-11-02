@@ -227,6 +227,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     button_semantics : Sub_button_semantics.model;
     clipboard : Sub_clipboard.model;
     links : Sub_links.model;
+    drawn_checkbox : Sub_drawn_checkbox.model;
     keyboard_height : int;  (** soft-keyboard height in logical px *)
     back_route : back_route;  (** current route of the back-navigation demo *)
   }
@@ -272,6 +273,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | Button_semantics_msg of Sub_button_semantics.msg
     | Clipboard_msg of Sub_clipboard.msg
     | Links_msg of Sub_links.msg
+    | Drawn_checkbox_msg of Sub_drawn_checkbox.msg
     | KeyboardHeightChanged of int  (** native soft-keyboard height *)
     | Back_demo_push  (** push the back-demo one step deep (to [Back_detail]) *)
     | Route_changed of back_route  (** popstate-driven route update *)
@@ -410,6 +412,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     let button_semantics, button_semantics_cmd = Sub_button_semantics.init () in
     let clipboard, clipboard_cmd = Sub_clipboard.init () in
     let links, links_cmd = Sub_links.init () in
+    let drawn_checkbox, drawn_checkbox_cmd = Sub_drawn_checkbox.init () in
     ( {
         button_clicks = 0;
         input_text = "";
@@ -485,6 +488,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         button_semantics;
         clipboard;
         links;
+        drawn_checkbox;
         keyboard_height = 0;
         back_route = Back_home;
       },
@@ -517,6 +521,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
             button_semantics_cmd;
           Nopal_mvu.Cmd.map (fun m -> Clipboard_msg m) clipboard_cmd;
           Nopal_mvu.Cmd.map (fun m -> Links_msg m) links_cmd;
+          Nopal_mvu.Cmd.map (fun m -> Drawn_checkbox_msg m) drawn_checkbox_cmd;
           (* Re-read the persisted demo value so a reload dispatches a
              [StorageRestored] message — the E2E persistence proof. *)
           Nopal_mvu.Cmd.task
@@ -728,6 +733,12 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         in
         ( { model with links },
           Nopal_mvu.Cmd.map (fun m -> Links_msg m) links_cmd )
+    | Drawn_checkbox_msg dc_msg ->
+        let drawn_checkbox, dc_cmd =
+          Sub_drawn_checkbox.update model.drawn_checkbox dc_msg
+        in
+        ( { model with drawn_checkbox },
+          Nopal_mvu.Cmd.map (fun m -> Drawn_checkbox_msg m) dc_cmd )
     | DrawPointerMove (x, y) ->
         ({ model with draw_pointer = Some (x, y) }, Nopal_mvu.Cmd.none)
     | DrawPointerLeave ->
@@ -4182,6 +4193,14 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                  (fun m -> Form_controls_msg m)
                  (Kitchen_sink_form_controls.view vp model.form_controls);
              ];
+           view_section
+             ~attrs:[ ("data-testid", "drawn-checkbox-section") ]
+             "A drawn checkbox"
+             [
+               Element.map
+                 (fun m -> Drawn_checkbox_msg m)
+                 (Sub_drawn_checkbox.view vp model.drawn_checkbox);
+             ];
            view_section "Text Input"
              [
                Element.map
@@ -4453,4 +4472,5 @@ module Sub_links = Sub_links
 module Sub_donut = Sub_donut
 module Sub_headings = Sub_headings
 module Sub_alignment = Sub_alignment
+module Sub_drawn_checkbox = Sub_drawn_checkbox
 module Tauri_op = Tauri_op

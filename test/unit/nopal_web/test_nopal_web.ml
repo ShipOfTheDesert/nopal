@@ -3624,6 +3624,7 @@ let test_reconcile_checkbox_checked_true_to_false () =
         attrs = [];
         checked = true;
         disabled = false;
+        appearance = Nopal_style.Checkbox_appearance.Native;
         on_toggle = Some (fun b -> Toggled b);
       }
   in
@@ -3638,6 +3639,7 @@ let test_reconcile_checkbox_checked_true_to_false () =
         attrs = [];
         checked = false;
         disabled = false;
+        appearance = Nopal_style.Checkbox_appearance.Native;
         on_toggle = Some (fun b -> Toggled b);
       }
   in
@@ -3660,6 +3662,7 @@ let test_reconcile_checkbox_checked_false_to_true () =
         attrs = [];
         checked = false;
         disabled = false;
+        appearance = Nopal_style.Checkbox_appearance.Native;
         on_toggle = Some (fun b -> Toggled b);
       }
   in
@@ -3674,6 +3677,7 @@ let test_reconcile_checkbox_checked_false_to_true () =
         attrs = [];
         checked = true;
         disabled = false;
+        appearance = Nopal_style.Checkbox_appearance.Native;
         on_toggle = Some (fun b -> Toggled b);
       }
   in
@@ -3694,6 +3698,7 @@ let test_reconcile_checkbox_enabled_to_disabled () =
         attrs = [];
         checked = false;
         disabled = false;
+        appearance = Nopal_style.Checkbox_appearance.Native;
         on_toggle = Some (fun b -> Toggled b);
       }
   in
@@ -3707,6 +3712,7 @@ let test_reconcile_checkbox_enabled_to_disabled () =
         attrs = [];
         checked = false;
         disabled = true;
+        appearance = Nopal_style.Checkbox_appearance.Native;
         on_toggle = Some (fun b -> Toggled b);
       }
   in
@@ -3733,6 +3739,7 @@ let test_reconcile_checkbox_disabled_to_enabled () =
         attrs = [];
         checked = false;
         disabled = true;
+        appearance = Nopal_style.Checkbox_appearance.Native;
         on_toggle = Some (fun b -> Toggled b);
       }
   in
@@ -3746,6 +3753,7 @@ let test_reconcile_checkbox_disabled_to_enabled () =
         attrs = [];
         checked = false;
         disabled = false;
+        appearance = Nopal_style.Checkbox_appearance.Native;
         on_toggle = Some (fun b -> Toggled b);
       }
   in
@@ -5311,6 +5319,381 @@ let test_gaining_and_losing_interaction_across_an_axis_flip () =
     "and the rule built on the row's axis carries the guard" true
     (List.length (guarded_rules ()) > 0)
 
+(* --- Drawn checkbox --- *)
+
+let drawn_fill color =
+  Nopal_style.Style.default
+  |> Nopal_style.Style.with_paint (fun p ->
+      { p with background = Some (Nopal_style.Style.hex color) })
+
+let drawn_mark = Nopal_style.Style.hex "#FFFDF9"
+
+let drawn_appearance =
+  Nopal_style.Checkbox_appearance.Drawn
+    { checked = drawn_fill "#02403A"; mark = drawn_mark }
+
+let drawn_all_states =
+  {
+    Nopal_style.Interaction.hover = Some (drawn_fill "#111111");
+    focused = Some (drawn_fill "#222222");
+    pressed = Some (drawn_fill "#333333");
+  }
+
+let drawn_box ?(attrs = []) ~style ~interaction appearance =
+  Nopal_element.Element.checkbox ~style ~interaction ~attrs ~appearance true
+
+let render_checkbox element =
+  let dispatch, _msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent:(fresh_parent ()) element
+  in
+  (handle, dispatch)
+
+let sheet_rule_texts sheet =
+  let rules = Jv.get sheet "cssRules" in
+  List.init
+    (Jv.to_int (Jv.get rules "length"))
+    (fun i -> Jv.to_string (Jv.get (Jv.get rules (string_of_int i)) "cssText"))
+
+let rule_selector rule =
+  match String.index_opt rule '{' with
+  | Some brace -> String.trim (String.sub rule 0 brace)
+  | None -> String.trim rule
+
+let ends_with ~suffix s =
+  let n = String.length s and k = String.length suffix in
+  n >= k && String.equal (String.sub s (n - k) k) suffix
+
+(* A ticked rule is a class rule on [:checked]; the forced-colours rule names
+   [:checked] too, but inside an at-rule whose prelude is not a class. *)
+let is_ticked_selector selector =
+  String.length selector > 0
+  && Char.equal selector.[0] '.'
+  && ends_with ~suffix:":checked" selector
+
+let ticked_rules sheet =
+  List.filter
+    (fun rule -> is_ticked_selector (rule_selector rule))
+    (sheet_rule_texts sheet)
+
+let rule_declarations rule =
+  match Test_util.rule_body rule with
+  | Some body ->
+      String.split_on_char ';' body
+      |> List.map String.trim
+      |> List.filter (fun d -> not (String.equal d ""))
+  | None -> []
+
+(* Specificity of a compound selector built from classes, attributes and
+   pseudo-classes only, which is every selector this backend emits for a class
+   rule: one per [.], [\[] and [:]. *)
+let class_specificity selector =
+  String.fold_left
+    (fun n c ->
+      match c with
+      | '.'
+      | '['
+      | ':' ->
+          n + 1
+      | _ -> n)
+    0 selector
+
+let marker_of node =
+  Brr.El.at
+    (Jstr.v Nopal_web.Style_sheet.drawn_checkbox_marker)
+    (Brr.El.of_jv node)
+  |> Option.map Jstr.to_string
+
+let inline_background node =
+  Jv.Jstr.get (Jv.get node "style") "background-color" |> Jstr.to_string
+
+let test_drawn_ticked_rule_outranks_interaction_rules () =
+  let _ =
+    render_checkbox
+      (drawn_box ~style:(drawn_fill "#F4F1EA") ~interaction:drawn_all_states
+         drawn_appearance)
+  in
+  let selectors =
+    List.map rule_selector (sheet_rule_texts (current_nopal_sheet ()))
+  in
+  let selector_ending suffix =
+    match List.find_opt (ends_with ~suffix) selectors with
+    | Some s -> s
+    | None ->
+        Alcotest.failf "no rule ending in %s in [%s]" suffix
+          (String.concat " | " selectors)
+  in
+  let ticked_selector =
+    match List.find_opt is_ticked_selector selectors with
+    | Some s -> s
+    | None -> Alcotest.fail "no ticked rule in the sheet"
+  in
+  List.iter
+    (fun suffix ->
+      let s = selector_ending suffix in
+      Alcotest.(check bool)
+        (Printf.sprintf "%s outranks %s" ticked_selector s)
+        true
+        (class_specificity ticked_selector > class_specificity s))
+    [ ":hover"; ":focus-visible"; ":active" ]
+
+let test_drawn_ticked_rule_carries_tick_image () =
+  let _ =
+    render_checkbox
+      (drawn_box ~style:(drawn_fill "#F4F1EA")
+         ~interaction:Nopal_style.Interaction.default drawn_appearance)
+  in
+  match ticked_rules (current_nopal_sheet ()) with
+  | [ rule ] ->
+      let declarations = rule_declarations rule in
+      List.iter
+        (fun expected ->
+          Alcotest.(check bool)
+            (Printf.sprintf "the ticked rule declares %s" expected)
+            true
+            (List.exists (String.equal expected) declarations))
+        [
+          "background-color:#02403A";
+          "background-image:" ^ Nopal_web.Tick_image.css_url drawn_mark;
+          "background-size:100% 100%";
+        ]
+  | rules ->
+      Alcotest.failf "expected one ticked rule, got %d" (List.length rules)
+
+(* The same fixture twice, so the absence on [Native] is caused by the
+   appearance and not by a fixture that never reaches the checkbox arm. *)
+let test_native_emits_no_drawn_rule () =
+  let fixture appearance =
+    drawn_box ~style:(drawn_fill "#F4F1EA") ~interaction:drawn_all_states
+      appearance
+  in
+  let native, _ =
+    render_checkbox (fixture Nopal_style.Checkbox_appearance.Native)
+  in
+  let native_node = Nopal_web.Renderer.dom_node native in
+  Alcotest.(check int)
+    "a native checkbox has no ticked rule" 0
+    (List.length (ticked_rules (current_nopal_sheet ())));
+  Alcotest.(check (option string))
+    "a native checkbox carries no marker" None (marker_of native_node);
+  let drawn, _ = render_checkbox (fixture drawn_appearance) in
+  let drawn_node = Nopal_web.Renderer.dom_node drawn in
+  Alcotest.(check int)
+    "the same checkbox drawn has one ticked rule" 1
+    (List.length (ticked_rules (current_nopal_sheet ())));
+  Alcotest.(check (option string))
+    "and carries the marker" (Some "") (marker_of drawn_node)
+
+(* An inline base would beat the ticked class rule, so a drawn base goes to a
+   class rule even with no interaction state. The native arm on the same style
+   shows the inline read sees a background when one is written. *)
+let test_drawn_base_takes_class_path_without_interaction () =
+  let fixture appearance =
+    drawn_box ~style:(drawn_fill "#F4F1EA")
+      ~interaction:Nopal_style.Interaction.default appearance
+  in
+  let native, _ =
+    render_checkbox (fixture Nopal_style.Checkbox_appearance.Native)
+  in
+  Alcotest.(check string)
+    "a native checkbox with no interaction writes its base inline" "#F4F1EA"
+    (inline_background (Nopal_web.Renderer.dom_node native));
+  let drawn, _ = render_checkbox (fixture drawn_appearance) in
+  let node = Nopal_web.Renderer.dom_node drawn in
+  Alcotest.(check string)
+    "a drawn checkbox writes no inline background" "" (inline_background node);
+  let base_rules =
+    List.filter
+      (fun rule ->
+        let selector = rule_selector rule in
+        String.length selector > 1
+        && Char.equal selector.[0] '.'
+        && (not (String.contains selector ':'))
+        && has_class node (String.sub selector 1 (String.length selector - 1)))
+      (sheet_rule_texts (current_nopal_sheet ()))
+  in
+  match base_rules with
+  | [ rule ] ->
+      Alcotest.(check (list string))
+        "the base is the node's own class rule"
+        [ "background-color:#F4F1EA" ]
+        (rule_declarations rule)
+  | rules ->
+      Alcotest.failf "expected one base class rule on the node, got %d"
+        (List.length rules)
+
+(* A caller pair naming the marker is overwritten on create, and dropping that
+   pair on a later frame removes the key from the element, so the marker has to
+   be written again after the declared list. *)
+let test_drawn_marker_survives_attrs () =
+  let marker = Nopal_web.Style_sheet.drawn_checkbox_marker in
+  let fixture attrs =
+    drawn_box ~attrs ~style:(drawn_fill "#F4F1EA")
+      ~interaction:Nopal_style.Interaction.default drawn_appearance
+  in
+  let handle, dispatch = render_checkbox (fixture [ (marker, "caller") ]) in
+  let node = Nopal_web.Renderer.dom_node handle in
+  Alcotest.(check (option string))
+    "the derived marker beats the caller's pair" (Some "") (marker_of node);
+  Nopal_web.Renderer.update ~dispatch handle (fixture []);
+  Alcotest.(check (option string))
+    "dropping the caller's pair leaves the marker" (Some "") (marker_of node)
+
+let test_native_to_drawn_and_back_on_reconcile () =
+  let fixture appearance =
+    drawn_box ~style:(drawn_fill "#F4F1EA")
+      ~interaction:Nopal_style.Interaction.default appearance
+  in
+  let handle, dispatch =
+    render_checkbox (fixture Nopal_style.Checkbox_appearance.Native)
+  in
+  let sheet = current_nopal_sheet () in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let observe label ~marker ~ticked ~inline =
+    Alcotest.(check (option string))
+      (label ^ ": marker") marker (marker_of node);
+    Alcotest.(check int)
+      (label ^ ": ticked rules") ticked
+      (List.length (ticked_rules sheet));
+    Alcotest.(check string)
+      (label ^ ": inline background")
+      inline (inline_background node)
+  in
+  observe "native" ~marker:None ~ticked:0 ~inline:"#F4F1EA";
+  Nopal_web.Renderer.update ~dispatch handle (fixture drawn_appearance);
+  Alcotest.(check bool)
+    "the same node is reused" true
+    (node == Nopal_web.Renderer.dom_node handle);
+  observe "drawn" ~marker:(Some "") ~ticked:1 ~inline:"";
+  Nopal_web.Renderer.update ~dispatch handle
+    (fixture Nopal_style.Checkbox_appearance.Native);
+  observe "native again" ~marker:None ~ticked:0 ~inline:"#F4F1EA"
+
+(* A view rebuilds the appearance every frame, so an unchanged one arrives as a
+   fresh but equal value and must not churn the sheet. *)
+let test_drawn_unchanged_reconcile_writes_no_rule () =
+  let fixture () =
+    drawn_box ~style:(drawn_fill "#F4F1EA") ~interaction:drawn_all_states
+      (Nopal_style.Checkbox_appearance.Drawn
+         {
+           checked = drawn_fill "#02403A";
+           mark = Nopal_style.Style.hex "#FFFDF9";
+         })
+  in
+  let handle, dispatch = render_checkbox (fixture ()) in
+  let sheet = current_nopal_sheet () in
+  let inserts = sheet_inserts sheet and deletes = sheet_deletes sheet in
+  Nopal_web.Renderer.update ~dispatch handle (fixture ());
+  Alcotest.(check (pair int int))
+    "no rule inserted or deleted" (0, 0)
+    (sheet_inserts sheet - inserts, sheet_deletes sheet - deletes)
+
+(* The ticked rule is shared and reference-counted. Each case uses colours no
+   other case does, so a rule left in the shared sheet by an earlier case cannot
+   stand in for the one under test. *)
+let ticked_box ~color ~mark =
+  drawn_box ~style:(drawn_fill "#F4F1EA")
+    ~interaction:Nopal_style.Interaction.default
+    (Nopal_style.Checkbox_appearance.Drawn
+       { checked = drawn_fill color; mark = Nopal_style.Style.hex mark })
+
+let ticked_mentioning sheet needle =
+  List.filter
+    (fun rule -> Test_util.string_contains rule ~sub:needle)
+    (ticked_rules sheet)
+
+let test_equal_drawn_checkboxes_share_one_ticked_rule () =
+  let box () = ticked_box ~color:"#A10001" ~mark:"#FFFFFF" in
+  let dispatch, _ = fresh_dispatch () in
+  let parent children = plain_box ~style:Nopal_style.Style.default ~children in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent:(fresh_parent ())
+      (parent [ box (); box () ])
+  in
+  let sheet = current_nopal_sheet () in
+  Alcotest.(check int)
+    "two equal appearances, one ticked rule" 1
+    (List.length (ticked_mentioning sheet "#A10001"));
+  Nopal_web.Renderer.update ~dispatch handle (parent [ box () ]);
+  Alcotest.(check int)
+    "removing one keeps the rule" 1
+    (List.length (ticked_mentioning sheet "#A10001"));
+  let deletes = sheet_deletes sheet in
+  Nopal_web.Renderer.update ~dispatch handle (parent []);
+  Alcotest.(check int)
+    "removing the second deletes it" 0
+    (List.length (ticked_mentioning sheet "#A10001"));
+  Alcotest.(check bool)
+    "through a rule deletion" true
+    (sheet_deletes sheet > deletes)
+
+let test_replacing_drawn_checkbox_deletes_its_ticked_rule () =
+  let dispatch, _ = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent:(fresh_parent ())
+      (ticked_box ~color:"#A20002" ~mark:"#FFFFFF")
+  in
+  let sheet = current_nopal_sheet () in
+  Alcotest.(check int)
+    "the rule exists" 1
+    (List.length (ticked_mentioning sheet "#A20002"));
+  Nopal_web.Renderer.update ~dispatch handle (Nopal_element.Element.text "gone");
+  Alcotest.(check int)
+    "replacing the checkbox with another variant deletes it" 0
+    (List.length (ticked_mentioning sheet "#A20002"))
+
+let test_drawn_to_drawn_swaps_the_ticked_rule () =
+  let dispatch, _ = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent:(fresh_parent ())
+      (ticked_box ~color:"#A30003" ~mark:"#FFFFFF")
+  in
+  let sheet = current_nopal_sheet () in
+  let before = List.length (ticked_rules sheet) in
+  Nopal_web.Renderer.update ~dispatch handle
+    (ticked_box ~color:"#A40004" ~mark:"#FFFFFF");
+  Alcotest.(check int)
+    "A's rule is released" 0
+    (List.length (ticked_mentioning sheet "#A30003"));
+  Alcotest.(check int)
+    "B's rule is present once" 1
+    (List.length (ticked_mentioning sheet "#A40004"));
+  Alcotest.(check int)
+    "the total is unchanged" before
+    (List.length (ticked_rules sheet))
+
+let test_interactive_native_to_drawn_and_back () =
+  let fixture appearance =
+    drawn_box ~style:(drawn_fill "#F4F1EA") ~interaction:drawn_all_states
+      appearance
+  in
+  let handle, dispatch =
+    render_checkbox (fixture Nopal_style.Checkbox_appearance.Native)
+  in
+  let sheet = current_nopal_sheet () in
+  let node = Nopal_web.Renderer.dom_node handle in
+  let ticked_before = List.length (ticked_rules sheet) in
+  let base_class () =
+    Jv.to_string (Jv.call (Jv.get node "classList") "toString" [||])
+  in
+  let observe label ~marker ~ticked =
+    Alcotest.(check (option string))
+      (label ^ ": marker") marker (marker_of node);
+    Alcotest.(check int)
+      (label ^ ": ticked rules") (ticked_before + ticked)
+      (List.length (ticked_rules sheet));
+    Alcotest.(check bool)
+      (label ^ ": base class kept")
+      true
+      (Test_util.string_contains (base_class ()) ~sub:"_nopal_b_")
+  in
+  observe "native" ~marker:None ~ticked:0;
+  Nopal_web.Renderer.update ~dispatch handle (fixture drawn_appearance);
+  observe "drawn" ~marker:(Some "") ~ticked:1;
+  Nopal_web.Renderer.update ~dispatch handle
+    (fixture Nopal_style.Checkbox_appearance.Native);
+  observe "native again" ~marker:None ~ticked:0
+
 let () =
   Alcotest.run "nopal_web"
     [
@@ -5548,6 +5931,31 @@ let () =
             test_reconcile_checkbox_enabled_to_disabled;
           Alcotest.test_case "disabled->enabled restores handler" `Quick
             test_reconcile_checkbox_disabled_to_enabled;
+        ] );
+      ( "drawn checkbox",
+        [
+          Alcotest.test_case "drawn_ticked_rule_outranks_interaction_rules"
+            `Quick test_drawn_ticked_rule_outranks_interaction_rules;
+          Alcotest.test_case "drawn_ticked_rule_carries_tick_image" `Quick
+            test_drawn_ticked_rule_carries_tick_image;
+          Alcotest.test_case "native_emits_no_drawn_rule" `Quick
+            test_native_emits_no_drawn_rule;
+          Alcotest.test_case "drawn_base_takes_class_path_without_interaction"
+            `Quick test_drawn_base_takes_class_path_without_interaction;
+          Alcotest.test_case "drawn_marker_survives_attrs" `Quick
+            test_drawn_marker_survives_attrs;
+          Alcotest.test_case "native_to_drawn_and_back_on_reconcile" `Quick
+            test_native_to_drawn_and_back_on_reconcile;
+          Alcotest.test_case "drawn_unchanged_reconcile_writes_no_rule" `Quick
+            test_drawn_unchanged_reconcile_writes_no_rule;
+          Alcotest.test_case "equal_drawn_checkboxes_share_one_ticked_rule"
+            `Quick test_equal_drawn_checkboxes_share_one_ticked_rule;
+          Alcotest.test_case "replacing_drawn_checkbox_deletes_its_ticked_rule"
+            `Quick test_replacing_drawn_checkbox_deletes_its_ticked_rule;
+          Alcotest.test_case "drawn_to_drawn_swaps_the_ticked_rule" `Quick
+            test_drawn_to_drawn_swaps_the_ticked_rule;
+          Alcotest.test_case "interactive_native_to_drawn_and_back" `Quick
+            test_interactive_native_to_drawn_and_back;
         ] );
       ( "radio reconciliation",
         [

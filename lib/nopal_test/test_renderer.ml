@@ -79,6 +79,11 @@ type 'msg link_handler_entry = {
   destination : 'msg Nopal_element.Link.destination;
 }
 
+type appearance_entry = {
+  checkbox_path : int list;
+  appearance : Nopal_style.Checkbox_appearance.t;
+}
+
 type 'msg rendered = {
   tree : node;
   msgs : 'msg list ref;
@@ -89,6 +94,7 @@ type 'msg rendered = {
   draw_handlers : 'msg draw_handler_entry list;
   box_handlers : 'msg box_handler_entry list;
   link_handlers : 'msg link_handler_entry list;
+  appearances : appearance_entry list;
 }
 
 (* A pair derived from a typed field is an overlay over the view's own [attrs]
@@ -126,6 +132,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
   let draw_handlers = ref [] in
   let box_handlers = ref [] in
   let link_handlers = ref [] in
+  let appearances = ref [] in
   let rec go ~form rev_path (el : 'msg Nopal_element.Element.t) : node =
     match el with
     | Empty -> Empty
@@ -407,7 +414,11 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             children = [];
             interaction;
           }
-    | Checkbox { style; interaction; attrs; checked; disabled; on_toggle } ->
+    | Checkbox
+        { style; interaction; attrs; checked; disabled; appearance; on_toggle }
+      ->
+        appearances :=
+          { checkbox_path = List.rev rev_path; appearance } :: !appearances;
         if not disabled then
           handlers :=
             {
@@ -429,9 +440,14 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             tag = "checkbox";
             style;
             attrs =
-              attrs
+              (attrs
               @ ("checked", string_of_bool checked)
-                :: derived_flag "disabled" disabled;
+                :: derived_flag "disabled" disabled
+              @
+              match appearance with
+              | Nopal_style.Checkbox_appearance.Drawn _ ->
+                  [ ("data-nopal-drawn-checkbox", "") ]
+              | Nopal_style.Checkbox_appearance.Native -> []);
             children = [];
             interaction;
           }
@@ -721,6 +737,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
     draw_handlers = !draw_handlers;
     box_handlers = !box_handlers;
     link_handlers = !link_handlers;
+    appearances = !appearances;
   }
 
 let tree r = r.tree
@@ -1048,6 +1065,15 @@ let toggle sel r =
       in
       r.msgs := f (not checked) :: !(r.msgs);
       Ok ()
+
+let checkbox_appearance sel r =
+  let* path, found =
+    resolve_path sel r.tree |> Option.to_result ~none:(Not_found sel)
+  in
+  List.find_opt (fun e -> e.checkbox_path = path) r.appearances
+  |> Option.map (fun e -> e.appearance)
+  |> Option.to_result
+       ~none:(No_handler { tag = tag_of_node found; event = "appearance" })
 
 let input sel value r =
   let* path, found =

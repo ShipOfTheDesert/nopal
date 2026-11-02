@@ -178,3 +178,37 @@ let graphic_name label =
   | Ok name -> name
   | Error (Nopal_element.Graphic_name.Blank { input }) ->
       Alcotest.failf "Graphic_name.named refused %S" input
+
+let pp_appearance fmt (a : Nopal_style.Checkbox_appearance.t) =
+  match a with
+  | Native -> Format.pp_print_string fmt "Native"
+  | Drawn _ -> Format.pp_print_string fmt "Drawn _"
+
+let appearance_testable =
+  Alcotest.testable pp_appearance Nopal_style.Checkbox_appearance.equal
+
+let teal_drawn () =
+  Nopal_style.Checkbox_appearance.Drawn
+    {
+      checked =
+        Nopal_style.Style.set_paint
+          {
+            background = Some (Nopal_style.Color.Hex "#02403A");
+            border = None;
+            opacity = 1.0;
+            shadow = None;
+            overflow = Visible;
+          }
+          Nopal_style.Style.empty;
+      mark = Nopal_style.Color.Hex "#FFFFFF";
+    }
+
+let rule_body rule =
+  match (String.index_opt rule '{', String.rindex_opt rule '}') with
+  | Some opening, Some closing when closing > opening ->
+      Some (String.sub rule (opening + 1) (closing - opening - 1))
+  | Some _, Some _
+  | Some _, None
+  | None, Some _
+  | None, None ->
+      None

@@ -17,6 +17,9 @@ type 'msg live_node = {
   mutable interaction_id : Style_sheet.interaction_id option;
       (* mutable: interaction style class is injected/removed during
      reconciliation when the element's interaction changes *)
+  mutable ticked_id : Style_sheet.ticked_id option;
+      (* mutable: a drawn checkbox's ticked-state class, injected/removed during
+     reconciliation when the checkbox's appearance changes *)
 }
 
 and 'msg live_comment = {
@@ -295,22 +298,61 @@ let inject_interaction_class sheet el interaction =
         None
   else None
 
+let apply_class_styles ~sheet ~parent_axis el (style : Nopal_style.Style.t)
+    (interaction : Nopal_style.Interaction.t) =
+  let css_props = Style_css.of_style ~parent_axis style in
+  let bid =
+    match css_props with
+    | [] -> None
+    | _ :: _ -> inject_base_class sheet el css_props
+  in
+  let iid = inject_interaction_class sheet el interaction in
+  (bid, iid)
+
 let apply_styles_for_element ~sheet ~parent_axis el
     (style : Nopal_style.Style.t) (interaction : Nopal_style.Interaction.t) =
-  if Nopal_style.Interaction.has_any interaction then begin
-    let css_props = Style_css.of_style ~parent_axis style in
-    let bid =
-      match css_props with
-      | [] -> None
-      | _ :: _ -> inject_base_class sheet el css_props
-    in
-    let iid = inject_interaction_class sheet el interaction in
-    (bid, iid)
-  end
+  if Nopal_style.Interaction.has_any interaction then
+    apply_class_styles ~sheet ~parent_axis el style interaction
   else begin
     apply_style ~parent_axis el style;
     (None, None)
   end
+
+(* A drawn checkbox's base style always takes the class path, interaction or
+   not: written inline, it would beat the ticked class rule and the box would
+   never look ticked. *)
+let apply_checkbox_styles ~sheet ~parent_axis el style interaction
+    (appearance : Nopal_style.Checkbox_appearance.t) =
+  match appearance with
+  | Native -> apply_styles_for_element ~sheet ~parent_axis el style interaction
+  | Drawn _ -> apply_class_styles ~sheet ~parent_axis el style interaction
+
+let inject_ticked_class sheet el
+    (appearance : Nopal_style.Checkbox_appearance.t option) =
+  match appearance with
+  | Some (Drawn { checked; mark }) ->
+      let tid = Style_sheet.inject_ticked sheet ~checked ~mark in
+      add_class el (Style_sheet.ticked_class_name tid);
+      Some tid
+  | Some Native
+  | None ->
+      None
+
+let release_ticked ~sheet (n : 'msg live_node) =
+  match n.ticked_id with
+  | Some tid ->
+      remove_class n.dom (Style_sheet.ticked_class_name tid);
+      Style_sheet.remove_ticked sheet tid;
+      n.ticked_id <- None
+  | None -> ()
+
+(* The marker the drawn-checkbox reset and the forced-colours fallback select
+   on. A native checkbox derives none, so a caller pair of the same name is
+   uncovered rather than erased, as with every other derivation. *)
+let drawn_marker (appearance : Nopal_style.Checkbox_appearance.t) =
+  match appearance with
+  | Drawn _ -> Some ""
+  | Native -> None
 
 let wire_click ~dispatch el on_click =
   match on_click with
@@ -950,6 +992,7 @@ let rec create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
           listeners;
           base_id;
           interaction_id;
+          ticked_id = None;
         }
   | Row { style; interaction; attrs; children } ->
       let el = Brr.El.v (Jstr.v "div") [] in
@@ -976,6 +1019,7 @@ let rec create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
           listeners = [];
           base_id;
           interaction_id;
+          ticked_id = None;
         }
   | Column { style; interaction; attrs; children } ->
       let el = Brr.El.v (Jstr.v "div") [] in
@@ -1002,6 +1046,7 @@ let rec create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
           listeners = [];
           base_id;
           interaction_id;
+          ticked_id = None;
         }
   | Form
       {
@@ -1039,6 +1084,7 @@ let rec create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
           listeners = wire_form_submit ~dispatch el on_submit;
           base_id;
           interaction_id;
+          ticked_id = None;
         }
   | Button
       {
@@ -1074,6 +1120,7 @@ let rec create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
           listeners;
           base_id;
           interaction_id;
+          ticked_id = None;
         }
   | Link { style; interaction; attrs; destination; child } ->
       let el = Brr.El.v (Jstr.v "a") [] in
@@ -1095,6 +1142,7 @@ let rec create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
           listeners = wire_link_clicks ~link_host ~dispatch el destination;
           base_id;
           interaction_id;
+          ticked_id = None;
         }
   | Heading { style; interaction; attrs; level; child } ->
       let el =
@@ -1123,6 +1171,7 @@ let rec create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
           listeners = [];
           base_id;
           interaction_id;
+          ticked_id = None;
         }
   | Input
       {
@@ -1155,17 +1204,30 @@ let rec create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
           ~on_keydown
       in
       Live_node
-        { dom = el; element; children = []; listeners; base_id; interaction_id }
-  | Checkbox { style; interaction; attrs; checked; disabled; on_toggle } ->
+        {
+          dom = el;
+          element;
+          children = [];
+          listeners;
+          base_id;
+          interaction_id;
+          ticked_id = None;
+        }
+  | Checkbox
+      { style; interaction; attrs; checked; disabled; appearance; on_toggle } ->
       let el = Brr.El.v (Jstr.v "input") [] in
       Jv.set (Brr.El.to_jv el) "checked" (Jv.of_bool checked);
       let base_id, interaction_id =
-        apply_styles_for_element ~sheet ~parent_axis el style interaction
+        apply_checkbox_styles ~sheet ~parent_axis el style interaction
+          appearance
       in
+      let ticked_id = inject_ticked_class sheet el (Some appearance) in
       apply_attrs el attrs;
       Brr.El.set_at (Jstr.v "type") (Some (Jstr.v "checkbox")) el;
       set_derived el ~declared:attrs "disabled"
         (if disabled then Some "" else None);
+      set_derived el ~declared:attrs Style_sheet.drawn_checkbox_marker
+        (drawn_marker appearance);
       let listeners =
         match (on_toggle, disabled) with
         | Some f, false ->
@@ -1181,7 +1243,15 @@ let rec create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
             []
       in
       Live_node
-        { dom = el; element; children = []; listeners; base_id; interaction_id }
+        {
+          dom = el;
+          element;
+          children = [];
+          listeners;
+          base_id;
+          interaction_id;
+          ticked_id;
+        }
   | Radio { style; interaction; attrs; name; checked; disabled; on_select } ->
       let el = Brr.El.v (Jstr.v "input") [] in
       Jv.set (Brr.El.to_jv el) "checked" (Jv.of_bool checked);
@@ -1206,7 +1276,15 @@ let rec create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
             []
       in
       Live_node
-        { dom = el; element; children = []; listeners; base_id; interaction_id }
+        {
+          dom = el;
+          element;
+          children = [];
+          listeners;
+          base_id;
+          interaction_id;
+          ticked_id = None;
+        }
   | Select { style; interaction; attrs; options; selected; disabled; on_change }
     ->
       let el = Brr.El.v (Jstr.v "select") [] in
@@ -1250,7 +1328,15 @@ let rec create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
             []
       in
       Live_node
-        { dom = el; element; children = []; listeners; base_id; interaction_id }
+        {
+          dom = el;
+          element;
+          children = [];
+          listeners;
+          base_id;
+          interaction_id;
+          ticked_id = None;
+        }
   | File_input
       { style; interaction; attrs; accept; capture; multiple; on_change } ->
       let el = Brr.El.v (Jstr.v "input") [] in
@@ -1262,7 +1348,15 @@ let rec create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
       apply_file_input_config el ~declared:attrs ~accept ~capture ~multiple;
       let listeners = wire_file_change ~dispatch el on_change in
       Live_node
-        { dom = el; element; children = []; listeners; base_id; interaction_id }
+        {
+          dom = el;
+          element;
+          children = [];
+          listeners;
+          base_id;
+          interaction_id;
+          ticked_id = None;
+        }
   | Image { style; src; name; fit } ->
       let el = Brr.El.v (Jstr.v "img") [] in
       apply_style ~parent_axis el style;
@@ -1279,6 +1373,7 @@ let rec create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
           listeners = [];
           base_id = None;
           interaction_id = None;
+          ticked_id = None;
         }
   | Scroll { style; attrs; reveal; child } ->
       let el = Brr.El.v (Jstr.v "div") [] in
@@ -1302,6 +1397,7 @@ let rec create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
           listeners = [];
           base_id = None;
           interaction_id = None;
+          ticked_id = None;
         }
   | Keyed { key; child } ->
       (* A key renders no node of its own, so the child is appended to THIS
@@ -1354,6 +1450,7 @@ let rec create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
           listeners;
           base_id = None;
           interaction_id = None;
+          ticked_id = None;
         }
   | Virtual_list
       {
@@ -1454,6 +1551,7 @@ let rec create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
           listeners;
           base_id = None;
           interaction_id = None;
+          ticked_id = None;
         }
 
 and create_and_append ~sheet ~reveals ~link_host ~dispatch ~parent_axis parent
@@ -1613,6 +1711,7 @@ let rec unlisten_tree ~sheet live =
           Style_sheet.remove_interaction sheet iid;
           n.interaction_id <- None
       | None -> ());
+      release_ticked ~sheet n;
       List.iter (unlisten_tree ~sheet) n.children
   | Live_comment _
   | Live_text _ ->
@@ -1796,6 +1895,61 @@ let previous_disabled (el : 'msg Nopal_element.Element.t) =
   | Draw _
   | Virtual_list _ ->
       None
+
+(* The appearance a render declared, on the same terms: only a checkbox has
+   one. *)
+let appearance_of (el : 'msg Nopal_element.Element.t) =
+  match el with
+  | Checkbox { appearance; _ } -> Some appearance
+  | Empty
+  | Text _
+  | Box _
+  | Row _
+  | Column _
+  | Form _
+  | Button _
+  | Link _
+  | Heading _
+  | Input _
+  | Radio _
+  | Select _
+  | File_input _
+  | Image _
+  | Scroll _
+  | Keyed _
+  | Draw _
+  | Virtual_list _ ->
+      None
+
+(* Whether an element's base style goes to a class rule rather than inline: it
+   has an interaction state, or it is a drawn checkbox. *)
+let takes_class_path (el : 'msg Nopal_element.Element.t) =
+  let interactive =
+    match interaction_of el with
+    | Some ix -> Nopal_style.Interaction.has_any ix
+    | None -> false
+  in
+  let drawn =
+    match appearance_of el with
+    | Some (Drawn _) -> true
+    | Some Native
+    | None ->
+        false
+  in
+  interactive || drawn
+
+(* Rule order is not part of the contract: the ticked rule wins over the
+   interaction rules by specificity, whatever position it is inserted at. *)
+let reconcile_ticked ~sheet (n : 'msg live_node) old_el new_el =
+  let new_appearance = appearance_of new_el in
+  if
+    not
+      (Option.equal Nopal_style.Checkbox_appearance.equal (appearance_of old_el)
+         new_appearance)
+  then begin
+    release_ticked ~sheet n;
+    n.ticked_id <- inject_ticked_class sheet n.dom new_appearance
+  end
 
 (* The placeholder the previous render declared, on the same terms. *)
 let previous_placeholder (el : 'msg Nopal_element.Element.t) =
@@ -2098,19 +2252,9 @@ and maybe_reconcile_styles ~sheet ~old_parent_axis ~parent_axis
     (new_el : 'msg Nopal_element.Element.t) =
   let old_ix = interaction_of old_el in
   let new_ix = interaction_of new_el in
-  let old_interactive =
-    match old_ix with
-    | Some ix -> Nopal_style.Interaction.has_any ix
-    | None -> false
-  in
-  let new_interactive =
-    match new_ix with
-    | Some ix -> Nopal_style.Interaction.has_any ix
-    | None -> false
-  in
-  match (old_interactive, new_interactive) with
+  match (takes_class_path old_el, takes_class_path new_el) with
   | true, true ->
-      (* Both interactive: reconcile base class and interaction class *)
+      (* Both on the class path: reconcile base class and interaction class *)
       let old_style = style_of old_el in
       let new_style = style_of new_el in
       let style_changed =
@@ -2167,8 +2311,8 @@ and maybe_reconcile_styles ~sheet ~old_parent_axis ~parent_axis
         | None -> old_n.interaction_id <- None
       end
   | false, true -> (
-      (* Transition non-interactive → interactive: clear inline styles,
-         inject class-based styles *)
+      (* Transition inline → class path: clear inline styles, inject
+         class-based styles *)
       let old_style = style_of old_el in
       (match old_style with
       | Some os ->
@@ -2189,8 +2333,8 @@ and maybe_reconcile_styles ~sheet ~old_parent_axis ~parent_axis
           old_n.interaction_id <- inject_interaction_class sheet old_n.dom ix
       | None -> old_n.interaction_id <- None)
   | true, false -> (
-      (* Transition interactive → non-interactive: remove both classes,
-         apply inline styles *)
+      (* Transition class path → inline: remove both classes, apply inline
+         styles *)
       (match old_n.base_id with
       | Some bid ->
           remove_class old_n.dom (Style_sheet.base_class_name bid);
@@ -2203,13 +2347,13 @@ and maybe_reconcile_styles ~sheet ~old_parent_axis ~parent_axis
           Style_sheet.remove_interaction sheet iid;
           old_n.interaction_id <- None
       | None -> ());
-      (* Apply inline styles for non-interactive element *)
+      (* Apply inline styles for an element off the class path *)
       let new_style = style_of new_el in
       match new_style with
       | Some ns -> apply_style ~parent_axis old_n.dom ns
       | None -> ())
   | false, false ->
-      (* Both non-interactive: inline style reconciliation *)
+      (* Both inline: inline style reconciliation *)
       maybe_apply_style ~old_parent_axis ~parent_axis old_n.dom old_el new_el
 
 and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
@@ -2222,6 +2366,7 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
   let children_axis = container_main_axis new_el in
   maybe_reconcile_styles ~sheet ~old_parent_axis ~parent_axis old_n
     old_n.element new_el;
+  reconcile_ticked ~sheet old_n old_n.element new_el;
   (match new_el with
   | Box
       {
@@ -2604,7 +2749,7 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
       old_n.listeners <-
         wire_draw_pointer_events ~dispatch el on_pointer_move on_click
           on_pointer_leave on_pointer_down on_pointer_up on_wheel
-  | Checkbox { checked; disabled; on_toggle; _ } ->
+  | Checkbox { checked; disabled; appearance; on_toggle; _ } ->
       Jv.set (Brr.El.to_jv el) "checked" (Jv.of_bool checked);
       let attrs_written = maybe_apply_attrs el old_n.element new_el in
       (* A constant derivation still has to be re-asserted, and for the same
@@ -2622,6 +2767,13 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
       then
         set_derived el ~declared:(attrs_of new_el) "disabled"
           (if disabled then Some "" else None);
+      if
+        needs_reassert ~attrs_written
+          ~previous:(appearance_of old_n.element)
+          ~current:appearance ~equal:Nopal_style.Checkbox_appearance.equal
+      then
+        set_derived el ~declared:(attrs_of new_el)
+          Style_sheet.drawn_checkbox_marker (drawn_marker appearance);
       unlisten_all old_n.listeners;
       old_n.listeners <-
         (match (on_toggle, disabled) with

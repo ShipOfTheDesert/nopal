@@ -1,5 +1,11 @@
 (tests
- (names test_style test_font test_cursor test_text test_color)
+ (names
+  test_style
+  test_font
+  test_cursor
+  test_text
+  test_color
+  test_checkbox_appearance)
  (libraries nopal_style alcotest))
 
 (cram

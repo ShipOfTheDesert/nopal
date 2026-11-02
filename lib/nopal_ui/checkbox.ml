@@ -12,6 +12,7 @@ type 'msg config = {
   label_style : Nopal_style.Style.t option;
   row_style : Nopal_style.Style.t option;
   on_label_click : 'msg option;
+  appearance : Nopal_style.Checkbox_appearance.t;
 }
 
 let make ~label ~checked =
@@ -27,12 +28,14 @@ let make ~label ~checked =
     label_style = None;
     row_style = None;
     on_label_click = None;
+    appearance = Native;
   }
 
 let with_id id config = { config with id = Some id }
 let with_label_style style config = { config with label_style = Some style }
 let with_row_style style config = { config with row_style = Some style }
 let with_on_label_click msg config = { config with on_label_click = Some msg }
+let with_appearance appearance config = { config with appearance }
 
 let control_id config =
   Slug.derive_id ~explicit:config.id ~label:config.label ()
@@ -52,7 +55,8 @@ let view config =
   in
   let checkbox =
     E.checkbox ?style:config.style ?interaction:config.interaction ~attrs
-      ~disabled:config.disabled ?on_toggle config.checked
+      ~disabled:config.disabled ~appearance:config.appearance ?on_toggle
+      config.checked
   in
   let label =
     E.box ?style:config.label_style

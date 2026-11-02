@@ -96,11 +96,23 @@ let heading_resets sheet =
     (fun rule -> String.equal (selector_of rule) heading_reset_selector)
     (rule_texts sheet)
 
-(* Every sheet now opens with the heading reset, so the index-tracking cases
-   below count and address only the class rules the sheet manages. *)
+let drawn_reset_selector = ":where([" ^ drawn_checkbox_marker ^ "])"
+let forced_colors_prelude = "@media (forced-colors: active)"
+
+let rules_with_selector selector sheet =
+  List.filter
+    (fun rule -> String.equal (selector_of rule) selector)
+    (rule_texts sheet)
+
+(* Every sheet opens with the rules [create] installs, so the index-tracking
+   cases below count and address only the class rules the sheet manages. *)
+let fixed_selectors =
+  [ heading_reset_selector; drawn_reset_selector; forced_colors_prelude ]
+
 let class_rules sheet =
   List.filter
-    (fun rule -> not (String.equal (selector_of rule) heading_reset_selector))
+    (fun rule ->
+      not (List.exists (String.equal (selector_of rule)) fixed_selectors))
     (rule_texts sheet)
 
 let class_rule_count sheet = List.length (class_rules sheet)
@@ -193,13 +205,56 @@ let test_base_rule_indices_unaffected_by_reset () =
   let sheet = get_sheet () in
   let base_selector = "." ^ base_class_name bid in
   Alcotest.(check (list string))
-    "the reset and the base rule, in insertion order"
-    [ heading_reset_selector; base_selector ]
+    "the fixed rules and the base rule, in insertion order"
+    (fixed_selectors @ [ base_selector ])
     (List.map selector_of (rule_texts sheet));
   remove_base t bid;
   Alcotest.(check (list string))
-    "only the reset remains" [ heading_reset_selector ]
+    "only the fixed rules remain" fixed_selectors
     (List.map selector_of (rule_texts sheet))
+
+(* The reset sits inside [:where], so its specificity is zero and a drawn
+   checkbox's own base rule, a single class, beats it. *)
+let test_drawn_reset_is_scoped_zero_specificity () =
+  cleanup_head ();
+  let _t = create () in
+  match rules_with_selector drawn_reset_selector (get_sheet ()) with
+  | [ reset ] ->
+      Alcotest.(check (list string))
+        "the reset removes the platform drawing and its margin"
+        [ "appearance:none"; "margin:0" ]
+        (declarations_of reset)
+  | resets ->
+      Alcotest.failf "expected one rule with selector %s, got %d"
+        drawn_reset_selector (List.length resets)
+
+(* The inner rules of an at-rule, each as selector and declarations. The
+   at-rule's own prelude is dropped. *)
+let inner_rules at_rule =
+  match Test_util.rule_body at_rule with
+  | Some body ->
+      Nopal_web.Style_css.split_css_rules body
+      |> List.map (fun rule -> (selector_of rule, declarations_of rule))
+  | None -> []
+
+(* The ticked rule doubles its class to outrank the interaction rules, so the
+   forced-colours removal of the tick has to be [!important] to beat it. *)
+let test_forced_colors_rule_restores_platform () =
+  cleanup_head ();
+  let _t = create () in
+  let marker = "[" ^ drawn_checkbox_marker ^ "]" in
+  match rules_with_selector forced_colors_prelude (get_sheet ()) with
+  | [ rule ] ->
+      Alcotest.(check (list (pair string (list string))))
+        "the marked checkbox is the platform's, with no tick image"
+        [
+          (marker, [ "appearance:auto" ]);
+          (marker ^ ":checked", [ "background-image:none !important" ]);
+        ]
+        (inner_rules rule)
+  | rules ->
+      Alcotest.failf "expected one rule with prelude %s, got %d"
+        forced_colors_prelude (List.length rules)
 
 (* 2 *)
 let test_inject_base_adds_rule () =
@@ -486,6 +541,10 @@ let () =
             test_two_sheets_each_carry_one_reset;
           Alcotest.test_case "base_rule_indices_unaffected_by_reset" `Quick
             test_base_rule_indices_unaffected_by_reset;
+          Alcotest.test_case "drawn_reset_is_scoped_zero_specificity" `Quick
+            test_drawn_reset_is_scoped_zero_specificity;
+          Alcotest.test_case "forced_colors_rule_restores_platform" `Quick
+            test_forced_colors_rule_restores_platform;
         ] );
       ( "inject_base",
         [ Alcotest.test_case "adds rule" `Quick test_inject_base_adds_rule ] );

@@ -86,6 +86,7 @@ let restyled_checkbox model =
     label_style = Some restyled_label_style;
     row_style = Some restyled_checkbox_row_style;
     on_label_click = None;
+    appearance = Native;
   }
 
 let restyled_radio_group model =

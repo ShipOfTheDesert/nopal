@@ -186,6 +186,7 @@ let msg_pp fmt msg =
   | Button_semantics_msg _ -> Format.fprintf fmt "Button_semantics_msg _"
   | Clipboard_msg _ -> Format.fprintf fmt "Clipboard_msg _"
   | Links_msg _ -> Format.fprintf fmt "Links_msg _"
+  | Drawn_checkbox_msg _ -> Format.fprintf fmt "Drawn_checkbox_msg _"
   | KeyboardHeightChanged _ -> Format.fprintf fmt "KeyboardHeightChanged _"
   | Back_demo_push -> Format.fprintf fmt "Back_demo_push"
   | Route_changed _ -> Format.fprintf fmt "Route_changed _"

@@ -1238,6 +1238,87 @@ let test_equal_distinguishes_button_type_and_disabled () =
     "a different disabled state is not equal" false
     (Element.equal (make ~disabled:true ()) (make ~disabled:false ()))
 
+(* Teal fill and white tick are the drawn design this field was built for; the
+   black tick is the near miss. Built fresh per call, so equality is by value. *)
+let drawn_appearance mark =
+  Nopal_style.Checkbox_appearance.Drawn
+    {
+      checked =
+        Nopal_style.Style.set_paint
+          {
+            background = Some (Nopal_style.Color.Hex "#02403A");
+            border = None;
+            opacity = 1.0;
+            shadow = None;
+            overflow = Visible;
+          }
+          Nopal_style.Style.empty;
+      mark;
+    }
+
+let white_tick () = drawn_appearance (Nopal_style.Color.Hex "#FFFFFF")
+let black_tick () = drawn_appearance (Nopal_style.Color.Hex "#000000")
+
+let checkbox_appearance_of label (el : _ Element.t) =
+  match el with
+  | Element.Checkbox { appearance; _ } -> appearance
+  | Element.Empty
+  | Element.Text _
+  | Element.Box _
+  | Element.Row _
+  | Element.Column _
+  | Element.Button _
+  | Element.Link _
+  | Element.Heading _
+  | Element.Input _
+  | Element.Image _
+  | Element.Radio _
+  | Element.Select _
+  | Element.File_input _
+  | Element.Scroll _
+  | Element.Keyed _
+  | Element.Draw _
+  | Element.Form _
+  | Element.Virtual_list _ ->
+      Alcotest.fail (label ^ ": expected a checkbox")
+
+let check_appearance label expected actual =
+  Alcotest.(check bool)
+    label true
+    (Nopal_style.Checkbox_appearance.equal expected actual)
+
+let test_checkbox_default_appearance_is_native () =
+  check_appearance "a checkbox that declares nothing is Native"
+    Nopal_style.Checkbox_appearance.Native
+    (checkbox_appearance_of "default" (Element.checkbox false))
+
+let test_checkbox_map_preserves_appearance () =
+  let mapped =
+    Element.map
+      (fun m -> Wrapped m)
+      (Element.checkbox ~appearance:(white_tick ())
+         ~on_toggle:(fun _ -> Click)
+         true)
+  in
+  check_appearance "map keeps the drawn appearance" (white_tick ())
+    (checkbox_appearance_of "mapped" mapped)
+
+let test_checkbox_equal_distinguishes_appearance () =
+  let make ?appearance () = Element.checkbox ?appearance true in
+  Alcotest.(check bool)
+    "the same drawn appearance, separately built, is equal" true
+    (Element.equal
+       (make ~appearance:(white_tick ()) ())
+       (make ~appearance:(white_tick ()) ()));
+  Alcotest.(check bool)
+    "a different tick colour is not equal" false
+    (Element.equal
+       (make ~appearance:(white_tick ()) ())
+       (make ~appearance:(black_tick ()) ()));
+  Alcotest.(check bool)
+    "Native against Drawn is not equal" false
+    (Element.equal (make ()) (make ~appearance:(white_tick ()) ()))
+
 let test_heading_equal_distinguishes_level () =
   let make ?style ?interaction ?attrs ?(child = "Title") level =
     Element.heading ?style ?interaction ?attrs level (Element.text child)
@@ -2123,6 +2204,12 @@ let () =
             test_equal_button_different_click;
           Alcotest.test_case "equal_distinguishes_button_type_and_disabled"
             `Quick test_equal_distinguishes_button_type_and_disabled;
+          Alcotest.test_case "checkbox_default_appearance_is_native" `Quick
+            test_checkbox_default_appearance_is_native;
+          Alcotest.test_case "checkbox_map_preserves_appearance" `Quick
+            test_checkbox_map_preserves_appearance;
+          Alcotest.test_case "checkbox_equal_distinguishes_appearance" `Quick
+            test_checkbox_equal_distinguishes_appearance;
           Alcotest.test_case "heading_equal_distinguishes_level" `Quick
             test_heading_equal_distinguishes_level;
           Alcotest.test_case "equal_heading_level_matches_numbers" `Quick

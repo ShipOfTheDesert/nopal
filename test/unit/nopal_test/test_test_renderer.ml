@@ -8,7 +8,7 @@ let s0 = Nopal_style.Style.default
 let check_node = Test_util.check_node
 let graphic_name = Test_util.graphic_name
 
-(* Task 1: Rendering tests *)
+(* Rendering tests *)
 
 let render_empty () =
   let r = render E.empty in
@@ -289,7 +289,7 @@ let rendering_tests =
     Alcotest.test_case "render_messages_empty" `Quick render_messages_empty;
   ]
 
-(* Task 2: Query tests *)
+(* Query tests *)
 
 let sample_tree =
   E.box
@@ -515,7 +515,7 @@ let querying_tests =
     Alcotest.test_case "attr_absent" `Quick attr_absent;
   ]
 
-(* Task 3: Event simulation tests *)
+(* Event simulation tests *)
 
 type msg = Click | Changed of string | Submit
 
@@ -617,7 +617,7 @@ let event_tests =
     Alcotest.test_case "clear_messages_resets" `Quick clear_messages_resets;
   ]
 
-(* Task 4: Map support tests *)
+(* Map support tests *)
 
 type outer_msg = Outer of msg
 
@@ -683,7 +683,7 @@ let map_tests =
     Alcotest.test_case "render_mapped_nested" `Quick render_mapped_nested;
   ]
 
-(* Task 5: run_app MVU loop tests *)
+(* run_app MVU loop tests *)
 
 type counter_msg = Increment | Decrement
 
@@ -762,7 +762,7 @@ let run_app_tests =
       run_app_ignores_commands;
   ]
 
-(* Task 5: Text style in test renderer *)
+(* Text style in test renderer *)
 module T = Nopal_style.Text
 module F = Nopal_style.Font
 module C = Nopal_style.Color
@@ -973,7 +973,7 @@ let text_style_tests =
       styled_text_reconciliation_removes_style;
   ]
 
-(* Task 5: Virtual list handler path resolution (FR-5) *)
+(* Virtual list handler path resolution *)
 
 type vl_msg = Vl_click of int | Vl_change of int * string
 
@@ -1001,7 +1001,7 @@ let virtual_list_handler_at_nonzero_offset () =
   let overscan = vl_option_get "overscan" (VL.Natural.of_int 0) in
   (* offset 100 / row 10 => the visible window starts at item 10, not 0;
      this is the scroll condition under which absolute and positional item
-     indices diverge (FR-5). *)
+     indices diverge. *)
   let scroll_state = VL.scroll_state ~offset:100.0 in
   let render_item i =
     E.row
@@ -2216,6 +2216,96 @@ let attr_precedence_tests =
       answer_change_list_matches_the_keys_that_moved;
   ]
 
+module Appearance = Nopal_style.Checkbox_appearance
+
+let check_appearance label expected actual =
+  Alcotest.(check (result Test_util.appearance_testable error_testable))
+    label expected actual
+
+let checkbox_appearance_reports_drawn () =
+  let r = render (E.checkbox ~appearance:(Test_util.teal_drawn ()) true) in
+  check_appearance "the declared ticked style and mark come back"
+    (Ok (Test_util.teal_drawn ()))
+    (checkbox_appearance (By_tag "checkbox") r);
+  let disabled =
+    render
+      (E.checkbox ~disabled:true ~appearance:(Test_util.teal_drawn ()) false)
+  in
+  check_appearance "a disabled checkbox still reports its appearance"
+    (Ok (Test_util.teal_drawn ()))
+    (checkbox_appearance (By_tag "checkbox") disabled)
+
+let checkbox_appearance_reports_native_by_default () =
+  let r =
+    render
+      (E.row
+         [
+           E.checkbox
+             ~attrs:[ ("id", "drawn") ]
+             ~appearance:(Test_util.teal_drawn ()) true;
+           E.checkbox ~attrs:[ ("id", "plain") ] true;
+         ])
+  in
+  check_appearance "a checkbox that declares nothing is native" (Ok Native)
+    (checkbox_appearance (By_attr ("id", "plain")) r);
+  check_appearance "its drawn sibling is drawn"
+    (Ok (Test_util.teal_drawn ()))
+    (checkbox_appearance (By_attr ("id", "drawn")) r)
+
+let checkbox_appearance_not_found () =
+  let r =
+    render (E.box [ E.checkbox ~appearance:(Test_util.teal_drawn ()) true ])
+  in
+  check_appearance "nothing matches"
+    (Error (Not_found (By_attr ("id", "missing"))))
+    (checkbox_appearance (By_attr ("id", "missing")) r);
+  check_appearance "the checkbox in the same tree is found"
+    (Ok (Test_util.teal_drawn ()))
+    (checkbox_appearance (By_tag "checkbox") r)
+
+let checkbox_appearance_on_non_checkbox_is_error () =
+  let r =
+    render
+      (E.box
+         ~attrs:[ ("id", "card") ]
+         [ E.checkbox ~appearance:(Test_util.teal_drawn ()) true ])
+  in
+  check_appearance "a box is not a checkbox, even holding a drawn one"
+    (Error (No_handler { tag = "box"; event = "appearance" }))
+    (checkbox_appearance (By_attr ("id", "card")) r);
+  check_appearance "the checkbox inside the box is drawn"
+    (Ok (Test_util.teal_drawn ()))
+    (checkbox_appearance (By_tag "checkbox") r)
+
+let checkbox_appearance_inside_container () =
+  let r =
+    render
+      (E.row
+         [
+           E.text "I agree";
+           E.checkbox
+             ~attrs:[ ("data-testid", "agree") ]
+             ~appearance:(Test_util.teal_drawn ()) false;
+         ])
+  in
+  check_appearance "a checkbox nested in a row is found by attribute"
+    (Ok (Test_util.teal_drawn ()))
+    (checkbox_appearance (By_attr ("data-testid", "agree")) r)
+
+let checkbox_appearance_tests =
+  [
+    Alcotest.test_case "checkbox_appearance_reports_drawn" `Quick
+      checkbox_appearance_reports_drawn;
+    Alcotest.test_case "checkbox_appearance_reports_native_by_default" `Quick
+      checkbox_appearance_reports_native_by_default;
+    Alcotest.test_case "checkbox_appearance_not_found" `Quick
+      checkbox_appearance_not_found;
+    Alcotest.test_case "checkbox_appearance_on_non_checkbox_is_error" `Quick
+      checkbox_appearance_on_non_checkbox_is_error;
+    Alcotest.test_case "checkbox_appearance_inside_container" `Quick
+      checkbox_appearance_inside_container;
+  ]
+
 let () =
   Alcotest.run "Test_renderer"
     [
@@ -2231,4 +2321,5 @@ let () =
       ("focusable", focusable_tests);
       ("attr_precedence", attr_precedence_tests);
       ("change_list", change_list_tests);
+      ("checkbox_appearance", checkbox_appearance_tests);
     ]

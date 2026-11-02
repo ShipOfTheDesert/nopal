@@ -211,6 +211,10 @@ module Style_css = Style_css
 module Style_sheet = Style_sheet
 (** Re-exported for direct access. *)
 
+module Tick_image = Tick_image
+(** Re-exported for direct access. Public only because the unit tests sit
+    outside the library. *)
+
 module Renderer = Renderer
 (** Re-exported for direct access. *)
 

@@ -1548,6 +1548,39 @@ let test_min_size_above_fixed_size () =
   check_has_prop "flex-shrink" "0" props;
   check_has_prop "min-height" "300px" props
 
+(* The ticked rule's declarations, by property name, in emission order. *)
+let declared_properties rule =
+  match Test_util.rule_body rule with
+  | Some body ->
+      String.split_on_char ';' body
+      |> List.filter_map (fun declaration ->
+          match String.index_opt declaration ':' with
+          | Some colon -> Some (String.trim (String.sub declaration 0 colon))
+          | None -> None)
+  | None -> []
+
+(* A [background] shorthand anywhere in the ticked rule would reset every
+   background longhand it does not name, so a ticked fill written that way
+   would erase the tick image, or the image the fill. *)
+let test_drawn_backgrounds_are_longhands () =
+  let checked =
+    Nopal_style.Style.default
+    |> Nopal_style.Style.with_paint (fun p ->
+        { p with background = Some (Nopal_style.Style.hex "#02403A") })
+  in
+  let rule =
+    ticked_rule ~class_name:"_nopal_tk_0"
+      ~tick_image:"url(\"data:image/svg+xml,x\")" checked
+  in
+  let properties = declared_properties rule in
+  Alcotest.(check (list string))
+    "the fill, the tick and its size, each as its own longhand"
+    [ "background-color"; "background-image"; "background-size" ]
+    properties;
+  Alcotest.(check bool)
+    "no declaration is the background shorthand" false
+    (List.exists (String.equal "background") properties)
+
 let () =
   Alcotest.run "style_css"
     [
@@ -1736,6 +1769,11 @@ let () =
             test_of_text_unset_figures_emits_nothing;
           Alcotest.test_case "whitespace unaffected by figures" `Quick
             test_of_text_whitespace_unaffected;
+        ] );
+      ( "ticked_rule",
+        [
+          Alcotest.test_case "drawn_backgrounds_are_longhands" `Quick
+            test_drawn_backgrounds_are_longhands;
         ] );
       ( "base_class_rule",
         [
