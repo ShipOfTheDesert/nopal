@@ -22,20 +22,41 @@ test("single style element in head", async ({ page }) => {
   expect(count).toBe(1);
 });
 
-test("no !important in stylesheet rules", async ({ page }) => {
-  const hasImportant = await page.evaluate(() => {
-    const style = document.querySelector('head style[data-nopal]');
-    if (!style) return false;
-    const sheet = (style as HTMLStyleElement).sheet;
-    if (!sheet) return false;
-    for (let i = 0; i < sheet.cssRules.length; i++) {
-      if (sheet.cssRules[i].cssText.includes("!important")) {
-        return true;
+// The one !important the sheet may carry: in forced-colours mode a drawn
+// checkbox drops its tick image, and that removal must beat the ticked rule
+// ((0,3,0) against the fallback's (0,2,0)) and a caller's style attribute,
+// which no selector specificity can.
+test("no !important in stylesheet rules except the forced-colours tick reset", async ({
+  page,
+}) => {
+  const important = await page.evaluate(() => {
+    const style = document.querySelector("head style[data-nopal]");
+    const sheet = style ? (style as HTMLStyleElement).sheet : null;
+    if (!sheet) return null;
+    const found: string[] = [];
+    const walk = (rules: CSSRuleList, context: string) => {
+      for (const rule of Array.from(rules)) {
+        if (rule instanceof CSSStyleRule) {
+          for (const prop of Array.from(rule.style)) {
+            if (rule.style.getPropertyPriority(prop) === "important") {
+              found.push(`${context}${rule.selectorText} ${prop}`);
+            }
+          }
+        } else if (rule instanceof CSSGroupingRule) {
+          const condition =
+            rule instanceof CSSConditionRule ? rule.conditionText : "";
+          walk(rule.cssRules, `${context}@${condition} `);
+        } else if (rule.cssText.includes("!important")) {
+          found.push(`${context}${rule.cssText}`);
+        }
       }
-    }
-    return false;
+    };
+    walk(sheet.cssRules, "");
+    return found;
   });
-  expect(hasImportant).toBe(false);
+  expect(important).toEqual([
+    "@(forced-colors: active) [data-nopal-drawn-checkbox]:checked background-image",
+  ]);
 });
 
 test("shared class for identical interactions", async ({ page }) => {

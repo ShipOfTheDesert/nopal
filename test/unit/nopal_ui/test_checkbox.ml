@@ -215,6 +215,52 @@ let test_label_click_dispatches_the_configured_message () =
   Alcotest.(check (list msg_testable))
     "label click dispatched" [ Label_clicked ] (messages r)
 
+(* --- Appearance --- *)
+
+module Appearance = Nopal_style.Checkbox_appearance
+
+let check_rendered_appearance label expected r =
+  Alcotest.(
+    check (result Test_util.appearance_testable Test_util.error_testable))
+    label expected
+    (checkbox_appearance (By_tag "checkbox") r)
+
+let test_make_appearance_is_native () =
+  Alcotest.(check Test_util.appearance_testable)
+    "make declares no drawn look" Native (base ()).appearance;
+  check_rendered_appearance "the rendered control is the platform checkbox"
+    (Ok Native)
+    (render (C.view (base ())))
+
+let test_with_appearance_reaches_control () =
+  check_rendered_appearance "the drawn look reaches the rendered control"
+    (Ok (Test_util.teal_drawn ()))
+    (render (C.view (C.with_appearance (Test_util.teal_drawn ()) (base ()))))
+
+let test_with_appearance_keeps_other_overrides () =
+  let configured =
+    base ()
+    |> C.with_id "terms"
+    |> C.with_label_style bold_label_style
+    |> C.with_row_style wide_row_style
+  in
+  let r =
+    render (C.view (C.with_appearance (Test_util.teal_drawn ()) configured))
+  in
+  Alcotest.(check (option string))
+    "control id" (Some "terms")
+    (attr "id" (find_checkbox (tree r)));
+  let label_node =
+    find_or_fail "expected the label element"
+      (By_attr ("id", "terms-label"))
+      (tree r)
+  in
+  Alcotest.(check (option style_testable))
+    "label style" (Some bold_label_style) (style label_node);
+  Alcotest.(check (option style_testable))
+    "row style" (Some wide_row_style)
+    (style (tree r))
+
 (* --- Test runner --- *)
 
 let () =
@@ -258,5 +304,14 @@ let () =
             test_label_style_reaches_the_label_node;
           Alcotest.test_case "row style reaches the row" `Quick
             test_row_style_reaches_the_row;
+        ] );
+      ( "appearance",
+        [
+          Alcotest.test_case "make_appearance_is_native" `Quick
+            test_make_appearance_is_native;
+          Alcotest.test_case "with_appearance_reaches_control" `Quick
+            test_with_appearance_reaches_control;
+          Alcotest.test_case "with_appearance_keeps_other_overrides" `Quick
+            test_with_appearance_keeps_other_overrides;
         ] );
     ]

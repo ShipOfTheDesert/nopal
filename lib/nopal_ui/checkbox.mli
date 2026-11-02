@@ -12,20 +12,22 @@ type 'msg config = {
   label_style : Nopal_style.Style.t option;
   row_style : Nopal_style.Style.t option;
   on_label_click : 'msg option;
+  appearance : Nopal_style.Checkbox_appearance.t;
 }
 (** Checkbox configuration. [label] and [checked] are behavioural — both
     required in {!make}.
 
-    The last four fields are the override surface. The supported route to them
-    is {!with_id}, {!with_label_style}, {!with_row_style} and
-    {!with_on_label_click} rather than writing them by hand; they are fields
-    because a setter needs somewhere to put its value, and a caller who builds
-    this record as a complete literal must supply them. *)
+    The last five fields are the override surface. The supported route to them
+    is {!with_id}, {!with_label_style}, {!with_row_style},
+    {!with_on_label_click} and {!with_appearance} rather than writing them by
+    hand; they are fields because a setter needs somewhere to put its value, and
+    a caller who builds this record as a complete literal must supply them —
+    [appearance = Native] for a checkbox the platform paints. *)
 
 val make : label:string -> checked:bool -> 'msg config
 (** [make ~label ~checked] returns a config with [disabled = false],
-    [on_toggle = None], no style/interaction override, empty attrs, and no id,
-    label style, row style or label-click message. *)
+    [on_toggle = None], no style/interaction override, empty attrs, no id, label
+    style, row style or label-click message, and [appearance = Native]. *)
 
 val with_id : string -> 'msg config -> 'msg config
 (** [with_id id config] sets the identifier the checkbox carries, which the
@@ -62,6 +64,20 @@ val with_on_label_click : 'msg -> 'msg config -> 'msg config
     application wants a label press to mean. Without this setter the label
     carries no pointer handler at all. *)
 
+val with_appearance :
+  Nopal_style.Checkbox_appearance.t -> 'msg config -> 'msg config
+(** [with_appearance appearance config] sets how the control is painted, and
+    {!view} hands it to the control unchanged. It {e replaces} the previous
+    appearance; nothing else in the config moves.
+
+    This is the route to the control's paint. [config.style] and
+    [config.interaction] reach the control for layout under either arm, but with
+    [Native] the platform paints the box and the tick, so a background, border
+    or radius set there does not show. With [Drawn { checked; mark }],
+    [config.style] paints the unticked box, [checked] is layered over it while
+    the box is ticked, and [mark] colours the tick. See
+    {!Nopal_style.Checkbox_appearance.t} for the layering. *)
+
 val control_id : 'msg config -> string
 (** [control_id config] is the identifier the checkbox element carries, and
     therefore the argument [Cmd.focus] needs. It is [config.id] when the caller
@@ -80,8 +96,8 @@ val view : 'msg config -> 'msg Nopal_element.Element.t
     [view config] renders a horizontal row, styled by {!with_row_style},
     containing:
 
-    1. An [Element.checkbox] with the config's checked/disabled/on_toggle state,
-    carrying [("id", control_id config)] and
+    1. An [Element.checkbox] with the config's checked/disabled/on_toggle state
+    and its appearance, carrying [("id", control_id config)] and
     [("aria-labelledby", control_id config ^ "-label")] 2. A label element — a
     box carrying [("id", control_id config ^ "-label")] and styled by
     {!with_label_style}, wrapping the label text

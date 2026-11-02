@@ -202,6 +202,7 @@ let checkbox_config () : msg CB.config =
     label_style = Some green;
     row_style = Some amber;
     on_label_click = Some "label-clicked";
+    appearance = Native;
   }
 
 let test_checkbox_aria_survives_every_style_override () =
@@ -549,6 +550,7 @@ let d11_config () : msg CB.config =
     label_style = Some green;
     row_style = Some amber;
     on_label_click = Some "label-clicked";
+    appearance = Native;
   }
 
 let test_derived_pairs_sit_after_the_component_and_caller_pairs () =

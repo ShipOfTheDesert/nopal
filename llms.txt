@@ -13,7 +13,7 @@ Every concern is a separate opam package with strict one-way dependency flow:
 ```
 nopal_mvu       ← MVU core (Cmd, Sub, App, Task, Key_chord, Clipboard) — depends on nopal_element for the types Cmd/Sub/App carry (Scroll_delta.t, Viewport.t, Element.t); no platform deps
 nopal_element   ← Element.t DSL — no platform deps
-nopal_style     ← Typed layout/paint — no platform deps
+nopal_style     ← Typed layout/paint (Style, Font, Text, Cursor, Interaction, Color, and Checkbox_appearance: a checkbox painted by the platform or drawn from styles) — no platform deps
 nopal_storage   ← Backend-agnostic async key-value storage contract (module type S, In_memory, With_codec) — no platform deps
 nopal_platform  ← Type-safe bidirectional routing + platform-capability signatures (Platform.NAV, Platform.S) — depends on nopal_storage, and on nopal_element for Router.destination's Link.destination; no platform deps (renamed from nopal_router)
 nopal_scene     ← Pure scene types (Color, Paint, Transform, Path segments, Scene, Graphic_name) — no platform deps
@@ -483,7 +483,8 @@ web backend writes as real attributes: `disabled`, `accept`, `capture`,
 `required`, `aria-required`, `autocomplete` and `name`, a form's `autocomplete` and
 `novalidate`, a button's `type` and `aria-disabled`, a link's `href` and
 `rel`, a heading's `role`, `aria-level` and `data-nopal-heading`, a drawing's
-`role`, `aria-label` and `aria-hidden`, and an image's
+`role`, `aria-label` and `aria-hidden`, a drawn checkbox's
+`data-nopal-drawn-checkbox`, and an image's
 `alt`. Every one of them
 carries the same value in both renderers except `disabled`, `multiple`,
 `required` and `novalidate`, which are a presence attribute (`""`) in the DOM
@@ -493,7 +494,7 @@ a button's `type` is `"button"` or `"submit"` in both, a link's `rel` is
 `"noopener noreferrer"` in both, a heading's `role` is `"heading"`, its
 `aria-level` the level's digit and its `data-nopal-heading` `""` in both, a
 drawing's `role` is `"img"` and its
-`aria-hidden` `"true"` in both, and a decorative image's `alt` is present and
+`aria-hidden` `"true"` in both, a drawn checkbox's `data-nopal-drawn-checkbox` `""` in both, and a decorative image's `alt` is present and
 `""` in both. A
 checkbox's, radio's or file picker's `type` is the structural node's tag; an
 input's `type` is a pair in both renderers. A container's
@@ -672,7 +673,7 @@ precedence above): a heading is always announced as a heading of its level.
 
 On the web the browser's own heading margin, font size and weight are
 neutralised, so an unstyled heading looks like the text around it. **This is the
-only user-agent default Nopal neutralises.** An unstyled `button` still shows
+only user-agent defaults Nopal neutralises: headings' margin, size and weight, and drawn checkboxes' appearance and margin.** An unstyled `button` still shows
 the browser's padding, border and background, and an unstyled `link` its
 colour and underline. The heading does not follow them because `Style.layout`
 has no margin, so a leaked heading margin could not be removed by any style.
@@ -789,7 +790,16 @@ Element.input : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string *
      outranks an [attrs] pair of its key, so adopting one makes that pair stop
      taking effect; an input authoring none of them leaves the pair standing. *)
 Element.checkbox : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
-  -> ?disabled:bool -> ?on_toggle:(bool -> 'msg) -> bool -> 'msg Element.t
+  -> ?disabled:bool -> ?appearance:Checkbox_appearance.t -> ?on_toggle:(bool -> 'msg) -> bool
+  -> 'msg Element.t
+  (* [appearance] says who paints the box; absent, it is Native and the
+     platform's checkbox is drawn as before. Drawn { checked; mark } paints the
+     box from styles: [style] for the unticked box, the [interaction] states
+     over it, and [checked] over both while ticked; the tick is Nopal's one
+     shape in [mark]'s colour. It is still the platform's checkbox control, with
+     the same role, keyboard toggle and form participation. [disabled] adds no
+     look to a drawn box: pass the disabled look in [style] AND in [checked].
+     See UI Components -> Checkbox for a worked example. *)
 Element.radio : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
   -> ?checked:bool -> ?disabled:bool -> ?on_select:'msg -> name:string -> unit -> 'msg Element.t
 type select_option = { value : string; label : string; disabled : bool }
@@ -1442,7 +1452,7 @@ same under every override below.
 |---|---|
 | `Bottom_tabs` | bar container → `with_bar_style`; bar-wide tab-button interaction → `with_bar_interaction`; base and active tab → `with_tab_style` / `with_active_tab_style`; content panel → `with_panel_style`; gutter → `with_gutter_style`; tab label typography → `with_tab_text_style`; icon-to-label row, i.e. the gap between them → `with_tab_row_style`; per-tab interaction → `with_tab_interaction`; back affordance label text → `with_back_label`; back affordance style, and its label typography through that style's `text` component → `with_back_style` |
 | `Button` | container → `config.style`; interaction → `config.interaction`; disabled and loading treatment → `with_disabled_style` / `with_loading_style`; the label is the caller's own `Element.t` |
-| `Checkbox` | control → `config.style` / `config.interaction`; label typography → `with_label_style`; control-to-label row → `with_row_style`; identifier → `with_id` |
+| `Checkbox` | control layout → `config.style` / `config.interaction`; control paint, the ticked look and the tick → `with_appearance (Drawn …)`, under which `config.style` paints the unticked box; label typography → `with_label_style`; control-to-label row → `with_row_style`; identifier → `with_id` |
 | `Data_table` | container, header cell, row, cell → `?style` / `?header_style` / `?row_style` / `?cell_style`; container interaction → `?interaction`; one column at a time → `with_column_style`; the button a `sort_key` turns a header into → `with_sort_control_style` and `with_header_interaction`; header row → `with_header_row_style`; cell contents are the caller's own `Element.t` |
 | `Modal` | dialog → `with_style`; backdrop → `with_backdrop_style`; interaction → `with_interaction`; root box → `with_root_style`, displacing the published `default_root_style`; the title is part of the caller's body |
 | `Navigation_bar` | container → `with_style`; tab and active tab → `with_tab_style` / `with_active_tab_style`; bar-wide interaction → `with_interaction`; item label typography → `with_item_text_style`; per-item interaction → `with_item_interaction`; icon-to-label row, i.e. the gap between them → `with_item_row_style`; the icon is the caller's own `Element.t` |
@@ -2176,12 +2186,27 @@ type 'msg config = {
   label_style : Style.t option;
   row_style : Style.t option;
   on_label_click : 'msg option;
+  appearance : Checkbox_appearance.t;
 }
+(* A complete record literal must supply appearance; write
+   [appearance = Native] for a checkbox the platform paints. make plus the
+   setters is the supported route. *)
 
 val make : label:string -> checked:bool -> 'msg config
 (* [make ~label ~checked] returns a config with disabled=false,
-   on_toggle=None, no style/interaction override, empty attrs, and no id,
-   label style, row style or label-click message. *)
+   on_toggle=None, no style/interaction override, empty attrs, no id,
+   label style, row style or label-click message, and appearance=Native. *)
+
+val with_appearance : Checkbox_appearance.t -> 'msg config -> 'msg config
+(* How the control is painted; view hands it to the control unchanged. It
+   replaces the previous appearance and moves nothing else. This is the route
+   to the control's paint: config.style and config.interaction reach the
+   control for layout under either arm, but under Native the platform paints
+   the box and the tick, so a background, border or radius there does not
+   show. Under Drawn { checked; mark }, config.style paints the unticked box,
+   config.interaction's states apply over it, checked is layered over both
+   while the box is ticked (its own properties win over every interaction
+   state), and mark colours the tick. *)
 
 val with_id : string -> 'msg config -> 'msg config
 (* The control's identifier, used verbatim. The supported route to it. Moves
@@ -2216,6 +2241,53 @@ val view : 'msg config -> 'msg Element.t
    tree but does not name the control, because aria-labelledby wins the
    accessible-name computation. When disabled, on_toggle is suppressed. *)
 ```
+
+A drawn checkbox, enabled or disabled. Nopal adds no disabled look to a drawn
+box, so the disabled look is switched in **both** places: the base style
+(`config.style`, the unticked box) and the appearance's `checked` style (the
+ticked box). Switching only one leaves the other state looking enabled.
+
+```ocaml
+let hairline color = { Style.width = 1.0; style = Solid; color; radius = 4.0 }
+
+let paint ~fill ~edge =
+  { Style.background = Some fill; border = Some (hairline edge);
+    opacity = 1.0; shadow = None; overflow = Visible }
+
+let box ~fill ~edge =
+  { Style.layout =
+      { Style.default_layout with
+        width = Some (Fixed 18.0); height = Some (Fixed 18.0) };
+    paint = paint ~fill ~edge;
+    text = Style.default_text }
+
+let ticked ~fill =
+  Checkbox_appearance.Drawn
+    { checked =
+        { Style.layout = Style.default_layout;
+          paint = paint ~fill ~edge:fill;
+          text = Style.default_text };
+      mark = Style.hex "#FFFFFF" }
+
+let terms ~disabled ~checked =
+  let field, edge, fill =
+    match disabled with
+    | false -> (Style.hex "#FFFDF9", Style.hex "#C9C3B8", Style.hex "#02403A")
+    | true -> (Style.hex "#F1EFEA", Style.hex "#DDD9D1", Style.hex "#9DB3B0")
+  in
+  { (Checkbox.make ~label:"Accept the terms" ~checked) with
+    disabled;
+    style = Some (box ~fill:field ~edge) }
+  |> Checkbox.with_appearance (ticked ~fill)
+```
+
+The size comes from the caller: a design that wants a larger box on a phone
+reads its viewport in `view` (`Viewport.is_compact`) and passes a different
+`Fixed`. A focus ring is a `shadow` in `config.interaction`'s `focused` style
+(spread 2, no offset, no blur); the ticked style sets no shadow, so the ring
+survives ticking. Nopal writes no outline, so the browser's own focus outline
+is never removed; with no focused style it is the focus indicator. Under forced colours the web backend falls back to the platform
+checkbox and paints neither the ticked fill nor the tick.
 
 #### Radio_group
 
@@ -4093,6 +4165,15 @@ Test_renderer.render   : 'msg Element.t -> 'msg rendered
      "cover"; an image with no fit carries no such pair and reads back None. *)
 Test_renderer.tree     : 'msg rendered -> node
 Test_renderer.messages : 'msg rendered -> 'msg list
+Test_renderer.checkbox_appearance :
+  selector -> 'msg rendered -> (Checkbox_appearance.t, error) result
+  (* The appearance the first matching checkbox declared, exactly as the view
+     wrote it: Native when it declared none, or Drawn with its ticked style and
+     mark colour. A disabled checkbox reports its appearance like any other.
+     It is read from the render, not the node: [node] is unchanged and carries
+     no trace of it, so assert a drawn look with this, not [style] or [attr].
+     Not_found when nothing matches; No_handler { event = "appearance"; _ }
+     when the match is not a checkbox. It never walks into children. *)
 
 (* Query *)
 Test_renderer.find     : selector -> node -> node option
@@ -4689,6 +4770,65 @@ annotation on a main-axis value compiles. Nothing emits `align-content` or
 structural `Test_renderer` carries `Style.t` as written and interprets no
 alignment, so a structural test reads the value the browser applies.
 
+**Checkbox answers that moved — read this on a pin bump.**
+A checkbox can now be drawn from styles instead of painted by the platform:
+`Element.checkbox ?appearance` and `Nopal_ui.Checkbox.with_appearance` take a
+`Checkbox_appearance.t`, `Native` (the platform's checkbox, as before) or
+`Drawn { checked; mark }`. The `Checkbox` arm of `Element.t` and
+`Nopal_ui.Checkbox.config` each gain an `appearance` field, so three kinds of
+code stop compiling. **A closed record pattern on the `Checkbox` arm** (no
+`; _`) stops compiling (row 1): warning 9, missing fields in a record pattern,
+is an error under dune's default dev profile. **An `Element.Checkbox {…}` value
+built directly** stops compiling (row 2), and so does **a complete
+`Nopal_ui.Checkbox.config` record literal** (row 3), each with `Some record
+fields are undefined: appearance`. Every other row is additive, or changes what
+the web backend writes for a checkbox that opts into `Drawn`. A checkbox that
+declares no appearance renders exactly as before.
+
+"Before" is the tree at commit `781f48f`. The Where column names the output
+whose answer moved: web, the structural `Test_renderer`, or all of them for a
+compile break. Find it is a command a consumer runs from their repository root;
+a row whose Find it is "—" needs no search. Each grep is a first pass: a
+pattern or literal that `ocamlformat` split over several lines, or a module
+reached through an alias (`module CB = Nopal_ui.Checkbox`, then `CB.label =`),
+escapes it, and the compiler is the backstop. No test reads this table. The
+behaviour each row describes is tested in the `nopal_style`, `nopal_element`,
+`nopal_test`, `nopal_ui`, `nopal_web` and kitchen-sink suites and, for web, by
+the kitchen-sink Playwright and axe cases, but an edit to the text alone
+reddens no test.
+
+| # | Key | Visible | Where | When | Before | Now | Find it |
+|---|---|---|---|---|---|---|---|
+| 1 | `checkbox-arm-closed-pattern` | compile | all | a `match` on `Element.t` whose `Checkbox { … }` pattern names every field and ends without `; _` | compiled | warning 9 error: `appearance` is unlisted. Fix: add `; _`, or bind `appearance` | `grep -rnE "Checkbox *\{[^}]*[^_ ] *\}" --include=*.ml .` (a one-line pattern not ending in `_`) |
+| 2 | `checkbox-arm-record-literal` | compile | all | an `Element.Checkbox { … }` value built directly, not through `Element.checkbox` | compiled | missing-field error. Fix: add `appearance = Native`, or build it with `Element.checkbox` | `grep -rnE "Checkbox *\{" --include=*.ml .`, then the compiler |
+| 3 | `ui-checkbox-config-literal` | compile | all | a `Nopal_ui.Checkbox.config` written as a complete record literal | compiled | missing-field error. Fix: add `appearance = Native`. A config built with `make` and the setters is unaffected | `grep -rnE "Checkbox\.[a-z_]+ *=" --include=*.ml .`, then the compiler |
+| 4 | `element-checkbox-appearance` | additive | all | every `Element.checkbox` call | no `?appearance` | `?appearance:Checkbox_appearance.t`, between `?disabled` and `?on_toggle`; absent is `Native`, so an existing call compiles and renders unchanged. The `Checkbox` arm gains `appearance : Checkbox_appearance.t` between `disabled` and `on_toggle`; `Element.map` keeps it and `Element.equal` compares it | `grep -rn "Element.checkbox" --include=*.ml .` (no action needed) |
+| 5 | `style-checkbox-appearance` | additive | all | `Nopal_style` | — | `module Checkbox_appearance`: `type t = Native \| Drawn of { checked : Style.t; mark : Color.t }` and `equal : t -> t -> bool` (`Style.equal` on `checked`, `Color.equal` on `mark`) | — |
+| 6 | `ui-checkbox-with-appearance` | additive | all | `Nopal_ui.Checkbox` | — | `config` gains `appearance : Checkbox_appearance.t`, `make` fills `Native`, and `with_appearance : Checkbox_appearance.t -> 'msg config -> 'msg config` replaces it and moves nothing else; `view` hands it to the control unchanged | — |
+| 7 | `ui-component-table-checkbox-row` | docs | all | anyone reading the UI Components override table's `Checkbox` row | "control → `config.style` / `config.interaction`" | "control layout → `config.style` / `config.interaction`; control paint, the ticked look and the tick → `with_appearance (Drawn …)`, under which `config.style` paints the unticked box". The old row over-claimed: a background, border or radius set through `config.style` never showed on a native checkbox, and still does not; it shows once the checkbox is `Drawn` | — (documentation; a design that set paint through `config.style` adds `with_appearance (Drawn …)` to see it) |
+| 8 | `test-renderer-node-unchanged` | none | structural | a pattern on `Test_renderer.node` | — | unchanged: the appearance is not in the node, its attrs or its style | — |
+| 9 | `test-renderer-checkbox-appearance` | additive | structural | `Nopal_test.Test_renderer` | — | `checkbox_appearance : selector -> 'msg rendered -> (Checkbox_appearance.t, error) result`: the first match's declared appearance; `Not_found` when nothing matches, `No_handler { event = "appearance"; _ }` when the match is not a checkbox. `error` gains no constructor | — |
+| 10 | `web-drawn-checkbox-element` | render | web | a checkbox whose appearance is `Drawn` | — | the same `<input type="checkbox">`, carrying `data-nopal-drawn-checkbox=""` (written after `~attrs`, so a caller pair of that name never stands); its base style always goes to a class rule, never inline; its ticked look is one shared rule `.C.C:checked{…background-image:url("data:image/svg+xml,…");background-size:100% 100%}` (class `_nopal_tk_N`), whose doubled class outranks every interaction rule; its computed margin is `0`, not the platform's `3px 3px 3px 4px` (Chromium). Every background is a longhand. A `Native` checkbox carries no marker and renders as before | — |
+| 11 | `web-style-sheet-drawn-rules` | render | web | every mount's `<style data-nopal>` | one fixed rule at index 0, the heading reset | three fixed rules at indices 0–2: the heading reset, `:where([data-nopal-drawn-checkbox]){appearance:none;margin:0}`, and `@media (forced-colors: active){[data-nopal-drawn-checkbox]{appearance:auto}[data-nopal-drawn-checkbox]:checked{background-image:none !important}}`. Class rules start at index 3. Each matches only an element Nopal marked; under forced colours a drawn checkbox is the platform's again and paints neither the ticked fill nor the tick | `grep -rn -e cssRules -e insertRule .` (a DOM shim or a test counting the sheet's rules) |
+| 12 | `web-tick-image` | additive | web | `Nopal_web` | — | `module Tick_image`: `css_url : Color.t -> string`, a complete `url("data:image/svg+xml,…")` whose SVG is fully percent-encoded (every byte outside `A-Z a-z 0-9 - . _ ~` as `%XX`), so a hex colour's `#` arrives as `%23` | — |
+| 13 | `web-style-css-style-sheet-additions` | additive | web | `Nopal_web.Style_css`, `Nopal_web.Style_sheet` | — | `Style_css.color_to_css` is now exposed, and `Style_css.ticked_rule` is new; `Style_sheet` gains `drawn_checkbox_marker`, `type ticked_id`, `inject_ticked`, `ticked_class_name` and `remove_ticked` | — |
+| 14 | `kitchen-sink-drawn-checkbox-section` | example | web | anyone copying the kitchen sink | no drawn-checkbox section | "A drawn checkbox" (`data-testid="drawn-checkbox-section"`) right after Form Controls: an 18 px box (20 px on a compact viewport) with a 1 px hairline, radius 4 and a field colour, ticked teal with a white tick; examples unticked, ticked, with a focus ring (a shadow), with no interaction, with a hover background, and disabled and ticked, the last switching both its base and its ticked style (`examples/kitchen_sink/sub_drawn_checkbox.ml`) | — |
+| 15 | `drawn-checkbox-marker-derived` | render | all | a caller's `("data-nopal-drawn-checkbox", …)` pair in `~attrs` on a checkbox whose appearance is `Drawn` | the pair survived structurally and was overridden only by the web backend | overridden by the derived marker in both renderers (`Test_renderer` now derives it, as the web backend does); a `Native` checkbox keeps the caller's pair | `grep -rn "data-nopal-drawn-checkbox" --include=*.ml .` |
+
+What did **not** move, recorded so a reader does not go looking. A checkbox
+that declares no appearance, through `Element.checkbox` or `Nopal_ui.Checkbox`,
+renders the same element with the same attributes, the same inline or class
+styling and the same platform margin as before. A drawn checkbox is still the
+platform's checkbox control: its role, checked state, keyboard toggle, tab
+order, label association, form participation and `data-field` anchor are
+unchanged. `Interaction.t` gains no ticked state, and there is no ticked-and-
+hovered layer: while the box is ticked, the ticked style's own properties win
+over every interaction state, and a property it leaves unset still follows
+them. Nopal adds no disabled look to a drawn box. `Style.t` gains no field: it
+still has no outline and no margin, so a custom focus ring is a shadow, and
+Nopal never removes the browser's own focus outline. Radio buttons
+are unchanged and have no drawn appearance.
+
 #### Telemetry harness (`Nopal_test.Telemetry_test`)
 
 Native, browser-free harness that drives a real app through the recording MVU
@@ -4750,9 +4890,14 @@ Nopal_web.mount :
       away from the app. Mount through Nopal_tauri_mount, which supplies one."
    Reading that one global is all nopal_web knows of Tauri; it depends on no
    Tauri package.
-   Each mount appends its own <style data-nopal> to <head>, opening with the
-   scoped heading reset (see Element DSL -> Headings). A DOM shim that mounts
-   under Node must implement the sheet's insertRule. *)
+   Each mount appends its own <style data-nopal> to <head>, opening with three
+   fixed rules: the scoped heading reset (see Element DSL -> Headings), the
+   drawn-checkbox reset :where([data-nopal-drawn-checkbox]){appearance:none;
+   margin:0}, and a forced-colours fallback that gives a drawn checkbox back
+   appearance:auto and removes its tick image. The renderer writes
+   data-nopal-drawn-checkbox="" only on a checkbox whose appearance is Drawn,
+   over any caller pair of that name. A DOM shim that mounts under Node must
+   implement the sheet's insertRule. *)
 
 (* Telemetry sibling of mount — see the E2E Telemetry section (Layer 2) *)
 Nopal_web.mount_with_telemetry :

@@ -1,5 +1,6 @@
 module Style_css = Style_css
 module Style_sheet = Style_sheet
+module Tick_image = Tick_image
 module Renderer = Renderer
 module Canvas_renderer = Canvas_renderer
 module Platform_web = Platform_web

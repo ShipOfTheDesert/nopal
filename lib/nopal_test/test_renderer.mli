@@ -60,24 +60,25 @@ val render : 'msg Nopal_element.Element.t -> 'msg rendered
     ["type"], an input's ["required"], ["aria-required"], ["autocomplete"] and
     ["name"], a form's ["autocomplete"] and ["novalidate"], a button's ["type"]
     and ["aria-disabled"], a link's ["href"] and ["rel"], a heading's ["role"],
-    ["aria-level"] and ["data-nopal-heading"], a canvas's ["role"],
-    ["aria-label"] and ["aria-hidden"], and an image's ["alt"]. On ["disabled"],
-    ["multiple"], ["required"] and ["novalidate"] the two agree on which side
-    wins and not on the value: this renderer carries ["true"] where the browser
-    carries a presence attribute. A checkbox's, radio's or file picker's
-    ["type"] is this renderer's tag rather than a pair; an input's [input_type]
-    is a ["type"] pair here as there. A box's [focusable] is a first-tier
-    derivation in both, but each renderer spells it in its own vocabulary — a
-    tab-order attribute there, ["focusable"] here — so there is no shared key to
-    compare. ["checked"], ["value"] and ["selected"] are {e not} among them: the
-    browser carries all three as JS properties and never as attributes, so a
-    caller's pair of one of those names is not overruled there. This renderer
-    still overlays them, as a faithful read-out of the typed field, and an
-    assertion on one of the three is a statement about this renderer alone.
-    [Element.draw] and [Element.image] take no attribute list, so the pairs they
-    derive from their [name] are the only source of those keys; should either
-    gain one, the name outranks it. A backend nobody has written is bound by
-    nothing here: a rule holds where a test holds it.
+    ["aria-level"] and ["data-nopal-heading"], a drawn checkbox's
+    ["data-nopal-drawn-checkbox"], a canvas's ["role"], ["aria-label"] and
+    ["aria-hidden"], and an image's ["alt"]. On ["disabled"], ["multiple"],
+    ["required"] and ["novalidate"] the two agree on which side wins and not on
+    the value: this renderer carries ["true"] where the browser carries a
+    presence attribute. A checkbox's, radio's or file picker's ["type"] is this
+    renderer's tag rather than a pair; an input's [input_type] is a ["type"]
+    pair here as there. A box's [focusable] is a first-tier derivation in both,
+    but each renderer spells it in its own vocabulary — a tab-order attribute
+    there, ["focusable"] here — so there is no shared key to compare.
+    ["checked"], ["value"] and ["selected"] are {e not} among them: the browser
+    carries all three as JS properties and never as attributes, so a caller's
+    pair of one of those names is not overruled there. This renderer still
+    overlays them, as a faithful read-out of the typed field, and an assertion
+    on one of the three is a statement about this renderer alone. [Element.draw]
+    and [Element.image] take no attribute list, so the pairs they derive from
+    their [name] are the only source of those keys; should either gain one, the
+    name outranks it. A backend nobody has written is bound by nothing here: a
+    rule holds where a test holds it.
 
     A canvas's and an image's accessible pairs follow from their [name]. A
     [Named n] canvas carries ["role"] ["img"] and ["aria-label"] [n], so
@@ -104,7 +105,9 @@ val render : 'msg Nopal_element.Element.t -> 'msg rendered
     caller's pair for either. An input's ["placeholder"], a radio's ["name"], a
     button's ["type"], a link's ["href"] and a heading's ["role"],
     ["aria-level"] and ["data-nopal-heading"] have no absent form and are
-    contributed on every render.
+    contributed on every render. A checkbox's ["data-nopal-drawn-checkbox"] is
+    contributed for a [Drawn] appearance only, so a [Native] checkbox uncovers a
+    caller's pair of that name.
 
     A scroll container's [reveal] declaration is surfaced for inspection as the
     derived attribute pairs ["reveal"] and ["reveal-align"], carried exactly as
@@ -249,6 +252,23 @@ val toggle : selector -> 'msg rendered -> (unit, error) result
     reads its [checked] attribute, and invokes its [on_toggle] handler with the
     negated value. Returns [Error (Not_found selector)] if no element matches,
     [Error (No_handler ...)] if the element has no toggle handler. *)
+
+val checkbox_appearance :
+  selector -> 'msg rendered -> (Nopal_style.Checkbox_appearance.t, error) result
+(** [checkbox_appearance selector rendered] finds the first element matching
+    [selector] and, when it is a checkbox, returns the appearance it declared,
+    exactly as the view wrote it: [Native] for a checkbox that declared none, or
+    [Drawn] with its ticked style and mark colour. A disabled checkbox reports
+    its appearance like any other. Nothing is dispatched.
+
+    The appearance is read from the render, not from the {!node}, so the node
+    tree carries no trace of it and a test asserting a drawn look uses this
+    accessor rather than {!style} or {!attr}.
+
+    Returns [Error (Not_found selector)] if no element matches, and
+    [Error (No_handler { event = "appearance"; _ })] if the element matched is
+    not a checkbox. It never walks: a container selected around a checkbox is
+    not the checkbox. *)
 
 val input : selector -> string -> 'msg rendered -> (unit, error) result
 (** [input selector value rendered] finds the first input matching [selector],

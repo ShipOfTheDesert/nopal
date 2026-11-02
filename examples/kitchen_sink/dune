@@ -34,6 +34,7 @@
   sub_donut
   sub_headings
   sub_alignment
+  sub_drawn_checkbox
   named_graphic
   tauri_op)
  (libraries

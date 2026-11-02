@@ -75,6 +75,22 @@ val table_keys_under : heading:string -> string -> string list option
     [None] when no line equals [heading], so a renamed heading fails as that
     rather than as an empty list. *)
 
+val pp_appearance :
+  Format.formatter -> Nopal_style.Checkbox_appearance.t -> unit
+
+val appearance_testable : Nopal_style.Checkbox_appearance.t Alcotest.testable
+(** Compares checkbox appearances with [Checkbox_appearance.equal]; prints only
+    the arm. *)
+
+val teal_drawn : unit -> Nopal_style.Checkbox_appearance.t
+(** The requested design's ticked look: brand-teal fill and a white tick. Built
+    fresh per call, so an equality that fell back to physical identity could not
+    pass. *)
+
+val rule_body : string -> string option
+(** [rule_body rule] is the text between the first ['{'] and the last ['}'] of a
+    CSS rule or at-rule, or [None] when the braces are absent or misordered. *)
+
 val does_not_compile : string
 (** The before-column literal for a change-list candidate whose change is
     compile-visible: no reading can equal it, so such a candidate lands in the

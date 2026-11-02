@@ -22,6 +22,7 @@ module Sub_auth_form = Kitchen_sink_app.Sub_auth_form
 module Sub_button_semantics = Kitchen_sink_app.Sub_button_semantics
 module Sub_clipboard = Kitchen_sink_app.Sub_clipboard
 module Sub_links = Kitchen_sink_app.Sub_links
+module Sub_drawn_checkbox = Kitchen_sink_app.Sub_drawn_checkbox
 
 (* Result-task chaining for the Tauri ops (RFC 0118, REQ-F5). See
    {!Kitchen_sink_app.Tauri_op} for the contract; instantiated here with the
@@ -451,6 +452,7 @@ let update model msg =
   | App.Button_semantics_msg _
   | App.Clipboard_msg _
   | App.Links_msg _
+  | App.Drawn_checkbox_msg _
   | App.KeyboardHeightChanged _
   | App.Back_demo_push
   | App.Route_changed _
@@ -594,6 +596,10 @@ let serialize_msg : App.msg -> string = function
      than loading a page, so a browser spec waits on it by its constructor
      names. *)
   | App.Links_msg links_msg -> Sub_links.serialize_msg links_msg
+  (* Drawn checkbox: the toggle is what a browser spec waits on before reading
+     the box's computed look, since the look follows the control's own state and
+     says nothing about whether the model heard the toggle. *)
+  | App.Drawn_checkbox_msg dc_msg -> Sub_drawn_checkbox.serialize_msg dc_msg
   (* Mobile signals (RFC 0116): the keyboard-height readout (REQ-N2) and the
      back-demo route change the Tauri back-IPC e2e asserts on via the host
      [get_telemetry] mirror — [Route_changed] proves the hardware-back chain
@@ -617,7 +623,7 @@ let serialize_msg : App.msg -> string = function
      prove it via a message fragment. The remaining Tauri messages keep the
      generic "<msg>" label below. *)
   | App.TrayClicked -> "TrayClicked"
-  (* Tauri event emit→listen round-trip (feature 0120, FR-5): the [event.e2e.ts]
+  (* Tauri event emit→listen round-trip: the [event.e2e.ts]
      contract spec gates the emit on a ready listener via [TauriListenReady]
      (registration's [on_unlisten] callback fired) and then proves the echo
      arrived through the real event bus via [TauriEventReceived:<payload>]. *)
@@ -946,8 +952,8 @@ let () =
      runtime auto-populates [Viewport.safe_area] (REQ-F4). Wiring the native
      source is safe on every Tauri host except iOS, where it yields a broken
      value that also suppresses the CSS [env()] fallback — so gate it on
-     [has_tauri () && not (Os.is_ios ())] (feature 0121, FR-1). Android gets real
-     insets, desktop a harmless zero inset (NFR-1), iOS the CSS [env()] fallback. *)
+     [has_tauri () && not (Os.is_ios ())]. Android gets real
+     insets, desktop a harmless zero inset, iOS the CSS [env()] fallback. *)
   if has_tauri () then Nopal_tauri.Platform_tauri.enable_hardware_back ();
   let safe_area_source =
     if has_tauri () && not (Nopal_tauri.Os.is_ios ()) then

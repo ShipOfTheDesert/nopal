@@ -370,6 +370,7 @@ let checkbox_fixture () : msg Nopal_ui.Checkbox.config =
     label_style = None;
     row_style = None;
     on_label_click = None;
+    appearance = Native;
   }
 
 let select_input_fixture () : msg Nopal_ui.Select_input.config =
@@ -848,6 +849,38 @@ let heading_semantics_outrank_attrs () =
   check "web: re-asserted when the caller's pairs leave on update"
     (web_attr_after_update ~first:authored ~second:(heading_with ()))
 
+(* A drawn checkbox derives the [data-nopal-drawn-checkbox] marker, so a
+   caller's pair of that name loses to it in both renderers; a native checkbox
+   derives none and uncovers the caller's pair. *)
+let drawn_marker_key = "data-nopal-drawn-checkbox"
+
+let drawn_appearance =
+  Nopal_style.Checkbox_appearance.Drawn
+    {
+      checked = Nopal_style.Style.default;
+      mark = Nopal_style.Color.hex "#ffffff";
+    }
+
+let drawn_checkbox_with ?(attrs = []) () =
+  E.checkbox ~attrs ~appearance:drawn_appearance false
+
+let drawn_marker_outranks_attrs () =
+  let caller = [ (drawn_marker_key, "x") ] in
+  let authored = drawn_checkbox_with ~attrs:caller () in
+  check_opt "web: the derived marker beats the caller's" (Some "")
+    (web_attr authored drawn_marker_key);
+  check_opt "structural: the derived marker beats the caller's" (Some "")
+    (structural_attr authored drawn_marker_key);
+  check_opt "web: re-asserted when the caller's pair arrives on update"
+    (Some "")
+    (web_attr_after_update ~first:(drawn_checkbox_with ()) ~second:authored
+       drawn_marker_key);
+  let native = E.checkbox ~attrs:caller false in
+  check_opt "web: a native checkbox keeps the caller's pair" (Some "x")
+    (web_attr native drawn_marker_key);
+  check_opt "structural: a native checkbox keeps the caller's pair" (Some "x")
+    (structural_attr native drawn_marker_key)
+
 (* A form's typed [autocomplete] and [novalidate], on the same terms as an
    input's typed fields above: both are spelled identically in both backends
    ([autocomplete] as its wire token, [novalidate] as a presence attribute),
@@ -1212,6 +1245,8 @@ let () =
             test_input_name_removed_on_reconcile;
           Alcotest.test_case "heading_semantics_outrank_attrs" `Quick
             heading_semantics_outrank_attrs;
+          Alcotest.test_case "drawn_marker_outranks_attrs" `Quick
+            drawn_marker_outranks_attrs;
         ] );
       ( "the submit contract",
         [

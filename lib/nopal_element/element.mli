@@ -249,6 +249,7 @@ type 'msg t =
       attrs : (string * string) list;
       checked : bool;
       disabled : bool;
+      appearance : Nopal_style.Checkbox_appearance.t;
       on_toggle : (bool -> 'msg) option;
     }
   | Radio of {
@@ -718,10 +719,22 @@ val checkbox :
   ?interaction:Nopal_style.Interaction.t ->
   ?attrs:(string * string) list ->
   ?disabled:bool ->
+  ?appearance:Nopal_style.Checkbox_appearance.t ->
   ?on_toggle:(bool -> 'msg) ->
   bool ->
   'msg t
-(** A checkbox. The positional argument is the current [checked] state. *)
+(** A checkbox. The positional argument is the current [checked] state.
+
+    [appearance] says who paints the box; absent, it is [Native], and the
+    platform's checkbox is drawn as it always was. It is cosmetic: a [Drawn]
+    checkbox is still the platform's checkbox control, with the same role,
+    checked state, keyboard toggle and form participation. A [Drawn] checkbox's
+    paint comes from its styles — [style] for the unticked box, the
+    [interaction] states over it, and the appearance's [checked] style over both
+    while ticked — and the tick is drawn in the appearance's [mark] colour.
+    Nopal adds no disabled look to a drawn box: [disabled] changes no styling,
+    so pass the disabled look in [style] and in the appearance's [checked]
+    style. *)
 
 val radio :
   ?style:Nopal_style.Style.t ->

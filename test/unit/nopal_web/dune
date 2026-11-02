@@ -1,7 +1,18 @@
 (test
  (name test_style_css)
  (package nopal_web)
- (libraries nopal_web nopal_style alcotest)
+ (libraries nopal_web nopal_style test_util alcotest)
+ (modes js)
+ (js_of_ocaml))
+
+; test_tick_image builds the tick's data URI from each colour arm and reads it
+; back as text, so it needs no DOM and loads no shim. test_util is linked for
+; the substring check.
+
+(test
+ (name test_tick_image)
+ (package nopal_web)
+ (libraries nopal_web nopal_style test_util alcotest)
  (modes js)
  (js_of_ocaml))
 

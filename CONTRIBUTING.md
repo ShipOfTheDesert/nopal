@@ -865,14 +865,14 @@ The first tier is a rule both renderers hold on the keys `nopal_web` writes as
 real attributes: `disabled`, `accept`, `capture`, `multiple`, `placeholder`, a
 radio's `name`, a control's `type`, an input's `required`, `aria-required` and
 `autocomplete`, a form's `autocomplete` and `novalidate`, a button's `type`
-and `aria-disabled`, a drawing's `role`, `aria-label` and `aria-hidden`, and an
-image's `alt`. Every one carries the same value in both renderers except
+and `aria-disabled`, a drawing's `role`, `aria-label` and `aria-hidden`, a drawn
+checkbox's `data-nopal-drawn-checkbox`, and an image's `alt`. Every one carries the same value in both renderers except
 `disabled`, `multiple`, `required` and `novalidate`, which are a presence
 attribute (`""`) in the DOM and `"true"` in the structural tree, so the two
 agree on which side wins and not on the value; `aria-required` and a button's
 `aria-disabled` are `"true"` in both, a button's `type` is `"button"` or
 `"submit"` in both, a drawing's `role` is `"img"` and its `aria-hidden` `"true"`
-in both, and a decorative image's `alt` is present and `""` in both. A checkbox's, radio's or file picker's
+in both, a drawn checkbox's `data-nopal-drawn-checkbox` is `""` in both, and a decorative image's `alt` is present and `""` in both. A checkbox's, radio's or file picker's
 `type` is the structural node's tag, while an input's is a pair in both
 renderers. A container's `focusable` is a first-tier
 derivation in both, but each spells it in its own vocabulary — a tab-order

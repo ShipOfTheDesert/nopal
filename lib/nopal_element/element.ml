@@ -106,6 +106,7 @@ type 'msg t =
       attrs : (string * string) list;
       checked : bool;
       disabled : bool;
+      appearance : Nopal_style.Checkbox_appearance.t;
       on_toggle : (bool -> 'msg) option;
     }
   | Radio of {
@@ -260,8 +261,10 @@ let input ?(style = Nopal_style.Style.empty)
 
 let checkbox ?(style = Nopal_style.Style.empty)
     ?(interaction = Nopal_style.Interaction.default) ?(attrs = [])
-    ?(disabled = false) ?on_toggle checked =
-  Checkbox { style; interaction; attrs; checked; disabled; on_toggle }
+    ?(disabled = false) ?(appearance = Nopal_style.Checkbox_appearance.Native)
+    ?on_toggle checked =
+  Checkbox
+    { style; interaction; attrs; checked; disabled; appearance; on_toggle }
 
 let radio ?(style = Nopal_style.Style.empty)
     ?(interaction = Nopal_style.Interaction.default) ?(attrs = [])
@@ -483,7 +486,8 @@ let rec map f = function
           input_type;
           name;
         }
-  | Checkbox { style; interaction; attrs; checked; disabled; on_toggle } ->
+  | Checkbox
+      { style; interaction; attrs; checked; disabled; appearance; on_toggle } ->
       Checkbox
         {
           style;
@@ -491,6 +495,7 @@ let rec map f = function
           attrs;
           checked;
           disabled;
+          appearance;
           on_toggle = Option.map (fun g b -> f (g b)) on_toggle;
         }
   | Radio { style; interaction; attrs; name; checked; disabled; on_select } ->
@@ -941,6 +946,7 @@ let rec equal a b =
           attrs = a1;
           checked = c1;
           disabled = d1;
+          appearance = ap1;
           on_toggle = ot1;
         },
       Checkbox
@@ -950,6 +956,7 @@ let rec equal a b =
           attrs = a2;
           checked = c2;
           disabled = d2;
+          appearance = ap2;
           on_toggle = ot2;
         } ) ->
       Nopal_style.Style.equal s1 s2
@@ -957,6 +964,7 @@ let rec equal a b =
       && equal_attrs a1 a2
       && Bool.equal c1 c2
       && Bool.equal d1 d2
+      && Nopal_style.Checkbox_appearance.equal ap1 ap2
       && Option.equal ( == ) ot1 ot2
   | ( Radio
         {

@@ -471,3 +471,13 @@ let interaction_rules ~class_name (interaction : Nopal_style.Interaction.t) =
   | Some style -> add_rule ("." ^ class_name ^ ":active") style
   | None -> ());
   Buffer.contents buf
+
+let ticked_rule ~class_name ~tick_image style =
+  let props =
+    of_style ~parent_axis:None style
+    @ [
+        { property = "background-image"; value = tick_image };
+        { property = "background-size"; value = "100% 100%" };
+      ]
+  in
+  "." ^ class_name ^ "." ^ class_name ^ ":checked{" ^ to_rule_body props ^ "}"
