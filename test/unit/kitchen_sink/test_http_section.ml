@@ -187,6 +187,7 @@ let msg_pp fmt msg =
   | Clipboard_msg _ -> Format.fprintf fmt "Clipboard_msg _"
   | Links_msg _ -> Format.fprintf fmt "Links_msg _"
   | Drawn_checkbox_msg _ -> Format.fprintf fmt "Drawn_checkbox_msg _"
+  | Radio_row_msg _ -> Format.fprintf fmt "Radio_row_msg _"
   | KeyboardHeightChanged _ -> Format.fprintf fmt "KeyboardHeightChanged _"
   | Back_demo_push -> Format.fprintf fmt "Back_demo_push"
   | Route_changed _ -> Format.fprintf fmt "Route_changed _"

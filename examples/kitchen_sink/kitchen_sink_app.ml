@@ -228,6 +228,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     clipboard : Sub_clipboard.model;
     links : Sub_links.model;
     drawn_checkbox : Sub_drawn_checkbox.model;
+    radio_row : Sub_radio_row.model;
     keyboard_height : int;  (** soft-keyboard height in logical px *)
     back_route : back_route;  (** current route of the back-navigation demo *)
   }
@@ -274,6 +275,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | Clipboard_msg of Sub_clipboard.msg
     | Links_msg of Sub_links.msg
     | Drawn_checkbox_msg of Sub_drawn_checkbox.msg
+    | Radio_row_msg of Sub_radio_row.msg
     | KeyboardHeightChanged of int  (** native soft-keyboard height *)
     | Back_demo_push  (** push the back-demo one step deep (to [Back_detail]) *)
     | Route_changed of back_route  (** popstate-driven route update *)
@@ -413,6 +415,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     let clipboard, clipboard_cmd = Sub_clipboard.init () in
     let links, links_cmd = Sub_links.init () in
     let drawn_checkbox, drawn_checkbox_cmd = Sub_drawn_checkbox.init () in
+    let radio_row, radio_row_cmd = Sub_radio_row.init () in
     ( {
         button_clicks = 0;
         input_text = "";
@@ -489,6 +492,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         clipboard;
         links;
         drawn_checkbox;
+        radio_row;
         keyboard_height = 0;
         back_route = Back_home;
       },
@@ -522,6 +526,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           Nopal_mvu.Cmd.map (fun m -> Clipboard_msg m) clipboard_cmd;
           Nopal_mvu.Cmd.map (fun m -> Links_msg m) links_cmd;
           Nopal_mvu.Cmd.map (fun m -> Drawn_checkbox_msg m) drawn_checkbox_cmd;
+          Nopal_mvu.Cmd.map (fun m -> Radio_row_msg m) radio_row_cmd;
           (* Re-read the persisted demo value so a reload dispatches a
              [StorageRestored] message — the E2E persistence proof. *)
           Nopal_mvu.Cmd.task
@@ -739,6 +744,10 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         in
         ( { model with drawn_checkbox },
           Nopal_mvu.Cmd.map (fun m -> Drawn_checkbox_msg m) dc_cmd )
+    | Radio_row_msg rr_msg ->
+        let radio_row, rr_cmd = Sub_radio_row.update model.radio_row rr_msg in
+        ( { model with radio_row },
+          Nopal_mvu.Cmd.map (fun m -> Radio_row_msg m) rr_cmd )
     | DrawPointerMove (x, y) ->
         ({ model with draw_pointer = Some (x, y) }, Nopal_mvu.Cmd.none)
     | DrawPointerLeave ->
@@ -4201,6 +4210,14 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                  (fun m -> Drawn_checkbox_msg m)
                  (Sub_drawn_checkbox.view vp model.drawn_checkbox);
              ];
+           view_section
+             ~attrs:[ ("data-testid", "radio-row-section") ]
+             "A radio group in a row"
+             [
+               Element.map
+                 (fun m -> Radio_row_msg m)
+                 (Sub_radio_row.view model.radio_row);
+             ];
            view_section "Text Input"
              [
                Element.map
@@ -4473,4 +4490,5 @@ module Sub_donut = Sub_donut
 module Sub_headings = Sub_headings
 module Sub_alignment = Sub_alignment
 module Sub_drawn_checkbox = Sub_drawn_checkbox
+module Sub_radio_row = Sub_radio_row
 module Tauri_op = Tauri_op

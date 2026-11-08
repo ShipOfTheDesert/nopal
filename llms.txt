@@ -1456,7 +1456,7 @@ same under every override below.
 | `Data_table` | container, header cell, row, cell → `?style` / `?header_style` / `?row_style` / `?cell_style`; container interaction → `?interaction`; one column at a time → `with_column_style`; the button a `sort_key` turns a header into → `with_sort_control_style` and `with_header_interaction`; header row → `with_header_row_style`; cell contents are the caller's own `Element.t` |
 | `Modal` | dialog → `with_style`; backdrop → `with_backdrop_style`; interaction → `with_interaction`; root box → `with_root_style`, displacing the published `default_root_style`; the title is part of the caller's body |
 | `Navigation_bar` | container → `with_style`; tab and active tab → `with_tab_style` / `with_active_tab_style`; bar-wide interaction → `with_interaction`; item label typography → `with_item_text_style`; per-item interaction → `with_item_interaction`; icon-to-label row, i.e. the gap between them → `with_item_row_style`; the icon is the caller's own `Element.t` |
-| `Radio_group` | each option's radio input → `config.style` / `config.interaction`; group container → `with_group_style`; group label → `with_visible_label` opts the element in and `with_label_style` styles it; option label typography → `with_option_label_style`; option row → `with_option_row_style`; identifiers → `with_id` |
+| `Radio_group` | each option's radio input → `config.style` / `config.interaction`; group box (label and options) → `with_group_style`; options box (direction, spacing, wrap) → `with_options_style`; group label → `with_visible_label` opts the element in and `with_label_style` styles it; option label typography → `with_option_label_style`; option row → `with_option_row_style`; identifiers → `with_id` |
 | `Select_input` | control → `config.style` / `config.interaction`; label typography → `with_label_style`; label-to-control wrapper → `with_wrapper_style`; identifier → `with_id` |
 | `Slug` | none — a pure function module that renders nothing |
 | `Text_input` | input → `config.style` / `config.interaction`; label typography → `with_label_style`; label-to-box gap → `with_wrapper_style`; error slot, and the error message's typography through that style's `text` component → `with_error_style`; identifier → `with_id`, which sets the pre-existing `config.id` field |
@@ -2310,6 +2310,7 @@ type 'msg config = {
   visible_label : bool option;
   label_style : Style.t option;
   group_style : Style.t option;
+  options_style : Style.t option;
   option_label_style : Style.t option;
   option_row_style : Style.t option;
   on_label_click : (string -> 'msg) option;
@@ -2321,7 +2322,7 @@ val radio_option : ?disabled:bool -> value:string -> string -> radio_option
 val make : label:string -> options:radio_option list -> selected:string -> 'msg config
 (* [make ~label ~options ~selected] returns a config with name=None
    (auto-generated from slugified label), disabled=false, on_select=None,
-   no style/interaction override, empty attrs, and none of the seven
+   no style/interaction override, empty attrs, and none of the eight
    override fields set. *)
 
 val with_id : string -> 'msg config -> 'msg config
@@ -2333,15 +2334,30 @@ val with_visible_label : bool -> 'msg config -> 'msg config
 (* Opts the group's own label ELEMENT in. OFF by default: the group renders no
    label text today, so making one appear is a rendered-tree change for every
    existing consumer. Until it is used the group keeps aria-label; with it the
-   group's name moves to aria-labelledby pointing at the new element. *)
+   group's name moves to aria-labelledby pointing at the new element. The
+   element is the group's first child, a sibling of the options box and never
+   of an option row. *)
 
 val with_label_style : Style.t -> 'msg config -> 'msg config
 (* The group's own label box. INERT until with_visible_label true gives it an
    element to style. *)
 
 val with_group_style : Style.t -> 'msg config -> 'msg config
-(* The group container Column. Independent of config.style, which lands on each
-   radio input instead. *)
+(* The group container: the outer Box, which carries role="radiogroup" and
+   holds the group label (under with_visible_label true) and the options box.
+   REPLACES rather than merges. The route to the spacing and direction BETWEEN
+   THE LABEL AND THE OPTIONS, and to the group's own padding; a direction set
+   here is honoured, and with none it is a column. Without a visible label it
+   holds the options box alone, so a gap or direction here changes nothing
+   visible. Independent of config.style, which lands on each radio input
+   instead. *)
+
+val with_options_style : Style.t -> 'msg config -> 'msg config
+(* The options box: the Box holding the option rows, rendered in both label
+   modes, so it always has a node to land on. REPLACES rather than merges. The
+   route to the options' direction, spacing and wrap; a direction set here is
+   honoured, so Row_dir lays the options side by side, and with none they stack
+   as a column. *)
 
 val with_option_label_style : Style.t -> 'msg config -> 'msg config
 (* Each option's label box, and its text typography through that style's text
@@ -2365,9 +2381,16 @@ val option_id : 'msg config -> value:string -> string
    sharing a value share an id. *)
 
 val view : 'msg config -> 'msg Element.t
-(* Renders a Column with role="radiogroup", ("id", control_id config), and
-   aria-label=config.label — or aria-labelledby and a leading label element
-   when with_visible_label true — containing one Row per option. Each Row has:
+(* Renders an outer Box (with_group_style) carrying, in this order,
+   role="radiogroup", the group's name — aria-label=config.label, or
+   aria-labelledby under with_visible_label true — ("id", control_id config)
+   and config.attrs. Its children are the group label element (only under
+   with_visible_label true) followed by the options box:
+     without a visible label: box[role=radiogroup] > box(options) > row…
+     with a visible label:    box[role=radiogroup] > [box(label); box(options) > row…]
+   Both boxes honour a direction in their style and default to a column. The
+   options box (with_options_style) carries no attributes and holds one Row per
+   option (with_option_row_style). Each Row has:
    1. An Element.radio (sharing the group name) carrying
       ("id", option_id config ~value),
       ("aria-labelledby", option_id config ~value ^ "-label") and
@@ -2705,6 +2728,10 @@ Keys that did **not** move, recorded so a reader does not go looking:
 | 4 | each `Radio_group` option's row | `[radio; text]` | `[radio; box]` |
 | 5 | the `Radio_group` container, under `with_visible_label true` | `[row; row]` | `[box; row; row]` |
 
+The `Radio_group` container's shapes, row 5's Now and the `[row; row]` it keeps
+without the setter, changed again later; the `Radio_group` pin-bump paragraph
+below supersedes them, and these rows stay as the record of this change. The plain container (no visible label), unchanged by this table, is published as a change in that later paragraph.
+
 Each new box carries `("id", <the label id>)` and wraps the label's text node, so
 rows 1–4 add exactly one node per control and reorder nothing — the control is
 still its container's first or second child, as it was. Row 5 puts the group's own
@@ -2731,6 +2758,8 @@ the listed fields as `None`.
 | `'msg Toast.config` | `toast_style`, `toast_interaction` |
 | `'msg Button.config` | `disabled_style`, `loading_style` |
 | `('row, 'msg) Data_table.config` | `column_style`, `sort_control_style`, `header_interaction`, `header_row_style` |
+
+`options_style` was added to `Radio_group.config` later; see the Radio_group pin-bump paragraph.
 
 `Modal.config`, `Navigation_bar.config` and `Bottom_tabs.config` are **abstract**
 in their `.mli`s, so their new fields (`root_style`; `item_text_style`,
@@ -4828,6 +4857,64 @@ them. Nopal adds no disabled look to a drawn box. `Style.t` gains no field: it
 still has no outline and no margin, so a custom focus ring is a shadow, and
 Nopal never removes the browser's own focus outline. Radio buttons
 are unchanged and have no drawn appearance.
+
+**Radio_group answers that moved — read this on a pin bump.**
+A `Nopal_ui.Radio_group`'s options now sit in a box of their own inside the
+group, so the label and the options are laid out separately.
+`with_group_style` styles the outer box, which holds the group label (under
+`with_visible_label true`) and the options box, and the new
+`with_options_style` styles the options box. A direction set through either is
+now honoured in the browser. One kind of code stops compiling: **a complete
+`Nopal_ui.Radio_group.config` record literal** (row 1), with `Some record
+fields are undefined: options_style`. A config built with `make` and the
+setters, or updated with `{ config with … }`, compiles untouched. Rows 3–6
+change what an existing group renders, with no compiler help: the group gains
+a node between itself and its option rows, its structural tag changes, and a
+gap, alignment or direction set through `with_group_style` now acts between
+the label and the options rather than between one option and the next.
+
+"Before" is the tree at commit `79db10e`. The Where column names the output
+whose answer moved: web, the structural `Test_renderer`, or all of them. Find
+it is a command a consumer runs from their repository root; a row whose Find
+it is "—" needs no search. Each grep is a first pass: a pattern or literal that
+`ocamlformat` split over several lines, or a module reached through an alias
+(`module RG = Nopal_ui.Radio_group`, then `RG.with_group_style`), escapes it.
+For row 1 the compiler is the backstop. For rows 3–6 there is none: a selector
+assembled at run time, or a walk through `parentElement` or a child list that
+starts from an id or a `data-field`, escapes every grep below, and only a test
+run or a look at the page finds it. No test reads this table. The behaviour
+each row describes is tested in the `nopal_ui` and kitchen-sink suites and,
+for web, by the kitchen-sink Playwright and axe cases, but an edit to the text
+alone reddens no test.
+
+| # | Key | Visible | Where | When | Before | Now | Find it |
+|---|---|---|---|---|---|---|---|
+| 1 | `ui-radio-group-config-literal` | compile | all | a `Nopal_ui.Radio_group.config` written as a complete record literal | compiled | missing-field error. Fix: add `options_style = None`, which renders the options as a plain column box; a literal whose `group_style` carries a gap, an alignment or a direction also reads rows 5 and 6. A config built with `make` and the setters is unaffected | `grep -rn "option_row_style *=" --include=*.ml .` (every complete literal names that field), then the compiler |
+| 2 | `ui-radio-group-with-options-style` | additive | all | `Nopal_ui.Radio_group` | — | `config` gains `options_style : Style.t option` between `group_style` and `option_label_style`, `make` fills `None`, and `with_options_style : Style.t -> 'msg config -> 'msg config` puts its style on the options box. It replaces rather than merges, and a direction set there is honoured | — |
+| 3 | `radio-group-container-kind` | render | structural | a structural test that finds the `role="radiogroup"` node by its tag, or matches on that tag | `column` | `box`. On web it is the same `div`, with inline `display: flex; flex-direction: column` while its style sets no direction; a direction in `with_group_style` now reaches `flex-direction` (row 6) | `grep -rn 'By_tag "column"' --include=*.ml .`, then check whether the hit selects a radio group |
+| 4 | `radio-group-options-box` | render | all | every `Radio_group` | the `role="radiogroup"` node's children: `[row; row; …]` without a visible label (`None` or `Some false`), `[box(label); row; row; …]` with one | `[box]` and `[box(label); box]`, where the new box holds `[row; row; …]` and carries no attributes: no id, no role, no `data-*`. A radio is now three levels below the group, not two. This breaks `[role=radiogroup] > div` and every other child combinator from the group to a row, `:first-child` and `:nth-child` on option rows (with a visible label the first row was `:nth-child(2)`; it is now the options box's `:first-child`), XPath `..` from an option row to the group, and structural child-index walks and child counts on the group. `closest('[role=radiogroup]')` from a radio still finds the group | `grep -rn -e "radiogroup" -e ":nth-child" -e ":first-child" -e "xpath" -e "locator('..')" -e "parentElement" --exclude-dir=node_modules .`, then read each hit that walks between the group and a row |
+| 5 | `radio-group-group-style-spacing` | render | all | a `with_group_style` (or `group_style = Some _`) carrying a gap or an alignment | it spaced and aligned option against option, and with a visible label the label against the first option | it spaces and aligns the label against the options box only; the options themselves sit flush, with no gap, until the gap moves to `with_options_style`. Without a visible label the outer box holds one child, so a gap there does nothing visible, and an alignment positions the options box as a whole rather than each row. Fix: give `with_options_style` the gap too; a spacing-only style can go on both, as the kitchen sink's `restyled_radio_group` does (row 9). Padding and paint on `with_group_style` still frame the whole group | `grep -rn -e "with_group_style" -e "group_style *=" --include=*.ml .` |
+| 6 | `radio-group-group-style-direction` | render | web | a `with_group_style` (or `group_style = Some _`) carrying a direction | inert in the browser: the group was an `Element.column`, which writes `flex-direction: column` after the style is applied, so it stacked while the structural tree reported the direction | honoured. **With a visible label**, `Row_dir` lays the label beside the options box, and the options still stack unless `with_options_style` sets a direction. **With no visible label** (`None` or `Some false`) the outer box holds only the options box, so nothing visible changes and the options stay a column. A group meant to lay its options in a row, including a complete literal with `visible_label = Some false`, a label of its own named through `config.attrs` and `Row_dir` in `group_style`, must move the `Row_dir` to `with_options_style` (`options_style` in a literal) to get that row. Once it has, the component's own label is reachable too: `with_visible_label true` puts it above the row, and the consumer's own label can go | `grep -rn -e "with_group_style" -e "group_style *=" --include=*.ml .`, then look for `Row_dir` in the style it is given |
+| 7 | `ui-component-table-radio-group-row` | docs | all | anyone reading the UI Components override table's `Radio_group` row | "group container → `with_group_style`" | "group box (label and options) → `with_group_style`; options box (direction, spacing, wrap) → `with_options_style`" | — |
+| 8 | `kitchen-sink-radio-row-section` | example | web | anyone copying the kitchen sink | no radio-row section | "A radio group in a row" (`data-testid="radio-row-section"`) right after the drawn-checkbox section: a "Size" group whose visible label sits above three options, Small, Medium and Large, laid out in a row, built with `make`, the setters, and `{ config with on_select; attrs }` for the message and the test anchor: `with_group_style` a column with gap 8, `with_options_style` `Row_dir` with gap 24 (`examples/kitchen_sink/sub_radio_row.ml`) | — |
+| 9 | `kitchen-sink-restyled-radio-group` | example | all | anyone copying the kitchen sink's restyled `Radio_group` literal | its gap-14 style on `group_style` spaced the label and both options | the same spacing-only style on both `group_style` and `options_style`, so both gaps stay 14 and the group looks as it did (`restyled_radio_group` in `examples/kitchen_sink/kitchen_sink_form_controls.ml`) | — |
+
+What did **not** move, recorded so a reader does not go looking. The role, the
+id, the naming attribute (`aria-label`, or `aria-labelledby` under
+`with_visible_label true`) and `config.attrs` are all on the same node as
+before, the outer box, in the same order. Each radio's id, its
+`aria-labelledby` and its `data-field` (still the group `name`, which
+`with_id` does not move) answer as they did, and so do the group label
+element's id and `with_label_style`. An option row keeps its own shape,
+`[radio; box]`, styled by `with_option_row_style`, with its label box styled
+by `with_option_label_style`; `config.style` and `config.interaction` still
+land on each radio. The group is still one tab stop: its radios share one
+`name`, Tab lands on the checked radio, and the arrow keys move the choice.
+Disabled handling, for the whole group and per option, is unchanged. A group
+that sets neither `with_group_style` nor `with_options_style` looks as it did:
+both boxes stack as columns with no gap. No other `nopal_ui` component's tree
+moved: each of the other ten was checked for a label sharing a container with
+the content it labels, and none has one.
 
 #### Telemetry harness (`Nopal_test.Telemetry_test`)
 

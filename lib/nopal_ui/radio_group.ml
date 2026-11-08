@@ -16,6 +16,7 @@ type 'msg config = {
   visible_label : bool option;
   label_style : Nopal_style.Style.t option;
   group_style : Nopal_style.Style.t option;
+  options_style : Nopal_style.Style.t option;
   option_label_style : Nopal_style.Style.t option;
   option_row_style : Nopal_style.Style.t option;
   on_label_click : (string -> 'msg) option;
@@ -38,6 +39,7 @@ let make ~label ~options ~selected =
     visible_label = None;
     label_style = None;
     group_style = None;
+    options_style = None;
     option_label_style = None;
     option_row_style = None;
     on_label_click = None;
@@ -50,6 +52,7 @@ let with_visible_label visible config =
 
 let with_label_style style config = { config with label_style = Some style }
 let with_group_style style config = { config with group_style = Some style }
+let with_options_style style config = { config with options_style = Some style }
 
 let with_option_label_style style config =
   { config with option_label_style = Some style }
@@ -104,7 +107,9 @@ let view config =
     in
     E.row ?style:config.option_row_style [ radio; label ]
   in
-  let option_rows = List.map render_option config.options in
+  let options_box =
+    E.box ?style:config.options_style (List.map render_option config.options)
+  in
   let naming, children =
     match config.visible_label with
     | Some true ->
@@ -114,12 +119,12 @@ let view config =
             ~attrs:[ ("id", lid) ]
             [ Text_node.of_style ~style:config.label_style config.label ]
         in
-        (("aria-labelledby", lid), group_label :: option_rows)
+        (("aria-labelledby", lid), [ group_label; options_box ])
     | Some false
     | None ->
-        (("aria-label", config.label), option_rows)
+        (("aria-label", config.label), [ options_box ])
   in
-  E.column ?style:config.group_style
+  E.box ?style:config.group_style
     ~attrs:
       ([ ("role", "radiogroup"); naming; ("id", control_id config) ]
       @ config.attrs)
