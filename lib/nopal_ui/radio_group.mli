@@ -18,6 +18,7 @@ type 'msg config = {
   visible_label : bool option;
   label_style : Nopal_style.Style.t option;
   group_style : Nopal_style.Style.t option;
+  options_style : Nopal_style.Style.t option;
   option_label_style : Nopal_style.Style.t option;
   option_row_style : Nopal_style.Style.t option;
   on_label_click : (string -> 'msg) option;
@@ -26,14 +27,16 @@ type 'msg config = {
     behavioural — all required in {!make}.
 
     [style] and [interaction] land on each radio input, not on the group; the
-    group container is {!with_group_style}.
+    group container is {!with_group_style} and the box holding the option rows
+    is {!with_options_style}.
 
-    The last seven fields are the override surface. The supported route to them
+    The last eight fields are the override surface. The supported route to them
     is {!with_id}, {!with_visible_label}, {!with_label_style},
-    {!with_group_style}, {!with_option_label_style}, {!with_option_row_style}
-    and {!with_on_label_click} rather than writing them by hand; they are fields
-    because a setter needs somewhere to put its value, and a caller who builds
-    this record as a complete literal must supply them. *)
+    {!with_group_style}, {!with_options_style}, {!with_option_label_style},
+    {!with_option_row_style} and {!with_on_label_click} rather than writing them
+    by hand; they are fields because a setter needs somewhere to put its value,
+    and a caller who builds this record as a complete literal must supply them.
+*)
 
 val radio_option : ?disabled:bool -> value:string -> string -> radio_option
 (** [radio_option ~value label] creates a radio option. [disabled] defaults to
@@ -45,7 +48,7 @@ val make :
     (auto-generated from slugified label), [disabled = false],
     [on_select = None], no style/interaction override, empty attrs, and none of
     the override fields set: no id, no visible group label, no label, group,
-    option-label or option-row style, and no label-click message. *)
+    options, option-label or option-row style, and no label-click message. *)
 
 val with_id : string -> 'msg config -> 'msg config
 (** [with_id id config] sets the identifier the group container carries, and
@@ -71,8 +74,9 @@ val with_id : string -> 'msg config -> 'msg config
 
 val with_visible_label : bool -> 'msg config -> 'msg config
 (** [with_visible_label true config] renders the group's [label] as an element
-    of its own — the group's first child — and moves the group's accessible name
-    from [aria-label] to [aria-labelledby] pointing at it.
+    of its own — the group's first child, a sibling of the box holding the
+    option rows and never a sibling of an option row — and moves the group's
+    accessible name from [aria-label] to [aria-labelledby] pointing at it.
 
     Without this setter, and with [false], the group renders no label element at
     all and keeps [aria-label]: there would be nothing for [aria-labelledby] to
@@ -96,10 +100,25 @@ val with_label_style : Nopal_style.Style.t -> 'msg config -> 'msg config
 
 val with_group_style : Nopal_style.Style.t -> 'msg config -> 'msg config
 (** [with_group_style style config] puts [style] on the group container — the
-    column holding the option rows, which carries [role="radiogroup"]. The style
-    {e replaces}; nothing is merged. This is the route to the spacing between
-    options and to the group's own padding; [config.style] reaches each radio
-    input instead, and the two are independent. *)
+    outer box, which carries [role="radiogroup"] and holds the group's label
+    (under {!with_visible_label}) and the options box. The style {e replaces};
+    nothing is merged. This is the route to the spacing and direction between
+    the label and the options, and to the group's own padding; a direction set
+    here is honoured, and with none the box lays its children out as a column.
+    The spacing, direction and wrap of the options themselves are
+    {!with_options_style}'s. Without a visible label the outer box holds the
+    options box alone, so a direction or gap here changes nothing visible.
+    [config.style] reaches each radio input instead, and is independent of both.
+*)
+
+val with_options_style : Nopal_style.Style.t -> 'msg config -> 'msg config
+(** [with_options_style style config] puts [style] on the box holding the option
+    rows. The style {e replaces}; nothing is merged. This is the route to the
+    options' direction, spacing and wrap: a direction set here is honoured, so a
+    [Row_dir] lays the options side by side, and with none they stack as a
+    column. The box is rendered whether or not the group has a visible label, so
+    this setter always has a node to land on. {!with_group_style} styles the
+    outer box around it, and {!with_option_row_style} each row inside it. *)
 
 val with_option_label_style : Nopal_style.Style.t -> 'msg config -> 'msg config
 (** [with_option_label_style style config] puts [style] on every option's label
@@ -156,12 +175,23 @@ val option_id : 'msg config -> value:string -> string
 val view : 'msg config -> 'msg Nopal_element.Element.t
 (** Renders the radio group. Each option carries [data-field=<group name>] (the
     [name], defaulting to the slugified label). This anchor is the E2E selector
-    contract (RFC 0112) and is asserted by [test_anchors.ml]. It is derived from
-    the group [name] alone and is {e not} moved by {!with_id}.
+    contract and is asserted by [test_anchors.ml]. It is derived from the group
+    [name] alone and is {e not} moved by {!with_id}.
 
-    [view config] renders a Column with [role="radiogroup"], styled by
-    {!with_group_style} and carrying [("id", control_id config)], containing one
-    Row per option — styled by {!with_option_row_style} — and each Row holds:
+    [view config] renders an outer Box with [role="radiogroup"], styled by
+    {!with_group_style} and carrying, in this order, the role, the group's
+    naming attribute, [("id", control_id config)] and [config.attrs]. Its
+    children are the group's label element (only under {!with_visible_label})
+    followed by the options box:
+
+    - without a visible label: [box[role=radiogroup] > box(options) > row…]
+    - with a visible label:
+      [box[role=radiogroup] > [box(label); box(options) > row…]]
+
+    Both boxes honour a direction set in their style and default to a column.
+    The options box is styled by {!with_options_style}, carries no attributes,
+    and holds one Row per option — styled by {!with_option_row_style} — and each
+    Row holds:
 
     1. An [Element.radio] sharing the group name, carrying
     [("id", option_id config ~value)] and
@@ -177,11 +207,11 @@ val view : 'msg config -> 'msg Nopal_element.Element.t
     rather than something a call site can undo per option.
 
     The group's own name is the one thing this does not move by default: without
-    {!with_visible_label} the Column keeps [aria-label=config.label] and renders
-    no label element, because there would be nothing for an [aria-labelledby] to
-    point at. With the setter the Column's first child is the group's label
-    element, styled by {!with_label_style} and carrying
-    [(control_id config ^ "-label")], and the Column's name moves to
+    {!with_visible_label} the outer box keeps [aria-label=config.label] and
+    renders no label element, because there would be nothing for an
+    [aria-labelledby] to point at. With the setter the outer box's first child
+    is the group's label element, styled by {!with_label_style} and carrying
+    [(control_id config ^ "-label")], and the outer box's name moves to
     [aria-labelledby] pointing at it. An [("aria-label", _)] pair pushed through
     [config.attrs] survives in the tree either way, but once the setter is used
     it does not name the group, because [aria-labelledby] wins the

@@ -205,4 +205,10 @@ test("restyled controls keep their component's naming", async ({ page }) => {
   await expect(
     page.locator(RESTYLED_SELECT).locator("xpath=..")
   ).toHaveCSS("row-gap", "20px");
+  // The radio group's two boxes: the options box (the radio's grandparent,
+  // through the option row) and the outer box both carry the 14px gap.
+  await expect(
+    page.locator("#shipping-speed-express").locator("xpath=../..")
+  ).toHaveCSS("row-gap", "14px");
+  await expect(page.locator(RESTYLED_GROUP)).toHaveCSS("row-gap", "14px");
 });

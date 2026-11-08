@@ -69,7 +69,7 @@ module T = Nopal_ui.Toast
    a dispatch; these are render-only cases. *)
 type msg = string
 
-(* --- Non-default values. Five distinguishable styles and two interactions, so
+(* --- Non-default values. Six distinguishable styles and two interactions, so
    a case can tell one override's answer from another's. --- *)
 
 let bg hex =
@@ -83,6 +83,7 @@ let blue = bg "#0000ff"
 let green = bg "#00ff00"
 let amber = bg "#ffaa00"
 let violet = bg "#8800ff"
+let teal = bg "#00aaaa"
 let hover_blue = { I.default with hover = Some blue }
 let pressed_amber = { I.default with pressed = Some amber }
 
@@ -276,8 +277,8 @@ let test_select_input_aria_survives_every_style_override () =
    the same override set: with it the group's name moves to [aria-labelledby],
    without it the group keeps [aria-label] — which is the affirmative arm for the
    absence asserted in the first. [with_label_style] reaches nothing in the
-   second arm by design, so that arm asserts the naming and the option pairs
-   only. --- *)
+   second arm by design, so that arm asserts the naming, the group and options
+   box styles and the option pairs only. --- *)
 
 let radio_group_config ~visible_label : msg RG.config =
   {
@@ -298,6 +299,7 @@ let radio_group_config ~visible_label : msg RG.config =
     visible_label;
     label_style = Some green;
     group_style = Some amber;
+    options_style = Some teal;
     option_label_style = Some violet;
     option_row_style = Some blue;
     on_label_click = Some (fun v -> v);
@@ -336,6 +338,19 @@ let check_option root ~value ~label_text =
     (value ^ "'s label box carries its style override")
     (Some violet) label
 
+(* The box holding the option rows is the group's last child in both label
+   modes: it follows the group label when there is one, and is the only child
+   when there is not. *)
+let options_box_or_fail group =
+  match group with
+  | Element { children; _ } -> (
+      match List.rev children with
+      | options :: _ -> options
+      | [] -> Alcotest.fail "expected the group to hold the options box")
+  | Empty
+  | Text _ ->
+      Alcotest.fail "expected the group to be an element"
+
 let test_radio_group_aria_survives_every_style_override () =
   let with_label =
     tree (render (RG.view (radio_group_config ~visible_label:(Some true))))
@@ -353,6 +368,8 @@ let test_radio_group_aria_survives_every_style_override () =
   check_style "the group label box carries its style override" (Some green)
     group_label;
   check_style "the group carries its style override" (Some amber) with_label;
+  check_style "the options box carries its style override" (Some teal)
+    (options_box_or_fail with_label);
   check_option with_label ~value:"red" ~label_text:"Red";
   check_option with_label ~value:"green" ~label_text:"Green";
   Alcotest.(check int)
@@ -377,6 +394,8 @@ let test_radio_group_aria_survives_every_style_override () =
     None;
   check_style "the group still carries its style override" (Some amber)
     without_label;
+  check_style "the options box still carries its style override" (Some teal)
+    (options_box_or_fail without_label);
   check_option without_label ~value:"red" ~label_text:"Red";
   check_option without_label ~value:"green" ~label_text:"Green"
 

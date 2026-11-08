@@ -108,6 +108,7 @@ let restyled_radio_group model =
     visible_label = Some true;
     label_style = Some restyled_label_style;
     group_style = Some restyled_group_style;
+    options_style = Some restyled_group_style;
     option_label_style = Some restyled_option_label_style;
     option_row_style = Some restyled_option_row_style;
     on_label_click = None;

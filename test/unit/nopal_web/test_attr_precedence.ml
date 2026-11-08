@@ -405,6 +405,7 @@ let radio_group_fixture ~visible_label : msg Nopal_ui.Radio_group.config =
     visible_label;
     label_style = None;
     group_style = None;
+    options_style = None;
     option_label_style = None;
     option_row_style = None;
     on_label_click = None;

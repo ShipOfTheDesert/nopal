@@ -214,12 +214,13 @@ let test_option_is_named_by_labelledby_and_not_by_label () =
             (attr "aria-label" radio))
     option_specs
 
-let test_tree_is_unchanged_without_the_visible_label_setter () =
+let test_tree_without_the_visible_label_setter () =
   let r = render (RG.view (base ())) in
   (match tree r with
-  | Element { tag = "column"; children; _ } ->
+  | Element
+      { tag = "box"; children = [ Element { tag = "box"; children; _ } ]; _ } ->
       Alcotest.(check int)
-        "the group's children are one row per option and nothing else" 3
+        "the options box holds one row per option and nothing else" 3
         (List.length children);
       List.iter
         (fun child ->
@@ -247,7 +248,9 @@ let test_tree_is_unchanged_without_the_visible_label_setter () =
               Alcotest.fail "expected only option rows under the group")
         children
   | Element { tag; _ } ->
-      Alcotest.failf "expected a column at the top level, got %s" tag
+      Alcotest.failf
+        "expected a box holding only the options box at the top level, got %s"
+        tag
   | Empty
   | Text _ ->
       Alcotest.fail "expected an element at the top level");
@@ -286,9 +289,10 @@ let test_visible_label_switches_the_group_to_labelledby () =
     "the group label renders the group's label text" group_label
     (text_content label_node);
   match root with
-  | Element { children = first :: rest; _ } -> (
+  | Element { children = [ first; Element { children = rows; _ } ]; _ } -> (
       Alcotest.(check int)
-        "the option rows are still all there" 3 (List.length rest);
+        "the option rows are still all there, in the options box" 3
+        (List.length rows);
       match first with
       | Element { tag = "box"; _ } -> ()
       | Element { tag; _ } ->
@@ -296,8 +300,7 @@ let test_visible_label_switches_the_group_to_labelledby () =
       | Empty
       | Text _ ->
           Alcotest.fail "expected the group label element first")
-  | Element { children = []; _ } ->
-      Alcotest.fail "expected the group label and the option rows"
+  | Element _ -> Alcotest.fail "expected the group label and the options box"
   | Empty
   | Text _ ->
       Alcotest.fail "expected an element at the top level"
@@ -457,6 +460,180 @@ let test_option_label_click_dispatches_the_option_value () =
   Alcotest.(check (list msg_testable))
     "the clicked option's value is carried" [ Label_clicked "c" ] (messages r)
 
+(* --- The outer box and the options box --- *)
+
+let options_row_style =
+  Nopal_style.Style.default
+  |> Nopal_style.Style.with_layout (fun l ->
+      {
+        l with
+        Nopal_style.Style.direction = Some Nopal_style.Style.Row_dir;
+        gap = Some 6.0;
+      })
+
+(* An option row holds the radio and the option's label box, in that order. *)
+let check_option_rows what rows =
+  Alcotest.(check int) (what ^ ": one row per option") 3 (List.length rows);
+  List.iter
+    (fun row ->
+      match row with
+      | Element
+          { tag = "row"; children = [ Element { tag = "radio"; _ }; _ ]; _ } ->
+          ()
+      | Element { tag; _ } ->
+          Alcotest.failf "%s: expected an option row, found a %s" what tag
+      | Empty
+      | Text _ ->
+          Alcotest.failf "%s: expected an option row element" what)
+    rows
+
+let options_box_rows what node =
+  match node with
+  | Element { tag = "box"; children; _ } -> children
+  | Element { tag; _ } ->
+      Alcotest.failf "%s: expected the options box, found a %s" what tag
+  | Empty
+  | Text _ ->
+      Alcotest.failf "%s: expected the options box element" what
+
+let children_of what node =
+  match node with
+  | Element { children; _ } -> children
+  | Empty
+  | Text _ ->
+      Alcotest.failf "%s: expected an element" what
+
+let attrs_of what node =
+  match node with
+  | Element { attrs; _ } -> attrs
+  | Empty
+  | Text _ ->
+      Alcotest.failf "%s: expected an element" what
+
+let test_label_and_options_are_separate_boxes () =
+  let root = tree (render (RG.view (RG.with_visible_label true (base ())))) in
+  match children_of "the group" root with
+  | [ label; options ] ->
+      Alcotest.(check (option string))
+        "the first child is the group label" (Some "pick-one-label")
+        (attr "id" label);
+      Alcotest.(check string)
+        "the group label holds the label text and no option" group_label
+        (text_content label);
+      check_option_rows "the options box"
+        (options_box_rows "the second child" options)
+  | children ->
+      Alcotest.failf
+        "expected the group to hold exactly the label and the options box, got \
+         %d children"
+        (List.length children)
+
+let test_options_box_present_without_visible_label () =
+  List.iter
+    (fun (mode, config) ->
+      let root = tree (render (RG.view config)) in
+      (match children_of mode root with
+      | [ options ] ->
+          check_option_rows mode
+            (options_box_rows (mode ^ ": the child") options);
+          Alcotest.(check (option style_testable))
+            (mode ^ ": the options box has the default style")
+            (style (tree (render (Nopal_element.Element.box []))))
+            (style options)
+      | children ->
+          Alcotest.failf
+            "%s: expected the options box as the group's only child, got %d \
+             children"
+            mode (List.length children));
+      Alcotest.(check bool)
+        (mode ^ ": no group label node")
+        false
+        (Option.is_some (find (By_attr ("id", "pick-one-label")) root)))
+    [
+      ("without the setter", base ());
+      ("with false", RG.with_visible_label false (base ()));
+    ]
+
+let test_options_style_reaches_options_box () =
+  List.iter
+    (fun visible ->
+      let config =
+        base ()
+        |> RG.with_visible_label visible
+        |> RG.with_group_style padded_group_style
+        |> RG.with_options_style options_row_style
+      in
+      let root = tree (render (RG.view config)) in
+      let options =
+        match List.rev (children_of "the group" root) with
+        | last :: _ -> last
+        | [] -> Alcotest.fail "expected the group to hold the options box"
+      in
+      check_option_rows "the styled options box"
+        (options_box_rows "the last child" options);
+      Alcotest.(check (option style_testable))
+        "the options style is the options box's style" (Some options_row_style)
+        (style options);
+      Alcotest.(check (option style_testable))
+        "the group style stays on the group, not the options style"
+        (Some padded_group_style) (style root))
+    [ true; false ]
+
+let test_group_container_is_a_box () =
+  List.iter
+    (fun (mode, config) ->
+      match tree (render (RG.view config)) with
+      | Element { tag = "box"; attrs; _ } ->
+          Alcotest.(check (option string))
+            (mode ^ ": the box is the radiogroup")
+            (Some "radiogroup")
+            (List.assoc_opt "role" attrs)
+      | Element { tag; _ } ->
+          Alcotest.failf "%s: expected the radiogroup to be a box, got a %s"
+            mode tag
+      | Empty
+      | Text _ ->
+          Alcotest.failf "%s: expected an element at the top level" mode)
+    [
+      ("without a visible label", base ());
+      ("with a visible label", RG.with_visible_label true (base ()));
+    ]
+
+let test_role_and_name_stay_on_outer_box () =
+  List.iter
+    (fun (mode, visible, naming) ->
+      let config =
+        {
+          (RG.with_visible_label visible (RG.with_id "fruit" (base ()))) with
+          attrs = [ ("data-testid", "fruit-group") ];
+        }
+      in
+      let root = tree (render (RG.view config)) in
+      Alcotest.(check (list (pair string string)))
+        (mode ^ ": the outer box carries role, name, id and attrs, in order")
+        [
+          ("role", "radiogroup");
+          naming;
+          ("id", "fruit");
+          ("data-testid", "fruit-group");
+        ]
+        (attrs_of "the group" root);
+      let options =
+        match List.rev (children_of "the group" root) with
+        | last :: _ -> last
+        | [] -> Alcotest.fail "expected the group to hold the options box"
+      in
+      check_option_rows mode
+        (options_box_rows (mode ^ ": the options box") options);
+      Alcotest.(check (list (pair string string)))
+        (mode ^ ": the options box carries no attribute")
+        []
+        (attrs_of "the options box" options))
+    [
+      ("without a visible label", false, ("aria-label", group_label));
+      ("with a visible label", true, ("aria-labelledby", "fruit-label"));
+    ]
+
 (* --- Test runner --- *)
 
 let () =
@@ -503,9 +680,8 @@ let () =
             test_option_label_box_carries_the_generated_id;
           Alcotest.test_case "option is named by labelledby and not by label"
             `Quick test_option_is_named_by_labelledby_and_not_by_label;
-          Alcotest.test_case
-            "tree is unchanged without the visible label setter" `Quick
-            test_tree_is_unchanged_without_the_visible_label_setter;
+          Alcotest.test_case "tree without the visible label setter" `Quick
+            test_tree_without_the_visible_label_setter;
           Alcotest.test_case "group keeps aria label without the setter" `Quick
             test_group_keeps_aria_label_without_the_setter;
           Alcotest.test_case "visible label switches the group to labelledby"
@@ -525,5 +701,18 @@ let () =
             test_group_style_reaches_the_group;
           Alcotest.test_case "label style reaches the group label" `Quick
             test_label_style_reaches_the_group_label;
+        ] );
+      ( "outer box and options box",
+        [
+          Alcotest.test_case "label_and_options_are_separate_boxes" `Quick
+            test_label_and_options_are_separate_boxes;
+          Alcotest.test_case "options_box_present_without_visible_label" `Quick
+            test_options_box_present_without_visible_label;
+          Alcotest.test_case "options_style_reaches_options_box" `Quick
+            test_options_style_reaches_options_box;
+          Alcotest.test_case "group_container_is_a_box" `Quick
+            test_group_container_is_a_box;
+          Alcotest.test_case "role_and_name_stay_on_outer_box" `Quick
+            test_role_and_name_stay_on_outer_box;
         ] );
     ]

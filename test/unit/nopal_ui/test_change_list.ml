@@ -392,9 +392,9 @@ let tree_candidates =
     shape_candidate "radio option row" (By_tag "row")
       ~before:[ "radio"; "text" ] ~after:[ "radio"; "box" ] (RG.view rg_plain);
     shape_candidate "radio group container" group_container
-      ~before:[ "row"; "row" ] ~after:[ "row"; "row" ] (RG.view rg_plain);
+      ~before:[ "row"; "row" ] ~after:[ "box" ] (RG.view rg_plain);
     shape_candidate "radio group container under with_visible_label"
-      group_container ~before:[ "row"; "row" ] ~after:[ "box"; "row"; "row" ]
+      group_container ~before:[ "row"; "row" ] ~after:[ "box"; "box" ]
       (RG.view rg_visible);
     shape_candidate "toast stack" (By_tag "column")
       ~before:[ "button"; "button" ] ~after:[ "button"; "button" ]
@@ -423,14 +423,18 @@ let tree_candidates =
       (BT.view tabs_config);
   ]
 
-(* The tree rows of the change list published in llms.txt. Every row is a
-   container whose child list is a different shape after this change. *)
+(* Every container whose shape moved since the pre-0142 tree, across the 0142
+   and Radio_group pin-bump paragraphs of llms.txt. The two radio group
+   container rows were changed again when the option rows moved into a box of
+   their own; the plain container (no visible label) is published only in the
+   later paragraph, which is why this list has one more entry than 0142's. *)
 let published_tree_change_list =
   [
     "text input column";
     "checkbox row";
     "select input column";
     "radio option row";
+    "radio group container";
     "radio group container under with_visible_label";
   ]
 
@@ -438,7 +442,6 @@ let published_tree_change_list =
 let unchanged_tree_shapes =
   [
     "text input error slot";
-    "radio group container";
     "toast stack";
     "button";
     "data table root";
@@ -499,11 +502,11 @@ let a_caller_aria_label_survives_but_no_longer_names_the_control () =
 let the_group_label_is_opt_in () =
   let default_group = RG.view rg_plain in
   Alcotest.(check (list string))
-    "no group label node exists without the setter" [ "row"; "row" ]
+    "no group label node exists without the setter" [ "box" ]
     (child_tags (node_at "radio group" group_container default_group));
   let explicit_false = RG.view (RG.with_visible_label false rg_plain) in
   Alcotest.(check (list string))
-    "and none with the setter given false" [ "row"; "row" ]
+    "and none with the setter given false" [ "box" ]
     (child_tags (node_at "radio group" group_container explicit_false));
   Alcotest.(check (option string))
     "the group keeps aria-label until the setter gives it a target"

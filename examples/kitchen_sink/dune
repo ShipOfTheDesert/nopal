@@ -35,6 +35,7 @@
   sub_headings
   sub_alignment
   sub_drawn_checkbox
+  sub_radio_row
   named_graphic
   tauri_op)
  (libraries

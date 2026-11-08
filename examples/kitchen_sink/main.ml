@@ -23,6 +23,7 @@ module Sub_button_semantics = Kitchen_sink_app.Sub_button_semantics
 module Sub_clipboard = Kitchen_sink_app.Sub_clipboard
 module Sub_links = Kitchen_sink_app.Sub_links
 module Sub_drawn_checkbox = Kitchen_sink_app.Sub_drawn_checkbox
+module Sub_radio_row = Kitchen_sink_app.Sub_radio_row
 
 (* Result-task chaining for the Tauri ops (RFC 0118, REQ-F5). See
    {!Kitchen_sink_app.Tauri_op} for the contract; instantiated here with the
@@ -453,6 +454,7 @@ let update model msg =
   | App.Clipboard_msg _
   | App.Links_msg _
   | App.Drawn_checkbox_msg _
+  | App.Radio_row_msg _
   | App.KeyboardHeightChanged _
   | App.Back_demo_push
   | App.Route_changed _
@@ -600,6 +602,9 @@ let serialize_msg : App.msg -> string = function
      the box's computed look, since the look follows the control's own state and
      says nothing about whether the model heard the toggle. *)
   | App.Drawn_checkbox_msg dc_msg -> Sub_drawn_checkbox.serialize_msg dc_msg
+  (* Radio row: the selection is what a browser spec asserts arrow keys
+     produce, since a checked radio alone does not show the model heard it. *)
+  | App.Radio_row_msg rr_msg -> Sub_radio_row.serialize_msg rr_msg
   (* Mobile signals (RFC 0116): the keyboard-height readout (REQ-N2) and the
      back-demo route change the Tauri back-IPC e2e asserts on via the host
      [get_telemetry] mirror — [Route_changed] proves the hardware-back chain
