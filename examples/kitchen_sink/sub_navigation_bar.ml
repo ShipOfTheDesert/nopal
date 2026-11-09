@@ -55,6 +55,7 @@ let content_style =
               style = Solid;
               color = Style.hex "#dee2e6";
               radius = 6.0;
+              corners = None;
             };
       })
 

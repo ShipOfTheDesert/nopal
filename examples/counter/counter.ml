@@ -47,7 +47,13 @@ let card_style =
         background = Some bg_card;
         border =
           Some
-            { width = 1.0; style = Solid; color = border_color; radius = 12.0 };
+            {
+              width = 1.0;
+              style = Solid;
+              color = border_color;
+              radius = 12.0;
+              corners = None;
+            };
         shadow =
           Some
             {
@@ -103,6 +109,7 @@ let button_base =
               style = Solid;
               color = Style.transparent;
               radius = 10.0;
+              corners = None;
             };
       })
   |> Style.with_text (fun t ->
@@ -128,7 +135,13 @@ let reset_style =
         background = Some (Style.hex "#f5f4f1");
         border =
           Some
-            { width = 1.0; style = Solid; color = border_color; radius = 8.0 };
+            {
+              width = 1.0;
+              style = Solid;
+              color = border_color;
+              radius = 8.0;
+              corners = None;
+            };
       })
   |> Style.with_text (fun t ->
       t |> Text.font_size 0.85 |> Text.font_weight Font.Medium)
@@ -142,7 +155,13 @@ let reset_interaction =
           background = Some (Style.hex "#eeedea");
           border =
             Some
-              { width = 1.0; style = Solid; color = muted_hover; radius = 8.0 };
+              {
+                width = 1.0;
+                style = Solid;
+                color = muted_hover;
+                radius = 8.0;
+                corners = None;
+              };
         })
   in
   { Interaction.default with hover = Some hover }

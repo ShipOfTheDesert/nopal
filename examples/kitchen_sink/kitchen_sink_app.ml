@@ -42,6 +42,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                 style = Solid;
                 color = border_light;
                 radius = 10.0;
+                corners = None;
               };
           shadow =
             Some
@@ -230,6 +231,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     drawn_checkbox : Sub_drawn_checkbox.model;
     radio_row : Sub_radio_row.model;
     hidden_radio : Sub_hidden_radio.model;
+    segmented_control : Sub_segmented_control.model;
     keyboard_height : int;  (** soft-keyboard height in logical px *)
     back_route : back_route;  (** current route of the back-navigation demo *)
   }
@@ -278,6 +280,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | Drawn_checkbox_msg of Sub_drawn_checkbox.msg
     | Radio_row_msg of Sub_radio_row.msg
     | Hidden_radio_msg of Sub_hidden_radio.msg
+    | Segmented_control_msg of Sub_segmented_control.msg
     | KeyboardHeightChanged of int  (** native soft-keyboard height *)
     | Back_demo_push  (** push the back-demo one step deep (to [Back_detail]) *)
     | Route_changed of back_route  (** popstate-driven route update *)
@@ -419,6 +422,9 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     let drawn_checkbox, drawn_checkbox_cmd = Sub_drawn_checkbox.init () in
     let radio_row, radio_row_cmd = Sub_radio_row.init () in
     let hidden_radio, hidden_radio_cmd = Sub_hidden_radio.init () in
+    let segmented_control, segmented_control_cmd =
+      Sub_segmented_control.init ()
+    in
     ( {
         button_clicks = 0;
         input_text = "";
@@ -497,6 +503,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         drawn_checkbox;
         radio_row;
         hidden_radio;
+        segmented_control;
         keyboard_height = 0;
         back_route = Back_home;
       },
@@ -532,6 +539,9 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           Nopal_mvu.Cmd.map (fun m -> Drawn_checkbox_msg m) drawn_checkbox_cmd;
           Nopal_mvu.Cmd.map (fun m -> Radio_row_msg m) radio_row_cmd;
           Nopal_mvu.Cmd.map (fun m -> Hidden_radio_msg m) hidden_radio_cmd;
+          Nopal_mvu.Cmd.map
+            (fun m -> Segmented_control_msg m)
+            segmented_control_cmd;
           (* Re-read the persisted demo value so a reload dispatches a
              [StorageRestored] message — the E2E persistence proof. *)
           Nopal_mvu.Cmd.task
@@ -759,6 +769,12 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         in
         ( { model with hidden_radio },
           Nopal_mvu.Cmd.map (fun m -> Hidden_radio_msg m) hr_cmd )
+    | Segmented_control_msg sc_msg ->
+        let segmented_control, sc_cmd =
+          Sub_segmented_control.update model.segmented_control sc_msg
+        in
+        ( { model with segmented_control },
+          Nopal_mvu.Cmd.map (fun m -> Segmented_control_msg m) sc_cmd )
     | DrawPointerMove (x, y) ->
         ({ model with draw_pointer = Some (x, y) }, Nopal_mvu.Cmd.none)
     | DrawPointerLeave ->
@@ -1651,6 +1667,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                   style = Solid;
                   color = border_light;
                   radius = 4.0;
+                  corners = None;
                 };
           })
     in
@@ -1740,6 +1757,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                   style = Solid;
                   color = Style.hex "#3a7bc8";
                   radius = 6.0;
+                  corners = None;
                 };
             shadow =
               Some
@@ -1834,6 +1852,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                   style = Solid;
                   color = border_light;
                   radius = 4.0;
+                  corners = None;
                 };
           })
     in
@@ -1909,6 +1928,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                   style = Solid;
                   color = border_light;
                   radius = 4.0;
+                  corners = None;
                 };
           })
     in
@@ -1946,6 +1966,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                   style = Solid;
                   color = border_light;
                   radius = 4.0;
+                  corners = None;
                 };
           })
     in
@@ -1966,6 +1987,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                   style = Solid;
                   color = border_light;
                   radius = 4.0;
+                  corners = None;
                 };
           })
     in
@@ -2091,6 +2113,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                   style = Solid;
                   color = border_light;
                   radius = 4.0;
+                  corners = None;
                 };
           })
     in
@@ -2104,7 +2127,13 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
             background = Some bg_section;
             border =
               Some
-                { width = 1.0; style = Dashed; color = bg_accent; radius = 4.0 };
+                {
+                  width = 1.0;
+                  style = Dashed;
+                  color = bg_accent;
+                  radius = 4.0;
+                  corners = None;
+                };
           })
     in
     let cell_style =
@@ -2121,6 +2150,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                   style = Solid;
                   color = border_light;
                   radius = 2.0;
+                  corners = None;
                 };
           })
     in
@@ -2163,6 +2193,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                   style = Solid;
                   color = Style.hex "#3a7bc8";
                   radius = 6.0;
+                  corners = None;
                 };
           })
     in
@@ -2204,6 +2235,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                   style = Solid;
                   color = border_light;
                   radius = 4.0;
+                  corners = None;
                 };
           })
     in
@@ -2223,6 +2255,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                         style = Solid;
                         color = bg_accent;
                         radius = 4.0;
+                        corners = None;
                       };
                 }));
       }
@@ -2245,6 +2278,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                   style = Solid;
                   color = border_light;
                   radius = 4.0;
+                  corners = None;
                 };
           })
     in
@@ -2284,6 +2318,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                   style = Solid;
                   color = border_light;
                   radius = 8.0;
+                  corners = None;
                 };
           })
     in
@@ -3394,6 +3429,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                            style = Solid;
                            color = border_light;
                            radius = 8.0;
+                           corners = None;
                          };
                    }))
              ~attrs:[ ("data-testid", "sidebar") ]
@@ -3420,6 +3456,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                   style = Solid;
                   color = border_light;
                   radius = 6.0;
+                  corners = None;
                 };
           })
     in
@@ -3521,6 +3558,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                       style = Solid;
                       color = Style.hex "#b3d9f2";
                       radius = 8.0;
+                      corners = None;
                     };
               }))
         ~attrs:[ ("data-testid", "viewport-info") ]
@@ -3569,6 +3607,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                       style = Solid;
                       color = Style.hex "#f0d4a0";
                       radius = 8.0;
+                      corners = None;
                     };
               }))
         ~attrs:[ ("data-testid", "safe-area-viz") ]
@@ -4237,6 +4276,14 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                  (fun m -> Hidden_radio_msg m)
                  (Sub_hidden_radio.view model.hidden_radio);
              ];
+           view_section
+             ~attrs:[ ("data-testid", "segmented-control-section") ]
+             "A segmented control"
+             [
+               Element.map
+                 (fun m -> Segmented_control_msg m)
+                 (Sub_segmented_control.view model.segmented_control);
+             ];
            view_section "Text Input"
              [
                Element.map
@@ -4511,4 +4558,5 @@ module Sub_alignment = Sub_alignment
 module Sub_drawn_checkbox = Sub_drawn_checkbox
 module Sub_radio_row = Sub_radio_row
 module Sub_hidden_radio = Sub_hidden_radio
+module Sub_segmented_control = Sub_segmented_control
 module Tauri_op = Tauri_op

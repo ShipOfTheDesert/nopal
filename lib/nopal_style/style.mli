@@ -71,11 +71,27 @@ type color = Color.t =
 
 type border_style = Solid | Dashed | Dotted | No_border
 
+type corners = {
+  top_left : float;
+  top_right : float;
+  bottom_right : float;
+  bottom_left : float;
+}
+(** One radius in pixels for each corner of an element, named clockwise from the
+    top left. *)
+
 type border = {
   width : float;
   style : border_style;
   color : color;
   radius : float;
+      (** The radius in pixels of all four corners while [corners] is [None]. *)
+  corners : corners option;
+      (** [Some c] rounds each corner by its own radius from [c] and replaces
+          [radius] on every corner, so [radius] has no effect while [corners] is
+          [Some]. [None] keeps the uniform [radius] on all four corners. On web
+          a negative corner is written as [0] and a [Some] with any non-finite
+          corner emits no [border-radius] at all. *)
 }
 
 type shadow = {
@@ -150,7 +166,8 @@ type t = { layout : layout; paint : paint; text : Text.t }
 (** {1 Defaults} *)
 
 val default_border : border
-(** Zero-width, no-border-style, transparent, zero-radius. *)
+(** Zero-width, no-border-style, transparent, zero-radius, no per-corner radii.
+*)
 
 val default_shadow : shadow
 (** Zero offset, zero blur, zero spread, transparent. *)

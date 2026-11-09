@@ -137,7 +137,13 @@ let container_style =
         p with
         border =
           Some
-            { width = 1.0; style = Solid; color = border_color; radius = 6.0 };
+            {
+              width = 1.0;
+              style = Solid;
+              color = border_color;
+              radius = 6.0;
+              corners = None;
+            };
       })
 
 let paragraph_style =

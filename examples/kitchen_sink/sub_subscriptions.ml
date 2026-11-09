@@ -65,6 +65,7 @@ let toggle_button_style =
               style = Solid;
               color = Style.hex "#3a7bc8";
               radius = 6.0;
+              corners = None;
             };
       })
   |> Style.with_text (fun _ -> Text.default |> Text.font_weight Font.Bold)

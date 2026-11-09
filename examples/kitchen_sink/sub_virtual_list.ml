@@ -62,6 +62,7 @@ let row_style =
               style = Solid;
               color = Style.Rgba { r = 0; g = 0; b = 0; a = 0.0 };
               radius = 0.0;
+              corners = None;
             };
       })
 

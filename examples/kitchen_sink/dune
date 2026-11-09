@@ -37,6 +37,7 @@
   sub_drawn_checkbox
   sub_radio_row
   sub_hidden_radio
+  sub_segmented_control
   named_graphic
   tauri_op)
  (libraries

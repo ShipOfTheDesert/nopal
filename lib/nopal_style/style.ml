@@ -11,11 +11,19 @@ type color = Color.t =
 
 type border_style = Solid | Dashed | Dotted | No_border
 
+type corners = {
+  top_left : float;
+  top_right : float;
+  bottom_right : float;
+  bottom_left : float;
+}
+
 type border = {
   width : float;
   style : border_style;
   color : color;
   radius : float;
+  corners : corners option;
 }
 
 type shadow = {
@@ -63,7 +71,13 @@ type paint = {
 type t = { layout : layout; paint : paint; text : Text.t }
 
 let default_border =
-  { width = 0.; style = No_border; color = Transparent; radius = 0. }
+  {
+    width = 0.;
+    style = No_border;
+    color = Transparent;
+    radius = 0.;
+    corners = None;
+  }
 
 let default_shadow =
   { x = 0.; y = 0.; blur = 0.; spread = 0.; color = Transparent }
@@ -138,11 +152,18 @@ let equal_border_style a b =
   | No_border, No_border -> true
   | (Solid | Dashed | Dotted | No_border), _ -> false
 
+let equal_corners a b =
+  Float.equal a.top_left b.top_left
+  && Float.equal a.top_right b.top_right
+  && Float.equal a.bottom_right b.bottom_right
+  && Float.equal a.bottom_left b.bottom_left
+
 let equal_border (a : border) (b : border) =
   Float.equal a.width b.width
   && equal_border_style a.style b.style
   && equal_color a.color b.color
   && Float.equal a.radius b.radius
+  && Option.equal equal_corners a.corners b.corners
 
 let equal_shadow a b =
   Float.equal a.x b.x

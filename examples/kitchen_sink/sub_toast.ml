@@ -50,6 +50,7 @@ let trigger_button_style =
               style = Solid;
               color = Style.hex "#d5d3cf";
               radius = 6.0;
+              corners = None;
             };
       })
 
@@ -76,6 +77,7 @@ let square_border =
     style = Solid;
     color = Style.hex "#1f2933";
     radius = 0.0;
+    corners = None;
   }
 
 let restyled_toast_style variant =

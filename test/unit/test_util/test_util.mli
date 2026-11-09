@@ -60,6 +60,15 @@ val find_or_fail :
     wherever the absence of the node is itself a test failure rather than a
     value the test goes on to inspect. *)
 
+val children_of :
+  string -> Nopal_test.Test_renderer.node -> Nopal_test.Test_renderer.node list
+(** [children_of what node] is the children of [node] when it is an element, or
+    an Alcotest failure naming [what] when it is text or empty. Strict, like
+    {!tag_of}. *)
+
+val color_to_string : Nopal_style.Style.color -> string
+(** Prints a colour as its CSS-like spelling, for testables that show one. *)
+
 val style_testable : Nopal_style.Style.t Alcotest.testable
 (** Compares whole styles with {!Nopal_style.Style.equal}; prints an opaque
     placeholder, so a failure names the assertion rather than the record. *)

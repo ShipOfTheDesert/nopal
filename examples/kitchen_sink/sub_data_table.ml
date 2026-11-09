@@ -56,7 +56,13 @@ let table_style =
         p with
         border =
           Some
-            { width = 1.0; style = Solid; color = border_color; radius = 6.0 };
+            {
+              width = 1.0;
+              style = Solid;
+              color = border_color;
+              radius = 6.0;
+              corners = None;
+            };
       })
 
 let col_width = Style.Fixed 150.0
@@ -72,7 +78,13 @@ let header_style =
         background = Some (Style.Rgba { r = 245; g = 245; b = 245; a = 1.0 });
         border =
           Some
-            { width = 1.0; style = Solid; color = border_color; radius = 0.0 };
+            {
+              width = 1.0;
+              style = Solid;
+              color = border_color;
+              radius = 0.0;
+              corners = None;
+            };
       })
   |> Style.with_text (fun _ ->
       Text.default |> Text.font_weight Font.Semi_bold |> Text.font_size 0.85)
@@ -87,7 +99,13 @@ let cell_style =
         p with
         border =
           Some
-            { width = 1.0; style = Solid; color = border_color; radius = 0.0 };
+            {
+              width = 1.0;
+              style = Solid;
+              color = border_color;
+              radius = 0.0;
+              corners = None;
+            };
       })
   |> Style.with_text (fun _ -> Text.default |> Text.font_size 0.85)
 

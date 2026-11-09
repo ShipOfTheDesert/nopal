@@ -35,6 +35,7 @@ let card_style =
               style = Solid;
               color = Style.hex "#e5e3df";
               radius = 10.0;
+              corners = None;
             };
         shadow =
           Some
@@ -65,6 +66,7 @@ let detail_style =
               style = Solid;
               color = Style.hex "#e5e3df";
               radius = 8.0;
+              corners = None;
             };
       })
 

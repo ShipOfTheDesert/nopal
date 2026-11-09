@@ -51,6 +51,7 @@ let open_button_style =
               style = Solid;
               color = Style.hex "#3a7bc8";
               radius = 6.0;
+              corners = None;
             };
       })
   |> Style.with_text (fun _ -> Text.default |> Text.font_weight Font.Bold)
@@ -77,6 +78,7 @@ let close_button_style =
               style = Solid;
               color = Style.hex "#c0392b";
               radius = 6.0;
+              corners = None;
             };
       })
 
@@ -114,6 +116,7 @@ let dialog_style =
               style = Solid;
               color = Style.hex "#dee2e6";
               radius = 10.0;
+              corners = None;
             };
         shadow =
           Some
@@ -139,6 +142,7 @@ let input_style =
               style = Solid;
               color = Style.hex "#ced4da";
               radius = 4.0;
+              corners = None;
             };
       })
 

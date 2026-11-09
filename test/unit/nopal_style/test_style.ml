@@ -431,6 +431,60 @@ let test_equal_paint_distinguishes_spread () =
     "equal non-zero spreads are equal" true
     (equal_paint (paint_with_spread 3.) (paint_with_spread 3.))
 
+(* A fresh record on every call, for the same reason as [paint_with_spread]:
+   two separately built values keep a physical-equality implementation from
+   passing. Every border field is named so a drifting default cannot change
+   what the case compares. *)
+let paint_with_corners corners =
+  {
+    background = None;
+    border =
+      Some
+        {
+          width = 1.;
+          style = Solid;
+          color = named "gray";
+          radius = 6.;
+          corners;
+        };
+    opacity = 1.0;
+    shadow = None;
+    overflow = Visible;
+  }
+
+let five_zero_zero_five () =
+  { top_left = 5.; top_right = 0.; bottom_right = 0.; bottom_left = 5. }
+
+let test_equal_paint_distinguishes_corners () =
+  Alcotest.(check bool)
+    "corners-only difference is unequal" false
+    (equal_paint
+       (paint_with_corners (Some (five_zero_zero_five ())))
+       (paint_with_corners None));
+  Alcotest.(check bool)
+    "equal Some corners are equal" true
+    (equal_paint
+       (paint_with_corners (Some (five_zero_zero_five ())))
+       (paint_with_corners (Some (five_zero_zero_five ()))));
+  [
+    ("top_left", { (five_zero_zero_five ()) with top_left = 4. });
+    ("top_right", { (five_zero_zero_five ()) with top_right = 1. });
+    ("bottom_right", { (five_zero_zero_five ()) with bottom_right = 1. });
+    ("bottom_left", { (five_zero_zero_five ()) with bottom_left = 4. });
+  ]
+  |> List.iter (fun (field, changed) ->
+      Alcotest.(check bool)
+        (field ^ "-only difference is unequal")
+        false
+        (equal_paint
+           (paint_with_corners (Some (five_zero_zero_five ())))
+           (paint_with_corners (Some changed))))
+
+let test_default_border_has_no_corners () =
+  match default_border.corners with
+  | None -> ()
+  | Some _ -> Alcotest.fail "expected default_border.corners = None"
+
 (* A fresh record on every call. [equal_layout] is reached through [equal],
    which gates the web renderer's restyle path; that path rebuilds its input
    every frame, so sharing one value between the two sides of a comparison
@@ -836,6 +890,8 @@ let () =
             test_border_style_variants;
           Alcotest.test_case "default_border_values" `Quick
             test_default_border_values;
+          Alcotest.test_case "default_border_has_no_corners" `Quick
+            test_default_border_has_no_corners;
         ] );
       ( "Default shadow",
         [
@@ -885,6 +941,8 @@ let () =
           Alcotest.test_case "equal_paint_same" `Quick test_equal_paint_same;
           Alcotest.test_case "equal_paint_distinguishes_spread" `Quick
             test_equal_paint_distinguishes_spread;
+          Alcotest.test_case "equal_paint_distinguishes_corners" `Quick
+            test_equal_paint_distinguishes_corners;
           Alcotest.test_case "equal_layout_distinguishes_min_width" `Quick
             test_equal_layout_distinguishes_min_width;
           Alcotest.test_case "equal_layout_distinguishes_min_height" `Quick

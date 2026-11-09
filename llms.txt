@@ -25,7 +25,7 @@ nopal_charts    ← Composable interactive charts (Bar, Line, Area, Pie, Scatter
 nopal_http      ← Pure HTTP types + backend abstraction — no platform deps
 nopal_navigation ← Nav_stack: pure stack-based navigation state (non-empty, total pop) — no platform deps
 nopal_image     ← Validated RGBA Buffer, perceptual Luma, Sharpness metric, capture Config, Processing + Preview + Retention seams — depends on nopal_mvu (Task/Cmd types); no platform deps
-nopal_ui        ← High-level UI components (Bottom_tabs, Button, Checkbox, Data_table, Modal, Navigation_bar, Radio_group, Select_input, Slug, Text_input, Text_node, Toast) — no platform deps
+nopal_ui        ← High-level UI components (Bottom_tabs, Button, Checkbox, Data_table, Modal, Navigation_bar, Radio_group, Segmented_control, Select_input, Slug, Text_input, Text_node, Toast) — no platform deps
 nopal_runtime   ← Lwd reactive integration + MVU loop; Telemetry (E2E event log)
 nopal_test      ← Pure OCaml test renderer + Telemetry_test harness — no js_of_ocaml
 nopal_web       ← js_of_ocaml + Brr DOM renderer (only browser-dependent package)
@@ -1294,7 +1294,24 @@ type color = Color.t = Rgba of { r : int; g : int; b : int; a : float }
 
 (* Borders *)
 type border_style = Solid | Dashed | Dotted | No_border
-type border = { width : float; style : border_style; color : color; radius : float }
+type corners = {
+  top_left : float; top_right : float; bottom_right : float; bottom_left : float;
+}
+type border = {
+  width : float; style : border_style; color : color; radius : float;
+  corners : corners option;
+}
+(* radius rounds all four corners while corners is None. Some c rounds each
+   corner by its own radius from c, in pixels, and replaces radius on every
+   corner, so radius has no effect while corners is Some. Style.default_border
+   is zero-width, No_border, transparent, radius 0. and corners = None, so
+   { Style.default_border with … } leaves corners alone. A complete border
+   literal must name corners: write corners = None to keep the uniform radius.
+   On web, None emits border-radius only when radius is not 0. (as before), and
+   Some { top_left; top_right; bottom_right; bottom_left } always emits one
+   declaration, border-radius: <tl>px <tr>px <br>px <bl>px, in CSS shorthand
+   order, in the base rule and in every interaction state. A negative corner
+   is written as 0; if any corner is not finite, no border-radius is emitted. *)
 
 (* Shadow and the paint block *)
 type overflow = Visible | Hidden
@@ -1498,7 +1515,7 @@ Text.figure_style   : figure_style -> Text.t -> Text.t
 High-level UI components built on `nopal_element` and `nopal_style`. No platform dependencies — compiles native.
 
 **Every visual decision a component makes is overridable — the audit.** All
-eleven components were enumerated as component × visual decision × override
+twelve components were enumerated as component × visual decision × override
 mechanism, and no cell reads "fork". The table below is that enumeration in
 summary; the per-component blocks that follow carry the signatures. What the
 table covers is bounded: it covers *visual* decisions. A component's roles, ARIA
@@ -1516,6 +1533,7 @@ same under every override below.
 | `Modal` | dialog → `with_style`; backdrop → `with_backdrop_style`; interaction → `with_interaction`; root box → `with_root_style`, displacing the published `default_root_style`; the title is part of the caller's body |
 | `Navigation_bar` | container → `with_style`; tab and active tab → `with_tab_style` / `with_active_tab_style`; bar-wide interaction → `with_interaction`; item label typography → `with_item_text_style`; per-item interaction → `with_item_interaction`; icon-to-label row, i.e. the gap between them → `with_item_row_style`; the icon is the caller's own `Element.t` |
 | `Radio_group` | each option's radio input → `config.style` / `config.interaction`; group box (label and options) → `with_group_style`; options box (direction, spacing, wrap) → `with_options_style`; group label → `with_visible_label` opts the element in and `with_label_style` styles it; option label typography → `with_option_label_style`; option row → `with_option_row_style`; option row states, such as a focus ring while its radio has focus → `with_option_row_interaction`; radios painted or visually hidden, with each option label a native label → `with_hidden_inputs`; identifiers → `with_id` |
+| `Segmented_control` | outer box (the group label above the segments) → `with_group_style`; group label box and its text → `with_label_style`; segments box (outer border, radius, background, direction) → `with_segments_style`; each segment box (fill, height) → `with_segment_style`; the selected segment box (fill), replacing the plain style whole → `with_selected_segment_style`; each segment label and its text (padding, typography) → `with_segment_label_style`; the selected segment's label and its text (text colour, weight), replacing the plain style whole → `with_selected_segment_label_style`; each divider (colour, width) → `with_divider_style`; segment states, such as a focus ring while its radio has focus, the selected segment included → `with_segment_interaction`; identifiers → `with_id`; the radios' shared name → `with_name`; metadata pairs on the outer box (`aria-describedby`, `data-testid`; a `role`, `aria-labelledby` or `id` pair replaces the derived one, as in `Radio_group`) → `with_attrs` |
 | `Select_input` | control → `config.style` / `config.interaction`; label typography → `with_label_style`; label-to-control wrapper → `with_wrapper_style`; identifier → `with_id` |
 | `Slug` | none — a pure function module that renders nothing |
 | `Text_input` | input → `config.style` / `config.interaction`; label typography → `with_label_style`; label-to-box gap → `with_wrapper_style`; error slot, and the error message's typography through that style's `text` component → `with_error_style`; identifier → `with_id`, which sets the pre-existing `config.id` field |
@@ -1538,6 +1556,15 @@ is stated at its own signature rather than left implicit:
   backdrop is present **and** the caller's style leaves `position` unset. A style
   naming its own `position` keeps it, and with no backdrop nothing is filled in.
   This is a fill-in, not a force.
+- `Segmented_control` — the first and last segments' corners are forced over
+  `with_segment_style` and `with_selected_segment_style`, derived from
+  `with_segments_style`'s border, so the selected fill stays inside the outline.
+  Partial: the rest of the segment's border, and every other field, replace as
+  usual. Four fill-ins sit beside it, each kept when the caller's style names
+  its own value: the segments box's `Row_dir` direction, each segment box's
+  `Pos_relative` position, each segment label's `flex_grow` of `1.`, and a
+  `z_index` of `1` on the `focused_within` style of `with_segment_interaction`.
+  The `#### Segmented_control` block below states each one.
 
 **Precedence, where two overrides land on the same node.** Most specific wins,
 and an absent answer *uncovers* the general one rather than clearing it:
@@ -2311,7 +2338,8 @@ box, so the disabled look is switched in **both** places: the base style
 ticked box). Switching only one leaves the other state looking enabled.
 
 ```ocaml
-let hairline color = { Style.width = 1.0; style = Solid; color; radius = 4.0 }
+let hairline color =
+  { Style.width = 1.0; style = Solid; color; radius = 4.0; corners = None }
 
 let paint ~fill ~edge =
   { Style.background = Some fill; border = Some (hairline edge);
@@ -2504,6 +2532,201 @@ val view : 'msg config -> 'msg Element.t
    Each option is named by aria-labelledby and carries no aria-label of its
    own. When config.disabled is true, all radios are disabled and on_select is
    suppressed. Per-option disabled is also respected. *)
+```
+
+#### Segmented_control
+
+A single-choice control drawn as a row of adjacent segments, one per value, with
+a visible label above them. Each segment is a visually hidden native radio and a
+native `Element.label` for it, so the keyboard (one tab stop, arrow keys between
+segments), pointer presses, the role, the accessible name and the checked state
+all come from the platform. The group semantics — name, every id, role, naming,
+each radio and each label — are the ones `Radio_group` renders, from one shared
+implementation inside `nopal_ui`; this module owns only the layout. The config
+is abstract: build it with `make`, change it with the setters.
+
+```ocaml
+type segment
+val segment : value:string -> string -> segment
+(* [segment ~value text]: the segment for value, showing text. value is what the
+   selection message carries and what the ids derive from, so the segments of
+   one control need distinct values. A segment cannot be disabled. *)
+
+type 'msg config   (* abstract *)
+
+val make :
+  label:string -> segments:segment list -> selected:string ->
+  on_select:(string -> 'msg) -> 'msg config
+(* label is shown above the segments and is the group's accessible name. The
+   segment whose value equals selected is checked and drawn as selected; a
+   selected that matches no segment leaves every radio unchecked and every
+   segment plain. Selecting a segment, by pointer or keyboard, dispatches
+   on_select value. No style, interaction, id or name is set: the group id and
+   the radios' name derive from the slugified label. *)
+
+val with_id : string -> 'msg config -> 'msg config
+(* The outer box's id, verbatim, and with it every derived id: the label box
+   id ^ "-label", each radio id ^ "-" ^ slug value, each segment label that
+   radio's id ^ "-label". Does not change the name. *)
+
+val with_name : string -> 'msg config -> 'msg config
+(* The name every radio shares, also written as each radio's data-field.
+   Without it, the slugified label. Changes no id. *)
+
+val with_group_style : Style.t -> 'msg config -> 'msg config
+(* The outer box: holds the label box above the segments box. *)
+
+val with_label_style : Style.t -> 'msg config -> 'msg config
+(* The group label box and the label text inside it. *)
+
+val with_segments_style : Style.t -> 'msg config -> 'msg config
+(* The box holding the segments and the dividers: the control's outer border,
+   radius and background. A row unless the style sets a direction; a direction
+   it sets is honoured. Its border also decides the end segments' corners (see
+   with_segment_style). *)
+
+val with_segment_style : Style.t -> 'msg config -> 'msg config
+(* Every segment box — its fill and height — except the selected one's when
+   with_selected_segment_style is set. Padding belongs on the label, not here. *)
+
+val with_selected_segment_style : Style.t -> 'msg config -> 'msg config
+(* The selected segment's box, in place of with_segment_style. REPLACES the
+   plain style whole: nothing of it is merged in. *)
+
+val with_segment_label_style : Style.t -> 'msg config -> 'msg config
+(* Every segment's label and the text inside it — padding and typography —
+   except the selected one's when with_selected_segment_label_style is set. *)
+
+val with_selected_segment_label_style : Style.t -> 'msg config -> 'msg config
+(* The selected segment's label and its text, in place of
+   with_segment_label_style. REPLACES the plain style whole. *)
+
+val with_divider_style : Style.t -> 'msg config -> 'msg config
+(* Every divider box: its colour (a background) and width. *)
+
+val with_segment_interaction : Interaction.t -> 'msg config -> 'msg config
+(* The interaction states of every segment box, the selected one included. Its
+   focused_within state applies while that segment's radio holds focus: the
+   route to a focus ring on the segment. *)
+
+val control_id : 'msg config -> string
+(* The with_id value when set, else the slugified label. *)
+
+val option_id : 'msg config -> value:string -> string
+(* The radio for value: control_id config ^ "-" ^ slug value. *)
+
+val view : 'msg config -> 'msg Element.t
+(* Renders, with the setter that styles each node:
+     box  role="radiogroup", aria-labelledby, id      with_group_style
+     ├─ box  id = control_id ^ "-label"               with_label_style
+     │    └─ the label text
+     └─ box                                           with_segments_style
+        ├─ segment
+        ├─ divider (an empty box)                     with_divider_style
+        ├─ segment
+        └─ …
+   Each segment is a box (with_segment_style or with_selected_segment_style,
+   carrying with_segment_interaction) holding, in order:
+   1. an Element.radio, Visually_hidden, sharing the name, carrying
+      ("id", option_id config ~value), ("aria-labelledby", that id ^ "-label")
+      and ("data-field", <name>), checked when its value equals selected
+   2. an Element.label for that radio, carrying ("id", option_id … ^ "-label"),
+      styled by with_segment_label_style (or the selected label style), holding
+      the segment's text
+   The group is always named by aria-labelledby, pointing at the label box. with_attrs adds
+   metadata pairs to the outer box after the typed ones. Every container is a box, so a direction set in any of
+   their styles is honoured. *)
+```
+
+**Dividers are correct by construction.** There is a divider between every pair
+of adjacent segments and nowhere else, never before the first or after the
+last: `n` segments have `n - 1` dividers, and none for `n = 0` or `n = 1`.
+They are in the tree whether or not `with_divider_style` is set, so the tree's
+shape never depends on styling and the caller never counts. Dividers next to
+the selected segment stay.
+
+**The selected segment follows the model, not the platform.** Which segment is
+drawn as selected, and which radio is checked, is decided by the `selected`
+value given to `make`, never by what the platform last showed as checked.
+
+**Why `on_select` is required.** A radio with no selection message installs no
+listener. A press then checks it natively with no dispatch, nothing
+re-renders, and the checked radio and the model disagree. With a message always
+present, every press or arrow key dispatches, the view re-renders, and the
+renderer writes `checked` back from `selected`, so the native checked radio
+equals the model's value even when `update` keeps the old one. A control that
+cannot dispatch a selection cannot be built.
+
+**Structural values the control fills in or forces.** Each is stated at its
+setter in `segmented_control.mli`:
+
+- **Segments box direction** — `Row_dir` unless `with_segments_style` sets one.
+- **Segment direction** — each segment box is `Row_dir` unless its style
+  (plain or selected) sets a direction.
+- **Segment position** — each segment box is `Pos_relative` unless its style
+  (plain or selected) sets a position, so a segment can be layered above the
+  dividers beside it.
+- **End segment corners (forced).** The ring is drawn outside the segment and
+  nothing clips it, so the end segments round their own corners instead of a
+  clipping container. Each outer corner of the first and last segment is
+  `max 0. (r - w)`, where `r` is `with_segments_style`'s border radius at that
+  corner (its `corners` when `Some`, else its `radius`) and `w` is that
+  border's width. Outer means left in a row and top in a column for the first
+  segment, the opposite side for the last, and all four corners for a lone
+  segment; inner corners are `0.`. With no border on the segments box every
+  such corner is `0.`. The result is written as the segment border's `corners`
+  and replaces the style's own `corners` and `radius`, keeping its width, line
+  style and colour; an end segment whose style has no border is given
+  `{ default_border with corners = Some … }`. A segments border whose style is
+  `No_border` subtracts no width. Middle segments keep their style's border unchanged. It
+  applies to the selected style too.
+- **Ring layer** — a `focused_within` style in `with_segment_interaction` that
+  leaves `z_index` at `None` gets `Some 1`, so the focused segment's ring paints
+  above its neighbours instead of under them. A `z_index` the caller sets is
+  kept; the other states are passed on unchanged, and no interaction is added
+  when none is set. The end corners are not kept inside a state: a state whose
+  style carries a border with a non-zero radius re-rounds the segment while
+  active, so such a state must set `corners` itself.
+- **Press target** — each segment label has `flex_grow = Some 1.` unless its
+  style (plain or selected) sets one, so it fills the segment and a press
+  anywhere in the segment is a press on the label, which selects it. That is
+  why a segment's padding belongs on its label. The text inside the label gets
+  the caller's label style as given, without the fill-in.
+
+**Warning: do not clip the segments box.** A `with_segments_style` style with
+`overflow = Hidden` clips the focus ring of every segment drawn through
+`with_segment_interaction`, because the ring is a shadow drawn outside the
+segment. The control does not override it, and the end-segment corners above
+already keep the selected fill inside the outline without a clip. A clipping
+ancestor of the control clips the ring the same way.
+
+**Forced colours.** On web, under `forced-colors: active` the hide rule does
+not apply, so each radio is painted again as an ordinary flex item inside its
+own segment box, before its label: it overlaps neither its label nor another
+segment. Backgrounds and shadows are replaced by the system palette there, so
+the selected fill and the ring are not what shows the choice; the radio's own
+checked dot does, together with the label's weight when the selected label
+style sets one. Each segment box defaults to `Row_dir`, so the radio sits beside its label
+unless the segment style sets a column. Observed in
+Chromium only (the kitchen-sink Playwright case). No way to put WebKitGTK on
+Linux into a forced-colours mode is known (assumed absent, not observed).
+
+A two-value control built from setters alone (the kitchen sink's
+`examples/kitchen_sink/sub_segmented_control.ml` builds three this way):
+
+```ocaml
+Segmented_control.make ~label:"Time window"
+  ~segments:
+    [ Segmented_control.segment ~value:"7d" "7d";
+      Segmented_control.segment ~value:"30d" "30d" ]
+  ~selected:model.window
+  ~on_select:(fun value -> Window_selected value)
+|> Segmented_control.with_id "time-window"
+|> Segmented_control.with_segments_style outlined     (* border radius 6 *)
+|> Segmented_control.with_selected_segment_style filled
+|> Segmented_control.with_divider_style hairline
+|> Segmented_control.with_segment_interaction ring    (* focused_within shadow *)
+|> Segmented_control.view
 ```
 
 #### Select_input
@@ -5180,6 +5403,76 @@ attribute, id and `config.attrs`, and the options box are unchanged. The group
 is still one tab stop whose arrow keys move the choice, and disabled handling,
 for the whole group and per option, is unchanged in both modes. There is no
 style for the chosen option and no divider between options.
+
+**Style border answers that moved — read this on a pin bump.**
+`Style.border` can round each corner by its own radius: it gains
+`corners : corners option`, where `type corners = { top_left; top_right;
+bottom_right; bottom_left : float }`. One kind of code stops compiling: **a
+`Style.border` written as a complete record literal** (row 1) stops with
+`Some record fields are undefined: corners`. Adding `corners = None` keeps it
+rendering exactly as before. A border built as `{ Style.default_border with … }`
+compiles untouched, because `default_border` fills `None`. Every other row is
+additive, or changes only what a border that sets `corners` renders.
+
+"Before" is the tree at commit `cd09140`. The Where column names the output
+whose answer moved: web, the structural `Test_renderer`, or all of them for a
+compile break. Find it is a command a consumer runs from their repository root;
+a row whose Find it is "—" needs no search. Each grep is a first pass: a
+literal that `ocamlformat` split over several lines, or a field reached through
+a punned binding (`{ width; style; color; radius }`), escapes it, and the
+compiler is the backstop. No test reads this table. The behaviour each row
+describes is tested in the `nopal_style`, `nopal_test` and `nopal_web` suites,
+but an edit to the text alone reddens no test.
+
+| # | Key | Visible | Where | When | Before | Now | Find it |
+|---|---|---|---|---|---|---|---|
+| 1 | `style-border-literal` | compile | all | a `Style.border` written as a complete record literal (`{ Style.width = …; style = …; color = …; radius = … }`) | compiled | `Some record fields are undefined: corners`. Fix: add `corners = None`; the border renders as before | `grep -rnE "\bradius *=" --include=*.ml .` (every complete literal names that field; a `{ … with radius = … }` update, an optional argument named `radius`, or another record's `radius` field matches too and needs nothing), then the compiler |
+| 2 | `style-border-corners` | additive | all | `Nopal_style.Style` | — | `type corners = { top_left : float; top_right : float; bottom_right : float; bottom_left : float }`, named clockwise from the top left, in pixels; `border` gains `corners : corners option` as its last field. `Some c` rounds each corner by its own radius and replaces `radius` on every corner; `None` keeps the uniform `radius`. `default_border` fills `None`. `Style.equal` compares `corners`, and the structural `Test_renderer` reports a style's `corners` as authored | — |
+| 3 | `web-border-radius-corners` | render | web | a border whose `corners` is `Some c` | — | one declaration, `border-radius: <tl>px <tr>px <br>px <bl>px`, in CSS shorthand order (top left, top right, bottom right, bottom left), lengths written with `%g` (`6px`, `0.5px`), emitted even when all four are `0.`, in the base rule and in every interaction rule. A border with `corners = None` emits what it did: `border-radius` only when `radius` is not `0.` | — |
+| 4 | `docs-style-border` | docs | all | anyone reading this file's Borders block or its drawn-checkbox `hairline` example | `border` without `corners`; `hairline` a complete literal without it, which no longer compiles | both name `corners`, and the Borders block states the rule above | — |
+
+What did **not** move, recorded so a reader does not go looking. A border whose
+`corners` is `None` emits the same `border` and `border-radius` declarations, in
+the same place, as before, so every existing style renders byte-identically on
+web. `radius` keeps its type and meaning. There is still one border for all
+four sides: no per-side width, style or colour, no outline and no inset shadow.
+
+**Segmented_control answers that moved — read this on a pin bump.**
+`nopal_ui` gains `Segmented_control`, a single-choice control whose segments
+are visually hidden native radios with native labels, a filled selected
+segment, dividers between segments and a focus ring on the focused segment.
+Nothing stops compiling, unless a module of the consumer's own is named
+`Segmented_control` and is used in a file that opens `Nopal_ui` (row 1).
+
+"Before" is the tree at commit `cd09140`. Where, Find it and the first-pass
+caveat read as in the Style border paragraph above. No test reads this table.
+The behaviour each row describes is tested in the `nopal_ui` and kitchen-sink
+suites and, for web, by the kitchen-sink Playwright and axe cases, but an edit
+to the text alone reddens no test.
+
+| # | Key | Visible | Where | When | Before | Now | Find it |
+|---|---|---|---|---|---|---|---|
+| 1 | `ui-segmented-control` | additive | all | `Nopal_ui` | absent | `module Segmented_control`: abstract `segment` and `'msg config`; `segment : value:string -> string -> segment`; `make : label:string -> segments:segment list -> selected:string -> on_select:(string -> 'msg) -> 'msg config`, whose selection message is required; setters `with_id`, `with_name`, `with_group_style`, `with_label_style`, `with_segments_style`, `with_segment_style`, `with_selected_segment_style`, `with_segment_label_style`, `with_selected_segment_label_style`, `with_divider_style` (each a `Style.t`) and `with_segment_interaction` (an `Interaction.t`); `control_id`, `option_id ~value` and `view`. The tree and each setter's node are in the `#### Segmented_control` block. A consumer compilation unit named `Segmented_control` is shadowed in any file that opens `Nopal_ui` | `find . -name "segmented_control.ml*" -not -path "*/_build/*"` (in this repository it lists the library's own two files) |
+| 2 | `ui-segmented-control-segments-direction` | render | all | the box holding the segments | absent | `Row_dir` unless `with_segments_style` sets a direction; a direction it sets is honoured | — |
+| 3 | `ui-segmented-control-segment-position` | render | all | each segment box | absent | `position = Some Pos_relative` unless the segment's style, plain or selected, sets one | — |
+| 4 | `ui-segmented-control-end-corners` | render | all | the first and last segment boxes | absent | forced: each outer corner is `max 0. (r - w)`, `r` the segments box border's radius at that corner (its `corners` when `Some`) and `w` its width; inner corners `0.`; all four for a lone segment; all `0.` when the segments box has no border. Outer is left in a row and top in a column for the first segment, the opposite side for the last. Written as `corners`, replacing the style's `corners` and `radius` and keeping its width, line style and colour; a style with no border gets `{ width = 0.; style = No_border; color = Transparent; radius = 0.; corners = Some … }`. Middle segments are untouched | — |
+| 5 | `ui-segmented-control-ring-layer` | render | all | `with_segment_interaction` whose `focused_within` style leaves `z_index` at `None` | absent | `z_index = Some 1` on that state, so the focused segment's ring paints above its neighbours. A caller `z_index` is kept; the other states pass unchanged; no interaction is added when none is set | — |
+| 6 | `ui-segmented-control-label-grow` | render | all | each segment label | absent | `flex_grow = Some 1.` unless the label's style, plain or selected, sets one, so a press anywhere in the segment selects it. The text inside gets the caller's label style unfilled | — |
+| 7 | `ui-segmented-control-overflow-clips-ring` | docs | web | a `with_segments_style` style with `overflow = Hidden` | absent | clips every segment's focus ring, which is drawn outside the segment. The control does not override it; the end-segment corners keep the selected fill inside the outline without a clip | — |
+| 8 | `ui-component-table-segmented-control-row` | docs | all | anyone reading the UI Components override table | no `Segmented_control` row; "All eleven components" | a row naming each setter's node, with no cell reading "fork"; "All twelve components"; and a `Segmented_control` entry under "Named as structural rather than visual" for the forced end corners and the four fill-ins | — |
+| 9 | `llms-nopal-ui-package-line` | docs | all | anyone reading this file's `nopal_ui` package line | no `Segmented_control` | lists `Segmented_control` after `Radio_group` | — |
+| 10 | `kitchen-sink-segmented-control-section` | example | web | anyone copying the kitchen sink | no segmented-control section | "A segmented control" (`data-testid="segmented-control-section"`) right after the hidden-radio section, between a "Before the controls" and an "After the controls" button: an "Alert threshold" control (None, 15 min, 1 hour, 1 day, Custom; 1 hour selected), a "Time window" control (7d, 30d, 90d, All; 30d selected), and a "Refusing control" (Kept, Refused) whose `update` keeps the old value on every selection. Each has a 1 px `#948775` outline at radius 6, 1 px `#CFC6B8` dividers, 38 px row segments, a `#02403A` selected fill with a `#FFFDF9` weight-500 label, and a 2 px `rgba(11,97,88,0.35)` `focused_within` ring. Built from setters alone (`examples/kitchen_sink/sub_segmented_control.ml`) | — |
+
+What did **not** move, recorded so a reader does not go looking.
+`Radio_group`'s public interface (`radio_group.mli` is byte-identical) and its
+rendered tree, attributes, styles and handlers are unchanged in both input
+modes: its group semantics now come from the implementation it shares with
+`Segmented_control`, which is internal to `nopal_ui` and not a public module.
+`Radio_group` still has no style for the chosen option and no divider between
+options; reach for `Segmented_control` for those. No element, element field,
+interaction state or `!important` was added: `Interaction` has no checked
+state, and the selected segment's style follows the `selected` value given to
+`make`. A segment cannot be disabled.
 
 #### Telemetry harness (`Nopal_test.Telemetry_test`)
 

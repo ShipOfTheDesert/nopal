@@ -253,6 +253,7 @@
   nopal_style
   nopal_platform
   nopal_storage
+  test_util
   alcotest))
 
 (test
@@ -265,6 +266,16 @@
 
 (test
  (name test_hidden_radio_section)
+ (libraries
+  kitchen_sink_app
+  nopal_test
+  nopal_element
+  nopal_style
+  alcotest
+  test_util))
+
+(test
+ (name test_segmented_control_section)
  (libraries
   kitchen_sink_app
   nopal_test

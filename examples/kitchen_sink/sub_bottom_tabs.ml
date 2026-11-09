@@ -82,6 +82,7 @@ let push_button_style =
               style = Solid;
               color = Style.hex "#3a7bc8";
               radius = 6.0;
+              corners = None;
             };
       })
   |> Style.with_text (fun t -> t |> Text.font_weight Font.Semi_bold)

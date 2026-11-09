@@ -655,12 +655,7 @@ let options_box_rows what node =
   | Text _ ->
       Alcotest.failf "%s: expected the options box element" what
 
-let children_of what node =
-  match node with
-  | Element { children; _ } -> children
-  | Empty
-  | Text _ ->
-      Alcotest.failf "%s: expected an element" what
+let children_of = Test_util.children_of
 
 let attrs_of what node =
   match node with
