@@ -43,7 +43,13 @@ let anchor_style =
         p with
         border =
           Some
-            { width = 1.0; style = Solid; color = border_color; radius = 6.0 };
+            {
+              width = 1.0;
+              style = Solid;
+              color = border_color;
+              radius = 6.0;
+              corners = None;
+            };
       })
 
 (* The container's other affordance, and the one the model has no part in. The

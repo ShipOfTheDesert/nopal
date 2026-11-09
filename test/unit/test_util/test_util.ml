@@ -227,6 +227,20 @@ let teal_drawn () =
       mark = Nopal_style.Color.Hex "#FFFFFF";
     }
 
+let children_of what node =
+  match node with
+  | Element { children; _ } -> children
+  | Empty
+  | Text _ ->
+      Alcotest.failf "%s: expected an element" what
+
+let color_to_string (c : Nopal_style.Style.color) =
+  match c with
+  | Rgba { r; g; b; a } -> Printf.sprintf "rgba(%d,%d,%d,%g)" r g b a
+  | Hex h -> h
+  | Named n -> n
+  | Transparent -> "transparent"
+
 let rule_body rule =
   match (String.index_opt rule '{', String.rindex_opt rule '}') with
   | Some opening, Some closing when closing > opening ->

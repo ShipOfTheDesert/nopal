@@ -129,6 +129,39 @@ let unstyled_heading_carries_no_style () =
     (style (tree (render (E.box [ E.text "Title" ]))))
     (style (tree (render (E.heading E.H2 (E.text "Title")))))
 
+let style_reports_corners () =
+  let module S = Nopal_style.Style in
+  let corners =
+    { S.top_left = 5.; top_right = 0.; bottom_right = 0.; bottom_left = 5. }
+  in
+  let boxed =
+    S.default
+    |> S.with_paint (fun p ->
+        {
+          p with
+          border =
+            Some
+              {
+                width = 1.;
+                style = Solid;
+                color = S.rgba 0 0 0 1.0;
+                radius = 6.;
+                corners = Some corners;
+              };
+        })
+  in
+  match style (tree (render (E.box ~style:boxed [ E.text "end" ]))) with
+  | Some { paint = { border = Some { corners = Some c; _ }; _ }; _ } ->
+      Alcotest.(check (list (float 0.)))
+        "the authored corners survive the round-trip, clockwise from top left"
+        [ 5.; 0.; 0.; 5. ]
+        [ c.top_left; c.top_right; c.bottom_right; c.bottom_left ]
+  | Some { paint = { border = Some { corners = None; _ }; _ }; _ } ->
+      Alcotest.fail "expected the authored corners"
+  | Some { paint = { border = None; _ }; _ } ->
+      Alcotest.fail "expected the authored border"
+  | None -> Alcotest.fail "expected an element style"
+
 let render_input_attrs () =
   let r = render (E.input ~placeholder:"ph" "val") in
   check_node "input renders with attrs"
@@ -278,6 +311,7 @@ let rendering_tests =
       heading_carries_style_interaction_and_attrs;
     Alcotest.test_case "unstyled_heading_carries_no_style" `Quick
       unstyled_heading_carries_no_style;
+    Alcotest.test_case "style_reports_corners" `Quick style_reports_corners;
     Alcotest.test_case "render_input_attrs" `Quick render_input_attrs;
     Alcotest.test_case "render_image_attrs" `Quick render_image_attrs;
     Alcotest.test_case "image_named_alt" `Quick image_named_alt;

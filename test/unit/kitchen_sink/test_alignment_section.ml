@@ -77,12 +77,7 @@ let layout_of label node =
   | Some s -> s.Style.layout
   | None -> Alcotest.failf "%s is not an element" label
 
-let children_of testid node =
-  match node with
-  | Element { children; _ } -> children
-  | Empty
-  | Text _ ->
-      Alcotest.failf "%S is not an element" testid
+let children_of = Test_util.children_of
 
 let test_each_main_row_reports_its_alignment () =
   let root = section () in

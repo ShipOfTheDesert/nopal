@@ -58,6 +58,7 @@ let base_style =
               style = No_border;
               color = Transparent;
               radius = 6.0;
+              corners = None;
             };
       })
 

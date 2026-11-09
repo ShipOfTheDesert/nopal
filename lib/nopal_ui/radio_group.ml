@@ -77,37 +77,18 @@ let with_on_label_click f config =
       { config with inputs = Visible_inputs { on_label_click = Some f } }
   | Hidden_inputs -> config
 
-let control_id config =
-  Slug.derive_id ~explicit:config.id ~label:config.label ()
+let semantics config =
+  Radio_semantics.make ~id:config.id ~label:config.label ~name:config.name
 
-let group_label_id config =
-  Slug.derive_id ~explicit:config.id ~label:config.label ~suffix:"label" ()
+let control_id config = Radio_semantics.control_id (semantics config)
 
 let option_id config ~value =
-  Slug.derive_id ~explicit:config.id ~label:config.label
-    ~suffix:(Slug.slugify value) ()
-
-let option_label_id config ~value =
-  Slug.derive_id
-    ~explicit:(Some (option_id config ~value))
-    ~label:"" ~suffix:"label" ()
-
-let group_name config =
-  match config.name with
-  | Some n -> n
-  | None -> Slug.slugify config.label
+  Radio_semantics.option_id (semantics config) ~value
 
 let view config =
-  let name = group_name config in
+  let group = semantics config in
   let render_option (opt : radio_option) =
     let disabled = config.disabled || opt.disabled in
-    let on_select =
-      if disabled then None
-      else Option.map (fun f -> f opt.value) config.on_select
-    in
-    let oid = option_id config ~value:opt.value in
-    let olid = option_label_id config ~value:opt.value in
-    let label_attrs = [ ("id", olid) ] in
     let label_text =
       [ Text_node.of_style ~style:config.option_label_style opt.label ]
     in
@@ -115,20 +96,24 @@ let view config =
       match config.inputs with
       | Visible_inputs { on_label_click } ->
           ( Nopal_style.Presentation.Visible,
-            E.box ?style:config.option_label_style ~attrs:label_attrs
+            E.box ?style:config.option_label_style
+              ~attrs:
+                [
+                  ("id", Radio_semantics.option_label_id group ~value:opt.value);
+                ]
               ?on_pointer_down:
                 (Option.map (fun f _event -> f opt.value) on_label_click)
               label_text )
       | Hidden_inputs ->
           ( Nopal_style.Presentation.Visually_hidden,
-            E.label ?style:config.option_label_style ~attrs:label_attrs
-              ~control_id:oid label_text )
+            Radio_semantics.option_label ?style:config.option_label_style group
+              ~value:opt.value label_text )
     in
     let radio =
-      E.radio ?style:config.style ?interaction:config.interaction
-        ~attrs:[ ("id", oid); ("aria-labelledby", olid); ("data-field", name) ]
-        ~checked:(config.selected = opt.value)
-        ~disabled ~presentation ?on_select ~name ()
+      Radio_semantics.option_radio ?style:config.style
+        ?interaction:config.interaction group ~value:opt.value
+        ~selected:config.selected ~disabled ~presentation
+        ~on_select:config.on_select
     in
     E.row ?style:config.option_row_style
       ?interaction:config.option_row_interaction [ radio; label ]
@@ -139,19 +124,16 @@ let view config =
   let naming, children =
     match config.visible_label with
     | Some true ->
-        let lid = group_label_id config in
         let group_label =
           E.box ?style:config.label_style
-            ~attrs:[ ("id", lid) ]
+            ~attrs:[ ("id", Radio_semantics.group_label_id group) ]
             [ Text_node.of_style ~style:config.label_style config.label ]
         in
-        (("aria-labelledby", lid), [ group_label; options_box ])
+        (Radio_semantics.Named_by_visible_label, [ group_label; options_box ])
     | Some false
     | None ->
-        (("aria-label", config.label), [ options_box ])
+        (Radio_semantics.Named_by_aria_label, [ options_box ])
   in
   E.box ?style:config.group_style
-    ~attrs:
-      ([ ("role", "radiogroup"); naming; ("id", control_id config) ]
-      @ config.attrs)
+    ~attrs:(Radio_semantics.group_attrs group ~naming ~attrs:config.attrs)
     children

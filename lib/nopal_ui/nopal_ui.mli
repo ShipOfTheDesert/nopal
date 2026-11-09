@@ -7,6 +7,7 @@ module Data_table = Data_table
 module Modal = Modal
 module Navigation_bar = Navigation_bar
 module Radio_group = Radio_group
+module Segmented_control = Segmented_control
 module Select_input = Select_input
 module Slug = Slug
 module TextInput = Text_input

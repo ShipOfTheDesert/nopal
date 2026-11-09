@@ -63,6 +63,7 @@ let default_style_for variant =
                   style = Solid;
                   color = S.hex "#3a7bc8";
                   radius = 6.0;
+                  corners = None;
                 };
             shadow =
               Some
@@ -87,6 +88,7 @@ let default_style_for variant =
                   style = Solid;
                   color = S.hex "#dee2e6";
                   radius = 6.0;
+                  corners = None;
                 };
           })
   | Destructive ->
@@ -102,6 +104,7 @@ let default_style_for variant =
                   style = Solid;
                   color = S.hex "#c84040";
                   radius = 6.0;
+                  corners = None;
                 };
             shadow =
               Some
@@ -125,6 +128,7 @@ let default_style_for variant =
                   style = Solid;
                   color = S.rgba 0 0 0 0.0;
                   radius = 6.0;
+                  corners = None;
                 };
           })
   | Icon ->
@@ -147,6 +151,7 @@ let default_style_for variant =
                   style = Solid;
                   color = S.rgba 0 0 0 0.0;
                   radius = 6.0;
+                  corners = None;
                 };
           })
 

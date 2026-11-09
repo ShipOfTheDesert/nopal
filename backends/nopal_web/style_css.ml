@@ -327,16 +327,27 @@ let of_style ~(parent_axis : main_axis option) (style : t) =
       let acc = acc |> opt "background-color" color_to_css paint.background in
       let acc =
         match paint.border with
-        | Some b ->
+        | Some b -> (
             let acc =
               add acc "border"
                 (Printf.sprintf "%gpx %s %s" b.width
                    (border_style_to_css b.style)
                    (color_to_css b.color))
             in
-            if not (Float.equal b.radius 0.) then
-              add acc "border-radius" (px b.radius)
-            else acc
+            match b.corners with
+            | Some c ->
+                let lengths =
+                  [ c.top_left; c.top_right; c.bottom_right; c.bottom_left ]
+                in
+                if List.for_all Float.is_finite lengths then
+                  add acc "border-radius"
+                    (String.concat " "
+                       (List.map (fun v -> px (Float.max 0. v)) lengths))
+                else acc
+            | None ->
+                if not (Float.equal b.radius 0.) then
+                  add acc "border-radius" (px b.radius)
+                else acc)
         | None -> acc
       in
       let acc =
@@ -348,8 +359,8 @@ let of_style ~(parent_axis : main_axis option) (style : t) =
         acc
         |> opt "box-shadow"
              (fun s ->
-               (* The fourth length is omitted at zero, matching border-radius
-                  above and keeping every shadow that names no spread on the
+               (* The fourth length is omitted at zero, matching the uniform
+                  border-radius above and keeping every shadow that names no spread on the
                   exact three-length declaration it emitted before spread
                   existed. An omitted spread and a zero one paint identically,
                   so nothing is lost by the omission. *)

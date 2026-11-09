@@ -194,7 +194,13 @@ let card_style =
         background = Some bg_card;
         border =
           Some
-            { width = 1.0; style = Solid; color = border_color; radius = 10.0 };
+            {
+              width = 1.0;
+              style = Solid;
+              color = border_color;
+              radius = 10.0;
+              corners = None;
+            };
         shadow =
           Some
             {
@@ -233,7 +239,13 @@ let input_style =
         background = Some (Style.hex "#f8f7f5");
         border =
           Some
-            { width = 1.0; style = Solid; color = border_color; radius = 8.0 };
+            {
+              width = 1.0;
+              style = Solid;
+              color = border_color;
+              radius = 8.0;
+              corners = None;
+            };
       })
   |> Style.with_text (fun t -> t |> Text.font_size 1.0)
 
@@ -244,7 +256,14 @@ let input_interaction =
         {
           p with
           border =
-            Some { width = 2.0; style = Solid; color = accent; radius = 8.0 };
+            Some
+              {
+                width = 2.0;
+                style = Solid;
+                color = accent;
+                radius = 8.0;
+                corners = None;
+              };
           shadow =
             Some
               {
@@ -274,7 +293,13 @@ let todo_row_style =
         p with
         border =
           Some
-            { width = 0.0; style = Solid; color = border_color; radius = 0.0 };
+            {
+              width = 0.0;
+              style = Solid;
+              color = border_color;
+              radius = 0.0;
+              corners = None;
+            };
       })
 
 let todo_row_interaction =
@@ -312,6 +337,7 @@ let checkbox_style completed =
               style = Solid;
               color = (if completed then Style.transparent else border_color);
               radius = 6.0;
+              corners = None;
             };
       })
   |> Style.with_text (fun t -> t |> Text.font_size 0.7)
@@ -331,6 +357,7 @@ let title_button_style completed =
               style = Solid;
               color = Style.transparent;
               radius = 0.0;
+              corners = None;
             };
       })
   |> Style.with_text (fun t ->
@@ -358,6 +385,7 @@ let delete_style =
               style = Solid;
               color = Style.transparent;
               radius = 6.0;
+              corners = None;
             };
         opacity = 0.0;
       })
@@ -378,7 +406,14 @@ let edit_input_style =
       {
         p with
         border =
-          Some { width = 2.0; style = Solid; color = accent; radius = 6.0 };
+          Some
+            {
+              width = 2.0;
+              style = Solid;
+              color = accent;
+              radius = 6.0;
+              corners = None;
+            };
         shadow =
           Some
             {
@@ -407,6 +442,7 @@ let toggle_all_style =
               style = Solid;
               color = Style.transparent;
               radius = 0.0;
+              corners = None;
             };
       })
   |> Style.with_text (fun t ->
@@ -455,6 +491,7 @@ let filter_button_style selected =
               style = Solid;
               color = (if selected then border_color else Style.transparent);
               radius = 6.0;
+              corners = None;
             };
       })
   |> Style.with_text (fun t ->
@@ -484,6 +521,7 @@ let clear_button_style =
               style = Solid;
               color = Style.transparent;
               radius = 6.0;
+              corners = None;
             };
       })
   |> Style.with_text (fun t -> t |> Text.font_size 0.8)

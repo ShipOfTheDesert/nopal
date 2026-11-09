@@ -36,6 +36,7 @@ let option_row_style =
             style = Solid;
             color = hairline_color;
             radius = 6.0;
+            corners = None;
           }
         ();
     text = Style.default_text;

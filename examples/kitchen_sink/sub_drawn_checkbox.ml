@@ -57,7 +57,8 @@ let disabled_ticked_fill = Style.hex "#9DB3B0"
 let paint ?background ?border ?shadow () =
   { Style.background; border; opacity = 1.0; shadow; overflow = Visible }
 
-let hairline color = { Style.width = 1.0; style = Solid; color; radius = 4.0 }
+let hairline color =
+  { Style.width = 1.0; style = Solid; color; radius = 4.0; corners = None }
 
 let style_of_paint p =
   { Style.layout = Style.default_layout; paint = p; text = Style.default_text }

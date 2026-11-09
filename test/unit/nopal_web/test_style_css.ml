@@ -80,13 +80,85 @@ let test_border_produces_css () =
           p with
           border =
             Some
-              { width = 2.; style = Solid; color = rgba 0 0 0 1.0; radius = 4. };
+              {
+                width = 2.;
+                style = Solid;
+                color = rgba 0 0 0 1.0;
+                radius = 4.;
+                corners = None;
+              };
         })
       default
   in
   let props = of_style ~parent_axis:None style in
   check_has_prop "border" "2px solid rgba(0,0,0,1)" props;
   check_has_prop "border-radius" "4px" props
+
+let bordered_style ~radius ~corners =
+  with_paint
+    (fun p ->
+      {
+        p with
+        border =
+          Some
+            {
+              width = 1.;
+              style = Solid;
+              color = rgba 0 0 0 1.0;
+              radius;
+              corners;
+            };
+      })
+    default
+
+let test_corners_emit_four_lengths () =
+  let style =
+    bordered_style ~radius:6.
+      ~corners:
+        (Some
+           {
+             top_left = 1.;
+             top_right = 2.;
+             bottom_right = 3.;
+             bottom_left = 4.;
+           })
+  in
+  let props = of_style ~parent_axis:None style in
+  check_has_prop "border-radius" "1px 2px 3px 4px" props;
+  Alcotest.(check int)
+    "one border-radius declaration" 1
+    (count_prop "border-radius" props)
+
+let corners_of a b c d =
+  Some { top_left = a; top_right = b; bottom_right = c; bottom_left = d }
+
+let test_corners_all_zero_still_emit () =
+  let props =
+    of_style ~parent_axis:None
+      (bordered_style ~radius:6. ~corners:(corners_of 0. 0. 0. 0.))
+  in
+  check_has_prop "border-radius" "0px 0px 0px 0px" props
+
+let test_corners_non_finite_emits_nothing () =
+  let props =
+    of_style ~parent_axis:None
+      (bordered_style ~radius:6. ~corners:(corners_of 1. Float.nan 3. 4.))
+  in
+  check_no_prop "border-radius" props
+
+let test_corners_negative_clamps_to_zero () =
+  let props =
+    of_style ~parent_axis:None
+      (bordered_style ~radius:6. ~corners:(corners_of 1. (-2.) 3. 4.))
+  in
+  check_has_prop "border-radius" "1px 0px 3px 4px" props
+
+let test_no_corners_is_byte_identical () =
+  let style = bordered_style ~radius:6. ~corners:None in
+  Alcotest.(check string)
+    "the declaration list a uniform radius has always produced"
+    "border:1px solid rgba(0,0,0,1);border-radius:6px"
+    (to_inline_string (of_style ~parent_axis:None style))
 
 (* 6 *)
 let test_to_inline_string_joins () =
@@ -418,6 +490,37 @@ let test_focused_within_emits_focus_within () =
     "no :focus-visible" false
     (contains result ":focus-visible");
   Alcotest.(check bool) "no @supports" false (contains result "@supports")
+
+let test_corners_reach_interaction_rules () =
+  let styled =
+    bordered_style ~radius:6.
+      ~corners:
+        (Some
+           {
+             top_left = 5.;
+             top_right = 0.;
+             bottom_right = 0.;
+             bottom_left = 5.;
+           })
+  in
+  let interaction =
+    {
+      Nopal_style.Interaction.hover = Some styled;
+      pressed = Some styled;
+      focused = Some styled;
+      focused_within = Some styled;
+    }
+  in
+  let rules =
+    split_css_rules (interaction_rules ~class_name:"_nopal_ix_7" interaction)
+  in
+  Alcotest.(check int) "four interaction rules" 4 (List.length rules);
+  List.iter
+    (fun rule ->
+      Alcotest.(check bool)
+        "the four-length radius in the rule" true
+        (contains rule "border-radius:5px 0px 0px 5px"))
+    rules
 
 let test_interaction_rule_order_includes_focused_within () =
   let interaction =
@@ -1254,6 +1357,7 @@ let test_interaction_rules_focused_only () =
                       style = Solid;
                       color = Nopal_style.Style.hex "#0000ff";
                       radius = 4.0;
+                      corners = None;
                     };
               }));
     }
@@ -1654,6 +1758,16 @@ let () =
           Alcotest.test_case "flex direction row" `Quick test_flex_direction_row;
           Alcotest.test_case "border produces css" `Quick
             test_border_produces_css;
+          Alcotest.test_case "corners_emit_four_lengths" `Quick
+            test_corners_emit_four_lengths;
+          Alcotest.test_case "corners_all_zero_still_emit" `Quick
+            test_corners_all_zero_still_emit;
+          Alcotest.test_case "corners_non_finite_emits_nothing" `Quick
+            test_corners_non_finite_emits_nothing;
+          Alcotest.test_case "corners_negative_clamps_to_zero" `Quick
+            test_corners_negative_clamps_to_zero;
+          Alcotest.test_case "no_corners_is_byte_identical" `Quick
+            test_no_corners_is_byte_identical;
           Alcotest.test_case "size fill produces 100%" `Quick
             test_size_fill_produces_100_percent;
           Alcotest.test_case "size fixed produces px" `Quick
@@ -1738,6 +1852,8 @@ let () =
             test_interaction_rules_hover_only;
           Alcotest.test_case "focused_within_emits_focus_within" `Quick
             test_focused_within_emits_focus_within;
+          Alcotest.test_case "corners_reach_interaction_rules" `Quick
+            test_corners_reach_interaction_rules;
           Alcotest.test_case "interaction_rule_order_includes_focused_within"
             `Quick test_interaction_rule_order_includes_focused_within;
           Alcotest.test_case "default produces empty" `Quick
