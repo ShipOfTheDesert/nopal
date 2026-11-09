@@ -109,6 +109,11 @@ val scroll_by : string -> Nopal_element.Scroll_delta.t -> 'msg t
     a page may host more than one of want a prefix that says which mount they
     belong to.
 
+    On a container whose y scroll range runs reversed, the request clamps to
+    [0, max] and drags the container to its start edge; unlike a reveal, it does
+    not skip that axis. The affected cases are the reversed-y rows of the reveal
+    table in [llms.txt].
+
     This and a scroll container's [reveal] declaration both write one
     container's scroll offset, and a frame carrying both applies them in a fixed
     order: reveal first, relative scroll second, focus last. The imperative

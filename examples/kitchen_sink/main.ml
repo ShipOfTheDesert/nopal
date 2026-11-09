@@ -3,7 +3,7 @@
 module App = Kitchen_sink_app.Make (Nopal_web.Platform_web)
 
 (* Component sub-apps, re-exported by [Kitchen_sink_app] so [serialize_msg]
-   below can name their message constructors (RFC 0112, Step 5). *)
+   below can name their message constructors. *)
 module Kitchen_sink_ui = Kitchen_sink_app.Kitchen_sink_ui
 module Kitchen_sink_form_controls = Kitchen_sink_app.Kitchen_sink_form_controls
 module Kitchen_sink_text_input = Kitchen_sink_app.Kitchen_sink_text_input
@@ -16,6 +16,7 @@ module Sub_subscriptions = Kitchen_sink_app.Sub_subscriptions
 module Sub_file_input = Kitchen_sink_app.Sub_file_input
 module Sub_receipt_flow = Kitchen_sink_app.Sub_receipt_flow
 module Sub_reveal_list = Kitchen_sink_app.Sub_reveal_list
+module Sub_reveal_tabs = Kitchen_sink_app.Sub_reveal_tabs
 module Sub_scroll_pane = Kitchen_sink_app.Sub_scroll_pane
 module Sub_focus_reveal = Kitchen_sink_app.Sub_focus_reveal
 module Sub_auth_form = Kitchen_sink_app.Sub_auth_form
@@ -28,7 +29,7 @@ module Sub_hidden_radio = Kitchen_sink_app.Sub_hidden_radio
 module Sub_segmented_control = Kitchen_sink_app.Sub_segmented_control
 module Sub_switch = Kitchen_sink_app.Sub_switch
 
-(* Result-task chaining for the Tauri ops (RFC 0118, REQ-F5). See
+(* Result-task chaining for the Tauri ops. See
    {!Kitchen_sink_app.Tauri_op} for the contract; instantiated here with the
    concrete [App.TauriOpError] constructor (surfaced in the Tauri App section). *)
 module Op = Kitchen_sink_app.Tauri_op.Make (struct
@@ -42,8 +43,8 @@ let has_tauri () =
 
 let store_path = "nopal_store.json"
 
-(* Every Store op first [load]s the handle (RFC 0118, REQ-F6: a store you didn't
-   load is unrepresentable), then runs [op] with it. A load failure is routed
+(* Every Store op first [load]s the handle (a store you didn't load is
+   unrepresentable), then runs [op] with it. A load failure is routed
    through [on_error] to the op's own [*Result] message so the command resolves
    rather than stalling. tauri-plugin-store keys the backing file by path, so
    the per-op reload returns the same already-loaded instance. *)
@@ -448,6 +449,7 @@ let update model msg =
   | App.File_input_msg _
   | App.Receipt_flow_msg _
   | App.Reveal_list_msg _
+  | App.Reveal_tabs_msg _
   | App.Scroll_pane_msg _
   | App.Focus_reveal_msg _
   | App.Fixed_size_msg _
@@ -471,7 +473,7 @@ let update model msg =
   | App.SubWizardMsg _ ->
       (model', cmd)
 
-(* Readable serialisers for the telemetry log (RFC 0110). Only the interactive
+(* Readable serialisers for the telemetry log. Only the interactive
    messages the E2E telemetry contract asserts on get distinct labels; every
    other message is enumerated explicitly (no catch-all [_]) so a newly added
    constructor forces a compile error here rather than silently collapsing to
@@ -487,8 +489,8 @@ let serialize_msg : App.msg -> string = function
   | App.ToggleInteraction -> "ToggleInteraction"
   | App.ToggleStyleBackground -> "ToggleStyleBackground"
   | App.TelemetryPing label -> "TelemetryPing:" ^ label
-  (* Component messages the per-component E2E telemetry contract asserts on
-     (RFC 0112, Step 5). Each inner match is exhaustive so a newly added sub
+  (* Component messages the per-component E2E telemetry contract asserts on.
+     Each inner match is exhaustive so a newly added sub
      constructor forces a compile error here rather than silently collapsing to
      the generic "<msg>" label below. *)
   | App.Ui_msg (Kitchen_sink_ui.ButtonClicked label) -> "ButtonClicked:" ^ label
@@ -526,7 +528,7 @@ let serialize_msg : App.msg -> string = function
   | App.Data_table_msg (Sub_data_table.Sort key) -> "Sort:" ^ key
   | App.Navigation_bar_msg (Sub_navigation_bar.SelectTab id) ->
       "SelectTab:" ^ id
-  (* Bottom_tabs per-tab navigation contract (RFC 0114 Task 4): the E2E
+  (* Bottom_tabs per-tab navigation contract: the E2E
      [assertSequence] proves a push then a back, and the preservation spec reads
      each tab's depth from [serialize_model] below. Exhaustive inner match so a
      new [Sub_bottom_tabs.msg] constructor breaks compilation here. *)
@@ -538,7 +540,7 @@ let serialize_msg : App.msg -> string = function
   | App.Modal_msg Sub_modal.Close -> "Modal:Close"
   | App.Modal_msg (Sub_modal.FocusChanged id) -> "Modal:FocusChanged:" ^ id
   | App.Modal_msg (Sub_modal.TabPressed key) -> "Modal:TabPressed:" ^ key
-  (* Subscriptions section (RFC 0118, REQ-F3): the [subs.e2e.ts] telemetry spec
+  (* Subscriptions section: the [subs.e2e.ts] telemetry spec
      proves the live [every] timer ticks appear and stop on removal via the
      [Subs:Tick] fragment. Exhaustive inner match so a new [Sub_subscriptions.msg]
      constructor breaks compilation here rather than silently relabelling. *)
@@ -570,6 +572,11 @@ let serialize_msg : App.msg -> string = function
      so its message and model fragments cannot drift apart, and every fragment
      is ';'-terminated for the same reason the file-input ones are. *)
   | App.Reveal_list_msg rl_msg -> Sub_reveal_list.serialize_msg rl_msg
+  (* Sideways reveal: the choice and alignment messages are what an e2e spec
+     waits on before reading the offsets they caused off the page itself. The
+     section owns the wording, and every fragment is ';'-terminated for the same
+     reason the reveal list's are. *)
+  | App.Reveal_tabs_msg rt_msg -> Sub_reveal_tabs.serialize_msg rt_msg
   (* Relative scroll: the model holds no scroll offset, so the message is the
      only thing telemetry can show about a movement, and an e2e spec waits on it
      before reading the offset it caused off the page itself. The section owns
@@ -623,14 +630,14 @@ let serialize_msg : App.msg -> string = function
      or a label press by, and its absence is the only sign that a disabled
      switch held; the followed link shows the hint's link navigated in-app. *)
   | App.Switch_msg switch_msg -> Sub_switch.serialize_msg switch_msg
-  (* Mobile signals (RFC 0116): the keyboard-height readout (REQ-N2) and the
+  (* Mobile signals: the keyboard-height debug readout and the
      back-demo route change the Tauri back-IPC e2e asserts on via the host
      [get_telemetry] mirror — [Route_changed] proves the hardware-back chain
      reached the router. *)
   | App.KeyboardHeightChanged h -> Printf.sprintf "KeyboardHeightChanged:%d" h
   | App.Back_demo_push -> "Back_demo_push"
   | App.Route_changed route -> "Route_changed:" ^ App.back_route_to_string route
-  (* Storage persistence contract (RFC 0112, Step 6 / REQ-F3): [StorageSet] is
+  (* Storage persistence contract: [StorageSet] is
      the write, [StorageRestored] the post-reload re-read. Only the restored
      [Some] case emits a "Restored" fragment so the E2E wait does not trip on a
      fresh-load empty restore. *)
@@ -640,8 +647,8 @@ let serialize_msg : App.msg -> string = function
   | App.StorageRestored (Ok (Some v)) -> "StorageRestored:" ^ v
   | App.StorageRestored (Ok None) -> "StorageRestoreEmpty"
   | App.StorageRestored (Error _) -> "StorageRestoreError"
-  (* Tauri window / tray / store messages the REQ-F5 WebdriverIO specs assert on
-     via the host-side [get_telemetry] mirror (RFC 0112, Step 7). The store [Get]
+  (* Tauri window / tray / store messages the Tauri WebdriverIO specs assert on
+     via the host-side [get_telemetry] mirror. The store [Get]
      result carries the read-back value so the relaunch-persistence spec can
      prove it via a message fragment. The remaining Tauri messages keep the
      generic "<msg>" label below. *)
@@ -783,8 +790,8 @@ let serialize_msg : App.msg -> string = function
 let serialize_model (model : App.model) =
   let open App in
   (* The storage value is part of the asserted model surface so the web
-     persistence spec can prove a reload-restored value via [assertModelContains]
-     (RFC 0112, Step 6 / REQ-F3), not just the message fragment. *)
+     persistence spec can prove a reload-restored value via [assertModelContains],
+     not just the message fragment. *)
   let storage =
     match model.storage_state with
     | StorageIdle -> "idle"
@@ -796,7 +803,7 @@ let serialize_model (model : App.model) =
     | StorageError e -> "error:" ^ e
   in
   (* The Tauri window visibility/title and store value are part of the asserted
-     model surface so the REQ-F5 WebdriverIO specs (RFC 0112, Step 7) can prove
+     model surface so the Tauri WebdriverIO specs can prove
      a window transition or a relaunch-restored store value via
      [assertModelContains] through the host [get_telemetry] mirror. *)
   let tauri_store =
@@ -807,11 +814,11 @@ let serialize_model (model : App.model) =
     | TauriStoreNotFound -> "not-found"
     | TauriStoreError e -> "error:" ^ e
   in
-  (* Each tab's stack depth is part of the asserted model surface so the RFC 0114
+  (* Each tab's stack depth is part of the asserted model surface so the tab
      preservation spec can prove [profile_depth=2;] survives a tab switch via
      [assertModelContains]. [Sub_bottom_tabs.serialize_model] already terminates
-     each [field=value] with ';' (undelimited-telemetry-fragment-aliasing). *)
-  (* The back-demo route is part of the asserted model surface so the RFC 0116
+     each [field=value] with ';' so a depth of 1 cannot prefix-alias a depth of 12. *)
+  (* The back-demo route is part of the asserted model surface so the
      back-IPC e2e can prove the model returned to [Back_home] after
      [simulate_back_pressed] via [assertModelContains]. The trailing ';' keeps
      [back_route=Back_home;] from prefix-aliasing a longer route name. *)
@@ -833,6 +840,9 @@ let serialize_model (model : App.model) =
      [Sub_reveal_list.serialize_model] already terminates each [field=value]
      with ';' and quotes the key, so a key carrying punctuation cannot look like
      a delimiter. *)
+  (* The sideways reveal's chosen tab and alignment are part of the asserted
+     model surface for the same reason. [Sub_reveal_tabs.serialize_model]
+     already terminates each [field=value] with ';' and quotes the key. *)
   (* The scroll pane's marker, its move count and its keyboard gate are part of
      the asserted model surface. The move count is the only value that differs
      between two identical presses, which is what a spec driving the same
@@ -854,8 +864,8 @@ let serialize_model (model : App.model) =
   Printf.sprintf
     "{pings=%d; clicks=%d; input=%S; storage=%s; win_visible=%b; win_title=%S; \
      tauri_store=%s; back_route=%s; bottom_tabs={%s}; file_input={%s}; \
-     receipt_flow={%s}; reveal_list={%s}; scroll_pane={%s}; focus_reveal={%s}; \
-     auth_form={%s}}"
+     receipt_flow={%s}; reveal_list={%s}; reveal_tabs={%s}; scroll_pane={%s}; \
+     focus_reveal={%s}; auth_form={%s}}"
     model.telemetry_pings model.button_clicks model.input_text storage
     model.tauri_is_visible model.tauri_window_title tauri_store
     (back_route_to_string model.back_route)
@@ -863,6 +873,7 @@ let serialize_model (model : App.model) =
     (Sub_file_input.serialize_model model.file_input)
     (Sub_receipt_flow.serialize_model model.receipt_flow)
     (Sub_reveal_list.serialize_model model.reveal_list)
+    (Sub_reveal_tabs.serialize_model model.reveal_tabs)
     (Sub_scroll_pane.serialize_model model.scroll_pane)
     (Sub_focus_reveal.serialize_model model.focus_reveal)
     (Sub_auth_form.serialize_model model.auth_form)
@@ -878,10 +889,10 @@ let telemetry_enabled () =
   let value = Jv.call params "get" [| Jv.of_string "telemetry" |] in
   Jv.is_null value || not (String.equal (Jv.to_string value) "off")
 
-(* Reference pattern (RFC 0118 Risk: "[on_error] default too quiet in packaged
-   apps"): surface a runtime [on_error] description as a visible, self-dismissing
+(* Reference pattern, because an [on_error] default is too quiet in a packaged
+   app: surface a runtime [on_error] description as a visible, self-dismissing
    toast rather than letting it vanish into the console. The runtime guarantees
-   the loop continues (REQ-F1); this just makes the fault observable to the user.
+   the loop continues; this just makes the fault observable to the user.
    This is the entry-point (Brr) layer, so a DOM toast is wired directly rather
    than through the MVU model. *)
 let show_error_toast description =
@@ -961,18 +972,18 @@ let () =
           [
             base;
             Nopal_tauri.Tray.on_click App.TrayClicked;
-            (* Soft-keyboard height feeds the REQ-N2 debug display; on desktop it
-               fires exactly once with 0 (RFC 0116, Step 7). *)
+            (* Soft-keyboard height feeds the debug display; on desktop it fires
+               exactly once with 0. *)
             Nopal_tauri.Platform_tauri.on_keyboard_height_change (fun h ->
                 App.KeyboardHeightChanged h);
           ]
       else base
   end in
-  (* Mobile signal wiring (RFC 0116, Step 7): both ride the Tauri event bus, so
+  (* Mobile signal wiring: both ride the Tauri event bus, so
      they are inert/absent in a plain browser — gate on [has_tauri]. The
      hardware-back listener turns [nopal:back-pressed] into [history.back()]
-     (REQ-F3, idempotent). [safe_area_source] is threaded into mount so the
-     runtime auto-populates [Viewport.safe_area] (REQ-F4). Wiring the native
+     (idempotently). [safe_area_source] is threaded into mount so the
+     runtime auto-populates [Viewport.safe_area]. Wiring the native
      source is safe on every Tauri host except iOS, where it yields a broken
      value that also suppresses the CSS [env()] fallback — so gate it on
      [has_tauri () && not (Os.is_ios ())]. Android gets real
@@ -998,11 +1009,11 @@ let () =
           (module Mounted)
           ~serialize_msg ~serialize_model target
     in
-    (* Feed the Tauri host-side telemetry mirror so the WebdriverIO REQ-F5 specs
+    (* Feed the Tauri host-side telemetry mirror so the Tauri WebdriverIO specs
        can read events through [Nopal_tauri.Telemetry.get_telemetry] from outside
-       the webview (RFC 0112, Step 7). The underlying [plugin:event|emit] IPC is
+       the webview. The underlying [plugin:event|emit] IPC is
        absent in a plain browser, so gate on [has_tauri]; the mirror is inert
-       until this call (RFC Risk: [get_telemetry] returns [[]] otherwise). *)
+       until this call, and [get_telemetry] returns [[]] otherwise. *)
     if has_tauri () then Nopal_tauri.Telemetry.expose mounted.telemetry
   end
   else

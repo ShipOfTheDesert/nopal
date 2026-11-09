@@ -1,0 +1,7 @@
+; Browser-free logic the web backend shares with its unit tests. A private
+; library, so it is not part of Nopal_web's public surface. Wrapped like every
+; other library here: its modules are reached as Nopal_web_internal.<Module>.
+
+(library
+ (name nopal_web_internal)
+ (package nopal_web))

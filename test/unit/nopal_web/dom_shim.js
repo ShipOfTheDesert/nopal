@@ -10,10 +10,12 @@
 //     the `style` attribute" below for how the two meet, classList,
 //     addEventListener, removeEventListener, dispatchEvent
 //   - Element: querySelector / querySelectorAll over a single attribute
-//     selector, and the vertical scroll geometry (scrollTop, clientHeight,
-//     clientTop, scrollHeight, getBoundingClientRect) — see "Layout" below
+//     selector, and the scroll geometry of both axes (scrollTop, scrollLeft,
+//     clientHeight, clientWidth, clientTop, clientLeft, scrollHeight,
+//     scrollWidth, getBoundingClientRect) — see "Layout" below
 //   - document.getElementById — see "Element lookup by id" below
-//   - window.requestAnimationFrame, setTimeout, getComputedStyle
+//   - window.requestAnimationFrame, setTimeout, getComputedStyle (inherited
+//     `writing-mode` and `direction` — see "Layout" below)
 //   - CSS.escape
 //   - Event, KeyboardEvent, InputEvent, MouseEvent constructors
 //
@@ -31,12 +33,16 @@
 //
 // ## Layout
 //
-// There is no layout engine, but there is a vertical layout *model*, because a
-// renderer that brings a child of a scroll container into view has to measure
-// one. A test states where a node sits by setting `_layoutTop` (its top edge
-// within its parent's content) and, for a leaf, `_layoutHeight`; a container
-// states its visible height with `_clientHeight`. Everything a renderer can
-// read is then derived rather than supplied:
+// There is no layout engine, but there is a layout *model* along both axes,
+// because a renderer that brings a child of a scroll container into view has to
+// measure one. A test states where a node sits by setting `_layoutTop` (its top
+// edge within its parent's content) and, for a leaf, `_layoutHeight`; a
+// container states its visible height with `_clientHeight`. The horizontal
+// model mirrors it name for name — `_layoutLeft`, `_layoutWidth`,
+// `_clientWidth`, `_borderLeft`, `scrollLeft`, `clientLeft`, `scrollWidth`, and
+// the rect's `left`/`x` and `width` — and every rule below holds on it with
+// left for top and width for height. Everything a renderer can read is then
+// derived rather than supplied:
 //
 //   - `scrollHeight` is the furthest extent of the element's children, never a
 //     test-supplied number, so content and viewport cannot be set to disagree.
@@ -52,11 +58,28 @@
 //     `[0, scrollHeight - clientHeight]`, which is the platform's own
 //     behaviour. `_scrollWrites` counts assignments (mirroring the inline-style
 //     and input-value counters below) so a test can tell "wrote the value it
-//     already held" from "did not write".
+//     already held" from "did not write". `_scrollLeftWrites` counts
+//     `scrollLeft` assignments separately, so a test can tell which axis moved.
+//   - A scroll range can run reversed, from `-(scrollWidth - clientWidth)` up
+//     to 0 (or the same on height), which is how a browser lays out a
+//     right-to-left or vertical writing mode. Which axes are reversed is read
+//     off the element's computed `writing-mode` and `direction`, by the table
+//     beside `reversedAxes`, and a write to a reversed axis clamps into that
+//     negative range. Only the clamp is modelled: a reversed axis's rect is not
+//     mirrored, so its geometry is meaningful only as "a write here moves the
+//     container".
+//   - `getComputedStyle(el)` resolves `writing-mode` and `direction` through
+//     the element's ancestors' inline declarations, as inherited properties do,
+//     and falls back to `horizontal-tb` and `ltr`. An element not connected to
+//     `document` (its parent chain does not reach `document.documentElement`)
+//     answers the empty string for both, as a browser does, so a fixture must
+//     mount into a node attached to `document.body`. An element with
+//     `_nullComputedStyle` set answers `null` instead, for the case where the
+//     browser gives no style at all.
 //
 // Defaults are the platform's, not the convenient ones: an element nobody has
-// laid out has `clientHeight` 0 and a zero-height rect, so a test that forgets
-// to lay out its fixture sees nothing move.
+// laid out has `clientHeight` and `clientWidth` 0 and a zero-size rect, so a
+// test that forgets to lay out its fixture sees nothing move.
 //
 // ## Element lookup by id
 //
@@ -315,6 +338,69 @@
       extent = Math.max(extent, (child._layoutTop || 0) + layoutHeight(child));
     }
     return extent;
+  }
+
+  // The horizontal mirror of the two above: an element's own width when a test
+  // gave it one, and otherwise the furthest right edge of its children.
+  function layoutWidth(el) {
+    return el._layoutWidth !== undefined ? el._layoutWidth : contentWidth(el);
+  }
+
+  function contentWidth(el) {
+    let extent = 0;
+    for (const child of el.childNodes) {
+      if (child.nodeType !== 1) continue;
+      extent = Math.max(extent, (child._layoutLeft || 0) + layoutWidth(child));
+    }
+    return extent;
+  }
+
+  // `writing-mode` and `direction` are inherited properties, so the computed
+  // value is the nearest inline declaration on the element or an ancestor, and
+  // the initial value when nothing declares one.
+  function inheritedStyle(el, property, initial) {
+    let node = el;
+    while (node && node.nodeType === 1) {
+      const declared = node.style ? node.style.getPropertyValue(property) : "";
+      if (declared) return declared;
+      node = node.parentNode;
+    }
+    return initial;
+  }
+
+  // Which of an element's scroll ranges run from -max up to 0 rather than from
+  // 0 up to max, read off its computed `writing-mode` and `direction` as a
+  // browser lays them out:
+  //
+  //   writing-mode    direction: ltr   direction: rtl
+  //   horizontal-tb   neither          x
+  //   vertical-rl     x                x and y
+  //   vertical-lr     neither          y
+  //   sideways-rl     x                x and y
+  //   sideways-lr     y                neither
+  //
+  // A value outside the table is one no browser computes, so there is no
+  // platform behaviour to mirror; such an element keeps both ranges forward.
+  const reversedTable = {
+    "horizontal-tb": { ltr: [false, false], rtl: [true, false] },
+    "vertical-rl": { ltr: [true, false], rtl: [true, true] },
+    "vertical-lr": { ltr: [false, false], rtl: [false, true] },
+    "sideways-rl": { ltr: [true, false], rtl: [true, true] },
+    "sideways-lr": { ltr: [false, true], rtl: [false, false] },
+  };
+
+  function reversedAxes(el) {
+    const row = reversedTable[inheritedStyle(el, "writing-mode", "horizontal-tb")];
+    const cell = row ? row[inheritedStyle(el, "direction", "ltr")] : undefined;
+    return cell ? { x: cell[0], y: cell[1] } : { x: false, y: false };
+  }
+
+  // A scroll offset clamped to the range the platform offers along one axis:
+  // [0, max] forward and [-max, 0] reversed.
+  function clampScroll(value, max, reversed) {
+    return reversed
+      ? Math.min(0, Math.max(Number(value), -max))
+      : Math.max(0, Math.min(Number(value), max));
   }
 
   // A scrolling box, read off the inline `overflow` property exactly as a
@@ -839,31 +925,74 @@
       get() { return el._scrollTop; },
       set(v) {
         const max = Math.max(0, el.scrollHeight - el.clientHeight);
-        el._scrollTop = Math.max(0, Math.min(Number(v), max));
+        el._scrollTop = clampScroll(v, max, reversedAxes(el).y);
         el._scrollWrites++;
+      },
+      configurable: true,
+    });
+
+    // Horizontal layout, the mirror of the vertical model above: `_layoutLeft`
+    // is where a test put this element inside its parent's content,
+    // `_clientWidth` how much of its own content is visible, and `_borderLeft`
+    // the width of its left border. `_layoutWidth` stays undefined for the same
+    // reason `_layoutHeight` does. `_scrollLeftWrites` counts `scrollLeft`
+    // assignments apart from `_scrollWrites`, so a test can tell which axis a
+    // renderer wrote.
+    el._layoutLeft = 0;
+    el._borderLeft = 0;
+    el._clientWidth = 0;
+    el._scrollLeft = 0;
+    el._scrollLeftWrites = 0;
+
+    Object.defineProperty(el, "clientWidth", {
+      get() { return el._clientWidth; },
+      configurable: true,
+    });
+
+    Object.defineProperty(el, "clientLeft", {
+      get() { return el._borderLeft; },
+      configurable: true,
+    });
+
+    Object.defineProperty(el, "scrollWidth", {
+      get() { return Math.max(el._clientWidth, contentWidth(el)); },
+      configurable: true,
+    });
+
+    Object.defineProperty(el, "scrollLeft", {
+      get() { return el._scrollLeft; },
+      set(v) {
+        const max = Math.max(0, el.scrollWidth - el.clientWidth);
+        el._scrollLeft = clampScroll(v, max, reversedAxes(el).x);
+        el._scrollLeftWrites++;
       },
       configurable: true,
     });
 
     // Viewport-relative, so every ancestor's position adds and every ancestor's
     // scroll offset subtracts. This is what makes a child's rect move when the
-    // container it lives in scrolls.
+    // container it lives in scrolls, along either axis.
     el.getBoundingClientRect = function () {
       const height = layoutHeight(el);
+      const width = layoutWidth(el);
       let top = 0;
+      let left = 0;
       let node = el;
       while (node && node.nodeType === 1) {
         top += node._layoutTop || 0;
+        left += node._layoutLeft || 0;
         const parent = node.parentNode;
         if (parent && parent.nodeType === 1) {
           top -= parent._scrollTop || 0;
           top += parent._borderTop || 0;
+          left -= parent._scrollLeft || 0;
+          left += parent._borderLeft || 0;
         }
         node = parent;
       }
       return {
-        x: 0, y: top, width: 0, height: height,
-        top: top, right: 0, bottom: top + height, left: 0,
+        x: left, y: top, width: width, height: height,
+        top: top, right: left + width, bottom: top + height, left: left,
       };
     };
 
@@ -1057,7 +1186,43 @@
     }, opts));
   };
   globalThis.CSS = { escape: cssEscape };
-  globalThis.getComputedStyle = function (el) { return el.style; };
+  // The inline declaration stands in for the computed value, except for the two
+  // inherited properties a renderer decides scroll ranges from: those resolve
+  // through the ancestors to the platform's initial values, `horizontal-tb` and
+  // `ltr`, so an element nobody styled reads as a browser would report it
+  // rather than as an empty string.
+  const inheritedProperties = { "writing-mode": "horizontal-tb", direction: "ltr" };
+  const inheritedCamel = { writingMode: "writing-mode", direction: "direction" };
+  // A detached element has no computed style: a browser answers the empty
+  // string for every property. Connected means the parent chain reaches the
+  // document's root element.
+  function isConnected(el) {
+    let node = el;
+    while (node) {
+      if (node === globalThis.document.documentElement) return true;
+      node = node.parentNode;
+    }
+    return false;
+  }
+  globalThis.getComputedStyle = function (el) {
+    // A test sets `_nullComputedStyle` to have this element answer null, as
+    // Firefox historically did inside a `display:none` iframe.
+    if (el._nullComputedStyle) return null;
+    return new Proxy(el.style, {
+      get(target, prop) {
+        if (prop === "getPropertyValue")
+          return (p) =>
+            p in inheritedProperties
+              ? (isConnected(el) ? inheritedStyle(el, p, inheritedProperties[p]) : "")
+              : target.getPropertyValue(p);
+        if (prop in inheritedCamel) {
+          const p = inheritedCamel[prop];
+          return isConnected(el) ? inheritedStyle(el, p, inheritedProperties[p]) : "";
+        }
+        return target[prop];
+      },
+    });
+  };
   globalThis.requestAnimationFrame = function (cb) { setTimeout(cb, 0); return 0; };
   globalThis.cancelAnimationFrame = function () {};
   globalThis.navigator = { userAgent: "node" };

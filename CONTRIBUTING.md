@@ -94,11 +94,11 @@ close it.
 
 Each record lives beside the rule it defers, so the next reader of that rule
 sees the exception: D-1, D-2, D-6, D-10, D-16, D-18 and D-19 under
-[E2E tests](#e2e-tests-playwright), D-3, D-17 (discharged) and D-20 under
+[E2E tests](#e2e-tests-playwright), D-3, D-17 (discharged) and D-20 (discharged) under
 [Performance](#performance), D-4 and D-12 under [Kitchen Sink](#kitchen-sink), D-5 and D-7 under
 [VIII. Bug-Class Prevention](#viii-bug-class-prevention), D-8, D-9, D-11,
-D-13, D-14 and D-15 under [V. Functional Patterns](#v-functional-patterns). D-11,
-D-15 and D-17 are discharged; their records stay where they were, because an id is
+D-13, D-14, D-15 and D-21 under [V. Functional Patterns](#v-functional-patterns). D-11,
+D-15, D-17 and D-20 are discharged; their records stay where they were, because an id is
 assigned once and never reused and a reader who meets the id in an older commit
 message has to be able to find it.
 
@@ -1273,6 +1273,19 @@ sixth flex container added without a matching arm would un-guard that variant's
 children with the whole suite green, so the two are changed together rather than
 watched.
 
+#### Open deferral D-21 — `Cmd.scroll_by` does not skip a reversed y axis
+
+**Owner: the first consumer or kitchen-sink section that calls `scroll_by` on a
+container in a vertical writing mode or under `rtl`, or whoever makes
+`scroll_by` horizontal, whichever comes first, in the change that does it.**
+
+`scroll_element_by` in `backends/nopal_web/nopal_web.ml` writes `scrollTop` from
+`Scroll_delta.offset_for`, which clamps to `[0, max]`. On a container whose y
+axis runs reversed (the reversed-y rows of the reveal table in `llms.txt`) the scroll range is `[-max, 0]`, so every `scroll_by` drags it to
+the start edge. The change that extended `Reveal` to the horizontal axis found this
+defect class and skips the reversed axis; `scroll_by` was left as it was. Nothing in the repository scrolls such a
+container with `scroll_by`, which is why no browser case was written.
+
 ### VI. No Inline Helpers
 
 Helper functions belong in dedicated modules with tests and `.mli` files,
@@ -1355,24 +1368,23 @@ rule that is already actionable without it. Rewriting the five paragraphs is a
 documentation change of its own and is not part of a feature.
 
 Two other committed sites keep such pointers and are deliberately left too.
-`llms.txt` cites the excluded tree six times (`feature 0122` at :2099, `RFC 0110`
-at :2452, `ADR 0108` at :2526, `REQ-N1` at :2612, `RFC 0077/0107` at :2652 and
-`docs/guides/telemetry-tauri.md` at :2653). Source comments carry 266
-`REQ-*`/`NFR-*`/`FR-*` tags across 88 `.ml`/`.mli` files, 18 of them under
-`backends/nopal_tauri/`. Two of those now read inconsistently against a file in
-their own package, observed on 2026-09-01: `backends/nopal_tauri/os.mli:24`
-still tags `NFR-1` on the desktop-zero-inset contract whose tag
-`backends/nopal_tauri/platform_tauri.mli` dropped in the same change that added
-this record, and `examples/kitchen_sink/main.ml:861-866` still tags
-`(REQ-F3, idempotent)`, `(REQ-F4)`, `(feature 0121, FR-1)` and `(NFR-1)` at the
-call site of `enable_hardware_back` and `safe_area_source`. Sweeping 266 tags is
-not a feature's work either; the inconsistency is recorded here so it is not
-rediscovered as a defect. Tags are stripped opportunistically from the files a
-change already touches — the change that added this record dropped
-`platform_tauri.mli`'s, and the one that added D-6 dropped the eight on
-`lib/nopal_charts/axis.mli` and `lib/nopal_charts/bar.mli`, leaving ten tagged
-`.mli` files in `lib/nopal_charts/` — so what is deferred here is the sweep, not
-the strip.
+`llms.txt` cites the excluded tree once (`REQ-N1` at :6224). Source comments
+carry 134 `REQ-*`/`NFR-*`/`FR-*` tags across 69 `.ml`/`.mli` files, 23 of them
+under `backends/nopal_tauri/`, counted on 2026-11-09 as the matches of
+`(REQ|NFR|FR)-[A-Z]*[0-9]+` in the tracked and untracked-unignored `.ml` and
+`.mli` files. An earlier count of 266 across 88 files could not be reproduced
+(the same pattern gives 159 across 72 at the previous commit), so it is not
+comparable with this one. One of those now reads
+inconsistently against a file in its own package, observed on 2026-09-01:
+`backends/nopal_tauri/os.mli:24` still tags `NFR-1` on the desktop-zero-inset
+contract whose tag `backends/nopal_tauri/platform_tauri.mli` dropped in the same
+change that added this record. Sweeping the tags is not a feature's work
+either; the inconsistency is recorded here so it is not rediscovered as a
+defect. Tags are stripped opportunistically from the files a change already
+touches — the change that added this record dropped `platform_tauri.mli`'s, and
+the one that added D-6 dropped the eight on `lib/nopal_charts/axis.mli` and
+`lib/nopal_charts/bar.mli`, and no file under `lib/nopal_charts/` carries a tag
+now — so what is deferred here is the sweep, not the strip.
 
 `scripts/check-e2e-wired` is the one such site that was fixed rather than
 deferred. It printed its pointer to a person at the moment its gate failed,
@@ -1459,7 +1471,7 @@ js_of_ocaml output without justification.
 Deferring a benchmark obligation is allowed; leaving it unrecorded is not — see
 [Deferrals and decisions not to cover](#deferrals-and-decisions-not-to-cover)
 for the `D-n` scheme.
-**There are two current deferrals (D-3 and D-20); D-17 is discharged below.**
+**There is one current deferral (D-3); D-17 and D-20 are discharged below.**
 
 ### Open deferral D-3 — the committed baseline is stale, so read it relatively
 
@@ -1540,11 +1552,12 @@ and `Nopal_web.Renderer`, and the renderer was not changed. The runtime gained
 one record field, set once at creation, and one label passed to `Cmd.interpret`
 per command; the initial render issues no clipboard command.
 
-### Open deferral D-20 — `jsfb/swap_rows` read +22.3% over six runs, and the renderer is not the cause
+### Discharged deferral D-20 — `jsfb/swap_rows` read +22.3% over six runs, and the renderer is not the cause
 
-**Owner: the next change that takes the bench pair this section prescribes. It
-reads `jsfb/swap_rows` against its own merge base, and discharges this record if
-the median sits within 20% of the base or inside the base's own spread.**
+**Discharged by the next bench pair, read at the end of this record. Its owner
+was the next change to take the pair, and its condition was that
+`jsfb/swap_rows` sit within 20% of its merge base or inside the base's own
+spread. That pair met it.**
 
 The change that added `Element.button ~switch` and `Nopal_ui.Switch` ran the
 D-3 procedure on 2026-11-09. That was three interleaved `just bench` runs per
@@ -1590,6 +1603,25 @@ same 2,000 buttons through the same guard, and over the six-run pair they moved
 What stays open is the move itself. The experiment shows it is not in the
 renderer, but it does not show what it is. The record therefore stays open
 until a later pair reads the metric again.
+
+**The discharging pair.** The change that extended `Reveal` to the horizontal
+axis took the pair on 2026-11-09: three interleaved `CI=1 just bench` runs per
+tree, its working tree against a `git archive` of its merge base, then three
+more per tree because one median read over 20%. All twelve runs exited 0 with
+17 of 17 specs, and every run is reported:
+
+| tree | runs 1–6 (ms) | median, runs 1–3 | median, runs 1–6 | spread, runs 1–6 |
+| --- | --- | --- | --- | --- |
+| merge base | 26.2 / 27.1 / 35.8 / 25.5 / 31.7 / 27.3 | 27.1 | 27.2 | 37.9% |
+| branch | 33.6 / 26.4 / 37.2 / 24.4 / 25.8 / 26.9 | 33.6 | 26.65 | 48.0% |
+
+Over three runs the branch read **+24.0%**, but the base's own spread over
+those runs was 35.4% and the branch median lay inside the base's range, so the
+condition already held. Over six runs it read **−2.0%**. In this pair the base
+too has runs near 32–36 ms (runs 3 and 5): the step the record saw only on the
+branch appears on both trees. That change's renderer edit is confined to the
+reveal path, and no bench app declares a reveal. The cause of the step is still
+not attributed, but a step both trees show is not evidence against either.
 
 ## Kitchen Sink
 

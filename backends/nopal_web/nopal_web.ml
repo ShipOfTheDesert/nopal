@@ -116,10 +116,10 @@ let focus_element id =
 (* Drain queued [Cmd.focus] targets, focusing each in request order. The runtime
    interprets a command synchronously during dispatch, before the rAF loop
    applies the model's DOM patch, so focusing inline would no-op against an
-   element the same [update] just created (FR-3). The web backend therefore
+   element the same [update] just created. The web backend therefore
    enqueues focus requests and flushes the queue here, once per frame *after*
-   {!Renderer.update}, so the target node is already in the DOM — consistent with
-   RFC 0118 Decision 9's off-rAF timing model. Already-present targets focus on
+   {!Renderer.update}, so the target node is already in the DOM. Already-present
+   targets focus on
    the next frame either way, leaving existing focus behaviour unchanged. *)
 let drain_focus pending =
   while not (Queue.is_empty pending) do
@@ -204,7 +204,7 @@ let event_key event =
 (* Web backend's per-atom subscription interpreter handed to the runtime
    ([Sub_manager.diff] via [Runtime.create ~interpret_atom]). Exhaustive over
    [Sub.atom] — a new constructor is a compile error here, never a silent
-   no-op (REQ-F3).
+   no-op.
 
    [Custom] runs its setup with the runtime-supplied [dispatch]. [Viewport] is a
    no-op because the viewport is delivered through the [ResizeObserver] /
@@ -277,7 +277,7 @@ let web_interpret_atom (type msg) ~(dispatch : msg -> unit)
    runtime construction in the two entry points lets them own the [focus] /
    [schedule_after] platform callbacks, so those never leak into the public API.
    The on/off distinction is the entry point's name and return type, never an
-   optional argument (RFC 0110, Implementation Decision 2). *)
+   optional argument. *)
 let drive (type msg) ?(on_error = default_on_error) ~(start : unit -> unit)
     ~(set_viewport : Nopal_element.Viewport.t -> unit)
     ~(view_lwd : msg Nopal_element.Element.t Lwd.t) ~(dispatch : msg -> unit)
@@ -288,14 +288,14 @@ let drive (type msg) ?(on_error = default_on_error) ~(start : unit -> unit)
     ~(link_host : Renderer.link_host) (target : Brr.El.t) : unit -> unit =
   let w = Jv.get Jv.global "window" in
   (* Inject CSS custom properties bridging env() safe area values into JS-readable
-     form. Must run before read_safe_area. Runs once on startup (REQ-N3). *)
+     form. Must run before read_safe_area. Runs once on startup. *)
   inject_safe_area_style ();
   let env_safe_area = read_safe_area () in
   start ();
   (* last_insets caches the most recent safe-area insets so the ResizeObserver
      rebuild reuses the live native value (from [safe_area_source]) rather than a
      stale [env()] read, preventing an orientation update from being clobbered by
-     a later resize (RFC 0116 Risk row). It seeds from the [env()] read so that
+     a later resize. It seeds from the [env()] read so that
      with no source the resize behaviour is identical to before.
      mutable: updated on every safe-area delivery, read by the resize callback. *)
   let last_insets = ref env_safe_area in
@@ -333,7 +333,7 @@ let drive (type msg) ?(on_error = default_on_error) ~(start : unit -> unit)
     (* mutable: holds the rAF callback so each frame can schedule the next *)
     ref (fun (_ts : float) -> ())
   in
-  (* Set up ResizeObserver to track viewport changes (REQ-F4, REQ-N2).
+  (* Set up ResizeObserver to track viewport changes.
      The observer watches [target] as a resize trigger but [read_viewport]
      reads from [window.innerWidth]/[window.innerHeight], so the viewport
      always reflects the full browser window. This is correct when [target]
@@ -346,7 +346,7 @@ let drive (type msg) ?(on_error = default_on_error) ~(start : unit -> unit)
   let observer = Jv.new' (Jv.get Jv.global "ResizeObserver") [| resize_cb |] in
   ignore (Jv.call observer "observe" [| Brr.El.to_jv target |]);
   (* keydown subscriptions are now interpreted by {!web_interpret_atom} and
-     diffed through [Sub_manager] like every other built-in (REQ-F3): the
+     diffed through [Sub_manager] like every other built-in: the
      runtime sets up a [window] keydown listener when a keydown sub appears and
      tears it down when it leaves. The previous per-rAF-frame
      [update_keydown_prevent] re-extraction is gone — subscriptions only change

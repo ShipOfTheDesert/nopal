@@ -16,6 +16,14 @@
  (modes js)
  (js_of_ocaml))
 
+; test_scroll_axes decodes computed writing-mode and direction strings and reads
+; which scroll axes run reversed. Pure string logic: no DOM, no shim.
+
+(test
+ (name test_scroll_axes)
+ (package nopal_web)
+ (libraries nopal_web_internal qcheck-core qcheck-alcotest alcotest))
+
 ; dom_shim.js provides a minimal fake DOM (document, window, Event, etc.)
 ; so that Brr-based renderer tests can run under Node.js via js_of_ocaml
 ; without a headless browser. It covers element creation, child manipulation,

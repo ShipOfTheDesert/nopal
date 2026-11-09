@@ -1,10 +1,12 @@
 (* The scroll arithmetic behind a reveal request.
 
-   Every fixture below is a container 300 units tall over 1000 units of content
-   unless it says otherwise, so the scrollable range is 0 to 700 and a reader can
-   check any expected offset by hand. Measurements share one origin: child_top is
-   measured from the top of the content, not from the top of the visible area, so
-   it stays put while the container scrolls.
+   The arithmetic names no axis, so one call answers for either. Every fixture
+   below is told as a vertical one — a container 300 units tall over 1000 units
+   of content — unless it says otherwise, so the scrollable range is 0 to 700 and
+   a reader can check any expected offset by hand. The horizontal fixtures say so
+   and use a narrower geometry of their own. Measurements share one origin:
+   child_start is measured from the start edge of the content, not from the start
+   edge of the visible area, so it stays put while the container scrolls.
 
    Alignments are carried in lists paired with a label rather than passed to
    Reveal.align_token, because align_token is itself under test at the bottom of
@@ -59,15 +61,13 @@ let test_visible_child_no_offset () =
       Alcotest.check offset
         (label ^ ": already satisfied, so the container must not move")
         None
-        (Reveal.offset_for ~scroll_offset:satisfied_offset
-           ~viewport_height:300.0 ~content_height:1000.0 ~child_top:400.0
-           ~child_height:60.0 ~align);
+        (Reveal.offset_for ~scroll_offset:satisfied_offset ~viewport:300.0
+           ~content:1000.0 ~child_start:400.0 ~child_extent:60.0 ~align);
       Alcotest.check offset
         (label ^ ": the same fixture one unit down must move the container")
         (Some (satisfied_offset +. 1.0))
-        (Reveal.offset_for ~scroll_offset:satisfied_offset
-           ~viewport_height:300.0 ~content_height:1000.0 ~child_top:401.0
-           ~child_height:60.0 ~align))
+        (Reveal.offset_for ~scroll_offset:satisfied_offset ~viewport:300.0
+           ~content:1000.0 ~child_start:401.0 ~child_extent:60.0 ~align))
     already_satisfied
 
 (* ------------------------------------------------------------------ *)
@@ -79,9 +79,8 @@ let test_visible_child_no_offset () =
    edge on the fold, at 560 - 300. *)
 let test_below_fold_nearest () =
   Alcotest.check offset "the child's bottom edge lands on the fold" (Some 260.0)
-    (Reveal.offset_for ~scroll_offset:0.0 ~viewport_height:300.0
-       ~content_height:1000.0 ~child_top:500.0 ~child_height:60.0
-       ~align:Reveal.Nearest)
+    (Reveal.offset_for ~scroll_offset:0.0 ~viewport:300.0 ~content:1000.0
+       ~child_start:500.0 ~child_extent:60.0 ~align:Reveal.Nearest)
 
 (* The container is at 600; the child occupies 100 to 160, entirely above the
    visible band. The smallest move in the other direction puts its top edge on
@@ -89,9 +88,8 @@ let test_below_fold_nearest () =
 let test_above_viewport_nearest () =
   Alcotest.check offset "the child's top edge lands on the top of the band"
     (Some 100.0)
-    (Reveal.offset_for ~scroll_offset:600.0 ~viewport_height:300.0
-       ~content_height:1000.0 ~child_top:100.0 ~child_height:60.0
-       ~align:Reveal.Nearest)
+    (Reveal.offset_for ~scroll_offset:600.0 ~viewport:300.0 ~content:1000.0
+       ~child_start:100.0 ~child_extent:60.0 ~align:Reveal.Nearest)
 
 (* ------------------------------------------------------------------ *)
 (* Each named alignment lands the child where it says                   *)
@@ -103,8 +101,8 @@ let test_above_viewport_nearest () =
    cannot stand in for the property. *)
 let landing_position align =
   match
-    Reveal.offset_for ~scroll_offset:0.0 ~viewport_height:300.0
-      ~content_height:1000.0 ~child_top:500.0 ~child_height:60.0 ~align
+    Reveal.offset_for ~scroll_offset:0.0 ~viewport:300.0 ~content:1000.0
+      ~child_start:500.0 ~child_extent:60.0 ~align
   with
   | None ->
       Alcotest.failf "%s: expected an offset for a child below the fold"
@@ -113,17 +111,14 @@ let landing_position align =
 
 let test_start_center_end () =
   Alcotest.check offset "start" (Some 500.0)
-    (Reveal.offset_for ~scroll_offset:0.0 ~viewport_height:300.0
-       ~content_height:1000.0 ~child_top:500.0 ~child_height:60.0
-       ~align:Reveal.Start);
+    (Reveal.offset_for ~scroll_offset:0.0 ~viewport:300.0 ~content:1000.0
+       ~child_start:500.0 ~child_extent:60.0 ~align:Reveal.Start);
   Alcotest.check offset "center" (Some 380.0)
-    (Reveal.offset_for ~scroll_offset:0.0 ~viewport_height:300.0
-       ~content_height:1000.0 ~child_top:500.0 ~child_height:60.0
-       ~align:Reveal.Center);
+    (Reveal.offset_for ~scroll_offset:0.0 ~viewport:300.0 ~content:1000.0
+       ~child_start:500.0 ~child_extent:60.0 ~align:Reveal.Center);
   Alcotest.check offset "end" (Some 260.0)
-    (Reveal.offset_for ~scroll_offset:0.0 ~viewport_height:300.0
-       ~content_height:1000.0 ~child_top:500.0 ~child_height:60.0
-       ~align:Reveal.End_);
+    (Reveal.offset_for ~scroll_offset:0.0 ~viewport:300.0 ~content:1000.0
+       ~child_start:500.0 ~child_extent:60.0 ~align:Reveal.End_);
   let start_offset = landing_position Reveal.Start in
   Alcotest.check Alcotest.bool "start puts the child's top on the band's top"
     true
@@ -147,14 +142,16 @@ let test_start_center_end () =
    alignment shows its beginning and none scrolls past it. A centre or end
    alignment computed naively would land at 750 or 1000 respectively, both past
    the child's top edge, so the assertion separates the fallback from the
-   formula. *)
+   formula. The container starts at the top, where the child does not yet cover
+   the band, so nearest takes the same fallback as the named alignments; the
+   covering cases below are the ones where it does not. *)
 let test_child_taller_than_viewport () =
   List.iter
     (fun align ->
       let label = align_label align in
       let result =
-        Reveal.offset_for ~scroll_offset:0.0 ~viewport_height:300.0
-          ~content_height:2000.0 ~child_top:500.0 ~child_height:800.0 ~align
+        Reveal.offset_for ~scroll_offset:0.0 ~viewport:300.0 ~content:2000.0
+          ~child_start:500.0 ~child_extent:800.0 ~align
       in
       Alcotest.check offset
         (label ^ ": lands on the child's top edge")
@@ -169,6 +166,151 @@ let test_child_taller_than_viewport () =
             (Float.compare o 500.0 <= 0))
     all_alignments
 
+(* The same 800-unit child at 500 to 1300 in 2000 units of content, with the
+   300-unit band scrolled to 600 to 900: the child fills the band from edge to
+   edge. Nearest asks only that the child be seen, and it already fills
+   everything there is to see, so a reader partway down a long item keeps their
+   place. The affirmative arm is the same fixture under start, which asks for an
+   edge rather than for visibility and still moves to it — without it, an
+   implementation that never answers would pass. *)
+let test_covering_oversized_child_nearest_no_offset_y () =
+  Alcotest.check offset "nearest leaves a child that fills the band alone" None
+    (Reveal.offset_for ~scroll_offset:600.0 ~viewport:300.0 ~content:2000.0
+       ~child_start:500.0 ~child_extent:800.0 ~align:Reveal.Nearest);
+  Alcotest.check offset "start on the same fixture still moves to the top edge"
+    (Some 500.0)
+    (Reveal.offset_for ~scroll_offset:600.0 ~viewport:300.0 ~content:2000.0
+       ~child_start:500.0 ~child_extent:800.0 ~align:Reveal.Start)
+
+(* The same numbers told sideways: a row 800 units wide, starting 500 units into
+   2000 units of sideways content, seen through a band 300 units wide that the
+   reader has scrolled 600 units to the right. A full-width row in a vertical
+   list is this case, and resetting the sideways position on every reveal of it
+   is the defect the rule exists to prevent.
+
+   The band's end edge flush with the row's end edge, at 1000, still counts as
+   covered; one unit further, at 1001, the band shows content past the row and
+   nearest falls back to the row's start edge. Those two arms pin the boundary
+   as inclusive, which a strict comparison would get wrong in one direction. *)
+let test_covering_oversized_child_nearest_no_offset_x () =
+  Alcotest.check offset "nearest leaves a row that fills the band alone" None
+    (Reveal.offset_for ~scroll_offset:600.0 ~viewport:300.0 ~content:2000.0
+       ~child_start:500.0 ~child_extent:800.0 ~align:Reveal.Nearest);
+  Alcotest.check offset "the row's end edge flush with the band's is covered"
+    None
+    (Reveal.offset_for ~scroll_offset:1000.0 ~viewport:300.0 ~content:2000.0
+       ~child_start:500.0 ~child_extent:800.0 ~align:Reveal.Nearest);
+  Alcotest.check offset "one unit past the row's end edge is not covered"
+    (Some 500.0)
+    (Reveal.offset_for ~scroll_offset:1001.0 ~viewport:300.0 ~content:2000.0
+       ~child_start:500.0 ~child_extent:800.0 ~align:Reveal.Nearest)
+
+(* A browser measures a child's edges as fractions and the band as rounded
+   integers, so a full-width row scrolled to the far end of its list can end at
+   999.6 while the band ends at 1000. That row still covers the band and keeps
+   the sideways position; a row ending 1.5 short does not, and moves to its
+   start edge. Without the second arm an implementation that always answers
+   [None] would pass. *)
+let test_covering_tolerates_fractional_edges () =
+  Alcotest.check offset "a row ending 0.4 short of the band's end is covered"
+    None
+    (Reveal.offset_for ~scroll_offset:700.0 ~viewport:300.0 ~content:2000.0
+       ~child_start:200.0 ~child_extent:799.6 ~align:Reveal.Nearest);
+  Alcotest.check offset "a row ending 1.5 short of the band's end is not"
+    (Some 200.0)
+    (Reveal.offset_for ~scroll_offset:700.0 ~viewport:300.0 ~content:2000.0
+       ~child_start:200.0 ~child_extent:798.5 ~align:Reveal.Nearest)
+
+(* The named alignments ask for an edge, not for visibility, so a child that
+   already fills the band is still moved to its start edge under each of them —
+   the covering rule belongs to nearest alone. *)
+let test_oversized_child_named_alignments_keep_start_edge () =
+  List.iter
+    (fun align ->
+      Alcotest.check offset
+        (align_label align ^ ": a covering child still moves to its start edge")
+        (Some 500.0)
+        (Reveal.offset_for ~scroll_offset:600.0 ~viewport:300.0 ~content:2000.0
+           ~child_start:500.0 ~child_extent:800.0 ~align))
+    [ Reveal.Start; Reveal.Center; Reveal.End_ ]
+
+(* An oversized child that is only partly in the band does not cover it, so
+   nearest keeps the start-edge fallback from either side: with the band at 300
+   to 600 the child starts inside it and runs past its end, and with the band at
+   1100 to 1400 the child ends inside it, leaving the band's tail empty. *)
+let test_oversized_child_nearest_not_covering_moves_to_start () =
+  Alcotest.check offset "child starting inside the band moves to its start edge"
+    (Some 500.0)
+    (Reveal.offset_for ~scroll_offset:300.0 ~viewport:300.0 ~content:2000.0
+       ~child_start:500.0 ~child_extent:800.0 ~align:Reveal.Nearest);
+  Alcotest.check offset "child ending inside the band moves to its start edge"
+    (Some 500.0)
+    (Reveal.offset_for ~scroll_offset:1100.0 ~viewport:300.0 ~content:2000.0
+       ~child_start:500.0 ~child_extent:800.0 ~align:Reveal.Nearest)
+
+(* ------------------------------------------------------------------ *)
+(* The same arithmetic along a horizontal axis                          *)
+(* ------------------------------------------------------------------ *)
+
+(* A row of tabs 80 units wide in a container 320 units wide over 1000 units of
+   sideways content, so the scrollable range is 0 to 680. Every value is worked
+   by hand from those three numbers:
+   - a tab at 600 to 680 with the row at rest is past the end edge, and nearest
+     brings its end edge to the band's end edge at 680 - 320 = 360;
+   - a tab at 100 to 180 with the row scrolled to 500 is past the start edge, and
+     nearest brings its start edge to the band's start edge at 100;
+   - a tab at 600 to 680 with the row scrolled to 500 sits inside 500 to 820, so
+     nearest leaves it alone;
+   - from rest, start puts the tab at 600 to 680 at 600, center at
+     600 + (80 - 320) / 2 = 480, and end at 360;
+   - the last tab, at 920 to 1000, under start would ask for 920 and is clamped
+     to the end of the range at 680. *)
+let test_horizontal_mirror_per_alignment () =
+  let tab ~scroll_offset ~child_start ~align =
+    Reveal.offset_for ~scroll_offset ~viewport:320.0 ~content:1000.0
+      ~child_start ~child_extent:80.0 ~align
+  in
+  Alcotest.check offset "nearest, tab past the end edge" (Some 360.0)
+    (tab ~scroll_offset:0.0 ~child_start:600.0 ~align:Reveal.Nearest);
+  Alcotest.check offset "nearest, tab past the start edge" (Some 100.0)
+    (tab ~scroll_offset:500.0 ~child_start:100.0 ~align:Reveal.Nearest);
+  Alcotest.check offset "nearest, tab already fully visible" None
+    (tab ~scroll_offset:500.0 ~child_start:600.0 ~align:Reveal.Nearest);
+  Alcotest.check offset "start" (Some 600.0)
+    (tab ~scroll_offset:0.0 ~child_start:600.0 ~align:Reveal.Start);
+  Alcotest.check offset "center" (Some 480.0)
+    (tab ~scroll_offset:0.0 ~child_start:600.0 ~align:Reveal.Center);
+  Alcotest.check offset "end" (Some 360.0)
+    (tab ~scroll_offset:0.0 ~child_start:600.0 ~align:Reveal.End_);
+  Alcotest.check offset "start, the last tab clamps to the end of the range"
+    (Some 680.0)
+    (tab ~scroll_offset:0.0 ~child_start:920.0 ~align:Reveal.Start)
+
+(* A row whose tabs exactly fill its 320-unit container has nowhere to scroll,
+   so no alignment moves it, wherever the tab sits. The affirmative arm widens
+   the content by one unit and puts the last tab at its end: every alignment now
+   asks for the one offset the range gained, so the absence above is the
+   content fitting and not the fixture failing to reach the arithmetic. *)
+let test_non_overflowing_axis_no_offset () =
+  List.iter
+    (fun align ->
+      let label = align_label align in
+      List.iter
+        (fun child_start ->
+          Alcotest.check offset
+            (Printf.sprintf "%s: tab at %g in content that fits" label
+               child_start)
+            None
+            (Reveal.offset_for ~scroll_offset:0.0 ~viewport:320.0 ~content:320.0
+               ~child_start ~child_extent:80.0 ~align))
+        [ 0.0; 120.0; 240.0 ];
+      Alcotest.check offset
+        (label ^ ": one unit of overflow reveals the last tab")
+        (Some 1.0)
+        (Reveal.offset_for ~scroll_offset:0.0 ~viewport:320.0 ~content:321.0
+           ~child_start:241.0 ~child_extent:80.0 ~align))
+    all_alignments
+
 (* ------------------------------------------------------------------ *)
 (* Clamping to what the container can actually take                     *)
 (* ------------------------------------------------------------------ *)
@@ -180,8 +322,8 @@ let test_clamps_to_scrollable_range () =
       Alcotest.check offset
         (align_label align ^ ": the first child clamps to the top")
         (Some 0.0)
-        (Reveal.offset_for ~scroll_offset:500.0 ~viewport_height:300.0
-           ~content_height:1000.0 ~child_top:0.0 ~child_height:60.0 ~align))
+        (Reveal.offset_for ~scroll_offset:500.0 ~viewport:300.0 ~content:1000.0
+           ~child_start:0.0 ~child_extent:60.0 ~align))
     all_alignments;
   (* The very last child: start and centre both want to scroll past the end. *)
   List.iter
@@ -189,8 +331,8 @@ let test_clamps_to_scrollable_range () =
       Alcotest.check offset
         (align_label align ^ ": the last child clamps to the bottom")
         (Some 700.0)
-        (Reveal.offset_for ~scroll_offset:0.0 ~viewport_height:300.0
-           ~content_height:1000.0 ~child_top:940.0 ~child_height:60.0 ~align))
+        (Reveal.offset_for ~scroll_offset:0.0 ~viewport:300.0 ~content:1000.0
+           ~child_start:940.0 ~child_extent:60.0 ~align))
     all_alignments;
   (* Content shorter than the container: nothing can scroll, so a container
      already at rest must not move. *)
@@ -199,8 +341,8 @@ let test_clamps_to_scrollable_range () =
       Alcotest.check offset
         (align_label align ^ ": content that fits does not scroll")
         None
-        (Reveal.offset_for ~scroll_offset:0.0 ~viewport_height:300.0
-           ~content_height:200.0 ~child_top:100.0 ~child_height:60.0 ~align))
+        (Reveal.offset_for ~scroll_offset:0.0 ~viewport:300.0 ~content:200.0
+           ~child_start:100.0 ~child_extent:60.0 ~align))
     all_alignments;
   (* The affirmative arm for the case above: the same unscrollable container
      holding an offset outside its own range is corrected back into it, so the
@@ -212,8 +354,8 @@ let test_clamps_to_scrollable_range () =
         (align_label align
         ^ ": an out-of-range offset on that container is corrected")
         (Some 0.0)
-        (Reveal.offset_for ~scroll_offset:40.0 ~viewport_height:300.0
-           ~content_height:200.0 ~child_top:100.0 ~child_height:60.0 ~align))
+        (Reveal.offset_for ~scroll_offset:40.0 ~viewport:300.0 ~content:200.0
+           ~child_start:100.0 ~child_extent:60.0 ~align))
     all_alignments
 
 (* ------------------------------------------------------------------ *)
@@ -233,39 +375,29 @@ let non_finite_values =
 
 let test_non_finite_measurement_no_offset () =
   Alcotest.check offset "the base fixture does produce an offset" (Some 260.0)
-    (Reveal.offset_for ~scroll_offset:0.0 ~viewport_height:300.0
-       ~content_height:1000.0 ~child_top:500.0 ~child_height:60.0
-       ~align:Reveal.Nearest);
+    (Reveal.offset_for ~scroll_offset:0.0 ~viewport:300.0 ~content:1000.0
+       ~child_start:500.0 ~child_extent:60.0 ~align:Reveal.Nearest);
   List.iter
     (fun (label, v) ->
       Alcotest.check offset
         ("scroll_offset = " ^ label)
         None
-        (Reveal.offset_for ~scroll_offset:v ~viewport_height:300.0
-           ~content_height:1000.0 ~child_top:500.0 ~child_height:60.0
-           ~align:Reveal.Nearest);
+        (Reveal.offset_for ~scroll_offset:v ~viewport:300.0 ~content:1000.0
+           ~child_start:500.0 ~child_extent:60.0 ~align:Reveal.Nearest);
+      Alcotest.check offset ("viewport = " ^ label) None
+        (Reveal.offset_for ~scroll_offset:0.0 ~viewport:v ~content:1000.0
+           ~child_start:500.0 ~child_extent:60.0 ~align:Reveal.Nearest);
+      Alcotest.check offset ("content = " ^ label) None
+        (Reveal.offset_for ~scroll_offset:0.0 ~viewport:300.0 ~content:v
+           ~child_start:500.0 ~child_extent:60.0 ~align:Reveal.Nearest);
+      Alcotest.check offset ("child_start = " ^ label) None
+        (Reveal.offset_for ~scroll_offset:0.0 ~viewport:300.0 ~content:1000.0
+           ~child_start:v ~child_extent:60.0 ~align:Reveal.Nearest);
       Alcotest.check offset
-        ("viewport_height = " ^ label)
+        ("child_extent = " ^ label)
         None
-        (Reveal.offset_for ~scroll_offset:0.0 ~viewport_height:v
-           ~content_height:1000.0 ~child_top:500.0 ~child_height:60.0
-           ~align:Reveal.Nearest);
-      Alcotest.check offset
-        ("content_height = " ^ label)
-        None
-        (Reveal.offset_for ~scroll_offset:0.0 ~viewport_height:300.0
-           ~content_height:v ~child_top:500.0 ~child_height:60.0
-           ~align:Reveal.Nearest);
-      Alcotest.check offset ("child_top = " ^ label) None
-        (Reveal.offset_for ~scroll_offset:0.0 ~viewport_height:300.0
-           ~content_height:1000.0 ~child_top:v ~child_height:60.0
-           ~align:Reveal.Nearest);
-      Alcotest.check offset
-        ("child_height = " ^ label)
-        None
-        (Reveal.offset_for ~scroll_offset:0.0 ~viewport_height:300.0
-           ~content_height:1000.0 ~child_top:500.0 ~child_height:v
-           ~align:Reveal.Nearest))
+        (Reveal.offset_for ~scroll_offset:0.0 ~viewport:300.0 ~content:1000.0
+           ~child_start:500.0 ~child_extent:v ~align:Reveal.Nearest))
     non_finite_values
 
 (* ------------------------------------------------------------------ *)
@@ -274,76 +406,109 @@ let test_non_finite_measurement_no_offset () =
 
 type geometry = {
   scroll_offset : float;
-  viewport_height : float;
-  content_height : float;
-  child_top : float;
-  child_height : float;
+  viewport : float;
+  content : float;
+  child_start : float;
+  child_extent : float;
   align : Reveal.align;
 }
 
 let geometry_to_string g =
   Printf.sprintf
-    "scroll_offset=%g viewport_height=%g content_height=%g child_top=%g \
-     child_height=%g align=%s"
-    g.scroll_offset g.viewport_height g.content_height g.child_top
-    g.child_height (align_label g.align)
+    "scroll_offset=%g viewport=%g content=%g child_start=%g child_extent=%g \
+     align=%s"
+    g.scroll_offset g.viewport g.content g.child_start g.child_extent
+    (align_label g.align)
+
+let geometry_of_ints ~scroll ~viewport ~leading ~child_extent ~trailing ~align =
+  {
+    scroll_offset = float_of_int scroll;
+    viewport = float_of_int viewport;
+    content = float_of_int (leading + child_extent + trailing);
+    child_start = float_of_int leading;
+    child_extent = float_of_int child_extent;
+    align;
+  }
 
 (* Whole numbers, so every expected value below is exact in binary and the
    tolerance guards nothing but the halving that a centre alignment performs.
-   The content is built as space above the child, the child, and space below it,
-   which is what keeps the child inside the content for every draw — the
+   The content is built as space before the child, the child, and space after
+   it, which is what keeps the child inside the content for every draw — the
    invariant the property depends on and the reason no shrinker is attached: a
-   component-wise shrinker moves the four numbers independently and breaks it. *)
-let geometry_gen =
+   component-wise shrinker moves the four numbers independently and breaks it.
+   Nothing here names an axis: a draw is a vertical container or a horizontal
+   one equally. *)
+let any_geometry_gen =
   let open QCheck.Gen in
   int_range 1 500 >>= fun viewport ->
-  int_range 1 600 >>= fun child_height ->
+  int_range 1 600 >>= fun child_extent ->
   int_range 0 1500 >>= fun leading ->
   int_range 0 1500 >>= fun trailing ->
-  let content = leading + child_height + trailing in
-  let max_scroll = Int.max 0 (content - viewport) in
+  let max_scroll = Int.max 0 (leading + child_extent + trailing - viewport) in
   int_range 0 max_scroll >>= fun scroll ->
   oneof_list all_alignments >>= fun align ->
   return
-    {
-      scroll_offset = float_of_int scroll;
-      viewport_height = float_of_int viewport;
-      content_height = float_of_int content;
-      child_top = float_of_int leading;
-      child_height = float_of_int child_height;
-      align;
-    }
+    (geometry_of_ints ~scroll ~viewport ~leading ~child_extent ~trailing ~align)
+
+(* Content no longer than the container, so the axis does not overflow and the
+   only offset the container can hold is 0. The general generator above reaches
+   this shape only when both spacers happen to draw small, which is rare enough
+   to leave the claim it supports thinly tested; drawing it on purpose makes it
+   a quarter of every run. *)
+let fitting_geometry_gen =
+  let open QCheck.Gen in
+  int_range 1 500 >>= fun viewport ->
+  int_range 1 viewport >>= fun child_extent ->
+  int_range 0 (viewport - child_extent) >>= fun leading ->
+  int_range 0 (viewport - child_extent - leading) >>= fun trailing ->
+  oneof_list all_alignments >>= fun align ->
+  int_range (-100) 700 >>= fun scroll ->
+  return
+    (geometry_of_ints ~scroll ~viewport ~leading ~child_extent ~trailing ~align)
+
+let geometry_gen =
+  QCheck.Gen.oneof_weighted [ (3, any_geometry_gen); (1, fitting_geometry_gen) ]
 
 let arb_geometry = QCheck.make ~print:geometry_to_string geometry_gen
 
-(* Two claims at once, because either alone is satisfiable by a cheat: an
-   implementation returning None for everything stays in range, and one
-   returning the child's top for everything reveals the child but leaves the
-   range. Applying the result means taking the offset when there is one and
-   leaving the container where it is when there is not, which is the whole
-   contract a caller acts on. *)
+(* Three claims at once, because each alone is satisfiable by a cheat: an
+   implementation returning None for everything stays in range and leaves a
+   fitting axis alone, and one returning the child's start edge for everything
+   reveals the child but leaves the range. Applying the result means taking the
+   offset when there is one and leaving the container where it is when there is
+   not, which is the whole contract a caller acts on. The third claim is the
+   untouched axis: content that does not overflow answers None when the offset
+   is already 0 and Some 0. from any other, out-of-range included, so a reveal never writes to an axis it has no
+   reason to move. *)
 let test_property_offset_within_range =
   QCheck.Test.make ~count:2000 ~name:"property_offset_within_range" arb_geometry
     (fun g ->
       let result =
-        Reveal.offset_for ~scroll_offset:g.scroll_offset
-          ~viewport_height:g.viewport_height ~content_height:g.content_height
-          ~child_top:g.child_top ~child_height:g.child_height ~align:g.align
+        Reveal.offset_for ~scroll_offset:g.scroll_offset ~viewport:g.viewport
+          ~content:g.content ~child_start:g.child_start
+          ~child_extent:g.child_extent ~align:g.align
       in
       let final = Option.value result ~default:g.scroll_offset in
-      let max_scroll = Float.max 0.0 (g.content_height -. g.viewport_height) in
+      let max_scroll = Float.max 0.0 (g.content -. g.viewport) in
       let in_range =
         (not (Float.is_nan final))
         && Float.compare final 0.0 >= 0
         && Float.compare final max_scroll <= 0
       in
-      let visible_top = Float.max g.child_top final in
-      let visible_bottom =
-        Float.min (g.child_top +. g.child_height) (final +. g.viewport_height)
+      let visible_start = Float.max g.child_start final in
+      let visible_end =
+        Float.min (g.child_start +. g.child_extent) (final +. g.viewport)
       in
-      let visible_extent = Float.max 0.0 (visible_bottom -. visible_top) in
-      let expected_extent = Float.min g.child_height g.viewport_height in
-      in_range && close ~epsilon:1e-9 visible_extent expected_extent)
+      let visible_extent = Float.max 0.0 (visible_end -. visible_start) in
+      let expected_extent = Float.min g.child_extent g.viewport in
+      let untouched_when_fitting =
+        Float.compare g.content g.viewport > 0
+        || Option.equal Float.equal result
+             (if Float.equal g.scroll_offset 0.0 then None else Some 0.0)
+      in
+      in_range
+      && close ~epsilon:1e-9 visible_extent expected_extent
+      && untouched_when_fitting)
 
 (* ------------------------------------------------------------------ *)
 (* The declaration itself, and when it must be acted on                 *)
@@ -447,6 +612,21 @@ let () =
           Alcotest.test_case "start_center_end" `Quick test_start_center_end;
           Alcotest.test_case "child_taller_than_viewport" `Quick
             test_child_taller_than_viewport;
+          Alcotest.test_case "covering_oversized_child_nearest_no_offset_y"
+            `Quick test_covering_oversized_child_nearest_no_offset_y;
+          Alcotest.test_case "covering_oversized_child_nearest_no_offset_x"
+            `Quick test_covering_oversized_child_nearest_no_offset_x;
+          Alcotest.test_case "covering_tolerates_fractional_edges" `Quick
+            test_covering_tolerates_fractional_edges;
+          Alcotest.test_case "oversized_child_named_alignments_keep_start_edge"
+            `Quick test_oversized_child_named_alignments_keep_start_edge;
+          Alcotest.test_case
+            "oversized_child_nearest_not_covering_moves_to_start" `Quick
+            test_oversized_child_nearest_not_covering_moves_to_start;
+          Alcotest.test_case "horizontal_mirror_per_alignment" `Quick
+            test_horizontal_mirror_per_alignment;
+          Alcotest.test_case "non_overflowing_axis_no_offset" `Quick
+            test_non_overflowing_axis_no_offset;
           Alcotest.test_case "clamps_to_scrollable_range" `Quick
             test_clamps_to_scrollable_range;
           Alcotest.test_case "non_finite_measurement_no_offset" `Quick

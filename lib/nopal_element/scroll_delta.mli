@@ -37,6 +37,8 @@ val offset_for :
   float option
 (** [offset_for ~scroll_offset ~viewport_height ~content_height delta] is the
     scroll offset the container must take, or [None] when it must be left alone.
+    A container whose y range runs reversed is not special-cased; see
+    [Nopal_mvu.Cmd.scroll_by].
 
     All three measurements are in one unit and share one origin, the top of the
     container's scrollable content. [scroll_offset] is how far the container is

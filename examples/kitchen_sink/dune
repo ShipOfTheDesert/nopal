@@ -24,6 +24,7 @@
   sub_focus_reveal
   sub_receipt_flow
   sub_reveal_list
+  sub_reveal_tabs
   sub_scroll_pane
   sub_fixed_size
   sub_min_size

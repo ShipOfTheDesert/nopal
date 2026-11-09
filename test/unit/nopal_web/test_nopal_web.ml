@@ -21,6 +21,28 @@ let fresh_dispatch () =
   (dispatch, msgs)
 
 let fresh_parent () = Brr.El.v (Jstr.v "div") []
+
+(* Attached to [document.body]: the shim answers an empty computed style for a
+   detached element, as a browser does, and a reveal reads that style. Only the
+   reveal cases that need that attachment use it; [detaching] removes what they
+   attached, so no later test walks through this one's tree. *)
+let attached = ref []
+
+let attached_parent () =
+  let el = Brr.El.v (Jstr.v "div") [] in
+  let body = Jv.get (Jv.get Jv.global "document") "body" in
+  ignore (Jv.call body "appendChild" [| Brr.El.to_jv el |]);
+  attached := el :: !attached;
+  el
+
+let detach_attached () =
+  let body = Jv.get (Jv.get Jv.global "document") "body" in
+  List.iter
+    (fun el -> ignore (Jv.call body "removeChild" [| Brr.El.to_jv el |]))
+    !attached;
+  attached := []
+
+let detaching f x = Fun.protect ~finally:detach_attached (fun () -> f x)
 let node_type jv = Jv.Int.get jv "nodeType"
 
 let tag_of jv =
@@ -4463,7 +4485,7 @@ let reset_scroll_writes jv = Jv.Int.set jv "_scrollWrites" 0
 (* Render the rows with no declaration, then lay the result out: the container
    shows [visible_height], and the rows stack from the top of its content. *)
 let laid_out_rows ?(attrs = []) keys =
-  let parent = fresh_parent () in
+  let parent = attached_parent () in
   let dispatch, _msgs = fresh_dispatch () in
   let handle =
     Nopal_web.Renderer.create ~dispatch ~parent
@@ -4495,6 +4517,86 @@ let test_reveal_scrolls_container () =
   Alcotest.(check (float 0.001))
     "the container takes the offset the alignment asks for" 150.
     (scroll_top container)
+
+(* A reveal declared on the first render is drained after the container is
+   attached. Layout is not modelled at create time, so nothing scrolls; what is
+   observable is the computed style the drain reads, which the shim answers
+   with the empty string for a detached element, as a browser does. *)
+let test_reveal_on_create_reads_style_after_attach () =
+  let global = Jv.global in
+  let original = Jv.get global "getComputedStyle" in
+  let seen = ref [] in
+  let spy =
+    Jv.callback ~arity:1 (fun el ->
+        let cs = Jv.call original "call" [| Jv.undefined; el |] in
+        seen :=
+          Jv.to_string
+            (Jv.call cs "getPropertyValue" [| Jv.of_string "writing-mode" |])
+          :: !seen;
+        cs)
+  in
+  Jv.set global "getComputedStyle" spy;
+  Fun.protect
+    ~finally:(fun () -> Jv.set global "getComputedStyle" original)
+    (fun () ->
+      let dispatch, _msgs = fresh_dispatch () in
+      ignore
+        (Nopal_web.Renderer.create ~dispatch ~parent:(attached_parent ())
+           (scroll_of_rows plain_rows
+              (Some (Nopal_element.Reveal.nearest "row-4")))));
+  Alcotest.(check bool) "the drain read the style" true (!seen <> []);
+  Alcotest.(check (list string))
+    "the container was attached when its style was read"
+    (List.map (fun _ -> "horizontal-tb") !seen)
+    !seen
+
+(* Two containers in one render pass, the first of which has no computed style
+   (the browser answers null). Its axes are unknown, so it is left alone, and
+   the drain goes on to the second, which is scrolled. *)
+let test_reveal_null_computed_style_skips_one_container () =
+  let both reveal =
+    Column
+      {
+        style = default;
+        interaction = Nopal_style.Interaction.default;
+        attrs = [];
+        children =
+          [
+            scroll_of_rows ~attrs:[ ("id", "null-style-a") ] plain_rows reveal;
+            scroll_of_rows ~attrs:[ ("id", "null-style-b") ] plain_rows reveal;
+          ];
+      }
+  in
+  let dispatch, _msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent:(attached_parent ()) (both None)
+  in
+  let lay_out container =
+    Jv.Float.set container "_clientHeight" visible_height;
+    match child_nodes container with
+    | [] -> Alcotest.fail "the fixture rendered no column to lay out"
+    | column :: _ ->
+        List.iteri
+          (fun i row ->
+            Jv.Float.set row "_layoutTop" (float_of_int i *. row_height);
+            Jv.Float.set row "_layoutHeight" row_height)
+          (child_nodes column)
+  in
+  let first, second =
+    match child_nodes (Nopal_web.Renderer.dom_node handle) with
+    | [ a; b ] -> (a, b)
+    | _ -> Alcotest.fail "expected two containers"
+  in
+  lay_out first;
+  lay_out second;
+  Jv.set first "_nullComputedStyle" Jv.true';
+  Nopal_web.Renderer.update ~dispatch handle
+    (both (Some (Nopal_element.Reveal.nearest "row-4")));
+  Alcotest.(check (float 0.001))
+    "the container with no style is left alone" 0. (scroll_top first);
+  Alcotest.(check (float 0.001))
+    "the later container in the same drain is still revealed" 150.
+    (scroll_top second)
 
 let test_reveal_no_write_when_visible () =
   let dispatch, handle, container = laid_out_rows plain_rows in
@@ -4573,6 +4675,319 @@ let test_reveal_without_css_escape_falls_back () =
   Alcotest.(check bool)
     "and CSS is restored for every case after this one" true
     (Option.is_some (Jv.find_path Jv.global [ "CSS"; "escape" ]))
+
+(* Reveal application on both axes.
+
+   The same six keys, now laid out with a width as well as a height, in a
+   container 100 wide and 100 (or 40) tall behind a 5-pixel left border and the
+   7-pixel top border above. A reveal acts on each axis whose content overflows,
+   with one alignment for both, so every horizontal fixture starts [scrollLeft]
+   away from zero: a renderer that never writes it would otherwise land on the
+   expected value by accident. The shim counts [scrollLeft] writes apart from
+   [scrollTop] writes, so each case can say which axis moved. *)
+
+let visible_width = 100.
+let border_left = 5.
+let tabs = [ "tab-0"; "tab-1"; "tab-2"; "tab-3"; "tab-4"; "tab-5" ]
+let scroll_left jv = Jv.Float.get jv "scrollLeft"
+let set_scroll_left jv v = Jv.Float.set jv "scrollLeft" v
+let scroll_left_writes jv = Jv.Int.get jv "_scrollLeftWrites"
+let reset_scroll_left_writes jv = Jv.Int.set jv "_scrollLeftWrites" 0
+
+let scroll_of_tabs keys reveal =
+  Scroll
+    {
+      style = default;
+      attrs = [];
+      reveal;
+      child =
+        Row
+          {
+            style = default;
+            interaction = Nopal_style.Interaction.default;
+            attrs = [];
+            children =
+              List.map
+                (fun key ->
+                  Keyed
+                    { key; child = Text { content = key; text_style = None } })
+                keys;
+          };
+    }
+
+(* Render [build None], then lay it out: the container shows [visible_width] by
+   [height], and [place] gives the child at each index its left, top, width
+   and height within the container's content. *)
+let laid_out_two_axes ~build ~height ~place =
+  let parent = attached_parent () in
+  let dispatch, _msgs = fresh_dispatch () in
+  let handle = Nopal_web.Renderer.create ~dispatch ~parent (build None) in
+  let container = Nopal_web.Renderer.dom_node handle in
+  Jv.Float.set container "_clientWidth" visible_width;
+  Jv.Float.set container "_clientHeight" height;
+  Jv.Float.set container "_borderLeft" border_left;
+  Jv.Float.set container "_borderTop" border_top;
+  (match child_nodes container with
+  | [] -> Alcotest.fail "the fixture rendered no wrapper to lay out"
+  | wrapper :: _ ->
+      List.iteri
+        (fun i child ->
+          let left, top, width, height = place (float_of_int i) in
+          Jv.Float.set child "_layoutLeft" left;
+          Jv.Float.set child "_layoutTop" top;
+          Jv.Float.set child "_layoutWidth" width;
+          Jv.Float.set child "_layoutHeight" height)
+        (child_nodes wrapper));
+  (dispatch, handle, container)
+
+(* A row of six 50-wide tabs, 300 of content in a 100-wide viewport, all of
+   them exactly as tall as the 40-tall container, so only x overflows. *)
+let laid_out_tabs () =
+  laid_out_two_axes ~build:(scroll_of_tabs tabs) ~height:40. ~place:(fun i ->
+      (i *. 50., 0., 50., 40.))
+
+(* Six 50-wide, 40-tall cells on a diagonal in a 100-by-100 viewport: cell [i]
+   spans [50 i] to [50 i + 50] along x and [40 i] to [40 i + 40] along y, so
+   both axes overflow, x over 300 of content and y over 240. The two axes are
+   laid out differently on purpose: a renderer that measured one axis and
+   wrote the other would land on the other axis's answer, and a symmetric grid
+   would hide it. *)
+let laid_out_diagonal () =
+  laid_out_two_axes ~build:(scroll_of_rows plain_rows) ~height:visible_height
+    ~place:(fun i -> (i *. 50., i *. 40., 50., 40.))
+
+let test_reveal_horizontal_writes_scroll_left_only () =
+  let dispatch, handle, container = laid_out_tabs () in
+  set_scroll_left container 30.;
+  reset_scroll_left_writes container;
+  reset_scroll_writes container;
+  Nopal_web.Renderer.update ~dispatch handle
+    (scroll_of_tabs tabs (Some (Nopal_element.Reveal.nearest "tab-4")));
+  (* tab-4 spans 200 to 250 of the content. Showing all of it in a 100-wide
+     viewport means an offset of 150. Its rect sits at 200 - 30 + 5 = 175 from
+     the container's box, so a measurement that forgets the left border or the
+     current offset lands somewhere else. *)
+  Alcotest.(check (float 0.001))
+    "the container takes the offset the alignment asks for along x" 150.
+    (scroll_left container);
+  Alcotest.(check int) "written exactly once" 1 (scroll_left_writes container);
+  Alcotest.(check int)
+    "a vertical axis that does not overflow is not written" 0
+    (scroll_writes container);
+  Alcotest.(check (float 0.001))
+    "and stays at the top" 0. (scroll_top container)
+
+let test_reveal_horizontal_no_write_when_visible () =
+  let dispatch, handle, container = laid_out_tabs () in
+  set_scroll_left container 100.;
+  reset_scroll_left_writes container;
+  Nopal_web.Renderer.update ~dispatch handle
+    (scroll_of_tabs tabs (Some (Nopal_element.Reveal.nearest "tab-2")));
+  (* tab-2 spans 100 to 150 and the visible band is 100 to 200. *)
+  Alcotest.(check int)
+    "a tab already visible is not written" 0
+    (scroll_left_writes container);
+  Alcotest.(check (float 0.001))
+    "the position a reader scrolled to is kept" 100. (scroll_left container);
+  (* Affirmative arm on the same fixture: a tab past the right edge does move
+     it, so the two assertions above come from the tab being visible. *)
+  Nopal_web.Renderer.update ~dispatch handle
+    (scroll_of_tabs tabs (Some (Nopal_element.Reveal.nearest "tab-5")));
+  Alcotest.(check int)
+    "a tab past the right edge is written exactly once" 1
+    (scroll_left_writes container);
+  Alcotest.(check (float 0.001))
+    "and lands at the end of the scrollable range" 200. (scroll_left container)
+
+let test_reveal_both_axes_writes_both () =
+  let dispatch, handle, container = laid_out_diagonal () in
+  set_scroll_left container 30.;
+  set_scroll_top container 20.;
+  Nopal_web.Renderer.update ~dispatch handle
+    (scroll_of_rows plain_rows (Some (Nopal_element.Reveal.center "row-4")));
+  (* row-4 spans 200 to 250 along x: centring its midpoint, 225, in a 100-wide
+     viewport is an offset of 175. Along y it spans 160 to 200: centring 180 in
+     a 100-tall viewport is 130. One alignment governs both. *)
+  Alcotest.(check (float 0.001))
+    "x takes its centring offset" 175. (scroll_left container);
+  Alcotest.(check (float 0.001))
+    "and y its own, from the same request" 130. (scroll_top container)
+
+let test_reveal_full_width_rows_keep_scroll_left () =
+  let dispatch, handle, container =
+    laid_out_two_axes ~build:(scroll_of_rows plain_rows) ~height:visible_height
+      ~place:(fun i -> (0., i *. 50., 400., 50.))
+  in
+  set_scroll_left container 120.;
+  reset_scroll_left_writes container;
+  Nopal_web.Renderer.update ~dispatch handle
+    (scroll_of_rows plain_rows (Some (Nopal_element.Reveal.nearest "row-4")));
+  (* Every row is 400 wide in a 100-wide viewport, so row-4 already covers the
+     visible band, 120 to 220, along x and is left there; along y it spans 200
+     to 250 and needs an offset of 150. *)
+  Alcotest.(check (float 0.001)) "y is revealed" 150. (scroll_top container);
+  Alcotest.(check int)
+    "a row that already covers the viewport along x is not written" 0
+    (scroll_left_writes container);
+  Alcotest.(check (float 0.001))
+    "so the sideways position a reader chose survives" 120.
+    (scroll_left container);
+  (* Affirmative arm on the same fixture: a named alignment asks for an edge,
+     so the same oversized row falls back to its start edge along x. The x
+     axis is measured here; the covering rule above is what left it alone. *)
+  Nopal_web.Renderer.update ~dispatch handle
+    (scroll_of_rows plain_rows (Some (Nopal_element.Reveal.start "row-4")));
+  Alcotest.(check (float 0.001))
+    "under Start the row's left edge is shown" 0. (scroll_left container);
+  Alcotest.(check int) "written exactly once" 1 (scroll_left_writes container)
+
+let test_reveal_non_overflowing_x_untouched () =
+  let dispatch, handle, container =
+    laid_out_two_axes ~build:(scroll_of_rows plain_rows) ~height:visible_height
+      ~place:(fun i -> (20., i *. 50., 80., 50.))
+  in
+  reset_scroll_left_writes container;
+  reset_scroll_writes container;
+  (* An axis that does not overflow has one position, 0, so unlike the cases
+     above this one cannot start [scrollLeft] anywhere else. The rows start 20
+     in and end exactly at the 100-wide viewport's edge, so [Start] would ask
+     for 20 along x if the axis were not bounded by its content. *)
+  Nopal_web.Renderer.update ~dispatch handle
+    (scroll_of_rows plain_rows (Some (Nopal_element.Reveal.start "row-4")));
+  Alcotest.(check int)
+    "an axis whose content fits is not written" 0
+    (scroll_left_writes container);
+  Alcotest.(check (float 0.001))
+    "and stays where it was" 0. (scroll_left container);
+  (* Affirmative arm on the same reveal: the y axis overflows and is moved, so
+     the drain reached this container. *)
+  Alcotest.(check int)
+    "while the overflowing axis is written once" 1 (scroll_writes container);
+  Alcotest.(check (float 0.001))
+    "to row-4's top edge" 200. (scroll_top container)
+
+(* Reversed scroll ranges.
+
+   A container whose computed [writing-mode] and [direction] reverse an axis
+   offers offsets from a negative bound up to 0 on it — -200 along x and -140
+   along y in the diagonal fixture — and a reveal leaves that axis alone. Each
+   case declares one pair on the container and starts each axis away from
+   where a reveal of row-4 would put it: 30 on an axis expected to be revealed,
+   and -30 on one expected to be skipped (read back, because a value no browser
+   computes leaves the shim's ranges forward and the -30 clamps to 0 there). A
+   reveal acting on a skipped axis would write it, so the assertion is on the
+   write count as well as the value.
+
+   Showing row-4 under [Nearest] from 30 is 150 along x (its 200-to-250 span
+   ends at the right edge of a 100-wide viewport) and 100 along y (its
+   160-to-200 span ends at the bottom of a 100-tall one). *)
+
+type axis_expectation = Revealed | Skipped
+
+let set_style jv property value =
+  ignore
+    (Jv.call (Jv.get jv "style") "setProperty"
+       [| Jv.of_string property; Jv.of_string value |])
+
+let start_for = function
+  | Revealed -> 30.
+  | Skipped -> -30.
+
+let check_axis ~label ~expected ~revealed_at ~before ~now ~writes =
+  match expected with
+  | Revealed ->
+      Alcotest.(check (float 0.001))
+        (label ^ " is revealed: row-4 shown under Nearest")
+        revealed_at now;
+      Alcotest.(check int) (label ^ " is written exactly once") 1 writes
+  | Skipped ->
+      Alcotest.(check (float 0.001))
+        (label ^ " is left where it was")
+        before now;
+      Alcotest.(check int) (label ^ " is not written") 0 writes
+
+let check_reversed_cell (writing_mode, direction, expected_x, expected_y) =
+  let dispatch, handle, container = laid_out_diagonal () in
+  let label = writing_mode ^ " / " ^ direction in
+  set_style container "writing-mode" writing_mode;
+  set_style container "direction" direction;
+  set_scroll_left container (start_for expected_x);
+  set_scroll_top container (start_for expected_y);
+  let left_before = scroll_left container in
+  let top_before = scroll_top container in
+  reset_scroll_left_writes container;
+  reset_scroll_writes container;
+  Nopal_web.Renderer.update ~dispatch handle
+    (scroll_of_rows plain_rows (Some (Nopal_element.Reveal.nearest "row-4")));
+  check_axis ~label:(label ^ ": x") ~expected:expected_x ~revealed_at:150.
+    ~before:left_before ~now:(scroll_left container)
+    ~writes:(scroll_left_writes container);
+  check_axis ~label:(label ^ ": y") ~expected:expected_y ~revealed_at:100.
+    ~before:top_before ~now:(scroll_top container)
+    ~writes:(scroll_writes container);
+  (* Affirmative arm on the same fixture: with the pair replaced by the
+     initial values, a changed request reveals both axes, so each skip above
+     came from the declared pair and not from geometry the drain cannot use. *)
+  set_style container "writing-mode" "horizontal-tb";
+  set_style container "direction" "ltr";
+  set_scroll_left container 30.;
+  set_scroll_top container 30.;
+  Nopal_web.Renderer.update ~dispatch handle
+    (scroll_of_rows plain_rows (Some (Nopal_element.Reveal.start "row-5")));
+  Alcotest.(check (float 0.001))
+    (label ^ ": cleared, x reaches the end of its range")
+    200. (scroll_left container);
+  Alcotest.(check (float 0.001))
+    (label ^ ": cleared, y reaches the end of its range")
+    140. (scroll_top container)
+
+(* One case per writing mode, each covering both directions. Which axes are
+   reversed is the scroll range Chromium offers for each pair:
+
+   writing-mode    direction: ltr   direction: rtl
+   horizontal-tb   neither          x
+   vertical-rl     x                x and y
+   vertical-lr     neither          y
+   sideways-rl     x                x and y
+   sideways-lr     y                neither
+   anything else   x and y          x and y *)
+let test_reveal_reversed_axes_per_row cells () =
+  List.iter check_reversed_cell cells
+
+let reversed_rows =
+  [
+    ( "horizontal-tb",
+      [
+        ("horizontal-tb", "ltr", Revealed, Revealed);
+        ("horizontal-tb", "rtl", Skipped, Revealed);
+      ] );
+    ( "vertical-rl",
+      [
+        ("vertical-rl", "ltr", Skipped, Revealed);
+        ("vertical-rl", "rtl", Skipped, Skipped);
+      ] );
+    ( "vertical-lr",
+      [
+        ("vertical-lr", "ltr", Revealed, Revealed);
+        ("vertical-lr", "rtl", Revealed, Skipped);
+      ] );
+    ( "sideways-rl",
+      [
+        ("sideways-rl", "ltr", Skipped, Revealed);
+        ("sideways-rl", "rtl", Skipped, Skipped);
+      ] );
+    ( "sideways-lr",
+      [
+        ("sideways-lr", "ltr", Revealed, Skipped);
+        ("sideways-lr", "rtl", Revealed, Revealed);
+      ] );
+    ( "any other value",
+      [
+        ("tb-rl", "ltr", Skipped, Skipped);
+        ("tb-rl", "rtl", Skipped, Skipped);
+        ("horizontal-tb", "inherit-me", Skipped, Skipped);
+      ] );
+  ]
 
 (* The relative-scroll drain.
 
@@ -4766,7 +5181,7 @@ let boxes_pane ~id ~reveal ~rows =
     }
 
 let laid_out_boxes id =
-  let parent = fresh_parent () in
+  let parent = attached_parent () in
   let dispatch, _msgs = fresh_dispatch () in
   let rows = List.length plain_rows in
   let handle =
@@ -5803,36 +6218,58 @@ let () =
       ( "relative scroll drain",
         [
           Alcotest.test_case "scrolls a container by half its height" `Quick
-            test_scrolls_container_by_half_its_height;
+            (detaching test_scrolls_container_by_half_its_height);
           Alcotest.test_case "unknown id is a no-op" `Quick
-            test_unknown_id_is_a_no_op;
+            (detaching test_unknown_id_is_a_no_op);
           Alcotest.test_case "non-scrollable target is a no-op" `Quick
-            test_non_scrollable_target_is_a_no_op;
+            (detaching test_non_scrollable_target_is_a_no_op);
           Alcotest.test_case "empty queue touches nothing" `Quick
-            test_empty_queue_touches_nothing;
-          Alcotest.test_case "two deltas compose" `Quick test_two_deltas_compose;
+            (detaching test_empty_queue_touches_nothing);
+          Alcotest.test_case "two deltas compose" `Quick
+            (detaching test_two_deltas_compose);
           Alcotest.test_case "reveal then scroll lands at the scroll" `Quick
-            test_reveal_then_scroll_lands_at_the_scroll;
+            (detaching test_reveal_then_scroll_lands_at_the_scroll);
           Alcotest.test_case "scroll then reveal lands at the scroll" `Quick
-            test_scroll_then_reveal_lands_at_the_scroll;
+            (detaching test_scroll_then_reveal_lands_at_the_scroll);
           Alcotest.test_case "focus after scroll wins" `Quick
-            test_focus_after_scroll_wins;
+            (detaching test_focus_after_scroll_wins);
           Alcotest.test_case "unchanged reveal still writes nothing" `Quick
-            test_unchanged_reveal_still_writes_nothing;
+            (detaching test_unchanged_reveal_still_writes_nothing);
         ] );
       ( "reveal application",
         [
           Alcotest.test_case "scrolls the container" `Quick
-            test_reveal_scrolls_container;
+            (detaching test_reveal_scrolls_container);
           Alcotest.test_case "no write when already visible" `Quick
-            test_reveal_no_write_when_visible;
+            (detaching test_reveal_no_write_when_visible);
+          Alcotest.test_case "reveal on create reads style after attach" `Quick
+            (detaching test_reveal_on_create_reads_style_after_attach);
+          Alcotest.test_case "null computed style skips only that container"
+            `Quick
+            (detaching test_reveal_null_computed_style_skips_one_container);
           Alcotest.test_case "missing key writes nothing" `Quick
-            test_reveal_missing_key_no_write;
+            (detaching test_reveal_missing_key_no_write);
           Alcotest.test_case "hostile key resolves" `Quick
-            test_reveal_hostile_key_resolves;
+            (detaching test_reveal_hostile_key_resolves);
           Alcotest.test_case "falls back without CSS.escape" `Quick
-            test_reveal_without_css_escape_falls_back;
+            (detaching test_reveal_without_css_escape_falls_back);
+          Alcotest.test_case "horizontal writes scrollLeft only" `Quick
+            (detaching test_reveal_horizontal_writes_scroll_left_only);
+          Alcotest.test_case "horizontal no write when visible" `Quick
+            (detaching test_reveal_horizontal_no_write_when_visible);
+          Alcotest.test_case "both axes writes both" `Quick
+            (detaching test_reveal_both_axes_writes_both);
+          Alcotest.test_case "full-width rows keep scrollLeft" `Quick
+            (detaching test_reveal_full_width_rows_keep_scroll_left);
+          Alcotest.test_case "non-overflowing x untouched" `Quick
+            (detaching test_reveal_non_overflowing_x_untouched);
         ] );
+      ( "reveal reversed axes",
+        List.map
+          (fun (row, cells) ->
+            Alcotest.test_case row `Quick
+              (detaching (test_reveal_reversed_axes_per_row cells)))
+          reversed_rows );
       ( "reveal collection",
         [
           Alcotest.test_case "enqueued on create" `Quick

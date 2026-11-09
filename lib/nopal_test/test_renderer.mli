@@ -120,7 +120,11 @@ val render : 'msg Nopal_element.Element.t -> 'msg rendered
     A scroll container's [reveal] declaration is surfaced for inspection as the
     derived attribute pairs ["reveal"] and ["reveal-align"], carried exactly as
     the view wrote them. A container that declares neither carries no attributes
-    at all.
+    at all. The pairs describe the whole request, which a rendering backend acts
+    on along both axes; they name no axis because the request names none. This
+    renderer measures nothing and scrolls nothing, so which axes would move —
+    those that overflow and do not run reversed, and under [Nearest] those the
+    child does not already cover to within 1.0 px — is not observable here.
 
     An image's [fit] is surfaced the same way, as the derived pair ["fit"]
     carrying {!Nopal_element.Element.image_fit_to_string} of it: ["contain"] or

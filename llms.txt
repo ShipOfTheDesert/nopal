@@ -988,6 +988,20 @@ Element.scroll : ?style:Style.t -> ?attrs:(string * string) list
      for nothing, and a container that asks for nothing behaves exactly as it
      did before the argument existed.
 
+     A request acts on both axes, each decided on its own (x by width and
+     scrollLeft, y by height and scrollTop); one alignment governs both, and an
+     axis whose content does not overflow is never moved. So a row of tabs
+     wider than its container reveals sideways and a list only taller than its
+     container reveals vertically, with no axis named — and a list whose rows
+     also overflow sideways can move sideways on a vertical reveal. Under
+     Nearest, a child larger than the container that already fills it along an
+     axis is not moved on that axis. An axis whose scroll range is reversed
+     (runs from a negative offset up to 0: x under direction: rtl, and the
+     reversed axes of the vertical and sideways writing modes) is skipped, and
+     so is every axis when the computed writing-mode or direction is not one
+     the backend knows. Reversal is read from computed style, never by writing
+     a probe offset.
+
      [attrs] are application attributes carried to the rendered container as
      written — the container's own identity, so a platform request can name it
      directly instead of reaching it through a wrapper. An [id] here is the
@@ -1021,8 +1035,8 @@ module Reveal : sig
   val equal : t -> t -> bool
   val should_reveal : previous:t option -> next:t option -> bool
   val offset_for :
-    scroll_offset:float -> viewport_height:float -> content_height:float ->
-    child_top:float -> child_height:float -> align:align -> float option
+    scroll_offset:float -> viewport:float -> content:float ->
+    child_start:float -> child_extent:float -> align:align -> float option
 end
   (* [should_reveal] is the whole rule: act when a container that carried no
      request gains one, and when a request changes in either its key or its
@@ -1035,13 +1049,28 @@ end
      and moving the container are each backend's own concern, and on a backend
      that does not render elements the request is inert, which is not an error.
 
-     [offset_for]'s six measurements share one origin, the top of the
-     container's scrollable content, so [child_top] does not change as the
-     container scrolls. It is total: the result is clamped to an offset the
-     container can take, and [None] means either that the alignment asks for
-     the offset the container already holds or that a measurement is not
-     finite. A child taller than [viewport_height] falls back to showing its
-     top edge under every alignment. *)
+     Each alignment speaks of a start edge and an end edge along whichever
+     axis is being revealed: top and bottom vertically, left and right
+     horizontally. One alignment governs every axis a request acts on.
+
+     [offset_for] names no axis: a backend calls it once per axis with that
+     axis's measurements, and heights or widths give the same answer. Its five
+     measurements lie along that one axis and share one origin, the start edge
+     of the container's scrollable content, so [child_start] does not change as
+     the container scrolls. Offsets count up from 0. at the start edge; an
+     axis whose range runs from a negative offset up to 0. (x under
+     right-to-left) is outside the arithmetic and must not be handed to it. It
+     is total: the result is clamped to 0. .. max 0. (content - viewport), so
+     an axis that does not overflow is never moved, and [None] means either
+     that the alignment asks for the offset the container already holds or
+     that a measurement is not finite.
+
+     A child larger than [viewport] falls back to showing its start edge under
+     Start, Center and End_. Under Nearest the covering rule applies: when the
+     current offset is already in range, a child that already spans the whole
+     visible extent (scroll_offset through scroll_offset + viewport, both ends
+     inclusive) answers [None], so a reader partway through a long child keeps
+     their place; one that does not span it falls back to its start edge. *)
 
 (* Which handler answers a keydown on an input — the submit contract as one
    pure, native-compiling definition both renderers call; references nothing
@@ -4455,8 +4484,8 @@ val clear  : unit -> unit
    alias a live entry. The shape is not part of the interface — do not parse or
    construct one. Entries live for the page session and are released only by an
    explicit remove/clear: unmounting a Nopal application does NOT clear them, so
-   an upload in flight at teardown keeps a working handle (feature 0122,
-   Decision 1). Release is the application's responsibility. *)
+   an upload in flight at teardown keeps a working handle. Release is the
+   application's responsibility. *)
 
 (* object_url answers None for a handle that resolves to nothing AND for an
    environment that mints no URL for it — an absence either way, never an error
@@ -4668,7 +4697,13 @@ Test_renderer.render   : 'msg Element.t -> 'msg rendered
   (* A scroll container's [reveal] declaration is surfaced as the derived attr
      pairs "reveal" and "reveal-align", appended after the view's own attrs;
      a lookup resolves to the last pair, so a declaration wins over a
-     caller-supplied pair of the same name.
+     caller-supplied pair of the same name. The pairs describe the whole
+     request, which a rendering backend acts on along both axes; they name no
+     axis because the request names none. This renderer measures and scrolls
+     nothing, so which axes would move is not observable here, nor is the
+     covering rule (under Nearest, a child that already covers the visible
+     extent on an axis, within the sub-pixel tolerance, is not moved on that
+     axis) or the skip of an axis whose scroll range runs reversed.
      Nothing marks a pair as derived, so the precedence does not run the other
      way: a container supplying ("reveal", "decoy") in attrs and declaring no
      reveal reads back attr "reveal" = Some "decoy", which is the caller's own
@@ -5677,6 +5712,51 @@ is proven in the browser only. Every other component's `role`,
 `aria-describedby` and `data-field` pairs are still second-tier and
 replaceable.
 
+**Reveal answers that moved — read this on a pin bump.** `Element.scroll`'s
+`?reveal` now acts on both axes: each is decided on its own, one alignment
+governs both, and an axis whose content does not overflow is never moved. A
+container that scrolls sideways — a row of tabs wider than a narrow screen — is
+revealed horizontally, and a vertical list whose rows also overflow sideways
+can move sideways on a reveal. `Reveal.offset_for` is relabelled to name no
+axis, so one kind of code stops compiling: **a direct call to
+`Reveal.offset_for`** (row 1). Every call through `Element.scroll` compiles
+untouched. Two vertical answers move on purpose: a long child that already
+fills the container is no longer pulled back to its top under `Nearest` (row 3),
+and the vertical axis is no longer written where its scroll range is reversed
+(row 4), where the old answer dragged the container to its start edge.
+
+"Before" is the tree at commit `8899d52`. Where, Find it and the first-pass
+caveat read as in the Style border paragraph above; the greps here use one `-e`
+per pattern rather than an alternation. Row 4's table was observed in Chromium
+by reading the scroll range each combination offers; other engines are assumed
+to agree. No test reads this table. The behaviour each row describes is tested
+in the `nopal_element` and `nopal_web` suites, and row 2 also in Chromium by
+the kitchen sink's `kitchen-sink-reveal-tabs.spec.ts`, but an edit to the text
+alone reddens no test.
+
+| # | Key | Visible | Where | When | Before | Now | Find it |
+|---|---|---|---|---|---|---|---|
+| 1 | `reveal-offset-for-labels` | compile | all | a direct call to `Reveal.offset_for` | `~scroll_offset ~viewport_height ~content_height ~child_top ~child_height ~align` | `~scroll_offset ~viewport ~content ~child_start ~child_extent ~align`: the same floats in the same order and the same `float option`, measured along whichever axis the caller is revealing. A call spelling an old label stops with `This argument cannot be applied with label "~viewport_height"`. Fix: rename the four labels; every answer is as before except row 3's | `grep -rn -e "Reveal.offset_for" -e "viewport_height" -e "child_top" --include=*.ml .` (`Scroll_delta.offset_for` keeps `~viewport_height` and `~content_height`, so its calls match too; `Scroll_delta` hits need no change), then the compiler |
+| 2 | `web-reveal-horizontal` | runtime | web | a scroll container carrying a reveal whose content is wider than the container: a row of tabs, or a vertical list whose rows are wider than it | `scrollTop` only; `scrollLeft` never read or written, so a sideways-only container was not moved at all | `scrollLeft` is also written when the alignment asks for an offset the container does not hold: a child partly off to one side comes into view under `Nearest`, and `Start`, `Center` and `End_` place it horizontally as well as vertically. A row wider than the container that already fills it sideways is not moved sideways under `Nearest` (row 3); under `Start`, `Center` and `End_` such a row is brought to its start edge, which resets the sideways position to the row's left edge. An axis that does not overflow, and a reversed x axis (row 4's table), are never written. A request present on the container's first render reveals on both axes | `grep -rnE "~reveal\b" --include=*.ml .` lists every container carrying a request; only one whose content is wider than the container can move sideways |
+| 3 | `reveal-nearest-covering-child` | runtime | all | under `Nearest`, a child larger than the container's visible extent along an axis that already spans it, from `scroll_offset` to `scroll_offset + viewport` with both ends inclusive | moved to its start edge: child start 500, extent 800, viewport 300, current offset 600 answered `Some 500.`, so a reader partway through a long child was pulled back to its top | `None` on that axis, on both axes: the child is left where it is. `Start`, `Center` and `End_`, and a `Nearest` child larger than the viewport that does not span it, still move to its start edge; a child that fits answers as before | `grep -rn -e "Reveal\.Nearest\b" -e "Reveal\.nearest\b" -e "\bNearest\b" --include=*.ml .` (`\bNearest\b` also matches any other type's `Nearest` constructor, which needs nothing) |
+| 4 | `web-reveal-reversed-axis-skip` | runtime | web | a container whose computed `writing-mode` and `direction` reverse its vertical axis: `vertical-rl`, `vertical-lr` or `sideways-rl` under `rtl`, `sideways-lr` under `ltr`, or a `writing-mode` or `direction` outside the five and two keywords, which skips both axes | `scrollTop` written, clamped to `0 .. max`, on an axis whose range runs `-max .. 0`, which dragged the container to its start edge on every reveal | `scrollTop` not written. The whole table, x then y reversed: `horizontal-tb` none under `ltr`, x under `rtl`; `vertical-rl` x under `ltr`, x and y under `rtl`; `vertical-lr` none under `ltr`, y under `rtl`; `sideways-rl` x under `ltr`, x and y under `rtl`; `sideways-lr` y under `ltr`, none under `rtl`; any other value, x and y. A reversed axis is skipped, never written; reversal is read from computed style once per reveal and never by writing a probe offset | `grep -rn -e "writing-mode" -e "\brtl\b" --include=*.css --include=*.html --include=*.ml .` (a writing mode or a direction reaches a container only from a stylesheet or a `dir` attribute, its own or an ancestor's, since `nopal_style` has neither; `sideways-lr` reverses y under the default `ltr`, which is why the first pattern matters) |
+
+What did **not** move, recorded so a reader does not go looking.
+`Reveal.should_reveal` and its edge-triggered rule, `Reveal.t`, `align` and its
+four constructors, `align_token`, `equal` and the four request builders are
+unchanged.
+`Element.scroll`'s signature is unchanged and declares no axis. The structural
+`Test_renderer` still surfaces the same `reveal` and `reveal-align` pairs and
+measures nothing. `Renderer.reveal_request_count` still counts one per
+container that gains or changes a request, however many axes it then moves.
+Only the declaring container moves, focus never moves, an offset the container
+already holds is not written, and a container with no request measures and
+writes nothing. `Cmd.scroll_by` and `Scroll_delta` are still vertical only, and
+`Cmd.scroll_by` does not yet skip a reversed y axis: on a container whose
+`writing-mode` and `direction` reverse it (row 4's combinations), it still drags
+the container to its start edge. The order reveal, relative scroll, focus is
+unchanged.
+
 #### Telemetry harness (`Nopal_test.Telemetry_test`)
 
 Native, browser-free harness that drives a real app through the recording MVU
@@ -5894,7 +5974,7 @@ val Telemetry.expose : Nopal_runtime.Telemetry.handle -> unit
 val Telemetry.get_telemetry :
   unit -> (Nopal_runtime.Telemetry.event list, string) result Nopal_mvu.Task.t
   (* Queries the host-side mirror via Ipc.invoke. Async (Task.t), not a sync
-     result — the IPC reply arrives via a promise (RFC 0110 Decision 3). *)
+     result — the IPC reply arrives via a promise. *)
 ```
 
 Usage pattern — `Cmd.task` + `Task.Syntax` composition:
@@ -6047,7 +6127,7 @@ decoder if a message is reworded. Until then a reworded refusal arrives as
 ## E2E Telemetry
 
 Nopal's cross-platform E2E correctness contract is the MVU telemetry log, not
-DOM assertions (ADR 0108): tests trigger interactions with standard automation,
+DOM assertions: tests trigger interactions with standard automation,
 then assert that the right messages were dispatched and the model reached the
 right state. Telemetry is a **layered, explicit, type-tracked capability** — never
 build-gated, never default-on. Each more-exposed surface is a strictly more
@@ -6184,8 +6264,9 @@ class NopalTelemetry {
 The `NopalTelemetry` class is **web-only**: it wraps the Layer 2 browser bridge.
 Layer 3 (Tauri host) is queried from OCaml via `Nopal_tauri.Telemetry.get_telemetry`
 or, from a host-side driver, the raw `invoke("get_telemetry")` command. There is no
-CI Tauri runtime today (per RFC 0077/0107), so Layer 3 is validated by the manual
-checklist in `docs/guides/telemetry-tauri.md`. A headless Tauri E2E harness (which
+CI Tauri runtime today, so Layer 3 is checked by hand: a person drives the
+Tauri app and reads the mirrored events back through `get_telemetry`. A
+headless Tauri E2E harness (which
 would let the same assertion spec run against web and Tauri) is tracked in
 `ROADMAP.md`.
 
@@ -6276,7 +6357,16 @@ examples/
                        relative movement and takes no preventScroll, so the
                        browser's own scroll-into-view decides where the pane
                        rests; and the section is the visible form of the
-                       order all three writers are applied in); and
+                       order all three writers are applied in); and "Reveal a
+                       child sideways and on both axes" (a row of ten keyed
+                       100px tabs inside a 320px scroll container, mounting
+                       with the last tab chosen so the strip is revealed
+                       sideways on its first render with no interaction, a
+                       select choosing the tab and the same four alignment
+                       controls; beside it a container overflowing both ways
+                       whose view names one cell past its right and bottom
+                       edges and short of both far ends, so the arrival reveal
+                       moves it along both axes); and
                        "Focus-revealed note" (a focusable container that shows a
                        note while focus is anywhere inside it and hides it once
                        focus has left the whole container — the
@@ -6325,7 +6415,10 @@ examples/
                        the receipt one is
                        examples/kitchen_sink/sub_receipt_flow.ml, the reveal one
                        examples/kitchen_sink/sub_reveal_list.ml, the
-                       relative-scroll one
+                       sideways one (a tab strip, a dir=rtl strip and a
+                       vertical-rl strip on reversed x axes, and a two-way
+                       grid) examples/kitchen_sink/sub_reveal_tabs.ml,
+                       the relative-scroll one
                        examples/kitchen_sink/sub_scroll_pane.ml, the
                        focus one examples/kitchen_sink/sub_focus_reveal.ml and
                        the fixed-size one
