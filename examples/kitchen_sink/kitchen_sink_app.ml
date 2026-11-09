@@ -152,6 +152,9 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
   let links_router =
     Sub_links.router (module Platform : Nopal_platform.Platform.NAV)
 
+  let switch_router =
+    Sub_switch.router (module Platform : Nopal_platform.Platform.NAV)
+
   (* Model *)
   type model = {
     button_clicks : int;
@@ -232,6 +235,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     radio_row : Sub_radio_row.model;
     hidden_radio : Sub_hidden_radio.model;
     segmented_control : Sub_segmented_control.model;
+    switch : Sub_switch.model;
     keyboard_height : int;  (** soft-keyboard height in logical px *)
     back_route : back_route;  (** current route of the back-navigation demo *)
   }
@@ -281,6 +285,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | Radio_row_msg of Sub_radio_row.msg
     | Hidden_radio_msg of Sub_hidden_radio.msg
     | Segmented_control_msg of Sub_segmented_control.msg
+    | Switch_msg of Sub_switch.msg
     | KeyboardHeightChanged of int  (** native soft-keyboard height *)
     | Back_demo_push  (** push the back-demo one step deep (to [Back_detail]) *)
     | Route_changed of back_route  (** popstate-driven route update *)
@@ -425,6 +430,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     let segmented_control, segmented_control_cmd =
       Sub_segmented_control.init ()
     in
+    let switch, switch_cmd = Sub_switch.init () in
     ( {
         button_clicks = 0;
         input_text = "";
@@ -504,6 +510,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         radio_row;
         hidden_radio;
         segmented_control;
+        switch;
         keyboard_height = 0;
         back_route = Back_home;
       },
@@ -542,6 +549,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           Nopal_mvu.Cmd.map
             (fun m -> Segmented_control_msg m)
             segmented_control_cmd;
+          Nopal_mvu.Cmd.map (fun m -> Switch_msg m) switch_cmd;
           (* Re-read the persisted demo value so a reload dispatches a
              [StorageRestored] message — the E2E persistence proof. *)
           Nopal_mvu.Cmd.task
@@ -775,6 +783,12 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         in
         ( { model with segmented_control },
           Nopal_mvu.Cmd.map (fun m -> Segmented_control_msg m) sc_cmd )
+    | Switch_msg switch_msg ->
+        let switch, switch_cmd =
+          Sub_switch.update switch_router model.switch switch_msg
+        in
+        ( { model with switch },
+          Nopal_mvu.Cmd.map (fun m -> Switch_msg m) switch_cmd )
     | DrawPointerMove (x, y) ->
         ({ model with draw_pointer = Some (x, y) }, Nopal_mvu.Cmd.none)
     | DrawPointerLeave ->
@@ -4284,6 +4298,14 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                  (fun m -> Segmented_control_msg m)
                  (Sub_segmented_control.view model.segmented_control);
              ];
+           view_section
+             ~attrs:[ ("data-testid", "switch-section") ]
+             "A switch"
+             [
+               Element.map
+                 (fun m -> Switch_msg m)
+                 (Sub_switch.view switch_router model.switch);
+             ];
            view_section "Text Input"
              [
                Element.map
@@ -4559,4 +4581,5 @@ module Sub_drawn_checkbox = Sub_drawn_checkbox
 module Sub_radio_row = Sub_radio_row
 module Sub_hidden_radio = Sub_hidden_radio
 module Sub_segmented_control = Sub_segmented_control
+module Sub_switch = Sub_switch
 module Tauri_op = Tauri_op

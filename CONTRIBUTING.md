@@ -94,7 +94,7 @@ close it.
 
 Each record lives beside the rule it defers, so the next reader of that rule
 sees the exception: D-1, D-2, D-6, D-10, D-16, D-18 and D-19 under
-[E2E tests](#e2e-tests-playwright), D-3 and D-17 (discharged) under
+[E2E tests](#e2e-tests-playwright), D-3, D-17 (discharged) and D-20 under
 [Performance](#performance), D-4 and D-12 under [Kitchen Sink](#kitchen-sink), D-5 and D-7 under
 [VIII. Bug-Class Prevention](#viii-bug-class-prevention), D-8, D-9, D-11,
 D-13, D-14 and D-15 under [V. Functional Patterns](#v-functional-patterns). D-11,
@@ -823,7 +823,7 @@ Where an element builder takes both an `~attrs` list and a typed field a backend
 renders as an attribute — `placeholder`, a radio's `name`, a picker's
 `accept`/`capture`/`multiple`, `disabled`, a container's `focusable`, an input's
 `required`/`autocomplete`/`input_type`, a form's `autocomplete`/`novalidate`, a
-button's `button_type`/`disabled`, a link's `destination`, a heading's `level`, a drawing's or an image's `name` — the rule is: **typed-field derivations
+button's `button_type`/`disabled`/`switch`, a link's `destination`, a heading's `level`, a drawing's or an image's `name` — the rule is: **typed-field derivations
 beat the `~attrs` list; within the list, the last pair wins.** Those are two
 tiers and they are not the same tier. A typed field
 sits above the list, so `~attrs` is an escape hatch for keys the DSL does not
@@ -842,7 +842,7 @@ replace needs a typed field, not a list pair.
 A derivation that is absent uncovers rather than erases: a picker with no
 `capture` leaves a `capture` the caller declared standing, because a typed field
 saying nothing is not the same as it saying "no attribute". A derivation declines
-in one of two shapes. A `bool` cannot say "no attribute": `true` asserts the key
+in one of these shapes. A `bool` cannot say "no attribute": `true` asserts the key
 and `false` emits nothing, so a `false` uncovers a caller's pair rather than
 removing it — `disabled`, `multiple`, an input's `required` (with the
 `aria-required` it carries), a form's `novalidate` and a button's
@@ -851,7 +851,11 @@ list asserts nothing when absent and uncovers the pair the same way — `accept`
 `capture`, an input's `autocomplete` and its `type` from `input_type`, and a
 form's `autocomplete`. A radio's `data-nopal-visually-hidden` declines by
 presentation: a visually hidden radio asserts it and a visible one emits
-nothing, so a caller's pair of that name stands on a visible radio only. Some
+nothing, so a caller's pair of that name stands on a visible radio only. A
+button's `role` and `aria-checked` decline by switch: a switch asserts both on
+every render, `aria-checked` `"false"` when it is off rather than an absent
+pair, and a plain button emits neither, so a caller's pair of either name
+stands on a plain button only. Some
 derivations have no absent form and are derived on every render, so a caller's
 pair of that key is always replaced: `placeholder`, a radio's `name`, a
 checkbox's, radio's or file picker's `type`, a button's `type` (from
@@ -873,14 +877,16 @@ The first tier is a rule both renderers hold on the keys `nopal_web` writes as
 real attributes: `disabled`, `accept`, `capture`, `multiple`, `placeholder`, a
 radio's `name`, a control's `type`, an input's `required`, `aria-required` and
 `autocomplete`, a form's `autocomplete` and `novalidate`, a button's `type`
-and `aria-disabled`, a drawing's `role`, `aria-label` and `aria-hidden`, a drawn
+and `aria-disabled`, a switch's `role` and `aria-checked`, a drawing's `role`,
+`aria-label` and `aria-hidden`, a drawn
 checkbox's `data-nopal-drawn-checkbox`, a visually hidden radio's
 `data-nopal-visually-hidden`, a label's `for`, and an image's `alt`. Every one carries the same value in both renderers except
 `disabled`, `multiple`, `required` and `novalidate`, which are a presence
 attribute (`""`) in the DOM and `"true"` in the structural tree, so the two
 agree on which side wins and not on the value; `aria-required` and a button's
 `aria-disabled` are `"true"` in both, a button's `type` is `"button"` or
-`"submit"` in both, a drawing's `role` is `"img"` and its `aria-hidden` `"true"`
+`"submit"` in both, a switch's `role` is `"switch"` and its `aria-checked`
+`"true"` or `"false"` in both, a drawing's `role` is `"img"` and its `aria-hidden` `"true"`
 in both, a drawn checkbox's `data-nopal-drawn-checkbox` and a visually hidden
 radio's `data-nopal-visually-hidden` are `""` in both, a label's `for` is its
 `control_id` in both, and a decorative image's `alt` is present and `""` in both. A checkbox's, radio's or file picker's
@@ -1453,7 +1459,7 @@ js_of_ocaml output without justification.
 Deferring a benchmark obligation is allowed; leaving it unrecorded is not — see
 [Deferrals and decisions not to cover](#deferrals-and-decisions-not-to-cover)
 for the `D-n` scheme.
-**There is one current deferral (D-3); D-17 is discharged below.**
+**There are two current deferrals (D-3 and D-20); D-17 is discharged below.**
 
 ### Open deferral D-3 — the committed baseline is stale, so read it relatively
 
@@ -1533,6 +1539,57 @@ The code argument corroborates: the benchmark mounts through `Runtime.create`
 and `Nopal_web.Renderer`, and the renderer was not changed. The runtime gained
 one record field, set once at creation, and one label passed to `Cmd.interpret`
 per command; the initial render issues no clipboard command.
+
+### Open deferral D-20 — `jsfb/swap_rows` read +22.3% over six runs, and the renderer is not the cause
+
+**Owner: the next change that takes the bench pair this section prescribes. It
+reads `jsfb/swap_rows` against its own merge base, and discharges this record if
+the median sits within 20% of the base or inside the base's own spread.**
+
+The change that added `Element.button ~switch` and `Nopal_ui.Switch` ran the
+D-3 procedure on 2026-11-09. That was three interleaved `just bench` runs per
+tree, its working tree against a `git archive` of its merge base. Every median
+but one was within 20%. `jsfb/swap_rows` read +26.0%: base 26.9 / 26.3 / 27.9
+(spread 5.9%), branch 35.7 / 30.3 / 33.9, with no overlap between runs. The same
+session ran three more interleaved runs per tree, and all of them are reported:
+
+| tree | runs 1–6 (ms) | median | spread |
+| --- | --- | --- | --- |
+| merge base | 26.9 / 26.3 / 27.9 / 25.6 / 25.9 / 26.2 | 26.25 | 8.8% |
+| branch | 35.7 / 30.3 / 33.9 / 39.4 / 26.3 / 25.6 | 32.10 | 43.0% |
+
+That is **+22.3%**, outside the base's spread. The branch is bimodal: runs 5 and
+6 sit inside the base's range.
+
+An attribution experiment came next. A third tree was built from the working
+tree with `backends/nopal_web/renderer.ml` restored to the merge base. It needed
+one `switch = _` wildcard so the restored file compiles against the new record
+field. All three trees were run three times, interleaved, in the same session:
+
+| tree | runs (ms) | median | spread | Δ median vs base |
+| --- | --- | --- | --- | --- |
+| merge base | 27.6 / 25.5 / 29.2 | 27.6 | 13.4% | — |
+| branch | 30.1 / 25.1 / 25.8 | 25.8 | 19.4% | −6.5% |
+| branch, renderer restored | 25.2 / 30.8 / 25.6 | 25.6 | 21.9% | −7.2% |
+
+The tree with the renderer restored is no faster than the branch. In this round
+both read faster than the base, and each of the three trees has one run near
+30 ms. The same round moved other `jsfb` metrics by the same 10–15 ms step, with
+no code difference to explain it. `jsfb/partial_update` read +23.6% on the
+branch (49.3 / 62.5 / 50.5 base, 62.6 / 49.9 / 62.4 branch).
+`jsfb/select_row` read +30.3% on the renderer-restored tree, whose renderer
+is the base's.
+
+The code argument corroborates. The renderer change is in
+`apply_button_config` and the `Button` reconcile guard. A swap re-runs the
+`jsfb` view and sends its 2,000 plain buttons through that guard.
+`jsfb/select_row` and `jsfb/partial_update` re-run the same view and send the
+same 2,000 buttons through the same guard, and over the six-run pair they moved
+−3.8% and −0.4%.
+
+What stays open is the move itself. The experiment shows it is not in the
+renderer, but it does not show what it is. The record therefore stays open
+until a later pair reads the metric again.
 
 ## Kitchen Sink
 

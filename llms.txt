@@ -25,7 +25,7 @@ nopal_charts    ← Composable interactive charts (Bar, Line, Area, Pie, Scatter
 nopal_http      ← Pure HTTP types + backend abstraction — no platform deps
 nopal_navigation ← Nav_stack: pure stack-based navigation state (non-empty, total pop) — no platform deps
 nopal_image     ← Validated RGBA Buffer, perceptual Luma, Sharpness metric, capture Config, Processing + Preview + Retention seams — depends on nopal_mvu (Task/Cmd types); no platform deps
-nopal_ui        ← High-level UI components (Bottom_tabs, Button, Checkbox, Data_table, Modal, Navigation_bar, Radio_group, Segmented_control, Select_input, Slug, Text_input, Text_node, Toast) — no platform deps
+nopal_ui        ← High-level UI components (Bottom_tabs, Button, Checkbox, Data_table, Modal, Navigation_bar, Radio_group, Segmented_control, Select_input, Slug, Switch, Text_input, Text_node, Toast) — no platform deps
 nopal_runtime   ← Lwd reactive integration + MVU loop; Telemetry (E2E event log)
 nopal_test      ← Pure OCaml test renderer + Telemetry_test harness — no js_of_ocaml
 nopal_web       ← js_of_ocaml + Brr DOM renderer (only browser-dependent package)
@@ -430,7 +430,8 @@ Only Ctrl and Shift are folded, so a subscription naming a bare key still matche
 a backend renders as an attribute — `placeholder`, a radio's `name`, a picker's
 `accept`/`capture`/`multiple`, `disabled`, a container's `focusable`, an
 input's `required`/`autocomplete`/`input_type`/`name`, a form's
-`autocomplete`/`novalidate`, a button's `button_type`/`disabled`, a link's
+`autocomplete`/`novalidate`, a button's `button_type`/`disabled`, a button's
+`switch` (its `role` and `aria-checked`), a link's
 `destination` (its `href`, `rel` and `target`), a heading's `level` (its `role`,
 `aria-level` and `data-nopal-heading`), a label's `control_id` (its `for`), a
 radio's `presentation` (its `data-nopal-visually-hidden`) — the rule is: **typed-field derivations beat the `~attrs` list; within the list, the
@@ -446,12 +447,14 @@ and `data-field` travel. They are ordinary list pairs, so a caller passing the
 same key through the component's own attributes replaces them — `Modal`,
 `Navigation_bar`, `Bottom_tabs` and `Button` each document that as a deliberate
 override rather than an accident, and it is the escape hatch a consumer reaches
-for instead of abandoning the component.
+for instead of abandoning the component. `Switch` is the exception: its
+`with_attrs` lands on the outer box and never on the button, so the button's
+`aria-describedby`, which carries the disabled reason, cannot be replaced.
 
 A derivation that is *absent* leaves the caller's pair standing — a picker with
 no `capture` does not erase a `capture` the caller declared, because the typed
 field saying nothing is not the same as it saying "no attribute". A derivation
-declines in one of two shapes:
+declines in one of these shapes:
 
 - **Bool** — `true` asserts the key and `false` emits nothing, so a `false`
   uncovers a caller's pair and cannot remove it: `disabled`, `multiple`, an
@@ -468,6 +471,10 @@ declines in one of two shapes:
 - **By presentation** — a radio's `data-nopal-visually-hidden` is `""` on a
   `Visually_hidden` radio and absent on a `Visible` one, so a caller's pair of
   that name stands on a visible radio only.
+- **By switch** — a button's `role` is `"switch"` and its `aria-checked` is
+  `"true"` for `Switch_on` and `"false"` for `Switch_off` on every render of a
+  switch, never an absent pair, and both are absent on a plain button, so a
+  caller's `role` or `aria-checked` pair stands on a plain button only.
 
 Some derivations have no absent form and are derived on every render, so a
 caller's pair of that key is always replaced: `placeholder`, a radio's `name`,
@@ -485,8 +492,8 @@ resolves — to the last pair. The first tier is shared by the two on the keys t
 web backend writes as real attributes: `disabled`, `accept`, `capture`,
 `multiple`, `placeholder`, a radio's `name`, a control's `type`, an input's
 `required`, `aria-required`, `autocomplete` and `name`, a form's `autocomplete` and
-`novalidate`, a button's `type` and `aria-disabled`, a link's `href` and
-`rel`, a heading's `role`, `aria-level` and `data-nopal-heading`, a drawing's
+`novalidate`, a button's `type` and `aria-disabled`, a switch's `role` and
+`aria-checked`, a link's `href` and `rel`, a heading's `role`, `aria-level` and `data-nopal-heading`, a drawing's
 `role`, `aria-label` and `aria-hidden`, a drawn checkbox's
 `data-nopal-drawn-checkbox`, a visually hidden radio's
 `data-nopal-visually-hidden`, a label's `for`, and an image's
@@ -495,7 +502,8 @@ carries the same value in both renderers except `disabled`, `multiple`,
 `required` and `novalidate`, which are a presence attribute (`""`) in the DOM
 and `"true"` in the structural tree — the two agree on which side wins, not on
 the value. `aria-required` and a button's `aria-disabled` are `"true"` in both,
-a button's `type` is `"button"` or `"submit"` in both, a link's `rel` is
+a button's `type` is `"button"` or `"submit"` in both, a switch's `role` is
+`"switch"` and its `aria-checked` `"true"` or `"false"` in both, a link's `rel` is
 `"noopener noreferrer"` in both, a heading's `role` is `"heading"`, its
 `aria-level` the level's digit and its `data-nopal-heading` `""` in both, a
 drawing's `role` is `"img"` and its
@@ -765,8 +773,10 @@ Element.label : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string *
      id as an ("id", _) pair in its own [attrs] and stays outside the label.
      The label names the control (its accessible name comes from the label's
      content), and a press on the label activates it — a radio is selected and
-     focused, a checkbox toggled — so the control's own handler dispatches and
-     the label carries no handler of its own: one press, one dispatch. On web it
+     focused, a checkbox toggled, an Element.button pressed — so the control's
+     own handler dispatches and the label carries no handler of its own: one
+     press, one dispatch. A disabled button stays inert through its label: the
+     press dispatches nothing. On web it
      is a native <label for=control_id>, and the activation is the platform's.
      A container like Element.box, laying its children down the page unless
      [style] asks for the other direction. [control_id] is typed, so a ("for", _)
@@ -785,8 +795,10 @@ Element.label : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string *
 (* Interactive elements *)
 type button_type = Submit | Push
 Element.button_type_to_string : button_type -> string   (* "submit" | "button" — sole producer *)
+type switch_state = Switch_on | Switch_off   (* exactly two: no mixed state *)
+Element.equal_switch_state : switch_state -> switch_state -> bool
 Element.button : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
-  -> ?button_type:button_type -> ?disabled:bool
+  -> ?button_type:button_type -> ?disabled:bool -> ?switch:switch_state
   -> ?on_click:'msg -> ?on_dblclick:'msg -> 'msg Element.t -> 'msg Element.t
   (* [button_type] (default Push) says whether activating the button submits the
      enclosing Form: Submit dispatches on_click and then the form's on_submit;
@@ -796,7 +808,17 @@ Element.button : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string 
      It renders aria-disabled="true", not the native disabled attribute that
      Element.checkbox, radio and select use, so the button stays in the tab
      order. Both are typed: a ("type", _) pair in [attrs] never takes effect,
-     and an ("aria-disabled", _) pair only while [disabled] is false. *)
+     and an ("aria-disabled", _) pair only while [disabled] is false.
+     [switch] (absent: a plain button) makes it an on/off switch: role="switch"
+     and aria-checked="true" for Switch_on or "false" for Switch_off, both
+     written on every render of a switch and never absent, so a ("role", _) or
+     ("aria-checked", _) pair in [attrs] never takes effect on a switch and
+     stands on a plain button. [switch] only describes the state: activating a
+     switch dispatches its on_click and nothing else, so the application flips
+     the state, and a disabled switch dispatches nothing. Nopal_ui.Switch is the
+     labelled component built on it.
+     Arm: Button of { style; interaction; attrs; button_type; disabled;
+     switch : switch_state option; on_click; on_dblclick; child }. *)
 type input_type = Plain | Password | Email | Tel | Url | Number | Search
 Element.input_type_to_string : input_type -> string
   (* "text" | "password" | "email" | "tel" | "url" | "number" | "search" — sole producer *)
@@ -1515,7 +1537,7 @@ Text.figure_style   : figure_style -> Text.t -> Text.t
 High-level UI components built on `nopal_element` and `nopal_style`. No platform dependencies — compiles native.
 
 **Every visual decision a component makes is overridable — the audit.** All
-twelve components were enumerated as component × visual decision × override
+thirteen components were enumerated as component × visual decision × override
 mechanism, and no cell reads "fork". The table below is that enumeration in
 summary; the per-component blocks that follow carry the signatures. What the
 table covers is bounded: it covers *visual* decisions. A component's roles, ARIA
@@ -1536,6 +1558,7 @@ same under every override below.
 | `Segmented_control` | outer box (the group label above the segments) → `with_group_style`; group label box and its text → `with_label_style`; segments box (outer border, radius, background, direction) → `with_segments_style`; each segment box (fill, height) → `with_segment_style`; the selected segment box (fill), replacing the plain style whole → `with_selected_segment_style`; each segment label and its text (padding, typography) → `with_segment_label_style`; the selected segment's label and its text (text colour, weight), replacing the plain style whole → `with_selected_segment_label_style`; each divider (colour, width) → `with_divider_style`; segment states, such as a focus ring while its radio has focus, the selected segment included → `with_segment_interaction`; identifiers → `with_id`; the radios' shared name → `with_name`; metadata pairs on the outer box (`aria-describedby`, `data-testid`; a `role`, `aria-labelledby` or `id` pair replaces the derived one, as in `Radio_group`) → `with_attrs` |
 | `Select_input` | control → `config.style` / `config.interaction`; label typography → `with_label_style`; label-to-control wrapper → `with_wrapper_style`; identifier → `with_id` |
 | `Slug` | none — a pure function module that renders nothing |
+| `Switch` | track, off and on, which also places the knob through its `main_align` → `with_track_style`; knob, off and on → `with_knob_style`; the disabled track and knob, off and on, which look like the enabled ones until set → `with_disabled_track_style` / `with_disabled_knob_style`; the button around the track, its hit area → `with_button_style`; label-and-button row (spacing, alignment) → `with_row_style`; label and its typography → `with_label_style`; hint box → `with_hint_style`, the hint being the caller's own `Element.t`; reason box and its typography → `with_reason_style`; outer box (the row, the reason and the hint) → `with_style`; focus ring → `with_focus_ring`; identifier → `with_id`; metadata pairs on the outer box → `with_attrs`, which never reaches the button |
 | `Text_input` | input → `config.style` / `config.interaction`; label typography → `with_label_style`; label-to-box gap → `with_wrapper_style`; error slot, and the error message's typography through that style's `text` component → `with_error_style`; identifier → `with_id`, which sets the pre-existing `config.id` field |
 | `Toast` | stack container → `config.style`; per-toast style → `with_toast_style`, displacing `default_style_for`; per-toast interaction → `with_toast_interaction`, displacing `default_interaction_for`; the message's typography is reached by the toast style's `text` component through CSS inheritance, which the structural renderer does not model |
 
@@ -1565,6 +1588,17 @@ is stated at its own signature rather than left implicit:
   `Pos_relative` position, each segment label's `flex_grow` of `1.`, and a
   `z_index` of `1` on the `focused_within` style of `with_segment_interaction`.
   The `#### Segmented_control` block below states each one.
+- `Switch` — four fill-ins, none a force; each is kept when the caller's style
+  names its own value. The track's `main_align` is filled in as `Start` off and
+  `End_` on, over `with_track_style` and `with_disabled_track_style`, because the
+  knob sits where the track aligns it and a restyled track naming no alignment
+  would freeze it; the track's `direction` is filled in as `Row_dir` beside it.
+  The button's chrome is cleared over `with_button_style`: an unset
+  `paint.background` becomes transparent, an unset `paint.border` no border, and
+  each unset side of padding `0.`, because the track is the switch's whole look
+  and padding set there enlarges the hit area without the platform chrome coming
+  back. The label-and-button row's `direction` is filled in as `Row_dir` over
+  `with_row_style`. The `#### Switch` block below states each one.
 
 **Precedence, where two overrides land on the same node.** Most specific wins,
 and an absent answer *uncovers* the general one rather than clearing it:
@@ -2809,6 +2843,132 @@ val derive_id :
 
 `Slug` renders nothing, so it makes no visual decision and has no override
 surface.
+
+#### Switch
+
+An on/off switch: an `Element.button ~switch` (role `switch`, `aria-checked`)
+named by a visible native `Element.label` beside it, with an optional hint
+beneath it and, when disabled, a visible reason. The switch shows the value it
+is given, never what the platform last showed, and a press asks for the
+opposite value through a message `make` requires. The config is abstract: build
+it with `make`, change it with the setters.
+
+```ocaml
+type 'msg t   (* abstract *)
+
+type availability =
+  | Enabled                        (* a press dispatches the toggle message *)
+  | Disabled of { reason : string }
+(* Disabled: a press by pointer, Space, Enter or the label dispatches nothing;
+   the button stays focusable and in the tab order; reason is shown as visible
+   text beneath the switch and is part of its accessible description. A
+   disabled switch cannot be built without a reason. *)
+
+val make : label:string -> on:bool -> on_toggle:(bool -> 'msg) -> 'msg t
+(* An enabled switch named by the visible label, drawn on when on is true. A
+   press — on the button, on its label, or by Space or Enter — dispatches
+   on_toggle (not on): the message carries the value asked for, so update does
+   not derive it; a press on the label dispatches it once. No hint, id or
+   attribute is set; the id derives from the slugified label. *)
+
+val with_availability : availability -> 'msg t -> 'msg t   (* Enabled until set *)
+
+val with_hint : 'msg Element.t -> 'msg t -> 'msg t
+(* Shown beneath the switch in a box with id control_id ^ "-hint", added to the
+   button's aria-describedby after the reason's id. It may hold a link: it sits
+   outside the label and the button. *)
+
+val with_id : string -> 'msg t -> 'msg t
+(* The button's id, verbatim, and with it every derived id: the label's for, the
+   reason box id ^ "-reason" and the hint box id ^ "-hint". *)
+
+val control_id : 'msg t -> string
+(* The with_id value when set, else the slugified label. *)
+
+val with_track_style : off:Style.t -> on:Style.t -> 'msg t -> 'msg t
+(* The track (the box inside the button holding the knob), off and on. Default:
+   a 44 x 24 px pill, 2 px solid #555555 border, #cccccc off and #00aa66 on.
+   The knob sits at the track's layout.main_align. Structural fill-in: an unset
+   main_align becomes Start off and End_ on, and an unset direction Row_dir; a
+   style naming its own keeps it. *)
+
+val with_knob_style : off:Style.t -> on:Style.t -> 'msg t -> 'msg t
+(* The knob, off and on. Default: a white 16 px disc, 1 px solid border. *)
+
+val with_disabled_track_style : off:Style.t -> on:Style.t -> 'msg t -> 'msg t
+val with_disabled_knob_style  : off:Style.t -> on:Style.t -> 'msg t -> 'msg t
+(* In place of the enabled styles while Disabled, the track with the same
+   fill-in. Until set, a disabled part looks exactly like the enabled one in
+   the same state: disabling changes no styling on its own. *)
+
+val with_button_style : Style.t -> 'msg t -> 'msg t
+(* The button around the track: what takes focus and the press. Padding here
+   enlarges the hit area without changing the track. Structural fill-in: an
+   unset paint.background becomes transparent, an unset paint.border no border,
+   and each unset side of padding 0., so the platform's button chrome stays
+   cleared; a value the caller sets is kept. *)
+
+val with_row_style : Style.t -> 'msg t -> 'msg t
+(* The box holding the label and the button. Default: a row, centred across,
+   gap 8. Structural fill-in: an unset direction becomes Row_dir. *)
+
+val with_label_style  : Style.t -> 'msg t -> 'msg t   (* the label and its text *)
+val with_hint_style   : Style.t -> 'msg t -> 'msg t   (* the box holding the hint *)
+val with_reason_style : Style.t -> 'msg t -> 'msg t   (* the reason box and its text *)
+val with_style        : Style.t -> 'msg t -> 'msg t
+(* The outer box only. Default: a column, gap 4. *)
+
+val with_focus_ring : Interaction.t -> 'msg t -> 'msg t
+(* Replaces the button's interaction whole. Default: on focused, a 2 px #1a73e8
+   spread shadow, zero offset and blur, radius 12. *)
+
+val with_attrs : (string * string) list -> 'msg t -> 'msg t
+(* Pairs on the OUTER BOX, for metadata such as data-testid. They never reach
+   the button: its id, role, aria-checked and aria-describedby cannot be
+   replaced from outside, and an ("aria-describedby", _) pair here lands on the
+   outer box and leaves the button's description as it was. *)
+
+val view : 'msg t -> 'msg Element.t
+(* Renders, with the setter that styles each node:
+     box                                   with_style; with_attrs pairs here
+     ├─ box                                with_row_style
+     │  ├─ label for = control_id          with_label_style; the label text
+     │  └─ button id = control_id          with_button_style, with_focus_ring
+     │     │  role="switch", aria-checked, aria-describedby, type="button"
+     │     └─ box (track)                  with_track_style / disabled
+     │        └─ box (knob)                with_knob_style / disabled
+     ├─ box id = control_id ^ "-reason"    with_reason_style   (Disabled only)
+     └─ box id = control_id ^ "-hint"      with_hint_style     (when set)
+   aria-describedby lists the reason box's id then the hint box's, naming only
+   those rendered, and is absent with neither. Every container is a box. *)
+```
+
+**The value comes from the model.** Which state is drawn, and the
+`aria-checked` it announces, is the `on` given to `make`. A press dispatches
+`on_toggle (not on)` and changes nothing by itself; a switch whose `update`
+refuses the request keeps showing the old value.
+
+**Forced colours.** Backgrounds are replaced by the system palette, so the
+track's colour does not show the state. The knob's place in the track does,
+and the default track's 2 px border and the knob's 1 px border survive to
+outline them. Observed in Chromium only (the kitchen-sink Playwright case: the
+knob 4 px into the track off and 24 px on). No way to put WebKitGTK on Linux
+into a forced-colours mode is known (assumed absent, not observed).
+
+A switch built from setters alone (the kitchen sink's
+`examples/kitchen_sink/sub_switch.ml` builds three this way):
+
+```ocaml
+Switch.make ~label:"Send an alert when it goes silent" ~on:model.alerts
+  ~on_toggle:(fun on -> Alerts_toggled on)
+|> Switch.with_id "silence-alerts"
+|> Switch.with_availability
+     (Switch.Disabled { reason = "Needs a silence threshold." })
+|> Switch.with_hint (Element.text "Off, so alerts are being dropped.")
+|> Switch.with_focus_ring ring           (* focused spread shadow *)
+|> Switch.with_attrs [ ("data-testid", "silence-alerts-row") ]
+|> Switch.view
+```
 
 #### Text_node
 
@@ -5340,7 +5500,7 @@ test.
 | 4 | `element-radio-presentation` | additive | all | every `Element.radio` call | no `?presentation` | `?presentation:Presentation.t`, between `?disabled` and `?on_select`; absent is `Visible`, so an existing call compiles and renders unchanged. The `Radio` arm gains `presentation : Presentation.t` between `disabled` and `on_select`; `Element.map` keeps it and `Element.equal` compares it | `grep -rn "Element.radio" --include=*.ml .` (no action needed) |
 | 5 | `style-presentation` | additive | all | `Nopal_style` | — | `module Presentation`: `type t = Visible \| Visually_hidden` and `equal : t -> t -> bool` | — |
 | 6 | `element-label` | additive | all | `Nopal_element.Element` | — | `label : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list -> control_id:string -> 'msg t list -> 'msg t`, arm `Label { style; interaction; attrs; control_id; children }` after `Form`. On web a native `<label for=control_id>`, laid out as a flex container that is a column unless its style sets a direction, as `Box` is. A press on it activates the named control, whose own handler dispatches; the label has none. `control_id` is typed: `for` is derived at the first tier in both renderers, so a `("for", _)` pair in `~attrs` never takes effect | — |
-| 7 | `test-renderer-label-node` | render | structural | a label in the structural tree | — | tag `"label"`, attrs the view's own followed by `("for", control_id)`. `click` on it answers `No_handler { tag = "label"; event = "click" }`, because this renderer models neither the naming nor the activation: drive the control. A field inside a label inside a form counts toward implicit submission as one inside a box does | — |
+| 7 | `test-renderer-label-node` | render | structural | a label in the structural tree | — | tag `"label"`, attrs the view's own followed by `("for", control_id)`. `click` on it fires the click handler of the node whose `"id"` is `control_id`, as the browser's activation does; a label naming no control, or a control with no handler, answers `No_handler { tag = "label"; event = "click" }`. The naming and focus transfer are not modelled. (This row was corrected after it shipped; see the Switch paragraph's `docs-label-structural-activation` row.) A field inside a label inside a form counts toward implicit submission as one inside a box does | — |
 | 8 | `radio-visually-hidden-marker` | render | all | a radio whose presentation is `Visually_hidden`, or a caller's `("data-nopal-visually-hidden", …)` pair on any radio | no marker; a caller pair survived in both renderers | a hidden radio carries `data-nopal-visually-hidden=""` in both renderers, written after `~attrs`, so a caller pair of that name never stands on it. A `Visible` radio carries none and leaves a caller pair standing | `grep -rn "data-nopal-visually-hidden" --include=*.ml .` |
 | 9 | `web-style-sheet-hide-rule` | render | web | every mount's `<style data-nopal>` | three fixed rules at indices 0–2; class rules from index 3 | four: the hide rule at index 3, `@media not (forced-colors: active){:where([data-nopal-visually-hidden]){position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0;padding:0}}`. Class rules start at index 4. It matches only an element Nopal marked and has zero specificity, so a radio's own style beats it; give a hidden radio no size or position of its own. Under forced colours it does not apply and the radio is the platform's again. Per Media Queries Level 4 (not observed on such an engine): an engine that cannot evaluate `forced-colors` does not match the query either, so the radio shows there too | `grep -rn -e cssRules -e insertRule .` (a DOM shim or a test counting the sheet's rules) |
 | 10 | `web-style-sheet-visually-hidden-marker` | additive | web | `Nopal_web.Style_sheet` | — | `visually_hidden_marker : string`, `"data-nopal-visually-hidden"` | — |
@@ -5473,6 +5633,49 @@ options; reach for `Segmented_control` for those. No element, element field,
 interaction state or `!important` was added: `Interaction` has no checked
 state, and the selected segment's style follows the `selected` value given to
 `make`. A segment cannot be disabled.
+
+**Switch answers that moved — read this on a pin bump.** `Element.button`
+gains a typed `?switch`, and `nopal_ui` gains `Switch`, an on/off switch built
+on it with a visible label, an optional hint and, when disabled, a visible
+reason. The `Button` arm gains a `switch` field, so two kinds of code stop
+compiling: **a closed record pattern on the `Button` arm** (no `; _`) stops
+with warning 9, and **an `Element.Button {…}` value built directly** stops with
+`Some record fields are undefined: switch` (row 2). Every call through
+`Element.button` compiles untouched, and a button that names no `switch`
+renders exactly as before. Unlike the other components' `role` and
+`aria-describedby`, which are second-tier pairs a caller can replace,
+`Switch`'s are typed or written on the button, which `with_attrs` never
+reaches.
+
+"Before" is the tree at commit `1db745c`. Where, Find it and the first-pass
+caveat read as in the Style border paragraph above. No test reads this table.
+The behaviour each row describes is tested in the `nopal_element`,
+`nopal_test`, `nopal_web`, `nopal_ui` and kitchen-sink suites and, for web, by
+the kitchen-sink Playwright and axe cases, but an edit to the text alone
+reddens no test.
+
+| # | Key | Visible | Where | When | Before | Now | Find it |
+|---|---|---|---|---|---|---|---|
+| 1 | `element-button-switch` | additive | all | every `Element.button` call | no `?switch` | `?switch:switch_state`, between `?disabled` and `?on_click`; absent is a plain button, so an existing call compiles and renders unchanged. `type switch_state = Switch_on \| Switch_off` and `equal_switch_state` are new in `Element`. `Element.map` keeps the field and `Element.equal` compares it | `grep -rn "Element.button" --include=*.ml .` (no action needed) |
+| 2 | `element-button-arm-switch-field` | compile | all | a `match` on `Element.t` whose `Button { … }` pattern names every field and ends without `; _`, or an `Element.Button { … }` value built directly | compiled | warning 9 error (`switch` is unlisted), or `Some record fields are undefined: switch`. Fix: add `; _` or bind `switch`; add `switch = None` to a literal, which renders as before | `grep -rn -e "Button *{" -e "Button$" --include=*.ml .` (the second pattern finds an `ocamlformat` split, the usual shape of a complete literal; a pattern ending `; _ }` needs nothing, and a `module … = Nopal_ui.Button` line matches the second pattern and needs nothing), then the compiler. In this repository at `1db745c` its hits include all 16 complete literals this change had to edit, every one split over lines, under `test/unit/nopal_web/` |
+| 3 | `switch-role-aria-checked-first-tier` | render | all | a button with `~switch`, and a `("role", _)` or `("aria-checked", _)` pair in its `~attrs` | no switch; a caller's pair of either name stood on every button | a switch carries `role="switch"` and `aria-checked` `"true"` for `Switch_on` or `"false"` for `Switch_off` on every render, never an absent pair, at the first tier in both renderers, so a caller's pair of either name never takes effect on it. On web a switch turned off, or no longer a switch, is rewritten on reconcile; with `switch` gone both derived attributes are removed and a caller's pair is uncovered. A plain button derives neither, so a caller's pair stands there as before | `grep -rn '"aria-checked"' --include=*.ml .` (a hand-built switch to move to `~switch`; at `1db745c` it finds nothing in this repository) |
+| 4 | `docs-attr-precedence-switch` | docs | all | anyone reading this file's `Element.button` signature or its attribute-precedence lists, or `element.mli`'s and `test_renderer.mli`'s | no switch | each names `?switch` and a switch's `role` and `aria-checked` as first-tier keys that decline by switch | — |
+| 5 | `docs-label-structural-activation` | docs | structural | anyone reading `element.mli`'s `label` doc, or row 7 of this file's Element paragraph | both said the structural test renderer models neither the naming nor the activation, so a click on a label answers `No_handler` and a test drives the control | both say it models the activation: `Test_renderer.click` on a label fires the click handler of the node whose `"id"` is `control_id`, and a label naming no control, or a control with no handler (a disabled one), answers `No_handler { tag = "label"; event = "click" }`; focus transfer is not modelled. That is what the renderer did at `1db745c` too, so no assertion moves. The `label` doc also names a button as a target: a press on the label presses it once, and a disabled one stays inert | `grep -rn "models neither the naming" .` (at `1db745c` it lists `element.mli`'s `label` doc and row 7; in the committed tree it lists this row only) |
+| 6 | `ui-switch` | additive | all | `Nopal_ui` | absent | `module Switch`: abstract `'msg t`; `type availability = Enabled \| Disabled of { reason : string }`; `make : label:string -> on:bool -> on_toggle:(bool -> 'msg) -> 'msg t`, whose toggle message is required and receives `not on`; setters `with_availability`, `with_hint` (an `Element.t`), `with_id`, `with_track_style ~off ~on`, `with_knob_style ~off ~on`, `with_disabled_track_style ~off ~on`, `with_disabled_knob_style ~off ~on`, `with_button_style`, `with_row_style`, `with_label_style`, `with_hint_style`, `with_reason_style`, `with_style` (each a `Style.t`), `with_focus_ring` (an `Interaction.t`) and `with_attrs`; `control_id` and `view`. `with_attrs` puts its pairs on the outer box and never on the button, so the button's id, role, `aria-checked` and `aria-describedby` (the reason's id, then the hint's) cannot be replaced from outside. The tree, each setter's node and the four structural fill-ins are in the `#### Switch` block. A consumer compilation unit named `Switch` is shadowed in any file that opens `Nopal_ui` | `find . -name "switch.ml*" -not -path "*/_build/*" -not -path "*/_opam/*"` (at `1db745c` it lists nothing in this repository; on the tree, the library's own two files) |
+| 7 | `ui-component-table-switch-row` | docs | all | anyone reading the UI Components override table | no `Switch` row; "All twelve components" | a row naming each setter's node, with no cell reading "fork"; "All thirteen components"; and a `Switch` entry under "Named as structural rather than visual" for the track's alignment and direction, the button's cleared chrome and the row's direction | — |
+| 8 | `llms-nopal-ui-package-line` | docs | all | anyone reading this file's `nopal_ui` package line | no `Switch` | lists `Switch` after `Slug` | — |
+| 9 | `kitchen-sink-switch-section` | example | web | anyone copying the kitchen sink | no switch section | "A switch" (`data-testid="switch-section"`) right after the segmented-control section, between a "Before the switches" and an "After the switches" button: three switches labelled "Send an alert when it goes silent", on with the hint "Delivering to alerts.example.com" (`switch-starts-on`), off with no hint (`switch-starts-off`), and off and disabled with the reason "Needs a silence threshold." and a hint holding a "See the dropped alerts" link (`switch-disabled`). Default track and knob; reason and hint text `#5C5346` at 14 px; a 3 px `rgba(11,97,88,0.5)` focus ring at radius 12. Built from setters alone (`examples/kitchen_sink/sub_switch.ml`) | — |
+
+What did **not** move, recorded so a reader does not go looking. `Element.t`
+gained no arm, so an exhaustive `match` on it still compiles. A button that
+names no `switch` renders the same element, attributes and handlers as before,
+and `disabled` still changes no styling. `Checkbox` is unchanged and is still a
+native checkbox. `Interaction` has no checked or disabled state: a switch's
+look follows the `on` given to `make` and its availability. The structural
+`Test_renderer` still models no Space or Enter on a button, so keyboard toggling
+is proven in the browser only. Every other component's `role`,
+`aria-describedby` and `data-field` pairs are still second-tier and
+replaceable.
 
 #### Telemetry harness (`Nopal_test.Telemetry_test`)
 

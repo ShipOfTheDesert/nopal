@@ -1270,6 +1270,77 @@ let test_equal_distinguishes_button_type_and_disabled () =
     "a different disabled state is not equal" false
     (Element.equal (make ~disabled:true ()) (make ~disabled:false ()))
 
+let switch_state_t =
+  Alcotest.testable
+    (fun ppf (s : Element.switch_state) ->
+      Format.pp_print_string ppf
+        (match s with
+        | Element.Switch_on -> "Switch_on"
+        | Element.Switch_off -> "Switch_off"))
+    Element.equal_switch_state
+
+(* The switch state a button carries, [None] for a plain button, and a failure
+   for any other element so a map that changed the arm cannot read as [None]. *)
+let button_switch (el : 'msg Element.t) =
+  match el with
+  | Element.Button { switch; _ } -> switch
+  | Element.Empty
+  | Element.Text _
+  | Element.Box _
+  | Element.Row _
+  | Element.Column _
+  | Element.Link _
+  | Element.Heading _
+  | Element.Input _
+  | Element.Image _
+  | Element.Checkbox _
+  | Element.Radio _
+  | Element.Select _
+  | Element.File_input _
+  | Element.Scroll _
+  | Element.Keyed _
+  | Element.Draw _
+  | Element.Form _
+  | Element.Label _
+  | Element.Virtual_list _ ->
+      Alcotest.fail "not a button"
+
+(* Every pair of the three states — on, off, and no switch at all — so an
+   [equal] that ignored the field, or one that only compared presence, fails on
+   at least one of them; the mapped fixtures cross the states, so a [map] that
+   pinned the field to any one constant reads back wrong on another. *)
+let test_button_switch_state_in_equal_and_map () =
+  let make ?switch () =
+    Element.button ?switch ~on_click:Click (Element.text "Alerts")
+  in
+  Alcotest.(check bool)
+    "the same switch state, separately built, is equal" true
+    (Element.equal
+       (make ~switch:Element.Switch_on ())
+       (make ~switch:Element.Switch_on ()));
+  Alcotest.(check bool)
+    "on is not off" false
+    (Element.equal
+       (make ~switch:Element.Switch_on ())
+       (make ~switch:Element.Switch_off ()));
+  Alcotest.(check bool)
+    "off is not a plain button" false
+    (Element.equal (make ~switch:Element.Switch_off ()) (make ()));
+  Alcotest.(check bool)
+    "on is not a plain button" false
+    (Element.equal (make ~switch:Element.Switch_on ()) (make ()));
+  let mapped switch =
+    button_switch (Element.map (fun m -> Wrapped m) (make ?switch ()))
+  in
+  Alcotest.(check (option switch_state_t))
+    "map keeps on" (Some Element.Switch_on)
+    (mapped (Some Element.Switch_on));
+  Alcotest.(check (option switch_state_t))
+    "map keeps off" (Some Element.Switch_off)
+    (mapped (Some Element.Switch_off));
+  Alcotest.(check (option switch_state_t))
+    "map keeps a plain button plain" None (mapped None)
+
 (* Teal fill and white tick are the drawn design this field was built for; the
    black tick is the near miss. Built fresh per call, so equality is by value. *)
 let drawn_appearance mark =
@@ -2294,6 +2365,8 @@ let () =
             test_equal_button_different_click;
           Alcotest.test_case "equal_distinguishes_button_type_and_disabled"
             `Quick test_equal_distinguishes_button_type_and_disabled;
+          Alcotest.test_case "button_switch_state_in_equal_and_map" `Quick
+            test_button_switch_state_in_equal_and_map;
           Alcotest.test_case "checkbox_default_appearance_is_native" `Quick
             test_checkbox_default_appearance_is_native;
           Alcotest.test_case "checkbox_map_preserves_appearance" `Quick

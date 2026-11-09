@@ -90,6 +90,15 @@ val button_type_to_string : button_type -> string
 val equal_button_type : button_type -> button_type -> bool
 (** Structural equality over the closed variant. The sole definition. *)
 
+(** Whether a {!button} that is a switch is on or off. A switch has exactly
+    these two states — no mixed or unknown one — so a third cannot be built. *)
+type switch_state =
+  | Switch_on  (** The switch is on; it is announced as checked. *)
+  | Switch_off  (** The switch is off; it is announced as not checked. *)
+
+val equal_switch_state : switch_state -> switch_state -> bool
+(** Structural equality over the closed variant. The sole definition. *)
+
 (** The level of a {!heading}, from the top of a view's outline ([H1]) to its
     deepest ([H6]). Six constructors and no more, so a level 0 or 7 cannot be
     built and nothing checks for one at run time. *)
@@ -210,6 +219,9 @@ type 'msg t =
               enclosing form. *)
       disabled : bool;
           (** [true] keeps the button focusable and makes it inert. *)
+      switch : switch_state option;
+          (** [Some] makes the button a switch in that state; [None] is a plain
+              button. *)
       on_click : 'msg option;
       on_dblclick : 'msg option;
       child : 'msg t;
@@ -385,7 +397,11 @@ type 'msg t =
     A link's ["rel"] and ["target"] decline by destination: an [External] link
     asserts ["rel"], a [New_tab] link asserts both, and a [Route] link derives
     neither, so a caller's ["rel"] or ["target"] pair stands on a [Route] link
-    only, and a caller's ["target"] on an [External] link.
+    only, and a caller's ["target"] on an [External] link. A button's ["role"]
+    and ["aria-checked"] decline by [switch]: a switch derives both on every
+    render, [Switch_off] included — it writes ["aria-checked"] ["false"], never
+    an absent pair — and a plain button derives neither, so a caller's pair for
+    either stands on a plain button only.
 
     Two renderers enforce this and no more than two, by two different
     mechanisms. The web backend applies the declared list before it writes any
@@ -405,31 +421,33 @@ type 'msg t =
     ["placeholder"], a radio's ["name"], a control's ["type"], an input's
     ["required"], ["aria-required"], ["autocomplete"] and ["name"], a form's
     ["autocomplete"] and ["novalidate"], a button's ["type"] and
-    ["aria-disabled"], a link's ["href"], ["rel"] and ["target"], a heading's
-    ["role"], ["aria-level"] and ["data-nopal-heading"], a label's ["for"], a
-    drawn checkbox's ["data-nopal-drawn-checkbox"], a visually hidden radio's
+    ["aria-disabled"], a switch's ["role"] and ["aria-checked"], a link's
+    ["href"], ["rel"] and ["target"], a heading's ["role"], ["aria-level"] and
+    ["data-nopal-heading"], a label's ["for"], a drawn checkbox's
+    ["data-nopal-drawn-checkbox"], a visually hidden radio's
     ["data-nopal-visually-hidden"], a drawing's ["role"], ["aria-label"] and
     ["aria-hidden"], and an image's ["alt"]. Of those, ["disabled"],
     ["multiple"], ["required"] and ["novalidate"] are spelled differently by the
     two — a presence attribute in the browser, a ["true"] pair in the structural
     tree — so they agree on which side wins and not on the value; the rest carry
     the same value in both, a button's ["aria-disabled"] being ["true"] and its
-    ["type"] ["button"] or ["submit"], a link's ["rel"] ["noopener noreferrer"],
-    and a heading's ["role"] ["heading"], its ["aria-level"] the level's digit
-    and its ["data-nopal-heading"] empty, and a label's ["for"] its
-    [control_id], and a drawn checkbox's and a visually hidden radio's markers
-    empty. A checkbox's, radio's or file picker's ["type"] is the structural
-    node's tag rather than a pair, while an input's is a pair in both. A
-    container's [focusable] is a first-tier derivation in both renderers, but
-    each spells it in its own vocabulary — a tab-order attribute in the browser,
-    ["focusable"] in the structural tree — so there is no shared key to compare.
-    A checkbox's or radio's [checked], an input's or select's value, and an
-    option's selection are JS {e properties} in the browser and never
-    attributes, so a caller's ["checked"], ["value"] or ["selected"] pair in
-    [attrs] lands on the DOM as an ordinary attribute and is not overruled
-    there. The structural renderer still overlays those three, as a faithful
-    read-out of the typed field, but a structural assertion on them states what
-    that renderer answers and not what the browser does.
+    ["type"] ["button"] or ["submit"], a switch's ["role"] ["switch"] and its
+    ["aria-checked"] ["true"] or ["false"], a link's ["rel"]
+    ["noopener noreferrer"], and a heading's ["role"] ["heading"], its
+    ["aria-level"] the level's digit and its ["data-nopal-heading"] empty, and a
+    label's ["for"] its [control_id], and a drawn checkbox's and a visually
+    hidden radio's markers empty. A checkbox's, radio's or file picker's
+    ["type"] is the structural node's tag rather than a pair, while an input's
+    is a pair in both. A container's [focusable] is a first-tier derivation in
+    both renderers, but each spells it in its own vocabulary — a tab-order
+    attribute in the browser, ["focusable"] in the structural tree — so there is
+    no shared key to compare. A checkbox's or radio's [checked], an input's or
+    select's value, and an option's selection are JS {e properties} in the
+    browser and never attributes, so a caller's ["checked"], ["value"] or
+    ["selected"] pair in [attrs] lands on the DOM as an ordinary attribute and
+    is not overruled there. The structural renderer still overlays those three,
+    as a faithful read-out of the typed field, but a structural assertion on
+    them states what that renderer answers and not what the browser does.
 
     {2:submit_contract Submit contract}
 
@@ -621,15 +639,18 @@ val label :
 
     The label names the control: the control's accessible name comes from the
     label's content. A press on the label activates the control — a radio is
-    selected and focused, a checkbox toggled — and the control's own handler
-    dispatches the result, so the label carries no handler of its own and a
-    press dispatches exactly what pressing the control would. On the web that
-    activation is the platform's own, through a native label. A backend with no
-    native label activation dispatches the activation itself, with the same
-    outcome. The structural test renderer models neither the naming nor the
-    activation: it renders the node and its control association only, so a test
-    drives the control directly. A [control_id] that names no control renders a
-    label that names nothing, and a press on it does nothing.
+    selected and focused, a checkbox toggled, a {!button} pressed — and the
+    control's own handler dispatches the result, so the label carries no handler
+    of its own and a press dispatches exactly what pressing the control would,
+    once. A disabled button stays inert through its label: the press dispatches
+    nothing. On the web that activation is the platform's own, through a native
+    label. A backend with no native label activation dispatches the activation
+    itself, with the same outcome. The structural test renderer models the
+    activation: a click on the label fires the click handler of the node whose
+    ["id"] pair is [control_id], and a label naming no control, or naming a
+    control with no handler (a disabled one), answers [No_handler] for tag
+    ["label"]. It does not model focus transfer. A [control_id] that names no
+    control renders a label that names nothing, and a press on it does nothing.
 
     It is a container like {!box}, laying its children down the page unless
     [style] asks for the other direction, so it can stand in for a box holding
@@ -646,6 +667,7 @@ val button :
   ?attrs:(string * string) list ->
   ?button_type:button_type ->
   ?disabled:bool ->
+  ?switch:switch_state ->
   ?on_click:'msg ->
   ?on_dblclick:'msg ->
   'msg t ->
@@ -661,9 +683,17 @@ val button :
     are typed, so a ["type"] pair in [attrs] never takes effect, and an
     ["aria-disabled"] pair only while [disabled] is [false]; see {!form} for the
     full rule. [disabled] changes no styling; pass a [~style] for the disabled
-    look. Known limitation on the web backend: a disabled button's click is
-    cancelled but still propagates to an ancestor's [on_click], unlike a native
-    [disabled] button, which fires no click event at all. *)
+    look. [switch], absent for a plain button, makes the button an on/off
+    switch: it is announced with the switch role and as checked for [Switch_on]
+    and not checked for [Switch_off]. Both are written on every render of a
+    switch and are never absent, so a ["role"] or ["aria-checked"] pair in
+    [attrs] never takes effect on a switch, and stands on a plain button.
+    [switch] only describes the state: activating a switch dispatches its
+    [on_click] and nothing else, so the application flips the state, and a
+    [disabled] switch dispatches nothing. Known limitation on the web backend: a
+    disabled button's click is cancelled but still propagates to an ancestor's
+    [on_click], unlike a native [disabled] button, which fires no click event at
+    all. *)
 
 val link :
   ?style:Nopal_style.Style.t ->

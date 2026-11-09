@@ -566,17 +566,28 @@ let apply_form_config el ~declared ~autocomplete ~novalidate =
     | true -> Some ""
     | false -> None)
 
-(* A button's two derived attributes, on the same terms. [type] has no absent
+(* A button's derived attributes, on the same terms. [type] has no absent
    form — a button that names none is a push button — so it is written on every
    application; [aria-disabled] only when [true], uncovering a caller's pair
-   otherwise. *)
-let apply_button_config el ~declared ~button_type ~disabled =
+   otherwise. A switch writes [role] and [aria-checked] on every application,
+   off included; a plain button writes neither and uncovers a caller's pair for
+   each, so a switch that becomes a plain button leaves no derived pair behind.
+   The structural renderer appends the same pairs. *)
+let apply_button_config el ~declared ~button_type ~disabled ~switch =
   let set = set_derived el ~declared in
   set "type" (Some (Nopal_element.Element.button_type_to_string button_type));
   set "aria-disabled"
     (match disabled with
     | true -> Some "true"
-    | false -> None)
+    | false -> None);
+  let role, aria_checked =
+    match (switch : Nopal_element.Element.switch_state option) with
+    | Some Switch_on -> (Some "switch", Some "true")
+    | Some Switch_off -> (Some "switch", Some "false")
+    | None -> (None, None)
+  in
+  set "role" role;
+  set "aria-checked" aria_checked
 
 (* A link's three derived attributes, on the same terms. [href] has no absent
    form, so it is written on every application; [rel] only for an [External]
@@ -1138,6 +1149,7 @@ let rec create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
         attrs;
         button_type;
         disabled;
+        switch;
         on_click;
         on_dblclick;
         child;
@@ -1147,7 +1159,7 @@ let rec create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
         apply_styles_for_element ~sheet ~parent_axis el style interaction
       in
       apply_attrs el attrs;
-      apply_button_config el ~declared:attrs ~button_type ~disabled;
+      apply_button_config el ~declared:attrs ~button_type ~disabled ~switch;
       let children_axis = container_main_axis element in
       let live_child =
         create_and_append ~sheet ~reveals ~link_host ~dispatch
@@ -2588,17 +2600,27 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
         reconcile_children ~sheet ~reveals ~link_host ~dispatch
           ~old_parent_axis:old_children_axis ~parent_axis:children_axis el
           old_n.children children
-  | Button { attrs; button_type; disabled; on_click; on_dblclick; child; _ } ->
+  | Button
+      { attrs; button_type; disabled; switch; on_click; on_dblclick; child; _ }
+    ->
       let attrs_written = maybe_apply_attrs el old_n.element new_el in
       (* Guarded on the previous render, as [Form]'s configuration is. A flip of
          [disabled] is patched on this node and never re-creates it, so a
          focused button that disables itself keeps the focus. *)
       (match old_n.element with
-      | Button { button_type = old_button_type; disabled = old_disabled; _ }
+      | Button
+          {
+            button_type = old_button_type;
+            disabled = old_disabled;
+            switch = old_switch;
+            _;
+          }
         when (not attrs_written)
              && Nopal_element.Element.equal_button_type old_button_type
                   button_type
-             && Bool.equal old_disabled disabled ->
+             && Bool.equal old_disabled disabled
+             && Option.equal Nopal_element.Element.equal_switch_state old_switch
+                  switch ->
           ()
       | Empty
       | Text _
@@ -2620,7 +2642,7 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
       | Keyed _
       | Draw _
       | Virtual_list _ ->
-          apply_button_config el ~declared:attrs ~button_type ~disabled);
+          apply_button_config el ~declared:attrs ~button_type ~disabled ~switch);
       unlisten_all old_n.listeners;
       old_n.listeners <-
         wire_button_click ~dispatch el ~disabled on_click

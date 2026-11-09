@@ -18,7 +18,8 @@
    Some keys are spelled identically in both backends and carry the same value,
    so a case can assert the derived value itself: [placeholder], [name],
    [accept]/[capture] on a configured picker, and an input's [autocomplete],
-   [type] and [aria-required], and a button's [aria-disabled]. The rest are comparable only on *which side
+   [type] and [aria-required], a button's [aria-disabled], and a switch's [role]
+   and [aria-checked]. The rest are comparable only on *which side
    wins*, because the two backends deliberately spell them differently —
    [disabled] and an input's [required] are presence attributes in the DOM and
    ["true"] pairs in the structural tree, and in both they are absent rather
@@ -678,6 +679,77 @@ let test_disabled_derives_aria_disabled_over_attrs_web () =
        ~second:(button ~disabled:false ())
        "aria-disabled")
 
+(* A switch's [role] and [aria-checked] against a caller's pairs carrying values
+   the switch never derives, so a derived pair that lost to them, or a stale one
+   left behind on update, reads back as something other than what is expected. *)
+let caller_switch_pairs = [ ("role", "checkbox"); ("aria-checked", "mixed") ]
+let switch_keys = [ "role"; "aria-checked" ]
+
+let switch_button ?(attrs = []) ?switch () =
+  E.button ~attrs ?switch ~on_click:"toggle" (E.text "Alerts")
+
+let read_switch_keys read = List.map read switch_keys
+let check_switch_keys = Alcotest.(check (list (option string)))
+
+let switch_role_and_checked_outrank_attrs () =
+  let authored switch = switch_button ~attrs:caller_switch_pairs ~switch () in
+  check_switch_keys "web: an on switch beats the caller's pairs"
+    [ Some "switch"; Some "true" ]
+    (read_switch_keys (web_attr (authored E.Switch_on)));
+  check_switch_keys "web: an off switch beats the caller's pairs"
+    [ Some "switch"; Some "false" ]
+    (read_switch_keys (web_attr (authored E.Switch_off)));
+  check_switch_keys "web: re-asserted when the caller's pairs arrive on update"
+    [ Some "switch"; Some "true" ]
+    (read_switch_keys
+       (web_attr_after_update
+          ~first:(switch_button ~switch:E.Switch_on ())
+          ~second:(authored E.Switch_on)));
+  check_switch_keys "web: re-asserted when the caller's pairs leave on update"
+    [ Some "switch"; Some "true" ]
+    (read_switch_keys
+       (web_attr_after_update ~first:(authored E.Switch_on)
+          ~second:(switch_button ~switch:E.Switch_on ())))
+
+(* The attrs are held equal across the frame, so only the switch's own change
+   can re-derive the state. *)
+let switch_on_to_off_updates_aria_checked () =
+  check_switch_keys "web: on to off is patched onto the node"
+    [ Some "switch"; Some "false" ]
+    (read_switch_keys
+       (web_attr_after_update
+          ~first:(switch_button ~switch:E.Switch_on ())
+          ~second:(switch_button ~switch:E.Switch_off ())));
+  check_switch_keys "web: off to on is patched onto the node"
+    [ Some "switch"; Some "true" ]
+    (read_switch_keys
+       (web_attr_after_update
+          ~first:(switch_button ~switch:E.Switch_off ())
+          ~second:(switch_button ~switch:E.Switch_on ())))
+
+(* [None] declines rather than asserting "no attribute", so a switch that becomes
+   a plain button uncovers the caller's pairs, and with none to uncover it leaves
+   no stale derived pair. The plain button rendered fresh is the arm that shows
+   the caller's pairs reach the node at all. *)
+let switch_removed_uncovers_caller_pairs () =
+  check_switch_keys "web: a plain button keeps the caller's pairs"
+    [ Some "checkbox"; Some "mixed" ]
+    (read_switch_keys (web_attr (switch_button ~attrs:caller_switch_pairs ())));
+  check_switch_keys
+    "web: a switch removed on update uncovers the caller's pairs"
+    [ Some "checkbox"; Some "mixed" ]
+    (read_switch_keys
+       (web_attr_after_update
+          ~first:
+            (switch_button ~attrs:caller_switch_pairs ~switch:E.Switch_on ())
+          ~second:(switch_button ~attrs:caller_switch_pairs ())));
+  check_switch_keys "web: a switch removed with no caller pairs leaves none"
+    [ None; None ]
+    (read_switch_keys
+       (web_attr_after_update
+          ~first:(switch_button ~switch:E.Switch_on ())
+          ~second:(switch_button ())))
+
 let authored_input ?(attrs = []) () =
   E.input ~attrs ~required:true ~autocomplete:"username" ~input_type:E.Email "v"
 
@@ -1309,6 +1381,12 @@ let () =
             `Quick test_typed_button_type_outranks_attrs_type_pair_web;
           Alcotest.test_case "disabled_derives_aria_disabled_over_attrs_web"
             `Quick test_disabled_derives_aria_disabled_over_attrs_web;
+          Alcotest.test_case "switch_role_and_checked_outrank_attrs" `Quick
+            switch_role_and_checked_outrank_attrs;
+          Alcotest.test_case "switch_on_to_off_updates_aria_checked" `Quick
+            switch_on_to_off_updates_aria_checked;
+          Alcotest.test_case "switch_removed_uncovers_caller_pairs" `Quick
+            switch_removed_uncovers_caller_pairs;
           Alcotest.test_case "input_name_tier" `Quick test_input_name_tier;
           Alcotest.test_case "input_name_removed_on_reconcile" `Quick
             test_input_name_removed_on_reconcile;

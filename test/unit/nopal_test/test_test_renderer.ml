@@ -1588,6 +1588,55 @@ let enabled_button_leaves_callers_aria_disabled_pair_standing () =
     "and loses to the same state once it asserts" (Some "true")
     (aria_disabled true)
 
+(* A caller's pairs for both keys, with values the switch never derives, so a
+   derived pair that lost to them would read back as the caller's value. *)
+let caller_switch_pairs = [ ("role", "checkbox"); ("aria-checked", "mixed") ]
+
+let switch_button ?switch () =
+  E.button ~attrs:caller_switch_pairs ?switch ~on_click:Click (E.text "Alerts")
+
+let switch_role_and_checked_outrank_attrs () =
+  let read switch key = button_attr key (switch_button ~switch ()) in
+  Alcotest.(check (option string))
+    "an on switch is a switch whatever the caller's role" (Some "switch")
+    (read E.Switch_on "role");
+  Alcotest.(check (option string))
+    "and is checked whatever the caller's state" (Some "true")
+    (read E.Switch_on "aria-checked");
+  Alcotest.(check (option string))
+    "an off switch is a switch too" (Some "switch") (read E.Switch_off "role");
+  Alcotest.(check (option string))
+    "and is unchecked whatever the caller's state" (Some "false")
+    (read E.Switch_off "aria-checked")
+
+(* Off is a state, not an absence: the button with no caller pairs at all is
+   the fixture on which a derivation that declined for off would read [None]. *)
+let switch_off_writes_aria_checked_false () =
+  let off = E.button ~switch:E.Switch_off ~on_click:Click (E.text "Alerts") in
+  Alcotest.(check (option string))
+    "an off switch says false rather than nothing" (Some "false")
+    (button_attr "aria-checked" off);
+  Alcotest.(check (option string))
+    "and is still announced as a switch" (Some "switch")
+    (button_attr "role" off)
+
+(* The switched twin on the same fixture is the arm that proves the caller's
+   pairs stand because the derivation declined, not because it never reached
+   the node. *)
+let no_switch_leaves_caller_role () =
+  Alcotest.(check (option string))
+    "a plain button keeps the caller's role" (Some "checkbox")
+    (button_attr "role" (switch_button ()));
+  Alcotest.(check (option string))
+    "and the caller's aria-checked" (Some "mixed")
+    (button_attr "aria-checked" (switch_button ()));
+  Alcotest.(check (option string))
+    "a plain button with no pairs is given no role" None
+    (button_attr "role" (E.button ~on_click:Click (E.text "Alerts")));
+  Alcotest.(check (option string))
+    "while the same fixture switched on is a switch" (Some "switch")
+    (button_attr "role" (switch_button ~switch:E.Switch_on ()))
+
 (* A picker that configures no capture mode carries no such key, the way the
    DOM carries none, rather than an empty string that reads as a configured
    value of "". The configured picker beside it is the affirmative arm: it
@@ -2242,6 +2291,12 @@ let attr_precedence_tests =
     Alcotest.test_case
       "enabled_button_leaves_callers_aria_disabled_pair_standing" `Quick
       enabled_button_leaves_callers_aria_disabled_pair_standing;
+    Alcotest.test_case "switch_role_and_checked_outrank_attrs" `Quick
+      switch_role_and_checked_outrank_attrs;
+    Alcotest.test_case "switch_off_writes_aria_checked_false" `Quick
+      switch_off_writes_aria_checked_false;
+    Alcotest.test_case "no_switch_leaves_caller_role" `Quick
+      no_switch_leaves_caller_role;
     Alcotest.test_case "absent_capture_reports_no_pair" `Quick
       absent_capture_reports_no_pair;
     Alcotest.test_case "by_attr_matches_the_resolved_value" `Quick

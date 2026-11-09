@@ -164,6 +164,7 @@ let button ~button_type ~disabled ~attrs ~on_click =
       attrs;
       button_type;
       disabled;
+      switch = None;
       on_click;
       on_dblclick = None;
       child = Text { content = "Go"; text_style = None };

@@ -59,9 +59,10 @@ val render : 'msg Nopal_element.Element.t -> 'msg rendered
     ["capture"], ["multiple"], ["placeholder"], a radio's ["name"], a control's
     ["type"], an input's ["required"], ["aria-required"], ["autocomplete"] and
     ["name"], a form's ["autocomplete"] and ["novalidate"], a button's ["type"]
-    and ["aria-disabled"], a link's ["href"] and ["rel"], a heading's ["role"],
-    ["aria-level"] and ["data-nopal-heading"], a label's ["for"], a drawn
-    checkbox's ["data-nopal-drawn-checkbox"], a visually hidden radio's
+    and ["aria-disabled"], a switch's ["role"] and ["aria-checked"], a link's
+    ["href"] and ["rel"], a heading's ["role"], ["aria-level"] and
+    ["data-nopal-heading"], a label's ["for"], a drawn checkbox's
+    ["data-nopal-drawn-checkbox"], a visually hidden radio's
     ["data-nopal-visually-hidden"], a canvas's ["role"], ["aria-label"] and
     ["aria-hidden"], and an image's ["alt"]. On ["disabled"], ["multiple"],
     ["required"] and ["novalidate"] the two agree on which side wins and not on
@@ -103,9 +104,13 @@ val render : 'msg Nopal_element.Element.t -> 'msg rendered
     and its ["name"], and a form's ["autocomplete"]. A link's ["rel"] is
     contributed for an [External] or a [New_tab] link, and its ["target"]
     (["_blank"]) for a [New_tab] link only, so a [Route] link uncovers a
-    caller's pair for either. An input's ["placeholder"], a radio's ["name"], a
-    button's ["type"], a link's ["href"], a heading's ["role"], ["aria-level"]
-    and ["data-nopal-heading"] and a label's ["for"] have no absent form and are
+    caller's pair for either. A button's ["role"] and ["aria-checked"] are
+    contributed for a switch only, on every render of one — ["role"] ["switch"],
+    and ["aria-checked"] ["true"] for [Switch_on] and ["false"] for
+    [Switch_off], never an absent pair — so a plain button uncovers a caller's
+    pair for either. An input's ["placeholder"], a radio's ["name"], a button's
+    ["type"], a link's ["href"], a heading's ["role"], ["aria-level"] and
+    ["data-nopal-heading"] and a label's ["for"] have no absent form and are
     contributed on every render. A checkbox's ["data-nopal-drawn-checkbox"] is
     contributed for a [Drawn] appearance only, so a [Native] checkbox uncovers a
     caller's pair of that name, and a radio's ["data-nopal-visually-hidden"] is
