@@ -189,6 +189,63 @@ serve-site: site
     @echo "Serving site at http://localhost:8000"
     python3 -m http.server 8000 -d dist
 
+# Release — no tags; every push to main runs main.yaml and pages.yaml, and
+# pages.yaml deploys the site to GitHub Pages. Needs gh-run-watch from the
+# fish dotfiles.
+
+release-watch:
+    #!/usr/bin/env fish
+    functions -q gh-run-watch; or begin; echo "needs Miguel's fish functions (dotfiles)"; exit 1; end
+    set -gx GH_HOST github.com
+    set repo ShipOfTheDesert/nopal
+    set sha (git rev-parse HEAD)
+    set short (string sub -l 7 $sha)
+    set failed
+    for wf in main.yaml pages.yaml
+        gh-run-watch $repo $wf --commit $sha --wait 120
+        switch $status
+            case 0
+            case 2
+                echo "NOTHING RELEASED: no $wf run for $short after 2 minutes"
+                exit 0
+            case '*'
+                set -a failed $wf
+        end
+    end
+    if test (count $failed) -gt 0
+        echo "FAILED: $failed for $short"
+        exit 1
+    end
+    echo "RELEASED: main.yaml and pages.yaml succeeded for $short"
+
+release-observe:
+    #!/usr/bin/env fish
+    set -gx GH_HOST github.com
+    set repo ShipOfTheDesert/nopal
+    set sha (git rev-parse HEAD)
+    set short (string sub -l 7 $sha)
+    set deployed (gh run list --repo $repo --workflow pages.yaml --branch main --status success --limit 1 --json headSha --jq '.[0].headSha // empty')
+    set ci (gh run list --repo $repo --workflow main.yaml --commit $sha --json conclusion --jq '.[0].conclusion // "" | if . == "" then "none" else . end')
+    set running
+    for wf in main.yaml pages.yaml
+        set st (gh run list --repo $repo --workflow $wf --commit $sha --json status --jq '.[0].status // "completed"')
+        test "$st" != completed; and set -a running "$wf $st"
+    end
+    set code (curl -sS -o /dev/null -w '%{http_code}' https://shipofthedesert.github.io/nopal/kitchen_sink/)
+    set detail "Pages last deployed "(string sub -l 7 "$deployed")", merge is $short, main.yaml $ci, kitchen_sink HTTP $code"
+    if test "$code" != 200
+        echo "DOWN: $detail"
+        exit 1
+    else if test "$deployed" = "$sha"; and test "$ci" = success
+        echo "OK: Pages is live at $short, main.yaml $ci, kitchen_sink HTTP $code"
+    else if test -n "$running"
+        echo "PENDING: "(string join ', ' $running)" for $short; $detail"
+        exit 1
+    else
+        echo "MISMATCH: $detail"
+        exit 1
+    end
+
 # E2E
 
 e2e: build
