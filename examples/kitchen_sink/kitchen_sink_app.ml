@@ -229,6 +229,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     links : Sub_links.model;
     drawn_checkbox : Sub_drawn_checkbox.model;
     radio_row : Sub_radio_row.model;
+    hidden_radio : Sub_hidden_radio.model;
     keyboard_height : int;  (** soft-keyboard height in logical px *)
     back_route : back_route;  (** current route of the back-navigation demo *)
   }
@@ -276,6 +277,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | Links_msg of Sub_links.msg
     | Drawn_checkbox_msg of Sub_drawn_checkbox.msg
     | Radio_row_msg of Sub_radio_row.msg
+    | Hidden_radio_msg of Sub_hidden_radio.msg
     | KeyboardHeightChanged of int  (** native soft-keyboard height *)
     | Back_demo_push  (** push the back-demo one step deep (to [Back_detail]) *)
     | Route_changed of back_route  (** popstate-driven route update *)
@@ -416,6 +418,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     let links, links_cmd = Sub_links.init () in
     let drawn_checkbox, drawn_checkbox_cmd = Sub_drawn_checkbox.init () in
     let radio_row, radio_row_cmd = Sub_radio_row.init () in
+    let hidden_radio, hidden_radio_cmd = Sub_hidden_radio.init () in
     ( {
         button_clicks = 0;
         input_text = "";
@@ -493,6 +496,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         links;
         drawn_checkbox;
         radio_row;
+        hidden_radio;
         keyboard_height = 0;
         back_route = Back_home;
       },
@@ -527,6 +531,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           Nopal_mvu.Cmd.map (fun m -> Links_msg m) links_cmd;
           Nopal_mvu.Cmd.map (fun m -> Drawn_checkbox_msg m) drawn_checkbox_cmd;
           Nopal_mvu.Cmd.map (fun m -> Radio_row_msg m) radio_row_cmd;
+          Nopal_mvu.Cmd.map (fun m -> Hidden_radio_msg m) hidden_radio_cmd;
           (* Re-read the persisted demo value so a reload dispatches a
              [StorageRestored] message — the E2E persistence proof. *)
           Nopal_mvu.Cmd.task
@@ -748,6 +753,12 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         let radio_row, rr_cmd = Sub_radio_row.update model.radio_row rr_msg in
         ( { model with radio_row },
           Nopal_mvu.Cmd.map (fun m -> Radio_row_msg m) rr_cmd )
+    | Hidden_radio_msg hr_msg ->
+        let hidden_radio, hr_cmd =
+          Sub_hidden_radio.update model.hidden_radio hr_msg
+        in
+        ( { model with hidden_radio },
+          Nopal_mvu.Cmd.map (fun m -> Hidden_radio_msg m) hr_cmd )
     | DrawPointerMove (x, y) ->
         ({ model with draw_pointer = Some (x, y) }, Nopal_mvu.Cmd.none)
     | DrawPointerLeave ->
@@ -4218,6 +4229,14 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                  (fun m -> Radio_row_msg m)
                  (Sub_radio_row.view model.radio_row);
              ];
+           view_section
+             ~attrs:[ ("data-testid", "hidden-radio-section") ]
+             "A radio group with hidden inputs"
+             [
+               Element.map
+                 (fun m -> Hidden_radio_msg m)
+                 (Sub_hidden_radio.view model.hidden_radio);
+             ];
            view_section "Text Input"
              [
                Element.map
@@ -4491,4 +4510,5 @@ module Sub_headings = Sub_headings
 module Sub_alignment = Sub_alignment
 module Sub_drawn_checkbox = Sub_drawn_checkbox
 module Sub_radio_row = Sub_radio_row
+module Sub_hidden_radio = Sub_hidden_radio
 module Tauri_op = Tauri_op

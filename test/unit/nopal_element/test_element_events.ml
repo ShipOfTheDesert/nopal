@@ -26,6 +26,7 @@ let test_button_dblclick_some () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -52,6 +53,7 @@ let test_input_blur_some () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -84,6 +86,7 @@ let test_input_keydown_some () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -115,6 +118,7 @@ let test_box_focus_handlers_some () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -141,6 +145,7 @@ let test_input_focus_some () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -181,6 +186,7 @@ let test_map_preserves_box_focus () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -209,6 +215,7 @@ let test_map_preserves_dblclick () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -237,6 +244,7 @@ let test_map_preserves_blur () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -271,6 +279,7 @@ let test_map_preserves_keydown () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -313,6 +322,7 @@ let test_map_rewrites_file_input_handler () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -360,6 +370,7 @@ let test_map_preserves_handlerless_file_input () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 

@@ -4,6 +4,25 @@ type radio_option = { label : string; value : string; disabled : bool }
 (** A single option within a radio group. Use {!val-radio_option} to construct.
 *)
 
+(** How each option's radio input is presented, and what its label is.
+
+    - [Visible_inputs { on_label_click }]: each radio is painted and each
+      option's label is a box. [on_label_click], when set, is the message a
+      pointer press on that box dispatches; see {!with_on_label_click}. {!make}
+      starts here, with no message.
+    - [Hidden_inputs]: each radio is visually hidden, as
+      {!Nopal_element.Element.radio} documents for
+      [Nopal_style.Presentation.Visually_hidden], and each option's label is a
+      native label for its radio ({!Nopal_element.Element.val-label}). A pointer
+      press on the label selects and focuses the radio, and [on_select]'s
+      message fires from the radio's own change. This arm has no label-click
+      message: the press is already the selection, so a hidden-input group a
+      pointer cannot operate cannot be built, even as a complete literal, and
+      one press cannot dispatch twice. See {!with_hidden_inputs}. *)
+type 'msg inputs =
+  | Visible_inputs of { on_label_click : (string -> 'msg) option }
+  | Hidden_inputs
+
 type 'msg config = {
   label : string;
   options : radio_option list;
@@ -21,7 +40,8 @@ type 'msg config = {
   options_style : Nopal_style.Style.t option;
   option_label_style : Nopal_style.Style.t option;
   option_row_style : Nopal_style.Style.t option;
-  on_label_click : (string -> 'msg) option;
+  option_row_interaction : Nopal_style.Interaction.t option;
+  inputs : 'msg inputs;
 }
 (** Radio group configuration. [label], [options], and [selected] are
     behavioural — all required in {!make}.
@@ -30,13 +50,14 @@ type 'msg config = {
     group container is {!with_group_style} and the box holding the option rows
     is {!with_options_style}.
 
-    The last eight fields are the override surface. The supported route to them
+    The last nine fields are the override surface. The supported route to them
     is {!with_id}, {!with_visible_label}, {!with_label_style},
     {!with_group_style}, {!with_options_style}, {!with_option_label_style},
-    {!with_option_row_style} and {!with_on_label_click} rather than writing them
-    by hand; they are fields because a setter needs somewhere to put its value,
-    and a caller who builds this record as a complete literal must supply them.
-*)
+    {!with_option_row_style}, {!with_option_row_interaction}, and the two
+    setters that write [inputs], {!with_hidden_inputs} and
+    {!with_on_label_click}, rather than writing them by hand; they are fields
+    because a setter needs somewhere to put its value, and a caller who builds
+    this record as a complete literal must supply them. *)
 
 val radio_option : ?disabled:bool -> value:string -> string -> radio_option
 (** [radio_option ~value label] creates a radio option. [disabled] defaults to
@@ -48,7 +69,9 @@ val make :
     (auto-generated from slugified label), [disabled = false],
     [on_select = None], no style/interaction override, empty attrs, and none of
     the override fields set: no id, no visible group label, no label, group,
-    options, option-label or option-row style, and no label-click message. *)
+    options, option-label or option-row style, no option-row interaction, and
+    visible inputs with no label-click message
+    ([inputs = Visible_inputs { on_label_click = None }]). *)
 
 val with_id : string -> 'msg config -> 'msg config
 (** [with_id id config] sets the identifier the group container carries, and
@@ -122,15 +145,43 @@ val with_options_style : Nopal_style.Style.t -> 'msg config -> 'msg config
 
 val with_option_label_style : Nopal_style.Style.t -> 'msg config -> 'msg config
 (** [with_option_label_style style config] puts [style] on every option's label
-    element — the box that carries the option's label identifier and wraps its
-    text. The style {e replaces}; nothing is merged, and it applies to all
-    options alike. Its [text] component is passed to each label's text node
-    explicitly, for the reason {!with_label_style} gives. *)
+    element — the box, or under {!with_hidden_inputs} the native label, that
+    carries the option's label identifier and wraps its text. The style
+    {e replaces}; nothing is merged, and it applies to all options alike. Its
+    [text] component is passed to each label's text node explicitly, for the
+    reason {!with_label_style} gives. *)
 
 val with_option_row_style : Nopal_style.Style.t -> 'msg config -> 'msg config
 (** [with_option_row_style style config] puts [style] on every row that holds a
     radio input and its label. The style {e replaces}; nothing is merged. This
     is the route to the gap between an option's control and its label. *)
+
+val with_option_row_interaction :
+  Nopal_style.Interaction.t -> 'msg config -> 'msg config
+(** [with_option_row_interaction interaction config] puts [interaction] on every
+    row that holds a radio input and its label, and on no other node. The
+    interaction {e replaces}; nothing is merged. Its [focused_within] state is
+    the route to a treatment a row shows while its radio has focus, which is how
+    a group under {!with_hidden_inputs}, whose radios paint no focus of their
+    own, shows which option has it. [config.interaction] reaches each radio
+    input instead, and is independent of this. *)
+
+val with_hidden_inputs : 'msg config -> 'msg config
+(** [with_hidden_inputs config] sets [inputs] to [Hidden_inputs]: every radio is
+    rendered visually hidden, and every option's label becomes a native label
+    for that option's radio. The label keeps the option's label identifier and
+    {!with_option_label_style}'s style, and the radio's [aria-labelledby] still
+    points at it, so each option's accessible name is the same in both modes.
+
+    A pointer press on an option's label selects and focuses its radio natively,
+    and [on_select]'s message fires from the radio's own change, so there is
+    nothing for the application to wire. Any label-click message set by
+    {!with_on_label_click} is dropped, and a later {!with_on_label_click} has no
+    effect on the group. There is no setter back to visible inputs; {!make}
+    starts visible.
+
+    A hidden radio paints no focus of its own, so give its row a focus treatment
+    with {!with_option_row_interaction}. *)
 
 val with_on_label_click : (string -> 'msg) -> 'msg config -> 'msg config
 (** [with_on_label_click f config] dispatches [f value] when a pointer goes down
@@ -144,7 +195,12 @@ val with_on_label_click : (string -> 'msg) -> 'msg config -> 'msg config
     The value is carried because a group has many controls and a single message
     could not say which label was pressed. Without this setter no option label
     carries a pointer handler at all. The group's own label never does: it has
-    no single control to act on. *)
+    no single control to act on.
+
+    It writes the [Visible_inputs] arm only. On a group under
+    {!with_hidden_inputs} it has no effect, whichever setter ran first: there
+    the native label already selects its radio on a press, so a message here
+    would be a second dispatch for the same press. *)
 
 val control_id : 'msg config -> string
 (** [control_id config] is the identifier the group container carries. It is
@@ -190,14 +246,19 @@ val view : 'msg config -> 'msg Nopal_element.Element.t
 
     Both boxes honour a direction set in their style and default to a column.
     The options box is styled by {!with_options_style}, carries no attributes,
-    and holds one Row per option — styled by {!with_option_row_style} — and each
-    Row holds:
+    and holds one Row per option, styled by {!with_option_row_style} and
+    carrying {!with_option_row_interaction}'s interaction. Each Row holds:
 
-    1. An [Element.radio] sharing the group name, carrying
-    [("id", option_id config ~value)] and
-    [("aria-labelledby", option_id config ~value ^ "-label")] 2. A label element
-    — a box carrying that [aria-labelledby] target as its own id and styled by
-    {!with_option_label_style}, wrapping the option's text
+    + An [Element.radio] sharing the group name, carrying
+      [("id", option_id config ~value)] and
+      [("aria-labelledby", option_id config ~value ^ "-label")]. Under
+      [Visible_inputs] its presentation is [Visible]; under [Hidden_inputs] it
+      is [Visually_hidden].
+    + A label element carrying that [aria-labelledby] target as its own id,
+      styled by {!with_option_label_style} and wrapping the option's text. Under
+      [Visible_inputs] it is a box, which carries {!with_on_label_click}'s
+      pointer handler when one is set. Under [Hidden_inputs] it is an
+      [Element.label] whose [control_id] is [option_id config ~value].
 
     To override an option's accessible name, point [aria-labelledby] at your own
     element; [aria-label] no longer takes effect on these radios. Each option is

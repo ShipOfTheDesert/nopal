@@ -64,7 +64,10 @@ let node_equal a b =
         && Nopal_style.Style.equal s1 s2
         && a1 = a2
         && List.equal eq c1 c2
-    | _ -> false
+    | Empty, (Text _ | Element _)
+    | Text _, (Empty | Element _)
+    | Element _, (Empty | Text _) ->
+        false
   in
   eq a b
 
@@ -88,6 +91,19 @@ let find_or_fail message selector node =
   match find selector node with
   | Some n -> n
   | None -> Alcotest.fail message
+
+let tag_of what node =
+  match node with
+  | Element { tag; _ } -> tag
+  | Empty
+  | Text _ ->
+      Alcotest.failf "%s: expected an element" what
+
+let tag_or_kind node =
+  match node with
+  | Element { tag; _ } -> tag
+  | Text _ -> "text"
+  | Empty -> "empty"
 
 let style_testable =
   Alcotest.testable
@@ -186,6 +202,14 @@ let pp_appearance fmt (a : Nopal_style.Checkbox_appearance.t) =
 
 let appearance_testable =
   Alcotest.testable pp_appearance Nopal_style.Checkbox_appearance.equal
+
+let pp_presentation fmt (p : Nopal_style.Presentation.t) =
+  match p with
+  | Visible -> Format.pp_print_string fmt "Visible"
+  | Visually_hidden -> Format.pp_print_string fmt "Visually_hidden"
+
+let presentation_testable =
+  Alcotest.testable pp_presentation Nopal_style.Presentation.equal
 
 let teal_drawn () =
   Nopal_style.Checkbox_appearance.Drawn

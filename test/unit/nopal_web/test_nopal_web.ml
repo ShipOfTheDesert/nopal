@@ -3782,6 +3782,7 @@ let test_reconcile_radio_checked_state_changes () =
         name = "color";
         checked = false;
         disabled = false;
+        presentation = Nopal_style.Presentation.Visible;
         on_select = Some Selected;
       }
   in
@@ -3797,6 +3798,7 @@ let test_reconcile_radio_checked_state_changes () =
         name = "color";
         checked = true;
         disabled = false;
+        presentation = Nopal_style.Presentation.Visible;
         on_select = Some Selected;
       }
   in
@@ -3820,6 +3822,7 @@ let test_reconcile_radio_enabled_to_disabled () =
         name = "color";
         checked = false;
         disabled = false;
+        presentation = Nopal_style.Presentation.Visible;
         on_select = Some Selected;
       }
   in
@@ -3834,6 +3837,7 @@ let test_reconcile_radio_enabled_to_disabled () =
         name = "color";
         checked = false;
         disabled = true;
+        presentation = Nopal_style.Presentation.Visible;
         on_select = Some Selected;
       }
   in
@@ -3860,6 +3864,7 @@ let test_reconcile_radio_disabled_to_enabled () =
         name = "color";
         checked = false;
         disabled = true;
+        presentation = Nopal_style.Presentation.Visible;
         on_select = Some Selected;
       }
   in
@@ -3874,6 +3879,7 @@ let test_reconcile_radio_disabled_to_enabled () =
         name = "color";
         checked = false;
         disabled = false;
+        presentation = Nopal_style.Presentation.Visible;
         on_select = Some Selected;
       }
   in
@@ -4938,7 +4944,7 @@ let virtual_list_fixture () =
     }
 
 let test_container_main_axis_non_container_is_none () =
-  (* Only Box, Row, Column and Form are given display:flex, so nothing else
+  (* Only Box, Row, Column, Form and Label are given display:flex, so nothing else
      hands its children a main axis. Scroll is the case worth stating: it is a container
      by name, holds exactly one child, and is a block box. Keyed and
      Virtual_list are the two whose "no axis" is load-bearing elsewhere in the
@@ -4970,6 +4976,90 @@ let test_container_main_axis_non_container_is_none () =
   (* Affirmative arm: the resolver is not answering "no axis" to everything. *)
   check_axis "a box still is one" "vertical"
     (plain_box ~style:down ~children:[])
+
+(* A label is the native element that names a control, so a press on it reaches
+   the control without a message. It stands in for the box it replaces, so it is
+   laid out as one: a flex container, down the page unless its style asks for
+   the other direction, with the axis it hands its children agreeing. *)
+let test_label_renders_native_label_for_control () =
+  let dispatch, _msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent:(fresh_parent ())
+      (label ~control_id:"plan-pro" [ text "Pro plan" ])
+  in
+  let node = Nopal_web.Renderer.dom_node handle in
+  Alcotest.(check string) "tag is LABEL" "LABEL" (tag_of node);
+  Alcotest.(check (option string))
+    "for names the control" (Some "plan-pro")
+    (let v = Jv.call node "getAttribute" [| Jv.of_string "for" |] in
+     if Jv.is_null v then None else Some (Jv.to_string v));
+  let child = Jv.get node "firstChild" in
+  Alcotest.(check string) "the child is rendered" "SPAN" (tag_of child);
+  Alcotest.(check string)
+    "the child's text" "Pro plan"
+    (Jv.Jstr.get node "textContent" |> Jstr.to_string);
+  let style_obj = Jv.get node "style" in
+  Alcotest.(check string)
+    "display flex" "flex"
+    (Jv.Jstr.get style_obj "display" |> Jstr.to_string);
+  Alcotest.(check string)
+    "down the page by default" "column"
+    (Jv.Jstr.get style_obj "flex-direction" |> Jstr.to_string);
+  check_axis "a label with no direction hands its children a column" "vertical"
+    (label ~control_id:"plan-pro" []);
+  check_axis "a label asking for a row hands its children a row" "horizontal"
+    (label ~style:across ~control_id:"plan-pro" [])
+
+let label_text_of node = Jv.Jstr.get node "textContent" |> Jstr.to_string
+
+(* A frame rebuilds the label; its text changes and its node must not. *)
+let test_label_update_changes_text_in_place () =
+  let dispatch, _msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent:(fresh_parent ())
+      (label ~control_id:"plan-pro" [ text "Pro plan" ])
+  in
+  let before = Nopal_web.Renderer.dom_node handle in
+  Nopal_web.Renderer.update ~dispatch handle
+    (label ~control_id:"plan-pro" [ text "Pro plan, annual" ]);
+  let after = Nopal_web.Renderer.dom_node handle in
+  Alcotest.(check bool) "same node" true (before == after);
+  Alcotest.(check string)
+    "text changed in place" "Pro plan, annual" (label_text_of after)
+
+let test_label_to_box_replaces_node_and_drops_for () =
+  let dispatch, _msgs = fresh_dispatch () in
+  let handle =
+    Nopal_web.Renderer.create ~dispatch ~parent:(fresh_parent ())
+      (label ~control_id:"plan-pro" [ text "Pro plan" ])
+  in
+  let before = Nopal_web.Renderer.dom_node handle in
+  Nopal_web.Renderer.update ~dispatch handle
+    (plain_box ~style:default ~children:[ text "Pro plan" ]);
+  let after = Nopal_web.Renderer.dom_node handle in
+  Alcotest.(check bool) "node replaced" false (before == after);
+  Alcotest.(check string) "tag is DIV" "DIV" (tag_of after);
+  Alcotest.(check bool)
+    "for is gone" true
+    (Jv.is_null (Jv.call after "getAttribute" [| Jv.of_string "for" |]))
+
+let test_label_interaction_gets_its_class () =
+  let dispatch, _msgs = fresh_dispatch () in
+  let within =
+    { Nopal_style.Interaction.default with focused_within = Some hover_style }
+  in
+  let node =
+    Nopal_web.Renderer.dom_node
+      (Nopal_web.Renderer.create ~dispatch ~parent:(fresh_parent ())
+         (label ~interaction:within ~control_id:"plan-pro" [ text "Pro" ]))
+  in
+  Alcotest.(check int) "one interaction class" 1 (class_count node);
+  Alcotest.(check string) "on a label" "LABEL" (tag_of node);
+  Alcotest.(check bool)
+    "it is the interaction class" true
+    (Test_util.string_contains
+       (Jv.to_string (Jv.call (Jv.get node "classList") "toString" [||]))
+       ~sub:"_nopal_ix_")
 
 let fixed_width_child () =
   (* Rebuilt per frame, never shared: the reconcile guards compare styles
@@ -5337,6 +5427,7 @@ let drawn_all_states =
     Nopal_style.Interaction.hover = Some (drawn_fill "#111111");
     focused = Some (drawn_fill "#222222");
     pressed = Some (drawn_fill "#333333");
+    focused_within = None;
   }
 
 let drawn_box ?(attrs = []) ~style ~interaction appearance =
@@ -5780,6 +5871,14 @@ let () =
             test_scroll_creates_div_overflow_auto;
           Alcotest.test_case "keyed sets data-key" `Quick
             test_keyed_sets_data_key;
+          Alcotest.test_case "label_renders_native_label_for_control" `Quick
+            test_label_renders_native_label_for_control;
+          Alcotest.test_case "label_update_changes_text_in_place" `Quick
+            test_label_update_changes_text_in_place;
+          Alcotest.test_case "label_to_box_replaces_node_and_drops_for" `Quick
+            test_label_to_box_replaces_node_and_drops_for;
+          Alcotest.test_case "label_interaction_gets_its_class" `Quick
+            test_label_interaction_gets_its_class;
         ] );
       ( "event wiring",
         [

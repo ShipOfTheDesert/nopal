@@ -99,6 +99,7 @@ let heading_carries_style_interaction_and_attrs () =
         hover = Some Test_util.bold_label_style;
         pressed = None;
         focused = None;
+        focused_within = None;
       }
   in
   check_node "the heading's own fields reach the node, derived pairs last"
@@ -1940,6 +1941,7 @@ let button_record_fields = function
   | E.Link _
   | E.Heading _
   | E.Form _
+  | E.Label _
   | E.Input _
   | E.Checkbox _
   | E.Radio _
@@ -2306,6 +2308,87 @@ let checkbox_appearance_tests =
       checkbox_appearance_inside_container;
   ]
 
+let check_presentation label expected actual =
+  Alcotest.(check (result Test_util.presentation_testable error_testable))
+    label expected actual
+
+let radio_presentation_defaults_visible () =
+  let r = render (E.radio ~name:"size" ()) in
+  check_presentation "a radio that declares nothing is visible"
+    (Ok Nopal_style.Presentation.Visible)
+    (radio_presentation (By_tag "radio") r)
+
+let radio_presentation_reports_hidden () =
+  let r =
+    render
+      (E.radio ~presentation:Nopal_style.Presentation.Visually_hidden
+         ~name:"size" ())
+  in
+  check_presentation "the declared hidden presentation comes back"
+    (Ok Nopal_style.Presentation.Visually_hidden)
+    (radio_presentation (By_tag "radio") r)
+
+let radio_presentation_not_a_radio () =
+  let r =
+    render
+      (E.row
+         [
+           E.checkbox ~attrs:[ ("id", "agree") ] true;
+           E.radio ~presentation:Nopal_style.Presentation.Visually_hidden
+             ~name:"size" ();
+         ])
+  in
+  check_presentation "a checkbox is not a radio"
+    (Error (No_handler { tag = "checkbox"; event = "presentation" }))
+    (radio_presentation (By_attr ("id", "agree")) r)
+
+let radio_presentation_tests =
+  [
+    Alcotest.test_case "radio_presentation_defaults_visible" `Quick
+      radio_presentation_defaults_visible;
+    Alcotest.test_case "radio_presentation_reports_hidden" `Quick
+      radio_presentation_reports_hidden;
+    Alcotest.test_case "radio_presentation_not_a_radio" `Quick
+      radio_presentation_not_a_radio;
+  ]
+
+let row_with interaction =
+  match
+    find (By_tag "row") (tree (render (E.row ~interaction [ E.text "a" ])))
+  with
+  | Some node -> node
+  | None -> Alcotest.fail "row not found"
+
+let has_focused_within_reports_the_state () =
+  Alcotest.(check bool)
+    "a row with a focus-within style reports it" true
+    (has_focused_within
+       (row_with
+          Ix.
+            {
+              hover = None;
+              pressed = None;
+              focused = None;
+              focused_within = Some Test_util.bold_label_style;
+            }));
+  Alcotest.(check bool)
+    "a focused style is not a focus-within style" false
+    (has_focused_within
+       (row_with
+          Ix.
+            {
+              hover = None;
+              pressed = None;
+              focused = Some Test_util.bold_label_style;
+              focused_within = None;
+            }))
+
+let interaction_state_tests =
+  [
+    Alcotest.test_case "has_focused_within" `Quick
+      has_focused_within_reports_the_state;
+  ]
+
 let () =
   Alcotest.run "Test_renderer"
     [
@@ -2322,4 +2405,6 @@ let () =
       ("attr_precedence", attr_precedence_tests);
       ("change_list", change_list_tests);
       ("checkbox_appearance", checkbox_appearance_tests);
+      ("radio_presentation", radio_presentation_tests);
+      ("interaction_state", interaction_state_tests);
     ]

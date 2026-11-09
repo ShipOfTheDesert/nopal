@@ -460,6 +460,165 @@ let test_option_label_click_dispatches_the_option_value () =
   Alcotest.(check (list msg_testable))
     "the clicked option's value is carried" [ Label_clicked "c" ] (messages r)
 
+(* --- Hidden inputs and option-row interaction --- *)
+
+let hidden () = RG.with_hidden_inputs (base ())
+
+let option_label_selector config ~value =
+  By_attr ("id", RG.option_id config ~value ^ "-label")
+
+let check_option_inputs what config ~presentation ~label_tag ~names_its_radio =
+  let r = render (RG.view config) in
+  List.iter
+    (fun (value, _) ->
+      let oid = RG.option_id config ~value in
+      Alcotest.(
+        check (result Test_util.presentation_testable Test_util.error_testable))
+        (what ^ ": radio " ^ value ^ " presentation")
+        (Ok presentation)
+        (radio_presentation (By_attr ("id", oid)) r);
+      let label_node =
+        find_or_fail
+          (what ^ ": expected the label element of option " ^ value)
+          (option_label_selector config ~value)
+          (tree r)
+      in
+      Alcotest.(check string)
+        (what ^ ": option " ^ value ^ " label element")
+        label_tag
+        (Test_util.tag_of what label_node);
+      let expected_for = if names_its_radio then Some oid else None in
+      Alcotest.(check (option string))
+        (what ^ ": option " ^ value ^ " label for")
+        expected_for (attr "for" label_node))
+    option_specs
+
+let test_hidden_inputs_reach_every_option () =
+  check_option_inputs "hidden inputs" (hidden ())
+    ~presentation:Nopal_style.Presentation.Visually_hidden ~label_tag:"label"
+    ~names_its_radio:true;
+  check_option_inputs "default inputs" (base ())
+    ~presentation:Nopal_style.Presentation.Visible ~label_tag:"box"
+    ~names_its_radio:false
+
+let check_no_label_handler what config =
+  let r = render (RG.view config) in
+  List.iter
+    (fun (value, _) ->
+      match
+        box_pointer_down (option_label_selector config ~value) ~x:0.0 ~y:0.0 r
+      with
+      | Error (No_handler _) -> ()
+      | Error e ->
+          Alcotest.failf "%s: option %s's label: expected No_handler, got %s"
+            what value
+            (Format.asprintf "%a" (Alcotest.pp Test_util.error_testable) e)
+      | Ok () ->
+          Alcotest.failf "%s: option %s's label carries a pointer handler" what
+            value)
+    option_specs;
+  Alcotest.(check (list msg_testable))
+    (what ^ ": nothing dispatched")
+    [] (messages r)
+
+let clicked v = Label_clicked v
+
+let test_on_label_click_unrepresentable_when_hidden () =
+  check_no_label_handler "label click, then hidden inputs"
+    (RG.with_hidden_inputs (RG.with_on_label_click clicked (base ())));
+  check_no_label_handler "hidden inputs, then label click"
+    (RG.with_on_label_click clicked (RG.with_hidden_inputs (base ())));
+  let visible = RG.with_on_label_click clicked (base ()) in
+  let r = render (RG.view visible) in
+  Alcotest.(check (result unit Test_util.error_testable))
+    "visible inputs: the label carries the pointer handler" (Ok ())
+    (box_pointer_down
+       (option_label_selector visible ~value:"a")
+       ~x:0.0 ~y:0.0 r);
+  Alcotest.(check (list msg_testable))
+    "visible inputs: the pressed option's value is dispatched"
+    [ Label_clicked "a" ] (messages r)
+
+let test_hidden_label_keeps_label_id_and_style () =
+  let config = RG.with_option_label_style bold_label_style (hidden ()) in
+  let r = render (RG.view config) in
+  List.iter
+    (fun (value, label) ->
+      let oid = RG.option_id config ~value in
+      let radio =
+        find_or_fail
+          ("expected the radio for option " ^ value)
+          (By_attr ("id", oid))
+          (tree r)
+      in
+      Alcotest.(check (option string))
+        "the radio is still named by the option's label id"
+        (Some (oid ^ "-label"))
+        (attr "aria-labelledby" radio);
+      let label_node =
+        find_or_fail
+          ("expected the label element of option " ^ value)
+          (By_attr ("id", oid ^ "-label"))
+          (tree r)
+      in
+      Alcotest.(check string)
+        "the label id sits on the native label" "label"
+        (Test_util.tag_of "option label" label_node);
+      Alcotest.(check (option style_testable))
+        "option label style on the native label" (Some bold_label_style)
+        (style label_node);
+      Alcotest.(check string) "label text" label (text_content label_node);
+      let text_node =
+        find_or_fail "expected the option label's text node" (By_text label)
+          label_node
+      in
+      Alcotest.(check (option text_style_testable))
+        "the style's text component reaches the text node"
+        (Some bold_label_style.Nopal_style.Style.text) (text_style text_node))
+    option_specs
+
+let row_ring : Nopal_style.Interaction.t =
+  {
+    hover = None;
+    pressed = None;
+    focused = None;
+    focused_within = Some wide_row_style;
+  }
+
+let rec elements node =
+  match node with
+  | Element { children; _ } -> node :: List.concat_map elements children
+  | Empty
+  | Text _ ->
+      []
+
+let carries_row_ring node =
+  match interaction node with
+  | Some i -> Nopal_style.Interaction.equal i row_ring
+  | None -> false
+
+let test_with_option_row_interaction_reaches_every_row () =
+  let r =
+    render (RG.view (RG.with_option_row_interaction row_ring (base ())))
+  in
+  let rows = find_all (By_tag "row") (tree r) in
+  Alcotest.(check int) "one row per option" 3 (List.length rows);
+  List.iter
+    (fun row ->
+      Alcotest.(check bool)
+        "the row carries the interaction" true (carries_row_ring row))
+    rows;
+  let others =
+    List.filter
+      (fun node -> Test_util.tag_of "element" node <> "row")
+      (elements (tree r))
+  in
+  Alcotest.(check (list string))
+    "no other node carries the interaction" []
+    (List.map
+       (Test_util.tag_of "element")
+       (List.filter carries_row_ring others))
+
 (* --- The outer box and the options box --- *)
 
 let options_row_style =
@@ -701,6 +860,17 @@ let () =
             test_group_style_reaches_the_group;
           Alcotest.test_case "label style reaches the group label" `Quick
             test_label_style_reaches_the_group_label;
+        ] );
+      ( "hidden inputs and option-row interaction",
+        [
+          Alcotest.test_case "hidden_inputs_reach_every_option" `Quick
+            test_hidden_inputs_reach_every_option;
+          Alcotest.test_case "on_label_click_unrepresentable_when_hidden" `Quick
+            test_on_label_click_unrepresentable_when_hidden;
+          Alcotest.test_case "hidden_label_keeps_label_id_and_style" `Quick
+            test_hidden_label_keeps_label_id_and_style;
+          Alcotest.test_case "with_option_row_interaction_reaches_every_row"
+            `Quick test_with_option_row_interaction_reaches_every_row;
         ] );
       ( "outer box and options box",
         [

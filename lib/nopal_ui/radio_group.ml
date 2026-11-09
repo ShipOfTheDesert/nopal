@@ -2,6 +2,10 @@ module E = Nopal_element.Element
 
 type radio_option = { label : string; value : string; disabled : bool }
 
+type 'msg inputs =
+  | Visible_inputs of { on_label_click : (string -> 'msg) option }
+  | Hidden_inputs
+
 type 'msg config = {
   label : string;
   options : radio_option list;
@@ -19,7 +23,8 @@ type 'msg config = {
   options_style : Nopal_style.Style.t option;
   option_label_style : Nopal_style.Style.t option;
   option_row_style : Nopal_style.Style.t option;
-  on_label_click : (string -> 'msg) option;
+  option_row_interaction : Nopal_style.Interaction.t option;
+  inputs : 'msg inputs;
 }
 
 let radio_option ?(disabled = false) ~value label = { label; value; disabled }
@@ -42,7 +47,8 @@ let make ~label ~options ~selected =
     options_style = None;
     option_label_style = None;
     option_row_style = None;
-    on_label_click = None;
+    option_row_interaction = None;
+    inputs = Visible_inputs { on_label_click = None };
   }
 
 let with_id id config = { config with id = Some id }
@@ -60,7 +66,16 @@ let with_option_label_style style config =
 let with_option_row_style style config =
   { config with option_row_style = Some style }
 
-let with_on_label_click f config = { config with on_label_click = Some f }
+let with_option_row_interaction interaction config =
+  { config with option_row_interaction = Some interaction }
+
+let with_hidden_inputs config = { config with inputs = Hidden_inputs }
+
+let with_on_label_click f config =
+  match config.inputs with
+  | Visible_inputs _ ->
+      { config with inputs = Visible_inputs { on_label_click = Some f } }
+  | Hidden_inputs -> config
 
 let control_id config =
   Slug.derive_id ~explicit:config.id ~label:config.label ()
@@ -92,20 +107,31 @@ let view config =
     in
     let oid = option_id config ~value:opt.value in
     let olid = option_label_id config ~value:opt.value in
+    let label_attrs = [ ("id", olid) ] in
+    let label_text =
+      [ Text_node.of_style ~style:config.option_label_style opt.label ]
+    in
+    let presentation, label =
+      match config.inputs with
+      | Visible_inputs { on_label_click } ->
+          ( Nopal_style.Presentation.Visible,
+            E.box ?style:config.option_label_style ~attrs:label_attrs
+              ?on_pointer_down:
+                (Option.map (fun f _event -> f opt.value) on_label_click)
+              label_text )
+      | Hidden_inputs ->
+          ( Nopal_style.Presentation.Visually_hidden,
+            E.label ?style:config.option_label_style ~attrs:label_attrs
+              ~control_id:oid label_text )
+    in
     let radio =
       E.radio ?style:config.style ?interaction:config.interaction
         ~attrs:[ ("id", oid); ("aria-labelledby", olid); ("data-field", name) ]
         ~checked:(config.selected = opt.value)
-        ~disabled ?on_select ~name ()
+        ~disabled ~presentation ?on_select ~name ()
     in
-    let label =
-      E.box ?style:config.option_label_style
-        ~attrs:[ ("id", olid) ]
-        ?on_pointer_down:
-          (Option.map (fun f _event -> f opt.value) config.on_label_click)
-        [ Text_node.of_style ~style:config.option_label_style opt.label ]
-    in
-    E.row ?style:config.option_row_style [ radio; label ]
+    E.row ?style:config.option_row_style
+      ?interaction:config.option_row_interaction [ radio; label ]
   in
   let options_box =
     E.box ?style:config.options_style (List.map render_option config.options)

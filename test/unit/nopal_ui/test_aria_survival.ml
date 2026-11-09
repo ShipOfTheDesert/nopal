@@ -302,7 +302,8 @@ let radio_group_config ~visible_label : msg RG.config =
     options_style = Some teal;
     option_label_style = Some violet;
     option_row_style = Some blue;
-    on_label_click = Some (fun v -> v);
+    option_row_interaction = None;
+    inputs = RG.Visible_inputs { on_label_click = Some (fun v -> v) };
   }
 
 let radio_of root ~value =

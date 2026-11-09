@@ -41,24 +41,22 @@ let new_tab_link ?(attrs = []) () =
     (Link.New_tab { path = route_path })
     (Element.text "Photo")
 
-let tag_of node =
-  match node with
-  | TR.Element { tag; _ } -> tag
-  | TR.Text _ -> "text"
-  | TR.Empty -> "empty"
-
 let check_opt = Alcotest.(check (option string))
 
 let test_link_renders_a_with_href_and_rel () =
   let route = TR.tree (TR.render (route_link ())) in
-  Alcotest.(check string) "a Route link is an anchor" "a" (tag_of route);
+  Alcotest.(check string)
+    "a Route link is an anchor" "a"
+    (Test_util.tag_or_kind route);
   check_opt "a Route link's href is its path" (Some path_text)
     (TR.attr "href" route);
   check_opt "a Route link carries no rel" None (TR.attr "rel" route);
   Alcotest.(check string)
     "a Route link renders its child" "Inbox" (TR.text_content route);
   let external_ = TR.tree (TR.render (external_link ())) in
-  Alcotest.(check string) "an External link is an anchor" "a" (tag_of external_);
+  Alcotest.(check string)
+    "an External link is an anchor" "a"
+    (Test_util.tag_or_kind external_);
   check_opt "an External link's href is its URL" (Some url_text)
     (TR.attr "href" external_);
   check_opt "an External link keeps the opened page from its opener"
@@ -95,7 +93,9 @@ let test_new_tab_link_derives_target_and_rel () =
       (Some "noopener noreferrer") (TR.attr "rel" node)
   in
   let plain = TR.tree (TR.render (new_tab_link ())) in
-  Alcotest.(check string) "a New_tab link is an anchor" "a" (tag_of plain);
+  Alcotest.(check string)
+    "a New_tab link is an anchor" "a"
+    (Test_util.tag_or_kind plain);
   check plain;
   check
     (TR.tree

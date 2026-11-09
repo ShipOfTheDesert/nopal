@@ -213,7 +213,12 @@ let across =
 
 let hover_interaction =
   Nopal_style.Interaction.
-    { hover = Some across; pressed = None; focused = None }
+    {
+      hover = Some across;
+      pressed = None;
+      focused = None;
+      focused_within = None;
+    }
 
 let form_record ~attrs ~on_submit ~autocomplete ~novalidate children : msg E.t =
   Form
@@ -434,6 +439,45 @@ let test_one_fixture_answers_all_three_paths_in_order () =
      handler that accepts it, once"
     [ FormSubmitted; Submitted; KeyDown "Enter" ]
     (messages r)
+
+let test_enter_in_a_field_inside_a_label_submits_the_form () =
+  let r =
+    render
+      (E.form ~on_submit:FormSubmitted
+         [
+           E.label ~control_id:"name"
+             [ E.input ~attrs:[ ("data-field", "named") ] "v" ];
+         ])
+  in
+  let result = keydown (field "named") "Enter" r in
+  Alcotest.(check (result unit error_testable))
+    "Enter on the labelled field succeeds" (Ok ()) result;
+  Alcotest.(check (list msg_testable))
+    "the lone labelled field defers Enter to the form" [ FormSubmitted ]
+    (messages r)
+
+(* One field directly in the form and one inside a label, no submit button:
+   two fields block implicit submission only if the walk counts the labelled
+   one. Were it skipped, the form would hold one field and Enter would submit. *)
+let test_a_field_inside_a_label_counts_toward_implicit_submission () =
+  let r =
+    render
+      (E.form ~on_submit:FormSubmitted
+         [
+           E.label ~control_id:"a"
+             [ E.input ~attrs:[ ("data-field", "labelled") ] "v" ];
+           E.input ~attrs:[ ("data-field", "plain") ] "v";
+         ])
+  in
+  List.iter
+    (fun name ->
+      Alcotest.(check (result unit error_testable))
+        (name ^ ": Enter finds no handler")
+        (Error (No_handler { tag = "input"; event = "keydown" }))
+        (keydown (field name) "Enter" r))
+    [ "labelled"; "plain" ];
+  Alcotest.(check (list msg_testable))
+    "two fields and no submit button: Enter submits nothing" [] (messages r)
 
 let test_input_on_submit_inside_a_form_dispatches_once () =
   let r = render (three_path_form ~on_submit:FormSubmitted ()) in
@@ -768,6 +812,11 @@ let () =
             test_keydown_on_a_non_enter_key_never_reaches_on_submit;
           Alcotest.test_case "one_fixture_answers_all_three_paths_in_order"
             `Quick test_one_fixture_answers_all_three_paths_in_order;
+          Alcotest.test_case "enter_in_a_field_inside_a_label_submits_the_form"
+            `Quick test_enter_in_a_field_inside_a_label_submits_the_form;
+          Alcotest.test_case
+            "a_field_inside_a_label_counts_toward_implicit_submission" `Quick
+            test_a_field_inside_a_label_counts_toward_implicit_submission;
           Alcotest.test_case "input_on_submit_inside_a_form_dispatches_once"
             `Quick test_input_on_submit_inside_a_form_dispatches_once;
           Alcotest.test_case

@@ -132,7 +132,7 @@ let apply_text_style el text_style =
 (* This function and the [Some] arms of [container_main_axis] below must name
    the same set of variants: calling this is what makes a variant a flex
    container, and being a flex container is what puts a child's declared size at
-   risk. A fifth call site added without a matching arm there un-guards that
+   risk. A sixth call site added without a matching arm there un-guards that
    variant's children with nothing failing, so the two change together. *)
 let apply_container_base_style el =
   Brr.El.set_inline_style (Jstr.v "display") (Jstr.v "flex") el
@@ -145,15 +145,15 @@ let apply_container_base_style el =
    element's own direction is emitted as its own flex-direction and governs the
    level below it.
 
-   Only these four variants are laid out as flex containers by this backend, so
+   Only these five variants are laid out as flex containers by this backend, so
    every other variant answers [None] — including the ones that hold a child,
    which are ordinary block boxes their child cannot be squeezed inside.
 
    [Row] and [Column] answer from the constructor, not from the style: both
    write their direction inline after the style is applied, so a style asking
-   for the opposite axis loses and this must lose with it. [Box] and [Form] have
-   no constructor answer and read the field, whose absence means down the page
-   here even though CSS reads an absent flex-direction as across.
+   for the opposite axis loses and this must lose with it. [Box], [Form] and
+   [Label] have no constructor answer and read the field, whose absence means
+   down the page here even though CSS reads an absent flex-direction as across.
 
    Call sites bind the result as [children_axis]. It is the axis the element
    hands DOWN, never the one it sits on, and it is resolved inside the arms
@@ -165,7 +165,8 @@ let container_main_axis (el : 'msg Nopal_element.Element.t) :
   | Row _ -> Some Style_css.Horizontal
   | Column _ -> Some Style_css.Vertical
   | Box { style; _ }
-  | Form { style; _ } -> (
+  | Form { style; _ }
+  | Label { style; _ } -> (
       match style.Nopal_style.Style.layout.direction with
       | Some Nopal_style.Style.Row_dir -> Some Style_css.Horizontal
       | Some Nopal_style.Style.Column_dir
@@ -262,7 +263,8 @@ let interaction_of (el : 'msg Nopal_element.Element.t) =
   | Radio { interaction; _ }
   | Select { interaction; _ }
   | File_input { interaction; _ }
-  | Form { interaction; _ } ->
+  | Form { interaction; _ }
+  | Label { interaction; _ } ->
       Some interaction
   | Empty
   | Text _
@@ -353,6 +355,13 @@ let drawn_marker (appearance : Nopal_style.Checkbox_appearance.t) =
   match appearance with
   | Drawn _ -> Some ""
   | Native -> None
+
+(* The marker the hide rule selects on, on the same terms: a visible radio
+   derives none. *)
+let hidden_marker (presentation : Nopal_style.Presentation.t) =
+  match presentation with
+  | Visually_hidden -> Some ""
+  | Visible -> None
 
 let wire_click ~dispatch el on_click =
   match on_click with
@@ -623,6 +632,12 @@ let apply_heading_config el ~declared level =
     (Some (string_of_int (Nopal_element.Element.heading_level_to_int level)));
   set Style_sheet.heading_marker (Some "")
 
+(* A label's ["for"] has no absent form: [control_id] is required, so it is
+   written over whatever the declared list put under that key on every render
+   that writes it. *)
+let apply_label_for el control_id =
+  Brr.El.set_at (Jstr.v "for") (Some (Jstr.v control_id)) el
+
 (* An input's four derived configurations, on the same terms as a form's:
    written over the declared list and uncovering it when absent. [required]
    asserts both keys only when [true]; [autocomplete], [input_type] and [name]
@@ -661,7 +676,8 @@ let equal_autocomplete_mode_opt
 
 (* The flex-direction a column-by-default container writes inline. CSS reads an
    absent flex-direction as a row, and this backend's default is a column, so
-   both [Box] and [Form] write it on every frame rather than leaving it absent. *)
+   [Box], [Form] and [Label] write it on every frame rather than leaving it
+   absent. *)
 let column_default_flex_direction (style : Nopal_style.Style.t) =
   match style.layout.direction with
   | Some Nopal_style.Style.Row_dir -> "row"
@@ -1086,6 +1102,35 @@ let rec create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
           interaction_id;
           ticked_id = None;
         }
+  | Label { style; interaction; attrs; control_id; children } ->
+      let el = Brr.El.v (Jstr.v "label") [] in
+      apply_container_base_style el;
+      (* Laid out like [Box]: the style's direction, down the page when absent. *)
+      Brr.El.set_inline_style (Jstr.v "flex-direction")
+        (Jstr.v (column_default_flex_direction style))
+        el;
+      let base_id, interaction_id =
+        apply_styles_for_element ~sheet ~parent_axis el style interaction
+      in
+      apply_attrs el attrs;
+      apply_label_for el control_id;
+      let children_axis = container_main_axis element in
+      let live_children =
+        List.map
+          (create_and_append ~sheet ~reveals ~link_host ~dispatch
+             ~parent_axis:children_axis el)
+          children
+      in
+      Live_node
+        {
+          dom = el;
+          element;
+          children = live_children;
+          listeners = [];
+          base_id;
+          interaction_id;
+          ticked_id = None;
+        }
   | Button
       {
         style;
@@ -1252,7 +1297,17 @@ let rec create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
           interaction_id;
           ticked_id;
         }
-  | Radio { style; interaction; attrs; name; checked; disabled; on_select } ->
+  | Radio
+      {
+        style;
+        interaction;
+        attrs;
+        name;
+        checked;
+        disabled;
+        presentation;
+        on_select;
+      } ->
       let el = Brr.El.v (Jstr.v "input") [] in
       Jv.set (Brr.El.to_jv el) "checked" (Jv.of_bool checked);
       let base_id, interaction_id =
@@ -1263,6 +1318,8 @@ let rec create_live ~sheet ~reveals ~link_host ~dispatch ~parent_axis
       Brr.El.set_at (Jstr.v "name") (Some (Jstr.v name)) el;
       set_derived el ~declared:attrs "disabled"
         (if disabled then Some "" else None);
+      set_derived el ~declared:attrs Style_sheet.visually_hidden_marker
+        (hidden_marker presentation);
       let listeners =
         match (on_select, disabled) with
         | Some msg, false ->
@@ -1726,6 +1783,7 @@ let same_variant (a : 'msg Nopal_element.Element.t)
   | Row _, Row _
   | Column _, Column _
   | Form _, Form _
+  | Label _, Label _
   | Button _, Button _
   | Link _, Link _
   | Input _, Input _
@@ -1742,9 +1800,9 @@ let same_variant (a : 'msg Nopal_element.Element.t)
   (* A heading's level is its tag, which a node cannot change in place. *)
   | Heading { level = a; _ }, Heading { level = b; _ } ->
       Nopal_element.Element.equal_heading_level a b
-  | ( ( Empty | Text _ | Box _ | Row _ | Column _ | Form _ | Button _ | Link _
-      | Heading _ | Input _ | Checkbox _ | Radio _ | Select _ | File_input _
-      | Image _ | Scroll _ | Keyed _ | Draw _ | Virtual_list _ ),
+  | ( ( Empty | Text _ | Box _ | Row _ | Column _ | Form _ | Label _ | Button _
+      | Link _ | Heading _ | Input _ | Checkbox _ | Radio _ | Select _
+      | File_input _ | Image _ | Scroll _ | Keyed _ | Draw _ | Virtual_list _ ),
       _ ) ->
       false
 
@@ -1752,9 +1810,9 @@ let extract_keyed_pairs elements =
   let rec go acc = function
     | [] -> Some (List.rev acc)
     | Keyed { key; child } :: rest -> go ((key, child) :: acc) rest
-    | ( Empty | Text _ | Box _ | Row _ | Column _ | Form _ | Button _ | Link _
-      | Heading _ | Input _ | Checkbox _ | Radio _ | Select _ | File_input _
-      | Image _ | Scroll _ | Draw _ | Virtual_list _ )
+    | ( Empty | Text _ | Box _ | Row _ | Column _ | Form _ | Label _ | Button _
+      | Link _ | Heading _ | Input _ | Checkbox _ | Radio _ | Select _
+      | File_input _ | Image _ | Scroll _ | Draw _ | Virtual_list _ )
       :: _ ->
         None
   in
@@ -1792,7 +1850,8 @@ let attrs_of (el : 'msg Nopal_element.Element.t) =
   | Select { attrs; _ }
   | File_input { attrs; _ }
   | Scroll { attrs; _ }
-  | Form { attrs; _ } ->
+  | Form { attrs; _ }
+  | Label { attrs; _ } ->
       attrs
   | Empty
   | Text _
@@ -1831,6 +1890,7 @@ let focusable_of (el : 'msg Nopal_element.Element.t) =
   | Row _
   | Column _
   | Form _
+  | Label _
   | Button _
   | Link _
   | Heading _
@@ -1884,6 +1944,7 @@ let previous_disabled (el : 'msg Nopal_element.Element.t) =
   | Row _
   | Column _
   | Form _
+  | Label _
   | Button _
   | Link _
   | Heading _
@@ -1907,11 +1968,38 @@ let appearance_of (el : 'msg Nopal_element.Element.t) =
   | Row _
   | Column _
   | Form _
+  | Label _
   | Button _
   | Link _
   | Heading _
   | Input _
   | Radio _
+  | Select _
+  | File_input _
+  | Image _
+  | Scroll _
+  | Keyed _
+  | Draw _
+  | Virtual_list _ ->
+      None
+
+(* The presentation a render declared, on the same terms: only a radio has
+   one. *)
+let presentation_of (el : 'msg Nopal_element.Element.t) =
+  match el with
+  | Radio { presentation; _ } -> Some presentation
+  | Empty
+  | Text _
+  | Box _
+  | Row _
+  | Column _
+  | Form _
+  | Label _
+  | Button _
+  | Link _
+  | Heading _
+  | Input _
+  | Checkbox _
   | Select _
   | File_input _
   | Image _
@@ -1961,6 +2049,7 @@ let previous_placeholder (el : 'msg Nopal_element.Element.t) =
   | Row _
   | Column _
   | Form _
+  | Label _
   | Button _
   | Link _
   | Heading _
@@ -2002,7 +2091,8 @@ let style_of (el : 'msg Nopal_element.Element.t) =
   | Select { style; _ }
   | File_input { style; _ }
   | Virtual_list { style; _ }
-  | Form { style; _ } ->
+  | Form { style; _ }
+  | Label { style; _ } ->
       Some style
   | Empty
   | Text _
@@ -2227,11 +2317,11 @@ and reconcile_live ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
         ~parent_axis old_n new_el;
       Live_node old_n
   | ( Live_text _,
-      ( Empty | Box _ | Row _ | Column _ | Form _ | Button _ | Link _
+      ( Empty | Box _ | Row _ | Column _ | Form _ | Label _ | Button _ | Link _
       | Heading _ | Input _ | Checkbox _ | Radio _ | Select _ | File_input _
       | Image _ | Scroll _ | Keyed _ | Draw _ | Virtual_list _ ) )
   | ( Live_comment _,
-      ( Text _ | Box _ | Row _ | Column _ | Form _ | Button _ | Link _
+      ( Text _ | Box _ | Row _ | Column _ | Form _ | Label _ | Button _ | Link _
       | Heading _ | Input _ | Checkbox _ | Radio _ | Select _ | File_input _
       | Image _ | Scroll _ | Keyed _ | Draw _ | Virtual_list _ ) )
   | Live_node _, _ ->
@@ -2439,6 +2529,7 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
       | Row _
       | Column _
       | Form _
+      | Label _
       | Button _
       | Link _
       | Heading _
@@ -2462,6 +2553,41 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
         reconcile_children ~sheet ~reveals ~link_host ~dispatch
           ~old_parent_axis:old_children_axis ~parent_axis:children_axis el
           old_n.children children
+  | Label { style; control_id; children; _ } ->
+      let attrs_written = maybe_apply_attrs el old_n.element new_el in
+      (* Guarded on the previous render, as [Form]'s configuration is. *)
+      (match old_n.element with
+      | Label { control_id = old_control_id; _ }
+        when (not attrs_written) && String.equal old_control_id control_id ->
+          ()
+      | Empty
+      | Text _
+      | Box _
+      | Row _
+      | Column _
+      | Form _
+      | Label _
+      | Button _
+      | Link _
+      | Heading _
+      | Input _
+      | Checkbox _
+      | Radio _
+      | Select _
+      | File_input _
+      | Image _
+      | Scroll _
+      | Keyed _
+      | Draw _
+      | Virtual_list _ ->
+          apply_label_for el control_id);
+      Brr.El.set_inline_style (Jstr.v "flex-direction")
+        (Jstr.v (column_default_flex_direction style))
+        el;
+      old_n.children <-
+        reconcile_children ~sheet ~reveals ~link_host ~dispatch
+          ~old_parent_axis:old_children_axis ~parent_axis:children_axis el
+          old_n.children children
   | Button { attrs; button_type; disabled; on_click; on_dblclick; child; _ } ->
       let attrs_written = maybe_apply_attrs el old_n.element new_el in
       (* Guarded on the previous render, as [Form]'s configuration is. A flip of
@@ -2480,6 +2606,7 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
       | Row _
       | Column _
       | Form _
+      | Label _
       | Button _
       | Link _
       | Heading _
@@ -2517,6 +2644,7 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
       | Row _
       | Column _
       | Form _
+      | Label _
       | Button _
       | Link _
       | Heading _
@@ -2592,6 +2720,7 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
       | Row _
       | Column _
       | Form _
+      | Label _
       | Button _
       | Link _
       | Heading _
@@ -2644,6 +2773,7 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
       | Row _
       | Column _
       | Form _
+      | Label _
       | Button _
       | Link _
       | Heading _
@@ -2675,6 +2805,7 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
         | Row _
         | Column _
         | Form _
+        | Label _
         | Button _
         | Link _
         | Heading _
@@ -2729,6 +2860,7 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
       | Row _
       | Column _
       | Form _
+      | Label _
       | Button _
       | Link _
       | Heading _
@@ -2788,7 +2920,7 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
         | Some _, true
         | None, (true | false) ->
             [])
-  | Radio { name; checked; disabled; on_select; _ } ->
+  | Radio { name; checked; disabled; presentation; on_select; _ } ->
       Jv.set (Brr.El.to_jv el) "checked" (Jv.of_bool checked);
       let attrs_written = maybe_apply_attrs el old_n.element new_el in
       if attrs_written then
@@ -2801,6 +2933,14 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
       then
         set_derived el ~declared:(attrs_of new_el) "disabled"
           (if disabled then Some "" else None);
+      if
+        needs_reassert ~attrs_written
+          ~previous:(presentation_of old_n.element)
+          ~current:presentation ~equal:Nopal_style.Presentation.equal
+      then
+        set_derived el ~declared:(attrs_of new_el)
+          Style_sheet.visually_hidden_marker
+          (hidden_marker presentation);
       unlisten_all old_n.listeners;
       old_n.listeners <-
         (match (on_select, disabled) with
@@ -2982,6 +3122,7 @@ and reconcile_node ~sheet ~reveals ~link_host ~dispatch ~old_parent_axis
       | Row _
       | Column _
       | Form _
+      | Label _
       | Button _
       | Link _
       | Heading _

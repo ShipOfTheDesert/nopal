@@ -60,6 +60,13 @@ type 'msg t =
       autocomplete : autocomplete_mode option;
       novalidate : bool;
     }
+  | Label of {
+      style : Nopal_style.Style.t;
+      interaction : Nopal_style.Interaction.t;
+      attrs : (string * string) list;
+      control_id : string;
+      children : 'msg t list;
+    }
   | Button of {
       style : Nopal_style.Style.t;
       interaction : Nopal_style.Interaction.t;
@@ -116,6 +123,7 @@ type 'msg t =
       name : string;
       checked : bool;
       disabled : bool;
+      presentation : Nopal_style.Presentation.t;
       on_select : 'msg option;
     }
   | Select of {
@@ -213,6 +221,11 @@ let form ?(style = Nopal_style.Style.empty)
   Form
     { style; interaction; attrs; children; on_submit; autocomplete; novalidate }
 
+let label ?(style = Nopal_style.Style.empty)
+    ?(interaction = Nopal_style.Interaction.default) ?(attrs = []) ~control_id
+    children =
+  Label { style; interaction; attrs; control_id; children }
+
 let button ?(style = Nopal_style.Style.empty)
     ?(interaction = Nopal_style.Interaction.default) ?(attrs = [])
     ?(button_type = Push) ?(disabled = false) ?on_click ?on_dblclick child =
@@ -268,8 +281,19 @@ let checkbox ?(style = Nopal_style.Style.empty)
 
 let radio ?(style = Nopal_style.Style.empty)
     ?(interaction = Nopal_style.Interaction.default) ?(attrs = [])
-    ?(checked = false) ?(disabled = false) ?on_select ~name () =
-  Radio { style; interaction; attrs; name; checked; disabled; on_select }
+    ?(checked = false) ?(disabled = false)
+    ?(presentation = Nopal_style.Presentation.Visible) ?on_select ~name () =
+  Radio
+    {
+      style;
+      interaction;
+      attrs;
+      name;
+      checked;
+      disabled;
+      presentation;
+      on_select;
+    }
 
 let select ?(style = Nopal_style.Style.empty)
     ?(interaction = Nopal_style.Interaction.default) ?(attrs = [])
@@ -419,6 +443,15 @@ let rec map f = function
           autocomplete;
           novalidate;
         }
+  | Label { style; interaction; attrs; control_id; children } ->
+      Label
+        {
+          style;
+          interaction;
+          attrs;
+          control_id;
+          children = List.map (map f) children;
+        }
   | Button
       {
         style;
@@ -498,7 +531,17 @@ let rec map f = function
           appearance;
           on_toggle = Option.map (fun g b -> f (g b)) on_toggle;
         }
-  | Radio { style; interaction; attrs; name; checked; disabled; on_select } ->
+  | Radio
+      {
+        style;
+        interaction;
+        attrs;
+        name;
+        checked;
+        disabled;
+        presentation;
+        on_select;
+      } ->
       Radio
         {
           style;
@@ -507,6 +550,7 @@ let rec map f = function
           name;
           checked;
           disabled;
+          presentation;
           on_select = Option.map f on_select;
         }
   | Select { style; interaction; attrs; options; selected; disabled; on_change }
@@ -777,6 +821,27 @@ let rec equal a b =
       && Option.equal ( == ) os1 os2
       && Option.equal equal_autocomplete_mode ac1 ac2
       && Bool.equal nv1 nv2
+  | ( Label
+        {
+          style = s1;
+          interaction = i1;
+          attrs = a1;
+          control_id = id1;
+          children = c1;
+        },
+      Label
+        {
+          style = s2;
+          interaction = i2;
+          attrs = a2;
+          control_id = id2;
+          children = c2;
+        } ) ->
+      Nopal_style.Style.equal s1 s2
+      && Nopal_style.Interaction.equal i1 i2
+      && equal_attrs a1 a2
+      && String.equal id1 id2
+      && equal_children c1 c2
   | ( Button
         {
           style = s1;
@@ -974,6 +1039,7 @@ let rec equal a b =
           name = n1;
           checked = c1;
           disabled = d1;
+          presentation = p1;
           on_select = os1;
         },
       Radio
@@ -984,6 +1050,7 @@ let rec equal a b =
           name = n2;
           checked = c2;
           disabled = d2;
+          presentation = p2;
           on_select = os2;
         } ) ->
       Nopal_style.Style.equal s1 s2
@@ -992,6 +1059,7 @@ let rec equal a b =
       && String.equal n1 n2
       && Bool.equal c1 c2
       && Bool.equal d1 d2
+      && Nopal_style.Presentation.equal p1 p2
       && Option.equal ( == ) os1 os2
   | ( Select
         {
@@ -1086,9 +1154,9 @@ let rec equal a b =
       && Option.equal equal_capture cap1 cap2
       && Bool.equal m1 m2
       && Option.equal ( == ) oc1 oc2
-  | ( ( Empty | Text _ | Box _ | Row _ | Column _ | Form _ | Button _ | Link _
-      | Heading _ | Input _ | Checkbox _ | Radio _ | Select _ | File_input _
-      | Image _ | Scroll _ | Keyed _ | Draw _ | Virtual_list _ ),
+  | ( ( Empty | Text _ | Box _ | Row _ | Column _ | Form _ | Label _ | Button _
+      | Link _ | Heading _ | Input _ | Checkbox _ | Radio _ | Select _
+      | File_input _ | Image _ | Scroll _ | Keyed _ | Draw _ | Virtual_list _ ),
       _ ) ->
       false
 

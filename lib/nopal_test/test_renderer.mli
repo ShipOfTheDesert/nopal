@@ -60,8 +60,9 @@ val render : 'msg Nopal_element.Element.t -> 'msg rendered
     ["type"], an input's ["required"], ["aria-required"], ["autocomplete"] and
     ["name"], a form's ["autocomplete"] and ["novalidate"], a button's ["type"]
     and ["aria-disabled"], a link's ["href"] and ["rel"], a heading's ["role"],
-    ["aria-level"] and ["data-nopal-heading"], a drawn checkbox's
-    ["data-nopal-drawn-checkbox"], a canvas's ["role"], ["aria-label"] and
+    ["aria-level"] and ["data-nopal-heading"], a label's ["for"], a drawn
+    checkbox's ["data-nopal-drawn-checkbox"], a visually hidden radio's
+    ["data-nopal-visually-hidden"], a canvas's ["role"], ["aria-label"] and
     ["aria-hidden"], and an image's ["alt"]. On ["disabled"], ["multiple"],
     ["required"] and ["novalidate"] the two agree on which side wins and not on
     the value: this renderer carries ["true"] where the browser carries a
@@ -103,11 +104,13 @@ val render : 'msg Nopal_element.Element.t -> 'msg rendered
     contributed for an [External] or a [New_tab] link, and its ["target"]
     (["_blank"]) for a [New_tab] link only, so a [Route] link uncovers a
     caller's pair for either. An input's ["placeholder"], a radio's ["name"], a
-    button's ["type"], a link's ["href"] and a heading's ["role"],
-    ["aria-level"] and ["data-nopal-heading"] have no absent form and are
+    button's ["type"], a link's ["href"], a heading's ["role"], ["aria-level"]
+    and ["data-nopal-heading"] and a label's ["for"] have no absent form and are
     contributed on every render. A checkbox's ["data-nopal-drawn-checkbox"] is
     contributed for a [Drawn] appearance only, so a [Native] checkbox uncovers a
-    caller's pair of that name.
+    caller's pair of that name, and a radio's ["data-nopal-visually-hidden"] is
+    contributed for a [Visually_hidden] presentation only, so a [Visible] radio
+    uncovers a caller's pair of that name.
 
     A scroll container's [reveal] declaration is surfaced for inspection as the
     derived attribute pairs ["reveal"] and ["reveal-align"], carried exactly as
@@ -139,7 +142,14 @@ val render : 'msg Nopal_element.Element.t -> 'msg rendered
     Only the flag is surfaced. This renderer fires the selected node's own
     handler and models no event propagation, so the subtree scoping of a
     container's focus edges is not observable here and no assertion in this
-    renderer may be read as evidence of it. *)
+    renderer may be read as evidence of it.
+
+    A label renders as tag ["label"] carrying its control's id as ["for"].
+    {!click} on a label models the browser's activation: it finds the node whose
+    ["id"] attribute is that id and fires that control's own click handler, so a
+    radio's [on_select] dispatches. A label naming no control, or a control with
+    no handler (a disabled one), answers [No_handler] for tag ["label"]. Focus
+    transfer is not modelled. *)
 
 (** {1 Accessors} *)
 
@@ -201,6 +211,10 @@ val has_pressed : node -> bool
 val has_focused : node -> bool
 (** [has_focused node] returns [true] if the node is an [Element] whose
     interaction has a focused style set. *)
+
+val has_focused_within : node -> bool
+(** [has_focused_within node] returns [true] if the node is an [Element] whose
+    interaction has a focus-within style set. *)
 
 val has_attr : string -> node -> bool
 (** [has_attr name node] returns [true] if the node is an [Element] with an
@@ -269,6 +283,19 @@ val checkbox_appearance :
     [Error (No_handler { event = "appearance"; _ })] if the element matched is
     not a checkbox. It never walks: a container selected around a checkbox is
     not the checkbox. *)
+
+val radio_presentation :
+  selector -> 'msg rendered -> (Nopal_style.Presentation.t, error) result
+(** [radio_presentation selector rendered] finds the first element matching
+    [selector] and, when it is a radio, returns the presentation it declared,
+    exactly as the view wrote it: [Visible] for a radio that declared none, or
+    [Visually_hidden]. A disabled radio reports its presentation like any other.
+    Nothing is dispatched.
+
+    Returns [Error (Not_found selector)] if no element matches, and
+    [Error (No_handler { event = "presentation"; _ })] if the element matched is
+    not a radio. It never walks: a container selected around a radio is not the
+    radio. *)
 
 val input : selector -> string -> 'msg rendered -> (unit, error) result
 (** [input selector value rendered] finds the first input matching [selector],

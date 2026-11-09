@@ -193,6 +193,14 @@ type 'msg t =
       novalidate : bool;
           (** [true] skips the platform's own constraint validation. *)
     }
+  | Label of {
+      style : Nopal_style.Style.t;
+      interaction : Nopal_style.Interaction.t;
+      attrs : (string * string) list;
+      control_id : string;
+          (** The id of the control the label names and activates. *)
+      children : 'msg t list;
+    }
   | Button of {
       style : Nopal_style.Style.t;
       interaction : Nopal_style.Interaction.t;
@@ -259,6 +267,7 @@ type 'msg t =
       name : string;
       checked : bool;
       disabled : bool;
+      presentation : Nopal_style.Presentation.t;
       on_select : 'msg option;
     }
   | Select of {
@@ -331,7 +340,8 @@ type 'msg t =
     Several builders take both an [?attrs] list and typed fields a backend turns
     into attributes of its own — an input's [placeholder], a radio's [name], a
     picker's [accept], a container's [focusable], a button's [button_type] and
-    [disabled], a link's [destination], a heading's [level]. The rule is:
+    [disabled], a link's [destination], a heading's [level], a label's
+    [control_id]. The rule is:
     {b typed-field derivations beat the [~attrs] list; within the list, the last
        pair wins.}
 
@@ -361,11 +371,12 @@ type 'msg t =
     ["type"], which [button_type] derives as ["button"] when the button names
     none, a link's ["href"], which its [destination] always spells, and a
     heading's ["role"], ["aria-level"] and ["data-nopal-heading"], which its
-    [level] always spells. Uncovering is the behaviour of the derivations that
-    can decline, and they decline in one of two shapes. A [bool] cannot say "no
-    attribute": [true] asserts the key and [false] emits nothing, so a [false]
-    uncovers a caller's pair rather than removing it — a control's ["disabled"],
-    a file picker's ["multiple"], an input's ["required"] together with the
+    [level] always spells, and a label's ["for"], which its [control_id] always
+    spells. Uncovering is the behaviour of the derivations that can decline, and
+    they decline in one of two shapes. A [bool] cannot say "no attribute":
+    [true] asserts the key and [false] emits nothing, so a [false] uncovers a
+    caller's pair rather than removing it — a control's ["disabled"], a file
+    picker's ["multiple"], an input's ["required"] together with the
     ["aria-required"] it carries, a form's ["novalidate"], and a button's
     ["aria-disabled"] from its [disabled]. An option, or an empty list, asserts
     nothing when absent and uncovers the caller's pair the same way — a file
@@ -395,27 +406,30 @@ type 'msg t =
     ["required"], ["aria-required"], ["autocomplete"] and ["name"], a form's
     ["autocomplete"] and ["novalidate"], a button's ["type"] and
     ["aria-disabled"], a link's ["href"], ["rel"] and ["target"], a heading's
-    ["role"], ["aria-level"] and ["data-nopal-heading"], a drawing's ["role"],
-    ["aria-label"] and ["aria-hidden"], and an image's ["alt"]. Of those,
-    ["disabled"], ["multiple"], ["required"] and ["novalidate"] are spelled
-    differently by the two — a presence attribute in the browser, a ["true"]
-    pair in the structural tree — so they agree on which side wins and not on
-    the value; the rest carry the same value in both, a button's
-    ["aria-disabled"] being ["true"] and its ["type"] ["button"] or ["submit"],
-    a link's ["rel"] ["noopener noreferrer"], and a heading's ["role"]
-    ["heading"], its ["aria-level"] the level's digit and its
-    ["data-nopal-heading"] empty. A checkbox's, radio's or file picker's
-    ["type"] is the structural node's tag rather than a pair, while an input's
-    is a pair in both. A container's [focusable] is a first-tier derivation in
-    both renderers, but each spells it in its own vocabulary — a tab-order
-    attribute in the browser, ["focusable"] in the structural tree — so there is
-    no shared key to compare. A checkbox's or radio's [checked], an input's or
-    select's value, and an option's selection are JS {e properties} in the
-    browser and never attributes, so a caller's ["checked"], ["value"] or
-    ["selected"] pair in [attrs] lands on the DOM as an ordinary attribute and
-    is not overruled there. The structural renderer still overlays those three,
-    as a faithful read-out of the typed field, but a structural assertion on
-    them states what that renderer answers and not what the browser does.
+    ["role"], ["aria-level"] and ["data-nopal-heading"], a label's ["for"], a
+    drawn checkbox's ["data-nopal-drawn-checkbox"], a visually hidden radio's
+    ["data-nopal-visually-hidden"], a drawing's ["role"], ["aria-label"] and
+    ["aria-hidden"], and an image's ["alt"]. Of those, ["disabled"],
+    ["multiple"], ["required"] and ["novalidate"] are spelled differently by the
+    two — a presence attribute in the browser, a ["true"] pair in the structural
+    tree — so they agree on which side wins and not on the value; the rest carry
+    the same value in both, a button's ["aria-disabled"] being ["true"] and its
+    ["type"] ["button"] or ["submit"], a link's ["rel"] ["noopener noreferrer"],
+    and a heading's ["role"] ["heading"], its ["aria-level"] the level's digit
+    and its ["data-nopal-heading"] empty, and a label's ["for"] its
+    [control_id], and a drawn checkbox's and a visually hidden radio's markers
+    empty. A checkbox's, radio's or file picker's ["type"] is the structural
+    node's tag rather than a pair, while an input's is a pair in both. A
+    container's [focusable] is a first-tier derivation in both renderers, but
+    each spells it in its own vocabulary — a tab-order attribute in the browser,
+    ["focusable"] in the structural tree — so there is no shared key to compare.
+    A checkbox's or radio's [checked], an input's or select's value, and an
+    option's selection are JS {e properties} in the browser and never
+    attributes, so a caller's ["checked"], ["value"] or ["selected"] pair in
+    [attrs] lands on the DOM as an ordinary attribute and is not overruled
+    there. The structural renderer still overlays those three, as a faithful
+    read-out of the typed field, but a structural assertion on them states what
+    that renderer answers and not what the browser does.
 
     {2:submit_contract Submit contract}
 
@@ -593,6 +607,39 @@ val form :
     enforced — and the submit contract's "nearest enclosing form" assumes there
     is at most one. *)
 
+val label :
+  ?style:Nopal_style.Style.t ->
+  ?interaction:Nopal_style.Interaction.t ->
+  ?attrs:(string * string) list ->
+  control_id:string ->
+  'msg t list ->
+  'msg t
+(** [label ~control_id children] is a label for the control whose id is
+    [control_id], with [children] as its content. The control carries that id as
+    an ["id"] pair in its own [attrs], and stays outside the label: the two are
+    associated by id, not by nesting.
+
+    The label names the control: the control's accessible name comes from the
+    label's content. A press on the label activates the control — a radio is
+    selected and focused, a checkbox toggled — and the control's own handler
+    dispatches the result, so the label carries no handler of its own and a
+    press dispatches exactly what pressing the control would. On the web that
+    activation is the platform's own, through a native label. A backend with no
+    native label activation dispatches the activation itself, with the same
+    outcome. The structural test renderer models neither the naming nor the
+    activation: it renders the node and its control association only, so a test
+    drives the control directly. A [control_id] that names no control renders a
+    label that names nothing, and a press on it does nothing.
+
+    It is a container like {!box}, laying its children down the page unless
+    [style] asks for the other direction, so it can stand in for a box holding
+    an option's text without changing how that text lays out.
+
+    The control's id is typed, so a ["for"] pair in [attrs] never takes effect;
+    see {{!section-attribute_precedence} attribute precedence}. Give a label no
+    interactive children: on the web a press on one is that child's own press
+    and does not reach the named control. *)
+
 val button :
   ?style:Nopal_style.Style.t ->
   ?interaction:Nopal_style.Interaction.t ->
@@ -742,11 +789,24 @@ val radio :
   ?attrs:(string * string) list ->
   ?checked:bool ->
   ?disabled:bool ->
+  ?presentation:Nopal_style.Presentation.t ->
   ?on_select:'msg ->
   name:string ->
   unit ->
   'msg t
-(** A radio button. [name] groups radios so only one is selected at a time. *)
+(** A radio button. [name] groups radios so only one is selected at a time.
+
+    [presentation] says whether the radio is seen; absent, it is [Visible], and
+    the platform's radio is drawn as it always was. A [Visually_hidden] radio is
+    not painted and takes no layout space, but it is still the platform's radio
+    control: it stays focusable and keyboard-operable, it stays in its [name]
+    group (one tab stop, arrow keys move the selection), and it stays in the
+    accessibility tree with its role, name and checked state. It is never hidden
+    by removing the control. When the user forces their system colours, a hidden
+    radio is drawn again by the platform, taking its layout space, so the
+    checked state stays perceivable when backgrounds are stripped. The caller
+    supplies the visible affordance, such as a styled row and a label that names
+    the radio. *)
 
 val select :
   ?style:Nopal_style.Style.t ->

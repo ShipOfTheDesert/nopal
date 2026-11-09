@@ -762,10 +762,14 @@ justification.
 
 The element DSL has a fixed minimal set: `Box`, `Row`, `Column`, `Text`,
 `Button`, `Input`, `Image`, `Scroll`, `Keyed`, `Empty`, `Map`, `Link`,
-`Form`. New primitive elements require strong justification and a
+`Form`, `Label`. New primitive elements require strong justification and a
 cross-platform viability argument. `Link` is viable everywhere: an anchor on
 web and in a webview, and `Link.decide` is pure, so a native renderer reuses it.
-`Form` groups inputs and submit semantics a native renderer also has.
+`Form` groups inputs and submit semantics a native renderer also has. `Label`
+names a control by its id, which every target platform can express: HTML
+`label for`, Android `labelFor`, GTK/ATK labelled-by, UIA `LabeledBy`, and an
+iOS combined accessibility element. Activation through it is native on the web
+and a backend dispatch elsewhere.
 
 ### IV. Reversible by Default
 
@@ -845,10 +849,14 @@ removing it — `disabled`, `multiple`, an input's `required` (with the
 `aria-disabled` (from its `disabled`). An option or an empty
 list asserts nothing when absent and uncovers the pair the same way — `accept`,
 `capture`, an input's `autocomplete` and its `type` from `input_type`, and a
-form's `autocomplete`. Some derivations have no absent form and are derived on
-every render, so a caller's pair of that key is always replaced: `placeholder`,
-a radio's `name`, a checkbox's, radio's or file picker's `type`, and a button's
-`type` (from `button_type`, `"button"` when the button names none).
+form's `autocomplete`. A radio's `data-nopal-visually-hidden` declines by
+presentation: a visually hidden radio asserts it and a visible one emits
+nothing, so a caller's pair of that name stands on a visible radio only. Some
+derivations have no absent form and are derived on every render, so a caller's
+pair of that key is always replaced: `placeholder`, a radio's `name`, a
+checkbox's, radio's or file picker's `type`, a button's `type` (from
+`button_type`, `"button"` when the button names none), and a label's `for`
+(from its `control_id`).
 
 Two renderers enforce this and no more than two, by two different mechanisms:
 `nopal_web` applies the declared list before it writes any derivation, and
@@ -866,13 +874,16 @@ real attributes: `disabled`, `accept`, `capture`, `multiple`, `placeholder`, a
 radio's `name`, a control's `type`, an input's `required`, `aria-required` and
 `autocomplete`, a form's `autocomplete` and `novalidate`, a button's `type`
 and `aria-disabled`, a drawing's `role`, `aria-label` and `aria-hidden`, a drawn
-checkbox's `data-nopal-drawn-checkbox`, and an image's `alt`. Every one carries the same value in both renderers except
+checkbox's `data-nopal-drawn-checkbox`, a visually hidden radio's
+`data-nopal-visually-hidden`, a label's `for`, and an image's `alt`. Every one carries the same value in both renderers except
 `disabled`, `multiple`, `required` and `novalidate`, which are a presence
 attribute (`""`) in the DOM and `"true"` in the structural tree, so the two
 agree on which side wins and not on the value; `aria-required` and a button's
 `aria-disabled` are `"true"` in both, a button's `type` is `"button"` or
 `"submit"` in both, a drawing's `role` is `"img"` and its `aria-hidden` `"true"`
-in both, a drawn checkbox's `data-nopal-drawn-checkbox` is `""` in both, and a decorative image's `alt` is present and `""` in both. A checkbox's, radio's or file picker's
+in both, a drawn checkbox's `data-nopal-drawn-checkbox` and a visually hidden
+radio's `data-nopal-visually-hidden` are `""` in both, a label's `for` is its
+`control_id` in both, and a decorative image's `alt` is present and `""` in both. A checkbox's, radio's or file picker's
 `type` is the structural node's tag, while an input's is a pair in both
 renderers. A container's `focusable` is a first-tier
 derivation in both, but each spells it in its own vocabulary — a tab-order
@@ -1090,8 +1101,9 @@ field on `Style.paint`.**
 
 `Element.input ~required:true` ships with the browser's own invalid appearance
 and nothing else, and no caller can restyle it. It is unreachable rather than
-merely unwired: `Nopal_style.Interaction.t` has exactly three states — `hover`,
-`pressed`, `focused` — so there is no state for an invalid style to hang on, and
+merely unwired: `Nopal_style.Interaction.t` has exactly four states — `hover`,
+`pressed`, `focused`, `focused_within` — so there is no state for an invalid
+style to hang on, and
 `Style.paint` carries no `outline`; neither an invalid state nor an outline is
 spelled anywhere in `nopal_style` or `nopal_web`.
 
@@ -1209,8 +1221,8 @@ guarantee. Each route is recorded rather than fixed, for the reason given under
 it, and each has its own owner.
 
 **An interaction state.** `Style_css.interaction_rules` resolves `hover`,
-`focused` and `pressed` with no parent axis, because it is handed an
-`Interaction.t` and not a position in the tree. All three fields are full
+`focused_within`, `focused` and `pressed` with no parent axis, because it is
+handed an `Interaction.t` and not a position in the tree. All four fields are full
 `Style.t` values, so a size is expressible in them from the public API; where an
 interaction state introduces a `Fixed` main-axis size the base style does not
 declare, the element is squeezable for exactly as long as that state is active.
@@ -1249,9 +1261,9 @@ change that adds it.**
 
 One thing this record does not defer is the tie between the guard's domain and
 the set of variants the backend lays out as flex containers.
-`Renderer.container_main_axis` answers `Some` for exactly the four variants
+`Renderer.container_main_axis` answers `Some` for exactly the five variants
 that call `apply_container_base_style`, and a comment at each end says so; a
-fifth flex container added without a matching arm would un-guard that variant's
+sixth flex container added without a matching arm would un-guard that variant's
 children with the whole suite green, so the two are changed together rather than
 watched.
 

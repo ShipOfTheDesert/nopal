@@ -31,6 +31,7 @@ let styled_interaction =
         |> Style.with_text (fun t -> t |> Text.text_decoration Text.Underline));
     pressed = None;
     focused = None;
+    focused_within = None;
   }
 
 let view () =

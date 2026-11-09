@@ -408,7 +408,8 @@ let radio_group_fixture ~visible_label : msg Nopal_ui.Radio_group.config =
     options_style = None;
     option_label_style = None;
     option_row_style = None;
-    on_label_click = None;
+    option_row_interaction = None;
+    inputs = Nopal_ui.Radio_group.Visible_inputs { on_label_click = None };
   }
 
 (* Same two reads as [check_override], a different claim: not that the caller's
@@ -882,6 +883,73 @@ let drawn_marker_outranks_attrs () =
   check_opt "structural: a native checkbox keeps the caller's pair" (Some "x")
     (structural_attr native drawn_marker_key)
 
+(* A visually hidden radio derives the [data-nopal-visually-hidden] marker, so a
+   caller's pair of that name loses to it in both renderers; a visible radio
+   derives none and uncovers the caller's pair. *)
+let hidden_marker_key = "data-nopal-visually-hidden"
+
+let radio_with ?(attrs = []) presentation =
+  E.radio ~attrs ~presentation ~name:"plan" ()
+
+let visually_hidden_marker_outranks_attrs () =
+  let caller = [ (hidden_marker_key, "x") ] in
+  let hidden =
+    radio_with ~attrs:caller Nopal_style.Presentation.Visually_hidden
+  in
+  let visible = radio_with ~attrs:caller Nopal_style.Presentation.Visible in
+  check_opt "web: the derived marker beats the caller's" (Some "")
+    (web_attr hidden hidden_marker_key);
+  check_opt "structural: the derived marker beats the caller's" (Some "")
+    (structural_attr hidden hidden_marker_key);
+  check_opt "web: re-asserted when the caller's pair arrives on update"
+    (Some "")
+    (web_attr_after_update
+       ~first:(radio_with Nopal_style.Presentation.Visually_hidden)
+       ~second:hidden hidden_marker_key);
+  check_opt "web: written when the radio becomes hidden on update" (Some "")
+    (web_attr_after_update ~first:visible ~second:hidden hidden_marker_key);
+  check_opt "web: a visible radio keeps the caller's pair" (Some "x")
+    (web_attr visible hidden_marker_key);
+  check_opt "structural: a visible radio keeps the caller's pair" (Some "x")
+    (structural_attr visible hidden_marker_key);
+  check_opt "web: the caller's pair is uncovered when the radio becomes visible"
+    (Some "x")
+    (web_attr_after_update ~first:hidden ~second:visible hidden_marker_key);
+  check_opt "web: a visible radio with no caller pair carries no marker" None
+    (web_attr (radio_with Nopal_style.Presentation.Visible) hidden_marker_key);
+  check_opt "structural: a visible radio with no caller pair carries no marker"
+    None
+    (structural_attr
+       (radio_with Nopal_style.Presentation.Visible)
+       hidden_marker_key)
+
+(* A label's [control_id] derives ["for"] on every render, so a caller's pair of
+   that key never stands, while a caller's pair of any other key is left where
+   it was. *)
+let label_with ?(attrs = []) control_id =
+  E.label ~attrs ~control_id [ E.text "Pro plan" ]
+
+let label_callers_pairs = [ ("for", "caller"); ("data-plan", "pro") ]
+
+let label_for_outranks_attrs () =
+  let authored = label_with ~attrs:label_callers_pairs "plan-pro" in
+  check_opt "web: the control's id beats the caller's for" (Some "plan-pro")
+    (web_attr authored "for");
+  check_opt "structural: the control's id beats the caller's for"
+    (Some "plan-pro")
+    (structural_attr authored "for");
+  check_opt "web: the caller's other pair survives" (Some "pro")
+    (web_attr authored "data-plan");
+  check_opt "structural: the caller's other pair survives" (Some "pro")
+    (structural_attr authored "data-plan");
+  check_opt "web: re-asserted when the caller's pair arrives on update"
+    (Some "plan-pro")
+    (web_attr_after_update ~first:(label_with "plan-pro") ~second:authored "for");
+  check_opt "web: a moved control id is written on update" (Some "plan-team")
+    (web_attr_after_update ~first:authored
+       ~second:(label_with ~attrs:label_callers_pairs "plan-team")
+       "for")
+
 (* A form's typed [autocomplete] and [novalidate], on the same terms as an
    input's typed fields above: both are spelled identically in both backends
    ([autocomplete] as its wire token, [novalidate] as a presence attribute),
@@ -1248,6 +1316,10 @@ let () =
             heading_semantics_outrank_attrs;
           Alcotest.test_case "drawn_marker_outranks_attrs" `Quick
             drawn_marker_outranks_attrs;
+          Alcotest.test_case "visually_hidden_marker_outranks_attrs" `Quick
+            visually_hidden_marker_outranks_attrs;
+          Alcotest.test_case "label_for_outranks_attrs" `Quick
+            label_for_outranks_attrs;
         ] );
       ( "the submit contract",
         [

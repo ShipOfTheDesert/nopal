@@ -30,6 +30,7 @@ let test_compose_with_tooltip () =
   | Row _
   | Column _
   | Form _
+  | Label _
   | Button _
   | Link _
   | Heading _
@@ -68,6 +69,7 @@ let test_compose_dimensions () =
             | Row _
             | Column _
             | Form _
+            | Label _
             | Button _
             | Link _
             | Heading _
@@ -89,6 +91,7 @@ let test_compose_dimensions () =
   | Row _
   | Column _
   | Form _
+  | Label _
   | Button _
   | Link _
   | Heading _

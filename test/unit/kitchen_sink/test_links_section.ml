@@ -56,13 +56,6 @@ let node_in label selector node =
 let section_of model =
   node_in "the links section" section (tree (render (K.view vp model)))
 
-let tag_of label node =
-  match node with
-  | Element { tag; _ } -> tag
-  | Empty
-  | Text _ ->
-      Alcotest.fail (label ^ " is not an element")
-
 let route_readout model =
   attr "data-route" (node_in "the route line" current_route (section_of model))
 
@@ -76,7 +69,10 @@ let test_links_section_has_route_and_external () =
   let ext = node_in "the external link" external_link s in
   Alcotest.(check (list string))
     "both links are anchors" [ "a"; "a" ]
-    [ tag_of "the route link" route; tag_of "the external link" ext ];
+    [
+      Test_util.tag_of "the route link" route;
+      Test_util.tag_of "the external link" ext;
+    ];
   Alcotest.(check (option string))
     "the route link's address is its route's path"
     (Some "/kitchen_sink/?links=target") (attr "href" route);

@@ -314,6 +314,7 @@ let form_fields label (el : form_msg E.t) =
   | E.Button _
   | E.Link _
   | E.Heading _
+  | E.Label _
   | E.Input _
   | E.Checkbox _
   | E.Radio _
@@ -353,6 +354,7 @@ let input_fields label (el : form_msg E.t) =
   | E.Row _
   | E.Column _
   | E.Form _
+  | E.Label _
   | E.Button _
   | E.Link _
   | E.Heading _
@@ -407,7 +409,12 @@ let padded =
     Nopal_style.Style.empty
 
 let hovered : Ix.t =
-  { hover = Some Nopal_style.Style.empty; pressed = None; focused = None }
+  {
+    hover = Some Nopal_style.Style.empty;
+    pressed = None;
+    focused = None;
+    focused_within = None;
+  }
 
 let form_builder_defaults_author_nothing () =
   let f = form_fields "defaults" (E.form [ E.text "a" ]) in

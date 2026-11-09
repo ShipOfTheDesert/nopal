@@ -13,7 +13,7 @@ Every concern is a separate opam package with strict one-way dependency flow:
 ```
 nopal_mvu       ← MVU core (Cmd, Sub, App, Task, Key_chord, Clipboard) — depends on nopal_element for the types Cmd/Sub/App carry (Scroll_delta.t, Viewport.t, Element.t); no platform deps
 nopal_element   ← Element.t DSL — no platform deps
-nopal_style     ← Typed layout/paint (Style, Font, Text, Cursor, Interaction, Color, and Checkbox_appearance: a checkbox painted by the platform or drawn from styles) — no platform deps
+nopal_style     ← Typed layout/paint (Style, Font, Text, Cursor, Interaction, Color, Checkbox_appearance: a checkbox painted by the platform or drawn from styles, and Presentation: a control painted or visually hidden) — no platform deps
 nopal_storage   ← Backend-agnostic async key-value storage contract (module type S, In_memory, With_codec) — no platform deps
 nopal_platform  ← Type-safe bidirectional routing + platform-capability signatures (Platform.NAV, Platform.S) — depends on nopal_storage, and on nopal_element for Router.destination's Link.destination; no platform deps (renamed from nopal_router)
 nopal_scene     ← Pure scene types (Color, Paint, Transform, Path segments, Scene, Graphic_name) — no platform deps
@@ -432,7 +432,8 @@ a backend renders as an attribute — `placeholder`, a radio's `name`, a picker'
 input's `required`/`autocomplete`/`input_type`/`name`, a form's
 `autocomplete`/`novalidate`, a button's `button_type`/`disabled`, a link's
 `destination` (its `href`, `rel` and `target`), a heading's `level` (its `role`,
-`aria-level` and `data-nopal-heading`) — the rule is: **typed-field derivations beat the `~attrs` list; within the list, the
+`aria-level` and `data-nopal-heading`), a label's `control_id` (its `for`), a
+radio's `presentation` (its `data-nopal-visually-hidden`) — the rule is: **typed-field derivations beat the `~attrs` list; within the list, the
 last pair wins.**
 
 Those are two tiers, and they are not the same tier. A typed field sits *above*
@@ -464,14 +465,17 @@ declines in one of two shapes:
   is `"_blank"` on a `New_tab` link and absent on the other two, so a caller's
   `rel` pair stands on a `Route` link only and a caller's `target` on a `Route`
   or an `External` link.
+- **By presentation** — a radio's `data-nopal-visually-hidden` is `""` on a
+  `Visually_hidden` radio and absent on a `Visible` one, so a caller's pair of
+  that name stands on a visible radio only.
 
 Some derivations have no absent form and are derived on every render, so a
 caller's pair of that key is always replaced: `placeholder`, a radio's `name`,
 a checkbox's, radio's or file picker's `type`, a button's `type` (from
 `button_type`, which is `"button"` when the button names none), a link's
-`href` (the `Route` or `New_tab` path, or the `External` URL), and a heading's `role`
+`href` (the `Route` or `New_tab` path, or the `External` URL), a heading's `role`
 (`"heading"`), `aria-level` (the level's digit, `"1"` to `"6"`) and
-`data-nopal-heading` (`""`).
+`data-nopal-heading` (`""`), and a label's `for` (its `control_id`).
 
 `nopal_web` and `nopal_test` are the two renderers that enforce this: the web
 backend applies `?attrs` before it writes any derivation, and the structural
@@ -484,7 +488,8 @@ web backend writes as real attributes: `disabled`, `accept`, `capture`,
 `novalidate`, a button's `type` and `aria-disabled`, a link's `href` and
 `rel`, a heading's `role`, `aria-level` and `data-nopal-heading`, a drawing's
 `role`, `aria-label` and `aria-hidden`, a drawn checkbox's
-`data-nopal-drawn-checkbox`, and an image's
+`data-nopal-drawn-checkbox`, a visually hidden radio's
+`data-nopal-visually-hidden`, a label's `for`, and an image's
 `alt`. Every one of them
 carries the same value in both renderers except `disabled`, `multiple`,
 `required` and `novalidate`, which are a presence attribute (`""`) in the DOM
@@ -494,7 +499,9 @@ a button's `type` is `"button"` or `"submit"` in both, a link's `rel` is
 `"noopener noreferrer"` in both, a heading's `role` is `"heading"`, its
 `aria-level` the level's digit and its `data-nopal-heading` `""` in both, a
 drawing's `role` is `"img"` and its
-`aria-hidden` `"true"` in both, a drawn checkbox's `data-nopal-drawn-checkbox` `""` in both, and a decorative image's `alt` is present and
+`aria-hidden` `"true"` in both, a drawn checkbox's `data-nopal-drawn-checkbox` `""` in both, a visually hidden
+radio's `data-nopal-visually-hidden` `""` in both, a label's `for` its
+`control_id` in both, and a decorative image's `alt` is present and
 `""` in both. A
 checkbox's, radio's or file picker's `type` is the structural node's tag; an
 input's `type` is a pair in both renderers. A container's
@@ -751,6 +758,30 @@ Element.form : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * 
      native form the group is an ordinary container and the Enter routing still
      holds. *)
 
+(* Labels — a native label for a control, associated by id *)
+Element.label : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
+  -> control_id:string -> 'msg Element.t list -> 'msg Element.t
+  (* A label for the control whose id is [control_id]; the control carries that
+     id as an ("id", _) pair in its own [attrs] and stays outside the label.
+     The label names the control (its accessible name comes from the label's
+     content), and a press on the label activates it — a radio is selected and
+     focused, a checkbox toggled — so the control's own handler dispatches and
+     the label carries no handler of its own: one press, one dispatch. On web it
+     is a native <label for=control_id>, and the activation is the platform's.
+     A container like Element.box, laying its children down the page unless
+     [style] asks for the other direction. [control_id] is typed, so a ("for", _)
+     pair in [attrs] never takes effect. Give a label no interactive children:
+     a press on one is that child's own press and does not reach the control.
+     A [control_id] naming no control renders a label that names nothing.
+     The structural renderer models the activation but not the naming: the node
+     has tag "label" and attrs [attrs] followed by ("for", control_id), and
+     Test_renderer.click on it fires the click handler of the node whose "id"
+     is control_id, as the browser does (focus transfer is not modelled). A
+     control_id naming no control, or a control with no handler, answers
+     No_handler { tag = "label"; event = "click" }.
+     Arm: Label of { style; interaction; attrs; control_id : string;
+     children : 'msg t list }, after Form. *)
+
 (* Interactive elements *)
 type button_type = Submit | Push
 Element.button_type_to_string : button_type -> string   (* "submit" | "button" — sole producer *)
@@ -800,8 +831,25 @@ Element.checkbox : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(strin
      the same role, keyboard toggle and form participation. [disabled] adds no
      look to a drawn box: pass the disabled look in [style] AND in [checked].
      See UI Components -> Checkbox for a worked example. *)
+type Presentation.t = Visible | Visually_hidden     (* nopal_style; Presentation.equal *)
 Element.radio : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
-  -> ?checked:bool -> ?disabled:bool -> ?on_select:'msg -> name:string -> unit -> 'msg Element.t
+  -> ?checked:bool -> ?disabled:bool -> ?presentation:Presentation.t
+  -> ?on_select:'msg -> name:string -> unit -> 'msg Element.t
+  (* [presentation] says whether the radio is seen; absent, it is Visible and
+     the platform's radio is drawn as before. A Visually_hidden radio is not
+     painted and takes no layout space, but it is still the platform's radio:
+     focusable, keyboard-operable, in its [name] group (one tab stop, arrow keys
+     move the selection), and in the accessibility tree with its role, name and
+     checked state. It is never hidden by removing the control: not
+     display:none, not visibility:hidden, not aria-hidden. Under forced colours
+     the platform draws it again, taking its layout space, so the checked state
+     stays perceivable. The caller supplies the visible affordance: a styled row
+     and an Element.label naming the radio, with a focused_within style on the
+     row, since a hidden radio paints no focus of its own. A caller style on a
+     hidden radio beats the hide rule (it has zero specificity), so give a
+     hidden radio no size or position of your own. On web the radio carries
+     data-nopal-visually-hidden="" (written after [attrs]); a Visible radio
+     carries none. Radio_group.with_hidden_inputs builds all of this. *)
 type select_option = { value : string; label : string; disabled : bool }
 Element.select_option : ?disabled:bool -> value:string -> string -> select_option
 Element.select : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list
@@ -1189,8 +1237,8 @@ type size = Fill | Hug | Fixed of float | Fraction of float
    Fixed main-axis size: width under a row parent, height under a column parent,
    and nothing for any other size, for the cross axis, or for a child of an
    element that is not a layout container. Three routes never get an axis at all
-   and so never get the guard: a size declared in an interaction (hover, focused
-   or pressed) style, a Draw element, which carries no Style.t, and a root
+   and so never get the guard: a size declared in an interaction (hover,
+   focused_within, focused or pressed) style, a Draw element, which carries no Style.t, and a root
    mounted into a container the framework did not build. CONTRIBUTING.md's D-9
    records them. The axis is the parent's, not the element's own
    layout.direction — that field is emitted as this element's
@@ -1221,7 +1269,8 @@ type layout = {
    one carrying flex_grow. Unlike the shrink guard above, a floor needs no
    parent axis, because it states something about this element alone rather
    than about how it competes with a sibling for room; it
-   is therefore emitted in an interaction (hover, focused or pressed) style too,
+   is therefore emitted in an interaction (hover, focused_within, focused or
+   pressed) style too,
    and beside a Fixed size both declarations are emitted, neither displacing the
    other. The web backend emits min-width and min-height including the zero:
    min-height: 0px, never a dropped declaration. *)
@@ -1283,18 +1332,28 @@ Style.rgba  : int -> int -> int -> float -> color
 
 ### Interaction (`nopal_style`)
 
-State-based style overrides for hover, press, and focus:
+State-based style overrides for hover, press, focus, and focus inside:
 
 ```ocaml
 type Interaction.t = {
-  hover   : Style.t option;
-  pressed : Style.t option;
-  focused : Style.t option;
+  hover          : Style.t option;  (* the pointer is over the element *)
+  pressed        : Style.t option;  (* the element is being pressed *)
+  focused        : Style.t option;  (* the element itself has visible focus *)
+  focused_within : Style.t option;  (* the element or any descendant has focus,
+                                       however it arrived: keyboard, pointer
+                                       or script *)
 }
-(* The web backend emits these as .class:hover, .class:active and
-   .class:focus-visible — focused is :focus-visible, not :focus, so a mouse
-   click focuses the element without showing the style, by design. Rule order
-   encodes precedence: hover, then focused, then pressed. *)
+(* Interaction.default sets all four to None; equal and has_any cover all four.
+   The web backend emits these as .class:hover, .class:focus-within,
+   .class:focus-visible and .class:active — focused is :focus-visible, not
+   :focus, so a mouse click focuses the element without showing the style, by
+   design. focused_within is a plain :focus-within rule (no :has, no @supports),
+   so it shows on any focus, pointer focus included, on every engine. Rule order
+   encodes precedence, a later state's set properties winning: hover, then
+   focused_within, then focused, then pressed. A drawn checkbox's ticked style
+   wins over every state. focused_within on a container is the route to a focus
+   treatment for a control that paints none of its own, such as a visually
+   hidden radio inside an option row. *)
 ```
 
 ### Typography (`nopal_style`)
@@ -1456,7 +1515,7 @@ same under every override below.
 | `Data_table` | container, header cell, row, cell → `?style` / `?header_style` / `?row_style` / `?cell_style`; container interaction → `?interaction`; one column at a time → `with_column_style`; the button a `sort_key` turns a header into → `with_sort_control_style` and `with_header_interaction`; header row → `with_header_row_style`; cell contents are the caller's own `Element.t` |
 | `Modal` | dialog → `with_style`; backdrop → `with_backdrop_style`; interaction → `with_interaction`; root box → `with_root_style`, displacing the published `default_root_style`; the title is part of the caller's body |
 | `Navigation_bar` | container → `with_style`; tab and active tab → `with_tab_style` / `with_active_tab_style`; bar-wide interaction → `with_interaction`; item label typography → `with_item_text_style`; per-item interaction → `with_item_interaction`; icon-to-label row, i.e. the gap between them → `with_item_row_style`; the icon is the caller's own `Element.t` |
-| `Radio_group` | each option's radio input → `config.style` / `config.interaction`; group box (label and options) → `with_group_style`; options box (direction, spacing, wrap) → `with_options_style`; group label → `with_visible_label` opts the element in and `with_label_style` styles it; option label typography → `with_option_label_style`; option row → `with_option_row_style`; identifiers → `with_id` |
+| `Radio_group` | each option's radio input → `config.style` / `config.interaction`; group box (label and options) → `with_group_style`; options box (direction, spacing, wrap) → `with_options_style`; group label → `with_visible_label` opts the element in and `with_label_style` styles it; option label typography → `with_option_label_style`; option row → `with_option_row_style`; option row states, such as a focus ring while its radio has focus → `with_option_row_interaction`; radios painted or visually hidden, with each option label a native label → `with_hidden_inputs`; identifiers → `with_id` |
 | `Select_input` | control → `config.style` / `config.interaction`; label typography → `with_label_style`; label-to-control wrapper → `with_wrapper_style`; identifier → `with_id` |
 | `Slug` | none — a pure function module that renders nothing |
 | `Text_input` | input → `config.style` / `config.interaction`; label typography → `with_label_style`; label-to-box gap → `with_wrapper_style`; error slot, and the error message's typography through that style's `text` component → `with_error_style`; identifier → `with_id`, which sets the pre-existing `config.id` field |
@@ -1521,6 +1580,10 @@ and an absent answer *uncovers* the general one rather than clearing it:
   so a function of the value could not tell one from another.
   `Radio_group.with_on_label_click` is `(string -> 'msg)` for the same reason — a
   group has many labels, and a single message could not say which was pressed.
+- `Radio_group.with_hidden_inputs` makes each option label a native
+  `Element.label` for its radio, so a press selects and focuses the radio with
+  no message to wire; `with_on_label_click` has no effect on such a group,
+  whichever of the two setters ran first.
 
 **Clicking a label focuses its control — the application completes it.** A view
 function cannot issue a `Cmd`, so the four labelled controls supply the mechanism
@@ -2296,6 +2359,20 @@ Accessible radio button group component.
 ```ocaml
 type radio_option = { label : string; value : string; disabled : bool }
 
+type 'msg inputs =
+  | Visible_inputs of { on_label_click : (string -> 'msg) option }
+  | Hidden_inputs
+(* How each option's radio is presented, and what its label is.
+   Visible_inputs: each radio is painted and each option label is a box;
+   on_label_click, when set, is what a pointer press on that box dispatches.
+   make starts here, with no message.
+   Hidden_inputs: each radio is Visually_hidden and each option label is a
+   native Element.label for its radio. A press on the label selects and focuses
+   the radio, and on_select fires from the radio's own change. The arm carries
+   no label-click message, so a hidden-input group a pointer cannot operate
+   cannot be built, even as a complete literal, and one press cannot dispatch
+   twice. *)
+
 type 'msg config = {
   label : string;
   options : radio_option list;
@@ -2313,7 +2390,8 @@ type 'msg config = {
   options_style : Style.t option;
   option_label_style : Style.t option;
   option_row_style : Style.t option;
-  on_label_click : (string -> 'msg) option;
+  option_row_interaction : Interaction.t option;  (* on every option row *)
+  inputs : 'msg inputs;
 }
 
 val radio_option : ?disabled:bool -> value:string -> string -> radio_option
@@ -2322,8 +2400,10 @@ val radio_option : ?disabled:bool -> value:string -> string -> radio_option
 val make : label:string -> options:radio_option list -> selected:string -> 'msg config
 (* [make ~label ~options ~selected] returns a config with name=None
    (auto-generated from slugified label), disabled=false, on_select=None,
-   no style/interaction override, empty attrs, and none of the eight
-   override fields set. *)
+   no style/interaction override, empty attrs, none of the override fields
+   set (no id, visible label, label/group/options/option-label/option-row
+   style or option-row interaction), and
+   inputs = Visible_inputs { on_label_click = None }. *)
 
 val with_id : string -> 'msg config -> 'msg config
 (* The group's identifier, used verbatim, and the stem every option id is
@@ -2360,17 +2440,37 @@ val with_options_style : Style.t -> 'msg config -> 'msg config
    as a column. *)
 
 val with_option_label_style : Style.t -> 'msg config -> 'msg config
-(* Each option's label box, and its text typography through that style's text
+(* Each option's label element — the box, or under with_hidden_inputs the
+   native label — and its text typography through that style's text
    component. *)
 
 val with_option_row_style : Style.t -> 'msg config -> 'msg config
 (* Each option's radio-to-label Row. *)
 
+val with_option_row_interaction : Interaction.t -> 'msg config -> 'msg config
+(* Each option's Row, and no other node. REPLACES rather than merges. Its
+   focused_within state is the route to a treatment a row shows while its radio
+   has focus — how a group under with_hidden_inputs, whose radios paint no
+   focus of their own, shows which option has it. config.interaction reaches
+   each radio instead and is independent of this. *)
+
+val with_hidden_inputs : 'msg config -> 'msg config
+(* Sets inputs = Hidden_inputs: every radio is Visually_hidden and every option
+   label becomes an Element.label ~control_id:(option_id config ~value). The
+   label keeps the option's label id and with_option_label_style, and the radio
+   keeps aria-labelledby pointing at it, so each option's accessible name is
+   the same in both modes. A label press selects and focuses the radio
+   natively and on_select fires from the radio's change: nothing to wire. Any
+   with_on_label_click message is dropped. There is no setter back; make starts
+   visible. Give the rows a focus treatment with with_option_row_interaction. *)
+
 val with_on_label_click : (string -> 'msg) -> 'msg config -> 'msg config
 (* Turns a pointer-down on an OPTION's label into a message carrying that
    option's value — a group has many labels, so a single 'msg could not say
    which was pressed. The group's own label element carries no handler: it has
-   no single control to act on. *)
+   no single control to act on. It writes the Visible_inputs arm only: on a
+   group under with_hidden_inputs it has no effect, whichever setter ran first,
+   because the native label already selects its radio on a press. *)
 
 val control_id : 'msg config -> string
 (* config.id when set, else the slugified group label. On the group container
@@ -2390,12 +2490,17 @@ val view : 'msg config -> 'msg Element.t
      with a visible label:    box[role=radiogroup] > [box(label); box(options) > row…]
    Both boxes honour a direction in their style and default to a column. The
    options box (with_options_style) carries no attributes and holds one Row per
-   option (with_option_row_style). Each Row has:
+   option (with_option_row_style, carrying with_option_row_interaction's
+   interaction). Each Row has:
    1. An Element.radio (sharing the group name) carrying
       ("id", option_id config ~value),
       ("aria-labelledby", option_id config ~value ^ "-label") and
-      ("data-field", <group name>)
-   2. A label element — a Box carrying ("id", option_id … ^ "-label")
+      ("data-field", <group name>); Visible under Visible_inputs,
+      Visually_hidden under Hidden_inputs
+   2. A label element carrying ("id", option_id … ^ "-label"), styled by
+      with_option_label_style: under Visible_inputs a Box, carrying
+      with_on_label_click's pointer handler when set; under Hidden_inputs an
+      Element.label whose control_id is option_id config ~value
    Each option is named by aria-labelledby and carries no aria-label of its
    own. When config.disabled is true, all radios are disabled and on_select is
    suppressed. Per-option disabled is also respected. *)
@@ -2730,7 +2835,7 @@ Keys that did **not** move, recorded so a reader does not go looking:
 
 The `Radio_group` container's shapes, row 5's Now and the `[row; row]` it keeps
 without the setter, changed again later; the `Radio_group` pin-bump paragraph
-below supersedes them, and these rows stay as the record of this change. The plain container (no visible label), unchanged by this table, is published as a change in that later paragraph.
+below supersedes them, and these rows stay as the record of this change. The plain container (no visible label), unchanged by this table, is published as a change in that later paragraph. Row 4's `[radio; box]` still holds for a group with visible inputs; under `with_hidden_inputs` a row is `[radio; label]` (see the Radio_group hidden-input pin-bump paragraph).
 
 Each new box carries `("id", <the label id>)` and wraps the label's text node, so
 rows 1–4 add exactly one node per control and reorder nothing — the control is
@@ -2759,7 +2864,7 @@ the listed fields as `None`.
 | `'msg Button.config` | `disabled_style`, `loading_style` |
 | `('row, 'msg) Data_table.config` | `column_style`, `sort_control_style`, `header_interaction`, `header_row_style` |
 
-`options_style` was added to `Radio_group.config` later; see the Radio_group pin-bump paragraph.
+`options_style` was added to `Radio_group.config` later; see the Radio_group pin-bump paragraph. Later still, `on_label_click` was replaced by `inputs`, and `option_row_interaction` was added; see the Radio_group hidden-input pin-bump paragraph.
 
 `Modal.config`, `Navigation_bar.config` and `Bottom_tabs.config` are **abstract**
 in their `.mli`s, so their new fields (`root_style`; `item_text_style`,
@@ -4203,11 +4308,29 @@ Test_renderer.checkbox_appearance :
      no trace of it, so assert a drawn look with this, not [style] or [attr].
      Not_found when nothing matches; No_handler { event = "appearance"; _ }
      when the match is not a checkbox. It never walks into children. *)
+Test_renderer.radio_presentation :
+  selector -> 'msg rendered -> (Presentation.t, error) result
+  (* The presentation the first matching radio declared, exactly as the view
+     wrote it: Visible when it declared none, or Visually_hidden. A disabled
+     radio reports its presentation like any other. Not_found when nothing
+     matches; No_handler { event = "presentation"; _ } when the match is not a
+     radio. It never walks: a container selected around a radio is not the
+     radio. The node also carries the derived pair
+     ("data-nopal-visually-hidden", "") after the view's own attrs on a
+     Visually_hidden radio, as the web backend writes it, and none on a Visible
+     one. *)
 
 (* Query *)
 Test_renderer.find     : selector -> node -> node option
 Test_renderer.find_all : selector -> node -> node list
 Test_renderer.text_content : node -> string
+Test_renderer.has_hover          : node -> bool
+Test_renderer.has_pressed        : node -> bool
+Test_renderer.has_focused        : node -> bool
+Test_renderer.has_focused_within : node -> bool
+  (* Each is true when the node is an element whose interaction sets that
+     state. This renderer models no focus, so these report what the view
+     declared, never whether the state is active. *)
 Test_renderer.find_heading : Element.heading_level -> string -> node -> node option
   (* The first heading of that level, pre-order depth-first, whose text_content
      is exactly the string — a test names a heading by level and text, never by
@@ -4916,6 +5039,148 @@ both boxes stack as columns with no gap. No other `nopal_ui` component's tree
 moved: each of the other ten was checked for a label sharing a container with
 the content it labels, and none has one.
 
+**Interaction answers that moved — read this on a pin bump.**
+`Nopal_style.Interaction.t` gains a fourth state, `focused_within`, which
+applies while the element or any of its descendants has focus, however the
+focus arrived. Two kinds of code stop compiling. **A complete `Interaction.t`
+record literal** (row 1) stops with `Some record fields are undefined:
+focused_within`. **A closed record pattern on `Interaction.t`** (no `; _`)
+stops with warning 9, missing fields in a record pattern, which is an error
+under dune's default dev profile (row 2). A literal written as
+`{ Interaction.default with … }` compiles untouched. Every other row is
+additive: an interaction that sets no `focused_within` emits exactly the rules
+it did.
+
+"Before" is the tree at commit `f2277bd`. The Where column names the output
+whose answer moved: web, the structural `Test_renderer`, or all of them for a
+compile break. Find it is a command a consumer runs from their repository root;
+a row whose Find it is "—" needs no search. Each grep is a first pass: a
+pattern or literal that `ocamlformat` split over several lines, a record
+opened on a field other than the one the grep names, or a module reached
+through an alias (`module I = Nopal_style.Interaction`), escapes it, and the
+compiler is the backstop. No test reads this table. The behaviour each row
+describes is tested in the `nopal_style`, `nopal_test`, `nopal_web` and
+kitchen-sink suites and, for web, by the kitchen-sink Playwright cases, but an
+edit to the text alone reddens no test.
+
+| # | Key | Visible | Where | When | Before | Now | Find it |
+|---|---|---|---|---|---|---|---|
+| 1 | `interaction-focused-within-field` | compile | all | an `Interaction.t` written as a complete record literal | compiled | missing-field error. Fix: add `focused_within = None`, which styles nothing | `grep -rnwE "focused *=" --include=*.ml .` (every complete literal names that field; record updates and unrelated `focused` fields also match), then the compiler |
+| 2 | `interaction-closed-pattern` | compile | all | a pattern on `Interaction.t` that names every field and ends without `; _`, such as `let { Interaction.hover; pressed; focused } = i` | compiled | warning 9 error: `focused_within` is unlisted. Fix: bind it, or add `; _`. A walk over every state, such as a check of each state's style, binds it and walks it too | `grep -rnE "\{ *([A-Za-z_.]*Interaction\.)?hover *;" --include=*.ml .` (a punned pattern that opens on `hover`) |
+| 3 | `interaction-focused-within-state` | additive | all | `Nopal_style.Interaction` | 3 fields | 4: `focused_within : Style.t option`, last. `default` sets it to `None`, `equal` compares it, and `has_any` counts it, so an element whose only state is `focused_within` gets its base style as a class rule, as any element with an interaction does | — |
+| 4 | `interaction-focused-within-css` | render | web | an interaction whose `focused_within` is `Some` | 3 pseudo-class rules at most (`:hover`, `:focus-visible`, `:active`) | 4 at most: `.C:focus-within{…}` joins the element's interaction class, a plain rule with no `:has` and no `@supports`, emitted between `:hover` and `:focus-visible`. The order is hover, focused_within, focused, pressed, and at equal specificity a later state's set properties win. A drawn checkbox's ticked rule still wins over all four | — |
+| 5 | `interaction-focused-within-on-a-leaf` | render | web | `focused_within` on a control with no focusable descendant, such as a button or an input | — | it applies while the control itself has focus, pointer focus included, which `focused` (`:focus-visible`) does not. For a keyboard-only ring on the control itself, keep `focused` | — |
+| 6 | `interaction-focused-within-floor` | additive | web | a `min_width` or `min_height` declared in a `focused_within` style | — | emitted in the `:focus-within` rule, as in the other three states. A `Fixed` size declared there gets no shrink guard, as in the other three (`CONTRIBUTING.md` D-9) | — |
+| 7 | `nopal-test-has-focused-within` | additive | structural | `Nopal_test.Test_renderer` | no focus-within accessor | `has_focused_within : node -> bool`, the same shape as `has_focused`: true when the node's interaction sets `focused_within`. It reports what the view declared, not whether focus is inside | — |
+
+What did **not** move, recorded so a reader does not go looking. The other
+three fields keep their names, their meaning, their selectors (`:hover`,
+`:focus-visible`, `:active`) and their order relative to each other: `focused`
+is still focus on the element itself that the platform shows as visible,
+typically keyboard focus. No component setter changed its signature; each one
+that takes an `Interaction.t` now carries a `focused_within` style to the node
+it already styled. No `!important` was added. There is no keyboard-only
+focus-within state. Observed in WebKitGTK 2.52.6 (the Tauri Linux engine): an
+arrow key that moves focus within a radio group entered by Tab drops
+`:focus-visible`, so such a state would vanish on the first arrow key.
+
+**Element answers that moved — read this on a pin bump.**
+`Element.radio` takes a typed `?presentation`, `Visible` (as before) or
+`Visually_hidden`, and `Nopal_element` gains `Element.label`, a native label
+that names and activates a control identified by its id. The `Radio` arm gains
+a `presentation` field and `Element.t` gains a `Label` arm, so three kinds of
+code stop compiling. **An exhaustive `match` on `Element.t`** stops with a
+non-exhaustive-match error, `Label` unmatched (row 1). **A closed record pattern
+on the `Radio` arm** (no `; _`) stops with warning 9 (row 2), and **an
+`Element.Radio {…}` value built directly** stops with `Some record fields are
+undefined: presentation` (row 3). Every other row is additive, or changes what a
+radio that opts into `Visually_hidden` renders. A radio that declares no
+presentation renders exactly as before.
+
+"Before" is the tree at commit `f2277bd`. The Where column names the output
+whose answer moved: web, the structural `Test_renderer`, or all of them for a
+compile break. Find it is a command a consumer runs from their repository root;
+a row whose Find it is "—" needs no search. Each grep is a first pass: a
+pattern or literal that `ocamlformat` split over several lines, or a module
+reached through an alias (`module E = Nopal_element.Element`, then `E.radio`),
+escapes it, and the compiler is the backstop. No test reads this table. The
+behaviour each row describes is tested in the `nopal_style`, `nopal_element`,
+`nopal_test`, `nopal_web` and kitchen-sink suites and, for web, by the
+kitchen-sink Playwright and axe cases, but an edit to the text alone reddens no
+test.
+
+| # | Key | Visible | Where | When | Before | Now | Find it |
+|---|---|---|---|---|---|---|---|
+| 1 | `element-arm-label` | compile | all | an exhaustive `match` on `Element.t` | no label arm | non-exhaustive-match error. Fix: add a `Label { style; interaction; attrs; control_id; children }` arm (or `Label _`); a walk over children treats it as it treats `Box` | `grep -rn -e "Form _" -e "Form {" --include=*.ml .` (an exhaustive matcher names `Form`), then the compiler |
+| 2 | `element-radio-arm-closed-pattern` | compile | all | a `match` on `Element.t` whose `Radio { … }` pattern names every field and ends without `; _` | compiled | warning 9 error: `presentation` is unlisted. Fix: add `; _`, or bind `presentation` | `grep -rn -e "Radio *{" -e "Radio$" --include=*.ml .` (the second pattern finds an `ocamlformat` split) |
+| 3 | `element-radio-arm-record-literal` | compile | all | an `Element.Radio { … }` value built directly, not through `Element.radio` | compiled | missing-field error. Fix: add `presentation = Nopal_style.Presentation.Visible`, or build it with `Element.radio` | `grep -rn -e "Radio *{" -e "Radio$" --include=*.ml .`, then the compiler |
+| 4 | `element-radio-presentation` | additive | all | every `Element.radio` call | no `?presentation` | `?presentation:Presentation.t`, between `?disabled` and `?on_select`; absent is `Visible`, so an existing call compiles and renders unchanged. The `Radio` arm gains `presentation : Presentation.t` between `disabled` and `on_select`; `Element.map` keeps it and `Element.equal` compares it | `grep -rn "Element.radio" --include=*.ml .` (no action needed) |
+| 5 | `style-presentation` | additive | all | `Nopal_style` | — | `module Presentation`: `type t = Visible \| Visually_hidden` and `equal : t -> t -> bool` | — |
+| 6 | `element-label` | additive | all | `Nopal_element.Element` | — | `label : ?style:Style.t -> ?interaction:Interaction.t -> ?attrs:(string * string) list -> control_id:string -> 'msg t list -> 'msg t`, arm `Label { style; interaction; attrs; control_id; children }` after `Form`. On web a native `<label for=control_id>`, laid out as a flex container that is a column unless its style sets a direction, as `Box` is. A press on it activates the named control, whose own handler dispatches; the label has none. `control_id` is typed: `for` is derived at the first tier in both renderers, so a `("for", _)` pair in `~attrs` never takes effect | — |
+| 7 | `test-renderer-label-node` | render | structural | a label in the structural tree | — | tag `"label"`, attrs the view's own followed by `("for", control_id)`. `click` on it answers `No_handler { tag = "label"; event = "click" }`, because this renderer models neither the naming nor the activation: drive the control. A field inside a label inside a form counts toward implicit submission as one inside a box does | — |
+| 8 | `radio-visually-hidden-marker` | render | all | a radio whose presentation is `Visually_hidden`, or a caller's `("data-nopal-visually-hidden", …)` pair on any radio | no marker; a caller pair survived in both renderers | a hidden radio carries `data-nopal-visually-hidden=""` in both renderers, written after `~attrs`, so a caller pair of that name never stands on it. A `Visible` radio carries none and leaves a caller pair standing | `grep -rn "data-nopal-visually-hidden" --include=*.ml .` |
+| 9 | `web-style-sheet-hide-rule` | render | web | every mount's `<style data-nopal>` | three fixed rules at indices 0–2; class rules from index 3 | four: the hide rule at index 3, `@media not (forced-colors: active){:where([data-nopal-visually-hidden]){position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0;padding:0}}`. Class rules start at index 4. It matches only an element Nopal marked and has zero specificity, so a radio's own style beats it; give a hidden radio no size or position of its own. Under forced colours it does not apply and the radio is the platform's again. Per Media Queries Level 4 (not observed on such an engine): an engine that cannot evaluate `forced-colors` does not match the query either, so the radio shows there too | `grep -rn -e cssRules -e insertRule .` (a DOM shim or a test counting the sheet's rules) |
+| 10 | `web-style-sheet-visually-hidden-marker` | additive | web | `Nopal_web.Style_sheet` | — | `visually_hidden_marker : string`, `"data-nopal-visually-hidden"` | — |
+| 11 | `test-renderer-radio-presentation` | additive | structural | `Nopal_test.Test_renderer` | — | `radio_presentation : selector -> 'msg rendered -> (Presentation.t, error) result`: the first match's declared presentation; `Not_found` when nothing matches, `No_handler { event = "presentation"; _ }` when the match is not a radio. `error` gains no constructor | — |
+
+What did **not** move, recorded so a reader does not go looking. A radio that
+declares no presentation renders the same element with the same attributes
+and the same inline or class styling as before. A hidden radio is still the
+platform's radio: its role, name, checked state, `name` group, tab stop, arrow
+keys and `data-field` anchor are unchanged, and it is never hidden with
+`display`, `visibility` or `aria-hidden`. A checkbox has no presentation. No
+other element gained an arm or a field. `Text_input`, `Checkbox` and
+`Select_input` still name their controls with a box and `aria-labelledby`, not
+with `Element.label`, and so does `Radio_group` with visible inputs.
+
+**Radio_group hidden-input answers that moved — read this on a pin bump.**
+A `Nopal_ui.Radio_group` can hide its radios and keep them operable:
+`with_hidden_inputs` makes every radio `Visually_hidden` and every option label
+a native `Element.label` for its radio, and `with_option_row_interaction` puts
+an interaction on every option row, whose `focused_within` state shows which
+option has focus. `config` loses `on_label_click`, which moves inside the new
+`inputs` field, and gains `option_row_interaction`. Two kinds of code stop
+compiling. **A complete `Nopal_ui.Radio_group.config` record literal** (row 1)
+stops on the `on_label_click` field and on the undefined
+`option_row_interaction` and `inputs`. **A read or update of
+`config.on_label_click`** on a `Radio_group.config` (row 2) stops with no such
+field. A config built with `make` and the setters, or updated with
+`{ config with … }` on any other field, compiles untouched and renders as
+before.
+
+"Before" is the tree at commit `f2277bd`. The Where column names the output
+whose answer moved: web, the structural `Test_renderer`, or all of them. Find
+it is a command a consumer runs from their repository root; a row whose Find
+it is "—" needs no search. Each grep is a first pass: a pattern or literal that
+`ocamlformat` split over several lines, or a module reached through an alias
+(`module RG = Nopal_ui.Radio_group`), escapes it, and the compiler is the
+backstop. No test reads this table. The behaviour each row describes is tested
+in the `nopal_ui` and kitchen-sink suites and, for web, by the kitchen-sink
+Playwright and axe cases, but an edit to the text alone reddens no test.
+
+| # | Key | Visible | Where | When | Before | Now | Find it |
+|---|---|---|---|---|---|---|---|
+| 1 | `ui-radio-group-config-literal` | compile | all | a `Nopal_ui.Radio_group.config` written as a complete record literal | compiled | compile error on `on_label_click`, and `option_row_interaction` and `inputs` undefined. Fix: replace `on_label_click = X` with `inputs = Radio_group.Visible_inputs { on_label_click = X }` and add `option_row_interaction = None`; the group renders as before | `grep -rn "option_row_style *=" --include=*.ml .` (every complete literal names that field), then the compiler |
+| 2 | `ui-radio-group-on-label-click-field` | compile | all | `config.on_label_click` read, or `{ config with on_label_click = … }` written, on a `Radio_group.config` | compiled | no such field. Fix: read `match config.inputs with Visible_inputs { on_label_click } -> … \| Hidden_inputs -> …`; write with `with_on_label_click` | `grep -rn "on_label_click" --include=*.ml .`, then keep the hits on a `Radio_group` config: `Checkbox`, `Text_input` and `Select_input` keep their own `on_label_click` field |
+| 3 | `ui-radio-group-inputs` | additive | all | `Nopal_ui.Radio_group` | — | `type 'msg inputs = Visible_inputs of { on_label_click : (string -> 'msg) option } \| Hidden_inputs`; `config` gains `inputs : 'msg inputs` as its last field, and `make` fills `Visible_inputs { on_label_click = None }`. `Hidden_inputs` carries no label-click message, so a hidden-input group a pointer cannot operate cannot be built, even as a literal | — |
+| 4 | `ui-radio-group-with-hidden-inputs` | additive | all | `Nopal_ui.Radio_group` | no hidden-input mode | `with_hidden_inputs : 'msg config -> 'msg config`: each radio is `Visually_hidden`, and each option label is `Element.label ~control_id:(option_id config ~value)`, keeping the label id, `with_option_label_style` and the radio's `aria-labelledby`, so every accessible name is unchanged. A press on a label selects and focuses its radio natively, and `on_select` fires from the radio's own change. Any label-click message is dropped. There is no setter back. `config.style` still lands on each radio, and a radio's own style beats the hide rule, so give it no size or position | — |
+| 5 | `radio-group-hidden-row-shape` | render | all | each option row of a group under `with_hidden_inputs` | — | `[radio; label]`: the label node (`<label for>` on web, tag `"label"` structurally) carrying the same id as the visible mode's box. A visible group's rows stay `[radio; box]` | — |
+| 6 | `ui-radio-group-with-option-row-interaction` | additive | all | `Nopal_ui.Radio_group` | option rows could take no interaction | `config` gains `option_row_interaction : Interaction.t option` after `option_row_style`, `make` fills `None`, and `with_option_row_interaction : Interaction.t -> 'msg config -> 'msg config` puts it on every option row and on no other node. It replaces rather than merges. On web a row given an interaction has its base style written as a class rule rather than inline | — |
+| 7 | `ui-radio-group-on-label-click-under-hidden` | additive | all | `with_on_label_click` on a group under `with_hidden_inputs` | — | no effect, whichever of the two setters ran first: the native label already selects its radio, so a message would be a second dispatch for one press. On a visible group it does what it did | — |
+| 8 | `ui-component-table-radio-group-row` | docs | all | anyone reading the UI Components override table's `Radio_group` row | "… option row → `with_option_row_style`; identifiers → `with_id`" | adds "option row states, such as a focus ring while its radio has focus → `with_option_row_interaction`; radios painted or visually hidden, with each option label a native label → `with_hidden_inputs`" | — |
+| 9 | `kitchen-sink-hidden-radio-section` | example | web | anyone copying the kitchen sink | no hidden-radio section | "A radio group with hidden inputs" (`data-testid="hidden-radio-section"`) right after the radio-row section: a "Shipping" group of Standard, Express and Overnight in a row, each option row padded 8 with a 1 px hairline and radius 6, ringed by a 2 px `focused_within` shadow while its radio has focus. Built with `make`, `with_id`, `with_visible_label`, `with_group_style`, `with_options_style` (`Row_dir`, gap 12), `with_option_row_style`, `with_option_row_interaction` and `with_hidden_inputs`, with `{ config with on_select }` for the message. It is also the kitchen sink's home of `Element.label` (`examples/kitchen_sink/sub_hidden_radio.ml`) | — |
+
+What did **not** move, recorded so a reader does not go looking. A group with
+visible inputs, the default, renders the same tree, attributes, styles and
+handlers as before: rows `[radio; box]`, the box carrying
+`with_on_label_click`'s handler when one is set, and a press on that box still
+dispatches only that message and selects nothing natively. In both modes each
+radio's id, `aria-labelledby` and `data-field`, the group's role, naming
+attribute, id and `config.attrs`, and the options box are unchanged. The group
+is still one tab stop whose arrow keys move the choice, and disabled handling,
+for the whole group and per option, is unchanged in both modes. There is no
+style for the chosen option and no divider between options.
+
 #### Telemetry harness (`Nopal_test.Telemetry_test`)
 
 Native, browser-free harness that drives a real app through the recording MVU
@@ -4977,14 +5242,22 @@ Nopal_web.mount :
       away from the app. Mount through Nopal_tauri_mount, which supplies one."
    Reading that one global is all nopal_web knows of Tauri; it depends on no
    Tauri package.
-   Each mount appends its own <style data-nopal> to <head>, opening with three
+   Each mount appends its own <style data-nopal> to <head>, opening with four
    fixed rules: the scoped heading reset (see Element DSL -> Headings), the
    drawn-checkbox reset :where([data-nopal-drawn-checkbox]){appearance:none;
-   margin:0}, and a forced-colours fallback that gives a drawn checkbox back
-   appearance:auto and removes its tick image. The renderer writes
-   data-nopal-drawn-checkbox="" only on a checkbox whose appearance is Drawn,
-   over any caller pair of that name. A DOM shim that mounts under Node must
-   implement the sheet's insertRule. *)
+   margin:0}, a forced-colours fallback that gives a drawn checkbox back
+   appearance:auto and removes its tick image, and the hide rule
+   @media not (forced-colors: active){:where([data-nopal-visually-hidden]){
+   position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;
+   clip-path:inset(50%);white-space:nowrap;border:0;padding:0}}. The renderer
+   writes data-nopal-drawn-checkbox="" only on a checkbox whose appearance is
+   Drawn, and data-nopal-visually-hidden="" only on a radio whose presentation
+   is Visually_hidden, each over any caller pair of that name. The hide rule
+   has zero specificity, so a radio's own style beats it; under forced colours it
+   does not apply and the radio shows. Per Media Queries Level 4 (not observed on
+   such an engine): an engine that cannot evaluate forced-colors does not match
+   the query either, so the radio shows there too. Class rules start at index 4. A DOM shim that mounts under Node
+   must implement the sheet's insertRule. *)
 
 (* Telemetry sibling of mount — see the E2E Telemetry section (Layer 2) *)
 Nopal_web.mount_with_telemetry :

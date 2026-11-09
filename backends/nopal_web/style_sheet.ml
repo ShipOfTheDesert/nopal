@@ -47,6 +47,7 @@ type ticked_id = shared_entry
 
 let heading_marker = "data-nopal-heading"
 let drawn_checkbox_marker = "data-nopal-drawn-checkbox"
+let visually_hidden_marker = "data-nopal-visually-hidden"
 
 let heading_reset_rule =
   ":where([" ^ heading_marker
@@ -60,7 +61,13 @@ let forced_colors_rule =
   "@media (forced-colors: active){" ^ marked ^ "{appearance:auto}" ^ marked
   ^ ":checked{background-image:none !important}}"
 
-let fixed_rules = [ heading_reset_rule; drawn_reset_rule; forced_colors_rule ]
+let hide_rule =
+  "@media not (forced-colors: active){:where([" ^ visually_hidden_marker ^ "]){"
+  ^ "position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;"
+  ^ "clip-path:inset(50%);white-space:nowrap;border:0;padding:0}}"
+
+let fixed_rules =
+  [ heading_reset_rule; drawn_reset_rule; forced_colors_rule; hide_rule ]
 
 let create () =
   let doc = Jv.get Jv.global "document" in

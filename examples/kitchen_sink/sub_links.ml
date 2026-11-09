@@ -87,6 +87,7 @@ let link_interaction =
         |> Style.with_text (fun t -> t |> Text.text_decoration Text.Underline));
     pressed = None;
     focused = None;
+    focused_within = None;
   }
 
 let offset_link_interaction =
@@ -100,6 +101,7 @@ let offset_link_interaction =
             |> Text.underline_offset 3.0));
     pressed = None;
     focused = None;
+    focused_within = None;
   }
 
 let error_line testid text =
