@@ -936,6 +936,22 @@ val scroll :
     and a container that asks for nothing behaves exactly as it did before the
     argument existed.
 
+    A request acts on both axes, each decided on its own: horizontally by width,
+    vertically by height. One alignment governs both, and an axis whose content
+    does not overflow is never moved, so a row of tabs wider than its container
+    is revealed sideways and a list only taller than its container is revealed
+    vertically, without either naming an axis. A list whose rows also overflow
+    sideways can therefore move sideways on a vertical reveal. Under
+    {!Reveal.Nearest} a child larger than the container that already fills it
+    along an axis is not moved on that axis, so a reader partway through a long
+    child keeps their place and a full-width row does not reset the sideways
+    position. An axis whose scroll range runs from a negative offset up to zero
+    — the horizontal axis under right-to-left, and some axes of a vertical or
+    sideways writing mode — is left untouched rather than moved, and so is every
+    axis when the backend cannot tell which way they run. The backend decides
+    this from the container's computed writing mode and direction; it never
+    writes an offset to find out.
+
     [attrs] are application attributes, carried to the rendered container as
     written. They are the container's own identity, which is what lets a
     platform request name it directly instead of reaching it through a wrapper

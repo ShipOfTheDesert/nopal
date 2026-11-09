@@ -11,7 +11,7 @@ type mounted = { unmount : unit -> unit }
     subscription listener — keydown, resize, visibility, intervals), and calls
     the [safe_area_source] unlisten when one was supplied. It is idempotent — a
     second call is inert and never raises — so repeated mount->unmount cycles
-    never accumulate listeners or observers (feature 0121, FR-4).
+    never accumulate listeners or observers.
 
     {!Blob_store} is deliberately outside its scope: blobs are application-owned
     data, not mount-registered resources, so unmounting leaves every stored blob
@@ -168,21 +168,21 @@ val mount_with_telemetry :
 
     The on/off distinction is the function name and the [handle] return type —
     not an optional argument — mirroring the [create] / [create_with_telemetry]
-    split one layer up (RFC 0110, Implementation Decision 2). Because this
-    function both creates and drives the runtime, the bridge always backs the
-    runtime that is actually running, so it can never read an empty log.
+    split one layer up. Because this function both creates and drives the
+    runtime, the bridge always backs the runtime that is actually running, so it
+    can never read an empty log.
 
     [serialize_msg] / [serialize_model] render recorded values to the strings
     stored in [Message] and [Model_transition] events; each defaults to
-    [fun _ -> "<opaque>"] (REQ-F4). The returned handle is unforgeable (it can
-    only come from here or {!Nopal_runtime.Runtime.Make.create_with_telemetry})
-    and is the input to Layer 3 ([Nopal_tauri.Telemetry.expose]).
+    [fun _ -> "<opaque>"]. The returned handle is unforgeable (it can only come
+    from here or {!Nopal_runtime.Runtime.Make.create_with_telemetry}) and is the
+    input to Layer 3 ([Nopal_tauri.Telemetry.expose]).
 
     The bridge exposes [getEvents()] (returns the recorded events, then clears)
     and [waitForMessage(fragment, timeoutMs)] (resolves on the first [Message]
     containing [fragment], rejects on timeout). Installing it is an explicit,
     greppable opt-in; the application is responsible for gating reachability in
-    release builds (REQ-N2). *)
+    release builds. *)
 
 val parse_css_px : string -> int
 (** [parse_css_px raw] parses a CSS pixel value string (e.g. ["42"], ["42px"],
@@ -201,9 +201,9 @@ val web_interpret_atom :
     cleanup, or [Error] for an atom the web backend cannot serve. [Custom] runs
     its setup; [Viewport] is a no-op because the viewport is delivered through
     [set_viewport], not a listener. Exhaustive over [Sub.atom]: a new
-    constructor is a compile error here, never a silent no-op (REQ-F3). Exposed
-    as the interpreter over the public [atom] type so its behaviour is
-    unit-testable directly. *)
+    constructor is a compile error here, never a silent no-op. Exposed as the
+    interpreter over the public [atom] type so its behaviour is unit-testable
+    directly. *)
 
 module Style_css = Style_css
 (** Re-exported for direct access. *)
@@ -219,7 +219,7 @@ module Renderer = Renderer
 (** Re-exported for direct access. *)
 
 module Canvas_renderer = Canvas_renderer
-(** Re-exported for direct access (FR-7 canvas clear/hidpi tests). *)
+(** Re-exported for direct access by the canvas clear and hidpi tests. *)
 
 module Platform_web = Platform_web
 (** Web platform navigation via the browser History API. *)
@@ -228,9 +228,8 @@ val drain_focus : string Queue.t -> unit
 (** [drain_focus pending] focuses each queued element id in FIFO order, emptying
     the queue. The runtime interprets [Cmd.focus] synchronously during dispatch,
     before the rAF DOM patch, so the web backend buffers focus requests and
-    calls this once per frame after {!Renderer.update} (FR-3). Exposed for unit
-    testing the drain order and last-wins result; not part of the behavioural
-    API. *)
+    calls this once per frame after {!Renderer.update}. Exposed for unit testing
+    the drain order and last-wins result; not part of the behavioural API. *)
 
 val drain_scroll_by :
   ?on_error:(string -> unit) ->

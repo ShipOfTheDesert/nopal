@@ -223,6 +223,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     file_input : Sub_file_input.model;
     receipt_flow : Sub_receipt_flow.model;
     reveal_list : Sub_reveal_list.model;
+    reveal_tabs : Sub_reveal_tabs.model;
     scroll_pane : Sub_scroll_pane.model;
     focus_reveal : Sub_focus_reveal.model;
     fixed_size : Sub_fixed_size.model;
@@ -273,6 +274,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     | File_input_msg of Sub_file_input.msg
     | Receipt_flow_msg of Sub_receipt_flow.msg
     | Reveal_list_msg of Sub_reveal_list.msg
+    | Reveal_tabs_msg of Sub_reveal_tabs.msg
     | Scroll_pane_msg of Sub_scroll_pane.msg
     | Focus_reveal_msg of Sub_focus_reveal.msg
     | Fixed_size_msg of Sub_fixed_size.msg
@@ -416,6 +418,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
     let file_input, file_input_cmd = Sub_file_input.init () in
     let receipt_flow, receipt_flow_cmd = Sub_receipt_flow.init () in
     let reveal_list, reveal_list_cmd = Sub_reveal_list.init () in
+    let reveal_tabs, reveal_tabs_cmd = Sub_reveal_tabs.init () in
     let scroll_pane, scroll_pane_cmd = Sub_scroll_pane.init () in
     let focus_reveal, focus_reveal_cmd = Sub_focus_reveal.init () in
     let fixed_size, fixed_size_cmd = Sub_fixed_size.init () in
@@ -498,6 +501,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         file_input;
         receipt_flow;
         reveal_list;
+        reveal_tabs;
         scroll_pane;
         focus_reveal;
         fixed_size;
@@ -533,6 +537,7 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
           Nopal_mvu.Cmd.map (fun m -> File_input_msg m) file_input_cmd;
           Nopal_mvu.Cmd.map (fun m -> Receipt_flow_msg m) receipt_flow_cmd;
           Nopal_mvu.Cmd.map (fun m -> Reveal_list_msg m) reveal_list_cmd;
+          Nopal_mvu.Cmd.map (fun m -> Reveal_tabs_msg m) reveal_tabs_cmd;
           Nopal_mvu.Cmd.map (fun m -> Scroll_pane_msg m) scroll_pane_cmd;
           Nopal_mvu.Cmd.map (fun m -> Focus_reveal_msg m) focus_reveal_cmd;
           Nopal_mvu.Cmd.map (fun m -> Fixed_size_msg m) fixed_size_cmd;
@@ -719,6 +724,12 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
         in
         ( { model with reveal_list },
           Nopal_mvu.Cmd.map (fun m -> Reveal_list_msg m) rl_cmd )
+    | Reveal_tabs_msg rt_msg ->
+        let reveal_tabs, rt_cmd =
+          Sub_reveal_tabs.update model.reveal_tabs rt_msg
+        in
+        ( { model with reveal_tabs },
+          Nopal_mvu.Cmd.map (fun m -> Reveal_tabs_msg m) rt_cmd )
     | Scroll_pane_msg sp_msg ->
         let scroll_pane, sp_cmd =
           Sub_scroll_pane.update model.scroll_pane sp_msg
@@ -4423,6 +4434,21 @@ module Make (Platform : Nopal_platform.Platform.S) = struct
                  (fun m -> Scroll_pane_msg m)
                  (Sub_scroll_pane.view vp model.scroll_pane);
              ];
+           (* After the two vertical ones on purpose: the same reveal request,
+              acting sideways on a row of tabs wider than its container and on
+              both axes at once in a container overflowing both ways. Two more
+              strips repeat the tabs on reversed x axes (dir=rtl and
+              vertical-rl), where choosing a tab must not write scrollLeft. The strip
+              mounts with its last tab already requested, so it is revealed on
+              arrival rather than only once the choice changes. *)
+           view_section
+             ~attrs:[ ("data-testid", "reveal-tabs-section") ]
+             "Reveal a child sideways and on both axes"
+             [
+               Element.map
+                 (fun m -> Reveal_tabs_msg m)
+                 (Sub_reveal_tabs.view vp model.reveal_tabs);
+             ];
            (* The other direction of focus. The focus and keyboard section
               above asks the platform to move focus and hears nothing back;
               this one hears where focus went and renders from it, and the
@@ -4568,6 +4594,7 @@ module Sub_subscriptions = Sub_subscriptions
 module Sub_file_input = Sub_file_input
 module Sub_receipt_flow = Sub_receipt_flow
 module Sub_reveal_list = Sub_reveal_list
+module Sub_reveal_tabs = Sub_reveal_tabs
 module Sub_scroll_pane = Sub_scroll_pane
 module Sub_focus_reveal = Sub_focus_reveal
 module Sub_auth_form = Sub_auth_form

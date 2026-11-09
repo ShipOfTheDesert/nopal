@@ -1641,8 +1641,9 @@ and create_and_append ~sheet ~reveals ~link_host ~dispatch ~parent_axis parent
    It is also what fixes the order against the backend's two post-frame drains:
 
    Reveal first, relative scroll second, focus last. All three can write the
-   same container's scroll offset, so the order is last-write-wins and is
-   stated rather than left to queue accident: the movement the application
+   same container's scroll offset — a reveal on both axes, the other two on
+   whichever axes they move — so on each axis the order is last-write-wins and
+   is stated rather than left to queue accident: the movement the application
    asked for in this update wins over the one derived from a changed
    declaration, and a focus wins over both because the browser brings its
    target into view with no way to decline from here. *)
@@ -1696,6 +1697,8 @@ let child_by_scan ~container ~key =
   in
   first 0
 
+module Scroll_axes = Nopal_web_internal.Scroll_axes
+
 (* Resolve the requested child inside [container] and nowhere else — an
    ancestor is never searched, so it can never be the thing that moves. The
    path is chosen by feature detection, never by result: a key that resolves to
@@ -1706,17 +1709,77 @@ let reveal_child ~container ~key =
   | Some escaped -> child_by_selector ~container ~escaped
   | None -> child_by_scan ~container ~key
 
-(* Act on one collected request: measure, ask [Reveal] where the container must
-   sit, and move it only if the answer differs from where it already sits.
-   Nothing here decides anything — the alignment arithmetic is the pure
-   module's, and this supplies the measurements only it cannot take.
+(* Which of the container's scroll axes run reversed, from one read of its
+   computed style. The two strings are decoded into variants here, at the edge,
+   and nothing past this point sees them. No offset is written to find out. *)
+let reversed_axes container =
+  let computed =
+    Jv.call Jv.global "getComputedStyle" [| Brr.El.to_jv container |]
+  in
+  (* The browser answers null rather than a style for some elements
+     (historically Firefox inside a [display:none] iframe). That is no style at
+     all, so both strings decode as unknown and both axes are skipped, rather
+     than the call raising out of the drain and skipping later reveals. *)
+  let read property =
+    if Jv.is_none computed then ""
+    else
+      Jv.to_string
+        (Jv.call computed "getPropertyValue" [| Jv.of_string property |])
+  in
+  Scroll_axes.reversed_axes
+    (Scroll_axes.writing_mode_of_string (read "writing-mode"))
+    (Scroll_axes.direction_of_string (read "direction"))
 
-   Both ways of not being able to act are the same typed no-op: a key that
-   names no child, and a measurement that is not finite (which [offset_for]
-   answers [None] to). Neither is reported anywhere; a request that cannot be
-   satisfied leaves the container exactly as it found it.
+(* The offset the container must take along y for [child] to sit where [align]
+   asks, or [None] to leave y alone.
 
-   Only the container's own scroll offset is ever written. No ancestor is
+   [inner_y] is the width of the container's top border, and the origin
+   [scroll_offset] counts from — the top of the scrollable content — sits
+   exactly that far below the top of the container's bounding box. The child's
+   own top is measured from the same origin, which is why the container's
+   current offset is added back: the rects are where things are on screen now,
+   and the arithmetic is about where they are in the content. *)
+let vertical_offset ~container ~child ~align =
+  let scroll_offset = Brr.El.scroll_y container in
+  let content_origin = Brr.El.bound_y container +. Brr.El.inner_y container in
+  Nopal_element.Reveal.offset_for ~scroll_offset
+    ~viewport:(Brr.El.inner_h container)
+    ~content:(Brr.El.scroll_h container)
+    ~child_start:(Brr.El.bound_y child -. content_origin +. scroll_offset)
+    ~child_extent:(Brr.El.bound_h child) ~align
+
+(* The same along x, from the left border, [scrollLeft], the visible width and
+   the content's full width — the physical axis, whatever the writing mode. *)
+let horizontal_offset ~container ~child ~align =
+  let scroll_offset = Brr.El.scroll_x container in
+  let content_origin = Brr.El.bound_x container +. Brr.El.inner_x container in
+  Nopal_element.Reveal.offset_for ~scroll_offset
+    ~viewport:(Brr.El.inner_w container)
+    ~content:(Brr.El.scroll_w container)
+    ~child_start:(Brr.El.bound_x child -. content_origin +. scroll_offset)
+    ~child_extent:(Brr.El.bound_w child) ~align
+
+(* Act on one collected request, on both axes: measure each, ask [Reveal] where
+   the container must sit along it, and move it along an axis only if the
+   answer differs from where it already sits there. Nothing here decides
+   anything — the alignment arithmetic is the pure module's, and so is the
+   reading of which axes are reversed; this supplies the measurements only it
+   cannot take.
+
+   Each axis is decided on its own, with the one [align] for both. An axis
+   whose content does not overflow answers [None] from [offset_for] and is
+   never written. An axis whose scroll range runs reversed is not measured at
+   all: [offset_for] counts offsets up from [0.], and handing it a range that
+   runs from a negative offset up to [0.] would drag the container to its start
+   edge on every reveal.
+
+   Every way of not being able to act is the same typed no-op: a key that names
+   no child, a reversed axis, and a measurement that is not finite (which
+   [offset_for] answers [None] to). None is reported anywhere; a request that
+   cannot be satisfied leaves the container exactly as it found it on that
+   axis.
+
+   Only the container's own scroll offsets are ever written. No ancestor is
    touched, the document is not touched, and nothing here focuses anything — a
    reveal that moved focus would break the container-level key handler this
    exists to serve. *)
@@ -1724,29 +1787,21 @@ let apply_reveal { container; request } =
   let { Nopal_element.Reveal.key; align } = request in
   match reveal_child ~container ~key with
   | None -> ()
-  | Some child -> (
-      let scroll_offset = Brr.El.scroll_y container in
-      let viewport_height = Brr.El.inner_h container in
-      let content_height = Brr.El.scroll_h container in
-      (* [inner_y] is the width of the container's top border, and the origin
-         [scroll_offset] counts from — the top of the scrollable content — sits
-         exactly that far below the top of the container's bounding box. The
-         child's own top is measured from the same origin, which is why the
-         container's current offset is added back: the rects are where things
-         are on screen now, and the arithmetic is about where they are in the
-         content. *)
-      let content_origin =
-        Brr.El.bound_y container +. Brr.El.inner_y container
+  | Some child ->
+      let { Scroll_axes.x; y } = reversed_axes container in
+      let top =
+        match y with
+        | Scroll_axes.Forward -> vertical_offset ~container ~child ~align
+        | Scroll_axes.Reversed -> None
       in
-      let child_top = Brr.El.bound_y child -. content_origin +. scroll_offset in
-      let child_height = Brr.El.bound_h child in
-      let offset =
-        Nopal_element.Reveal.offset_for ~scroll_offset ~viewport_height
-          ~content_height ~child_top ~child_height ~align
+      let left =
+        match x with
+        | Scroll_axes.Forward -> horizontal_offset ~container ~child ~align
+        | Scroll_axes.Reversed -> None
       in
-      match offset with
-      | None -> ()
-      | Some offset -> Jv.Float.set (Brr.El.to_jv container) "scrollTop" offset)
+      let jv = Brr.El.to_jv container in
+      Option.iter (Jv.Float.set jv "scrollTop") top;
+      Option.iter (Jv.Float.set jv "scrollLeft") left
 
 let drain_reveals (reveals : reveal_request Queue.t) =
   Queue.iter apply_reveal reveals

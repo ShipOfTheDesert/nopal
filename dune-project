@@ -339,6 +339,14 @@
  (name nopal_web)
  (synopsis "Web renderer backend for Nopal")
  (depends
+  (qcheck-core
+   (and
+    (>= 0.91)
+    :with-test))
+  (qcheck-alcotest
+   (and
+    (>= 0.91)
+    :with-test))
   (alcotest
    (and
     (>= 1.9.1)

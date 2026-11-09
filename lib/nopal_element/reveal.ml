@@ -41,52 +41,75 @@ let should_reveal ~previous ~next =
 
 let all_finite measurements = List.for_all Float.is_finite measurements
 
-(* The offsets at which the child is fully visible form the closed interval
-   [child_bottom -. viewport_height, child_top]: an offset at or below the child's
-   top edge keeps its top in view, and one at or above its bottom edge less the
-   visible height keeps its bottom in view. Nearest is the current offset moved
-   the least distance into that interval, which is a clamp. When the child is
-   taller than the visible height the interval is empty and the clamp collapses
-   onto its upper end, the child's top edge, which is the same fallback the named
-   alignments take below. *)
-let nearest_offset ~scroll_offset ~viewport_height ~child_top ~child_bottom =
-  Float.min child_top
-    (Float.max (child_bottom -. viewport_height) scroll_offset)
+(* Every measurement below lies along one axis and counts from the start edge of
+   the container's scrollable content, so nothing here knows whether it is
+   working on a height or a width.
 
-let aligned_offset ~scroll_offset ~viewport_height ~child_top ~child_height
-    ~align =
-  let child_bottom = child_top +. child_height in
+   The offsets at which a child that fits is fully visible form the closed
+   interval [child_end -. viewport, child_start]: an offset at or before the
+   child's start edge keeps that edge in view, and one at or after its end edge
+   less the visible extent keeps the end edge in view. Nearest is the current
+   offset moved the least distance into that interval, which is a clamp. A
+   child larger than the visible extent never reaches this function; see
+   [oversized_offset]. *)
+let nearest_offset ~scroll_offset ~viewport ~child_start ~child_end =
+  Float.min child_start (Float.max (child_end -. viewport) scroll_offset)
+
+let aligned_offset ~scroll_offset ~viewport ~child_start ~child_extent ~align =
+  let child_end = child_start +. child_extent in
+  match align with
+  | Nearest -> nearest_offset ~scroll_offset ~viewport ~child_start ~child_end
+  | Start -> child_start
+  | Center -> child_start +. ((child_extent -. viewport) /. 2.0)
+  | End_ -> child_end -. viewport
+
+(* A child's edges come from fractional rects while the visible extent and
+   content come from rounded client extents, so a row that fills the visible
+   area can miss it by a sub-pixel amount. An edge within [cover_tolerance]
+   (strictly less than it) of the visible area's edge, or beyond it, counts as
+   covering; edges exactly flush also count. Only this test is tolerant: the
+   fully-visible clamp in [nearest_offset] stays exact. *)
+let cover_tolerance = 1.0
+
+let covers_viewport ~scroll_offset ~viewport ~child_start ~child_end =
+  Float.compare (child_start -. scroll_offset) cover_tolerance < 0
+  && Float.compare (scroll_offset +. viewport -. child_end) cover_tolerance < 0
+
+(* A child larger than the visible extent cannot satisfy any alignment, so a
+   named alignment shows its beginning rather than scrolling past it in pursuit
+   of an edge the container can never reach. Nearest asks only for the child to
+   be seen, and a child that already fills the visible area from edge to edge is
+   seen as fully as it can be, so the current offset is kept; one that does not
+   fill it takes the same start-edge fallback as the named alignments. *)
+let oversized_offset ~scroll_offset ~viewport ~child_start ~child_extent ~align
+    =
   match align with
   | Nearest ->
-      nearest_offset ~scroll_offset ~viewport_height ~child_top ~child_bottom
-  | Start -> child_top
-  | Center -> child_top +. ((child_height -. viewport_height) /. 2.0)
-  | End_ -> child_bottom -. viewport_height
+      let child_end = child_start +. child_extent in
+      if covers_viewport ~scroll_offset ~viewport ~child_start ~child_end then
+        scroll_offset
+      else child_start
+  | Start
+  | Center
+  | End_ ->
+      child_start
 
-let offset_for ~scroll_offset ~viewport_height ~content_height ~child_top
-    ~child_height ~align =
+let offset_for ~scroll_offset ~viewport ~content ~child_start ~child_extent
+    ~align =
   if
     not
       (all_finite
-         [
-           scroll_offset;
-           viewport_height;
-           content_height;
-           child_top;
-           child_height;
-         ])
+         [ scroll_offset; viewport; content; child_start; child_extent ])
   then None
   else
-    (* A child that does not fit cannot satisfy any alignment, so all four show
-       its beginning rather than scrolling past it in pursuit of an edge the
-       container can never reach. Nearest already lands there on its own; the
-       named alignments would each overshoot. *)
     let target =
-      if Float.compare child_height viewport_height > 0 then child_top
+      if Float.compare child_extent viewport > 0 then
+        oversized_offset ~scroll_offset ~viewport ~child_start ~child_extent
+          ~align
       else
-        aligned_offset ~scroll_offset ~viewport_height ~child_top ~child_height
+        aligned_offset ~scroll_offset ~viewport ~child_start ~child_extent
           ~align
     in
-    let max_scroll = Float.max 0.0 (content_height -. viewport_height) in
+    let max_scroll = Float.max 0.0 (content -. viewport) in
     let clamped = Float.min max_scroll (Float.max 0.0 target) in
     if Float.equal clamped scroll_offset then None else Some clamped
