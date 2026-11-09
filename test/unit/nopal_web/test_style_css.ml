@@ -380,44 +380,65 @@ let test_interaction_rules_hover_only () =
     (not (contains result "!important"));
   Alcotest.(check bool) "no active rule" true (not (contains result ":active"))
 
-let test_interaction_rules_all_states () =
-  let hover_style =
-    Nopal_style.Style.default
-    |> Nopal_style.Style.with_paint (fun p ->
-        { p with background = Some (Nopal_style.Style.hex "#aaa") })
-  in
-  let pressed_style =
-    Nopal_style.Style.default
-    |> Nopal_style.Style.with_paint (fun p ->
-        { p with background = Some (Nopal_style.Style.hex "#bbb") })
-  in
-  let focused_style =
-    Nopal_style.Style.default
-    |> Nopal_style.Style.with_paint (fun p ->
-        { p with background = Some (Nopal_style.Style.hex "#ccc") })
-  in
+(* The selector of an emitted rule: everything before its opening brace. *)
+let rule_selector rule =
+  match String.index_opt rule '{' with
+  | Some i -> String.sub rule 0 i
+  | None -> rule
+
+let background_style hex =
+  Nopal_style.Style.default
+  |> Nopal_style.Style.with_paint (fun p ->
+      { p with background = Some (Nopal_style.Style.hex hex) })
+
+let test_focused_within_emits_focus_within () =
   let interaction =
     {
-      Nopal_style.Interaction.hover = Some hover_style;
-      pressed = Some pressed_style;
-      focused = Some focused_style;
+      Nopal_style.Interaction.hover = None;
+      pressed = None;
+      focused = None;
+      focused_within = Some (background_style "#ddd");
     }
   in
-  let result = interaction_rules ~class_name:"_nopal_ix_5" interaction in
-  Alcotest.(check bool) "has hover" true (contains result "._nopal_ix_5:hover{");
+  let result = interaction_rules ~class_name:"_nopal_ix_7" interaction in
+  (match split_css_rules result with
+  | [ rule ] ->
+      Alcotest.(check string)
+        "plain focus-within selector" "._nopal_ix_7:focus-within"
+        (rule_selector rule);
+      Alcotest.(check bool)
+        "the declared background in the rule" true
+        (contains rule "background-color:")
+  | rules ->
+      Alcotest.failf "expected one focus-within rule, got %d: [%s]"
+        (List.length rules)
+        (String.concat " | " rules));
+  Alcotest.(check bool) "no :has" false (contains result ":has");
   Alcotest.(check bool)
-    "has focus-visible" true
-    (contains result "._nopal_ix_5:focus-visible{");
-  Alcotest.(check bool)
-    "has active" true
-    (contains result "._nopal_ix_5:active{");
-  (* Verify precedence order: hover before focus-visible before active *)
-  let hover_pos = find_substring result ":hover{" in
-  let focus_pos = find_substring result ":focus-visible{" in
-  let active_pos = find_substring result ":active{" in
-  Alcotest.(check bool) "hover before focus-visible" true (hover_pos < focus_pos);
-  Alcotest.(check bool)
-    "focus-visible before active" true (focus_pos < active_pos)
+    "no :focus-visible" false
+    (contains result ":focus-visible");
+  Alcotest.(check bool) "no @supports" false (contains result "@supports")
+
+let test_interaction_rule_order_includes_focused_within () =
+  let interaction =
+    {
+      Nopal_style.Interaction.hover = Some (background_style "#aaa");
+      pressed = Some (background_style "#bbb");
+      focused = Some (background_style "#ccc");
+      focused_within = Some (background_style "#ddd");
+    }
+  in
+  Alcotest.(check (list string))
+    "hover, focused_within, focused, pressed"
+    [
+      "._nopal_ix_5:hover";
+      "._nopal_ix_5:focus-within";
+      "._nopal_ix_5:focus-visible";
+      "._nopal_ix_5:active";
+    ]
+    (List.map rule_selector
+       (split_css_rules
+          (interaction_rules ~class_name:"_nopal_ix_5" interaction)))
 
 let test_interaction_rules_default_empty () =
   let result =
@@ -433,6 +454,7 @@ let test_interaction_rule_cross_align () =
           (with_layout (fun l -> { l with cross_align = Some Center }) default);
       pressed = None;
       focused = None;
+      focused_within = None;
     }
   in
   match
@@ -450,7 +472,7 @@ let test_interaction_rule_cross_align () =
         (String.concat " | " rules)
 
 (* An interaction state never carries the shrink guard. Every state is resolved
-   against no parent axis, so a size introduced by a hover, focused or pressed
+   against no parent axis, so a size introduced by any interaction state's
    style is a plain flex item at the CSS default shrink for as long as that
    state is active. Nothing in the tree declares a size in an interaction style
    today; this pins the limitation so that changing it is a decision rather than
@@ -482,6 +504,8 @@ let test_interaction_rules_never_emits_shrink_guard () =
   in
   check_state "hover"
     { Nopal_style.Interaction.default with hover = Some sized };
+  check_state "focused_within"
+    { Nopal_style.Interaction.default with focused_within = Some sized };
   check_state "focused"
     { Nopal_style.Interaction.default with focused = Some sized };
   check_state "pressed"
@@ -520,6 +544,8 @@ let test_min_size_emitted_in_interaction_style () =
   in
   check_state "hover"
     { Nopal_style.Interaction.default with hover = Some floored };
+  check_state "focused_within"
+    { Nopal_style.Interaction.default with focused_within = Some floored };
   check_state "focused"
     { Nopal_style.Interaction.default with focused = Some floored };
   check_state "pressed"
@@ -1581,6 +1607,39 @@ let test_drawn_backgrounds_are_longhands () =
     "no declaration is the background shorthand" false
     (List.exists (String.equal "background") properties)
 
+(* Specificity as the count of class and pseudo-class tokens: every selector
+   here is classes and pseudo-classes only, so '.' and ':' each add one. *)
+let specificity selector =
+  String.fold_left
+    (fun n c -> if Char.equal c '.' || Char.equal c ':' then n + 1 else n)
+    0 selector
+
+(* FR-6: a ticked style wins over focus-within by specificity, not by order. *)
+let test_ticked_selector_outranks_focus_within () =
+  let focus_within =
+    interaction_rules ~class_name:"c"
+      {
+        Nopal_style.Interaction.hover = None;
+        pressed = None;
+        focused = None;
+        focused_within = Some (background_style "#ddd");
+      }
+  in
+  let ticked =
+    ticked_rule ~class_name:"c" ~tick_image:"url(\"data:image/svg+xml,x\")"
+      Nopal_style.Style.default
+  in
+  let focus_selector =
+    match split_css_rules focus_within with
+    | [ rule ] -> rule_selector rule
+    | rules -> Alcotest.failf "expected one rule, got %d" (List.length rules)
+  in
+  Alcotest.(check string)
+    "the focus-within selector" ".c:focus-within" focus_selector;
+  Alcotest.(check bool)
+    "the ticked selector is more specific" true
+    (specificity (rule_selector ticked) > specificity focus_selector)
+
 let () =
   Alcotest.run "style_css"
     [
@@ -1677,8 +1736,10 @@ let () =
         [
           Alcotest.test_case "hover only" `Quick
             test_interaction_rules_hover_only;
-          Alcotest.test_case "all states with precedence" `Quick
-            test_interaction_rules_all_states;
+          Alcotest.test_case "focused_within_emits_focus_within" `Quick
+            test_focused_within_emits_focus_within;
+          Alcotest.test_case "interaction_rule_order_includes_focused_within"
+            `Quick test_interaction_rule_order_includes_focused_within;
           Alcotest.test_case "default produces empty" `Quick
             test_interaction_rules_default_empty;
           Alcotest.test_case "interaction_rule_cross_align" `Quick
@@ -1774,6 +1835,8 @@ let () =
         [
           Alcotest.test_case "drawn_backgrounds_are_longhands" `Quick
             test_drawn_backgrounds_are_longhands;
+          Alcotest.test_case "ticked_selector_outranks_focus_within" `Quick
+            test_ticked_selector_outranks_focus_within;
         ] );
       ( "base_class_rule",
         [

@@ -444,7 +444,7 @@ let interaction_rules ~class_name (interaction : Nopal_style.Interaction.t) =
     (* No parent axis, deliberately. This function is handed an interaction, not
        a position in the tree, and the axis a size would have to be guarded
        against belongs to the parent of the element the interaction is attached
-       to. So a size declared in a hover, focused or pressed style never carries
+       to. So a size declared in any interaction state's style never carries
        the shrink guard, and a state that introduces one where the base style
        declares none leaves the element squeezable while that state is active.
        Threading the axis in was weighed and declined: it widens three
@@ -459,10 +459,13 @@ let interaction_rules ~class_name (interaction : Nopal_style.Interaction.t) =
         let body = to_rule_body props in
         Buffer.add_string buf (selector ^ "{" ^ body ^ "}")
   in
-  (* Precedence by rule order: hover first, focused second, pressed last.
+  (* Precedence by rule order: hover, focused_within, focused, pressed.
      Later rules win for equal specificity. *)
   (match interaction.hover with
   | Some style -> add_rule ("." ^ class_name ^ ":hover") style
+  | None -> ());
+  (match interaction.focused_within with
+  | Some style -> add_rule ("." ^ class_name ^ ":focus-within") style
   | None -> ());
   (match interaction.focused with
   | Some style -> add_rule ("." ^ class_name ^ ":focus-visible") style

@@ -498,6 +498,7 @@ let hover_background bg =
         |> Style.with_paint (fun p -> { p with background = Some bg }));
     pressed = None;
     focused = None;
+    focused_within = None;
   }
 
 let per_tab_hover = hover_background (Style.rgba 200 0 0 1.0)

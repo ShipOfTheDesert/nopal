@@ -5,7 +5,8 @@
   test_cursor
   test_text
   test_color
-  test_checkbox_appearance)
+  test_checkbox_appearance
+  test_presentation)
  (libraries nopal_style alcotest))
 
 (cram

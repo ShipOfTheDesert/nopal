@@ -63,13 +63,8 @@ let node_at where selector element =
   | Some node -> node
   | None -> fail_missing where
 
-let tag_of = function
-  | Element { tag; _ } -> tag
-  | Text _ -> "text"
-  | Empty -> "empty"
-
 let child_tags = function
-  | Element { children; _ } -> List.map tag_of children
+  | Element { children; _ } -> List.map Test_util.tag_or_kind children
   | Text _ -> [ "<a text node has no children>" ]
   | Empty -> [ "<an empty node has no children>" ]
 

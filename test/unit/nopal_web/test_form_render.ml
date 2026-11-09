@@ -89,11 +89,17 @@ let padded =
   style_with { Nopal_style.Style.default_layout with padding_left = Some 8.0 }
 
 let no_interaction =
-  Nopal_style.Interaction.{ hover = None; pressed = None; focused = None }
+  Nopal_style.Interaction.
+    { hover = None; pressed = None; focused = None; focused_within = None }
 
 let hover_interaction =
   Nopal_style.Interaction.
-    { hover = Some padded; pressed = None; focused = None }
+    {
+      hover = Some padded;
+      pressed = None;
+      focused = None;
+      focused_within = None;
+    }
 
 let form ~style ~interaction ~attrs ~on_submit ~autocomplete ~novalidate
     children =

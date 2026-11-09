@@ -111,7 +111,8 @@ let restyled_radio_group model =
     options_style = Some restyled_group_style;
     option_label_style = Some restyled_option_label_style;
     option_row_style = Some restyled_option_row_style;
-    on_label_click = None;
+    option_row_interaction = None;
+    inputs = Radio_group.Visible_inputs { on_label_click = None };
   }
 
 let restyled_select model =

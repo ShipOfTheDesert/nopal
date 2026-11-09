@@ -98,10 +98,10 @@ let floors_of_layout name (l : Style.layout) =
    control reaches the holding column, it is that it reaches nothing else, and an
    element nobody thought to name is exactly where a stray floor would sit.
 
-   The three interaction states are walked beside the base style, and the state a
+   The four interaction states are walked beside the base style, and the state a
    floor was found in is named the way the base style's is, so a failure says the
    site and not merely that one exists. They are not a formality: a minimum is
-   emitted out of a hover, focused or pressed style exactly as it is out of a base
+   emitted out of a hover, focused_within, focused or pressed style exactly as it is out of a base
    one — test_min_size_emitted_in_interaction_style pins that at the emitter — so
    a floor declared in one of them is a live escape from a claim phrased as
    "and on no other element". Each state is a whole style of its own and can
@@ -109,7 +109,7 @@ let floors_of_layout name (l : Style.layout) =
    folded into the element's one line.
 
    What the walk covers is every [Style.t] a rendered node holds: its base style
-   and those three. A floor lives on a [Style.layout] and a node carries no other
+   and those four. A floor lives on a [Style.layout] and a node carries no other
    layout, so within this section's element tree nothing of that kind is out of
    reach. It sees declared style and nothing else — what a browser then does with
    a floor is not visible to this renderer at all. *)
@@ -125,7 +125,9 @@ let rec declared_floors node =
         | Some (_, id) -> id
         | None -> "<" ^ tag ^ ">"
       in
-      let { Interaction.hover; pressed; focused } = interaction in
+      let { Interaction.hover; pressed; focused; focused_within } =
+        interaction
+      in
       let in_state state_name state =
         match state with
         | None -> []
@@ -134,6 +136,7 @@ let rec declared_floors node =
       in
       floors_of_layout name style.Style.layout
       @ in_state "hover" hover
+      @ in_state "focused_within" focused_within
       @ in_state "focused" focused
       @ in_state "pressed" pressed
       @ List.concat_map declared_floors children
@@ -197,8 +200,8 @@ let settled_height label node =
    back proves the state the emptiness is being claimed about is reachable.
 
    The interaction states owe a second arm of their own. The section declares
-   none, so those three branches of the walk never fire against the rendered tree
-   and a walk that read the same state three times, or none of them, would leave
+   none, so those four branches of the walk never fire against the rendered tree
+   and a walk that read the same state four times, or none of them, would leave
    the emptiness above green for the wrong reason. A node built here rather than
    rendered is what exercises them, which is also why each state is checked by the
    name it reports under. *)
@@ -228,11 +231,12 @@ let test_init_starts_without_the_minimum () =
     "no element in the section declares a floor of any kind" []
     (floors_in model);
   Alcotest.(check (list string))
-    "and a floor in any of the three interaction states would be reported, \
-     each under the state it sits in, so the emptiness above is a statement \
-     about every style an element carries"
+    "and a floor in any of the four interaction states would be reported, each \
+     under the state it sits in, so the emptiness above is a statement about \
+     every style an element carries"
     [
       "probe (hover): min_width=none min_height=1";
+      "probe (focused_within): min_width=none min_height=4";
       "probe (focused): min_width=none min_height=2";
       "probe (pressed): min_width=none min_height=3";
     ]
@@ -242,6 +246,7 @@ let test_init_starts_without_the_minimum () =
             Interaction.hover = Some (probe_floor 1.0);
             focused = Some (probe_floor 2.0);
             pressed = Some (probe_floor 3.0);
+            focused_within = Some (probe_floor 4.0);
           }))
 
 (* The control reaches the holding column, and reaches nothing else. Both halves

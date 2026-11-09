@@ -98,6 +98,7 @@ let heading_resets sheet =
 
 let drawn_reset_selector = ":where([" ^ drawn_checkbox_marker ^ "])"
 let forced_colors_prelude = "@media (forced-colors: active)"
+let hide_prelude = "@media not (forced-colors: active)"
 
 let rules_with_selector selector sheet =
   List.filter
@@ -107,7 +108,12 @@ let rules_with_selector selector sheet =
 (* Every sheet opens with the rules [create] installs, so the index-tracking
    cases below count and address only the class rules the sheet manages. *)
 let fixed_selectors =
-  [ heading_reset_selector; drawn_reset_selector; forced_colors_prelude ]
+  [
+    heading_reset_selector;
+    drawn_reset_selector;
+    forced_colors_prelude;
+    hide_prelude;
+  ]
 
 let class_rules sheet =
   List.filter
@@ -137,6 +143,7 @@ let mk_interaction_all () =
     Nopal_style.Interaction.hover = Some (mk_style "#aaa");
     pressed = Some (mk_style "#bbb");
     focused = Some (mk_style "#ccc");
+    focused_within = None;
   }
 
 let base_css_props color =
@@ -257,6 +264,68 @@ let test_forced_colors_rule_restores_platform () =
         forced_colors_prelude (List.length rules)
 
 (* 2 *)
+(* The hide rule's only guard is its media query, so where colours are forced it
+   does not apply and the radio is the platform's again, with no declaration to
+   undo. The drawn-checkbox fallback beside it is pinned as the text it had
+   before the hide rule existed. *)
+let test_hide_rule_is_scoped_zero_specificity_and_not_forced () =
+  cleanup_head ();
+  let _t = create () in
+  let sheet = get_sheet () in
+  Alcotest.(check (list string))
+    "the hide rule is one more fixed rule, after the other three"
+    [
+      ":where([data-nopal-heading])";
+      ":where([data-nopal-drawn-checkbox])";
+      "@media (forced-colors: active)";
+      "@media not (forced-colors: active)";
+    ]
+    (List.map selector_of (rule_texts sheet));
+  (match rules_with_selector hide_prelude sheet with
+  | [ rule ] ->
+      let inner = inner_rules rule in
+      Alcotest.(check (list (pair string (list string))))
+        "the marked radio is clipped to a 1px box out of the flow"
+        [
+          ( ":where([data-nopal-visually-hidden])",
+            [
+              "position:absolute";
+              "width:1px";
+              "height:1px";
+              "margin:-1px";
+              "overflow:hidden";
+              "clip-path:inset(50%)";
+              "white-space:nowrap";
+              "border:0";
+              "padding:0";
+            ] );
+        ]
+        inner;
+      List.iter
+        (fun (_, declarations) ->
+          List.iter
+            (fun declaration ->
+              List.iter
+                (fun forbidden ->
+                  Alcotest.(check bool)
+                    (Printf.sprintf "%S does not use %s" declaration forbidden)
+                    false
+                    (Test_util.string_contains declaration ~sub:forbidden))
+                [ "display"; "visibility"; "aria-hidden"; "!important" ])
+            declarations)
+        inner
+  | rules ->
+      Alcotest.failf "expected one rule with prelude %s, got %d" hide_prelude
+        (List.length rules));
+  Alcotest.(check (list string))
+    "the drawn-checkbox fallback is unchanged"
+    [
+      "@media (forced-colors: active){"
+      ^ "[data-nopal-drawn-checkbox]{appearance:auto}"
+      ^ "[data-nopal-drawn-checkbox]:checked{background-image:none !important}}";
+    ]
+    (rules_with_selector forced_colors_prelude sheet)
+
 let test_inject_base_adds_rule () =
   cleanup_head ();
   let t = create () in
@@ -475,6 +544,7 @@ let test_interleaved_index_tracking () =
       Nopal_style.Interaction.hover = Some (mk_style "#ddd");
       pressed = Some (mk_style "#eee");
       focused = None;
+      focused_within = None;
     }
   in
   let iid_2 =
@@ -545,6 +615,9 @@ let () =
             test_drawn_reset_is_scoped_zero_specificity;
           Alcotest.test_case "forced_colors_rule_restores_platform" `Quick
             test_forced_colors_rule_restores_platform;
+          Alcotest.test_case
+            "hide_rule_is_scoped_zero_specificity_and_not_forced" `Quick
+            test_hide_rule_is_scoped_zero_specificity_and_not_forced;
         ] );
       ( "inject_base",
         [ Alcotest.test_case "adds rule" `Quick test_inject_base_adds_rule ] );

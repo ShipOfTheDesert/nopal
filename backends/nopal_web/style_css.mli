@@ -183,7 +183,14 @@ val interaction_rules : class_name:string -> Nopal_style.Interaction.t -> string
     without [!important]. Pseudo-class selectors ([.class:hover]) have higher
     specificity than the base class selector ([.class]), so normal cascade
     handles overrides. Precedence is encoded by rule order: hover first, then
-    focused, then pressed. Returns [""] when the interaction has no states.
+    focused_within, then focused, then pressed. Returns [""] when the
+    interaction has no states.
+
+    [Interaction.focused_within] emits [.class:focus-within], one plain rule
+    with no [:has] and no [@supports] guard. It matches while the element or any
+    descendant has focus, however the focus arrived, so a pointer press shows it
+    as well as a key. Its specificity equals the other states', so only its
+    position decides: it wins over hover and loses to focused and pressed.
 
     [Interaction.focused] emits [.class:focus-visible], not [.class:focus], and
     the two are not interchangeable. A browser matches [:focus-visible] only
@@ -214,7 +221,7 @@ val ticked_rule :
 
     The selector is [.class_name.class_name:checked]. The doubled class gives it
     a specificity of three, one above every rule {!interaction_rules} emits, so
-    while the box is ticked its own declarations win over a hover, focused or
-    pressed style whatever order the rules were inserted in. A property the
-    ticked style leaves unset falls through to those states as usual. The rule
-    is never empty, because the tick is always declared. *)
+    while the box is ticked its own declarations win over a hover, focus-within,
+    focused or pressed style whatever order the rules were inserted in. A
+    property the ticked style leaves unset falls through to those states as
+    usual. The rule is never empty, because the tick is always declared. *)

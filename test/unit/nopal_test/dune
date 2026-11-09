@@ -29,7 +29,7 @@
 
 (test
  (name test_link_render)
- (libraries nopal_test nopal_element alcotest))
+ (libraries nopal_test nopal_element alcotest test_util))
 
 (test
  (name test_implicit_submission)

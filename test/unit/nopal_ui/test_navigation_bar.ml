@@ -354,6 +354,7 @@ let hover_background bg =
             { p with background = Some bg }));
     pressed = None;
     focused = None;
+    focused_within = None;
   }
 
 let per_item_hover = hover_background (Nopal_style.Style.rgba 200 0 0 1.0)

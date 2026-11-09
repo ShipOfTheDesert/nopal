@@ -45,7 +45,12 @@ let styled ~padding_left =
    the renderer takes the class-injection path instead of inline styles. *)
 let hover_interaction =
   Nopal_style.Interaction.
-    { hover = Some (styled ~padding_left:12.0); pressed = None; focused = None }
+    {
+      hover = Some (styled ~padding_left:12.0);
+      pressed = None;
+      focused = None;
+      focused_within = None;
+    }
 
 let file_input ~style ~interaction ~attrs ~accept ~capture ~multiple ~on_change
     =

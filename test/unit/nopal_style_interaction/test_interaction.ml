@@ -37,6 +37,23 @@ let test_has_any_with_hover () =
   Alcotest.(check bool)
     "has_any with hover is true" true (Interaction.has_any i)
 
+let ring_style =
+  Style.with_paint
+    (fun p -> { p with background = Some (Style.rgba 0 0 255 1.0) })
+    Style.default
+
+let test_focused_within_alone_makes_has_any_true () =
+  let i = { Interaction.default with focused_within = Some ring_style } in
+  Alcotest.(check bool)
+    "has_any with only focused_within is true" true (Interaction.has_any i)
+
+let test_equal_distinguishes_focused_within () =
+  let a = Interaction.default in
+  let b = { a with focused_within = Some ring_style } in
+  Alcotest.(check bool)
+    "differ only in focused_within, not equal" false (Interaction.equal a b);
+  Alcotest.(check bool) "reversed, not equal" false (Interaction.equal b a)
+
 let () =
   Alcotest.run "interaction"
     [
@@ -49,5 +66,9 @@ let () =
             test_equal_different_hover;
           Alcotest.test_case "has_any_default" `Quick test_has_any_default;
           Alcotest.test_case "has_any_with_hover" `Quick test_has_any_with_hover;
+          Alcotest.test_case "focused_within_alone_makes_has_any_true" `Quick
+            test_focused_within_alone_makes_has_any_true;
+          Alcotest.test_case "equal_distinguishes_focused_within" `Quick
+            test_equal_distinguishes_focused_within;
         ] );
     ]

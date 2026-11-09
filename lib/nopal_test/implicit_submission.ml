@@ -29,7 +29,8 @@ let rec scan acc (el : 'msg Nopal_element.Element.t) =
       scan acc child
   | Box { children; _ }
   | Row { children; _ }
-  | Column { children; _ } ->
+  | Column { children; _ }
+  | Label { children; _ } ->
       List.fold_left scan acc children
   | Link { child; _ }
   | Heading { child; _ }

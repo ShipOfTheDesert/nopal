@@ -24,7 +24,7 @@ val create : unit -> t
     leaves in place and [Style.layout] cannot remove. A native checkbox carries
     no marker and keeps both.
 
-    Last comes a forced-colours fallback:
+    Then comes a forced-colours fallback:
     [@media (forced-colors: active){[data-nopal-drawn-checkbox]{appearance:auto}
      [data-nopal-drawn-checkbox]:checked{background-image:none !important}}].
     Where the user has forced a system palette, a drawn checkbox becomes the
@@ -34,10 +34,31 @@ val create : unit -> t
     (0,3,0) against this selector's (0,2,0), and a caller's [style] attribute
     (see {!Style_css.ticked_rule}).
 
-    These are the only user-agent defaults Nopal neutralises: [Style.layout] has
-    no margin, so a heading's or a checkbox's browser margin could not otherwise
-    be removed, while an unstyled button or link still shows the browser's
-    defaults. All three rules are installed once per sheet and never removed. *)
+    Last comes a hide rule, [:where([data-nopal-visually-hidden])] inside
+    [@media not (forced-colors: active)], declaring [position:absolute],
+    [width:1px], [height:1px], [margin:-1px], [overflow:hidden],
+    [clip-path:inset(50%)], [white-space:nowrap], [border:0] and [padding:0]. It
+    is scoped to the marker the renderer writes on a visually hidden radio, and
+    clips it to a 1px box taken out of the flow, so it is not painted and takes
+    no layout space, while it stays focusable, in its group and in the
+    accessibility tree: nothing in it is [display], [visibility] or
+    [aria-hidden]. With no offsets the box stays at its static position, so
+    focusing the radio never scrolls the page. The rule is of zero specificity,
+    so a radio's own style beats it, inline or as a class rule. Where the user
+    has forced a system palette the media query does not match and the rule does
+    not apply, so the radio is the platform's again, drawn in system colours and
+    taking its layout space. That reveal declares nothing, which is why it needs
+    no [!important]: there is no hiding declaration left to beat. Per Media
+    Queries Level 4 (not observed on such an engine): an engine that cannot
+    evaluate [forced-colors] does not match the query either, and shows the
+    radio.
+
+    The resets and the fallback are the only user-agent defaults Nopal
+    neutralises: [Style.layout] has no margin, so a heading's or a checkbox's
+    browser margin could not otherwise be removed, while an unstyled button or
+    link still shows the browser's defaults. The hide rule neutralises no
+    default; it acts only on a radio that asked to be hidden. All four rules are
+    installed once per sheet and never removed. *)
 
 val heading_marker : string
 (** The attribute name the heading reset selects on. The renderer writes it,
@@ -48,6 +69,13 @@ val drawn_checkbox_marker : string
     select on. The renderer writes it, with an empty value, on every checkbox
     whose appearance is drawn, over any pair of the same name in the element's
     attribute list. *)
+
+val visually_hidden_marker : string
+(** The attribute name the hide rule selects on. The renderer writes it, with an
+    empty value, on every radio whose presentation is visually hidden, over any
+    pair of the same name in the element's attribute list. A visible radio
+    carries none, so a pair of that name in its attribute list is left standing.
+*)
 
 type base_id
 (** Opaque identifier for a base-style class rule. Each interactive element gets
@@ -69,10 +97,10 @@ val inject_interaction :
 (** If an identical interaction style is already in the cache (compared by
     generated CSS text), increments its reference count and returns the existing
     [interaction_id]. Otherwise generates a new class name, inserts pseudo-class
-    rules ([:hover], [:focus-visible], [:active]) into the stylesheet, and
-    caches the entry. Returns [Error] if the interaction has no states
-    ([has_any] is false). Precedence is encoded by rule order: hover first, then
-    focused, then pressed. *)
+    rules ([:hover], [:focus-within], [:focus-visible], [:active]) into the
+    stylesheet, and caches the entry. Returns [Error] if the interaction has no
+    states ([has_any] is false). Precedence is encoded by rule order: hover
+    first, then focused_within, then focused, then pressed. *)
 
 type ticked_id
 (** Opaque identifier for a shared ticked-state rule. Drawn checkboxes with

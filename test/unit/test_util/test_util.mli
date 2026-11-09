@@ -40,6 +40,16 @@ val count_unique : ('a -> 'a -> bool) -> 'a list -> int
 (** [count_unique eq lst] returns the number of distinct elements in [lst] using
     [eq] for equality comparison. *)
 
+val tag_of : string -> Nopal_test.Test_renderer.node -> string
+(** [tag_of what node] is the tag of [node] when it is an element, or an
+    Alcotest failure naming [what] when it is text or empty. *)
+
+val tag_or_kind : Nopal_test.Test_renderer.node -> string
+(** [tag_or_kind node] is the tag of an element, ["text"] for a text node and
+    ["empty"] for an empty node. Total, for tests that walk mixed children;
+    {!tag_of} is the strict form. Users: test_change_list.ml,
+    test_link_render.ml. *)
+
 val find_or_fail :
   string ->
   Nopal_test.Test_renderer.selector ->
@@ -81,6 +91,12 @@ val pp_appearance :
 val appearance_testable : Nopal_style.Checkbox_appearance.t Alcotest.testable
 (** Compares checkbox appearances with [Checkbox_appearance.equal]; prints only
     the arm. *)
+
+val pp_presentation : Format.formatter -> Nopal_style.Presentation.t -> unit
+(** Prints the arm's constructor name. *)
+
+val presentation_testable : Nopal_style.Presentation.t Alcotest.testable
+(** Compares presentations with [Presentation.equal]. *)
 
 val teal_drawn : unit -> Nopal_style.Checkbox_appearance.t
 (** The requested design's ticked look: brand-teal fill and a white tick. Built

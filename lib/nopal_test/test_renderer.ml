@@ -84,6 +84,11 @@ type appearance_entry = {
   appearance : Nopal_style.Checkbox_appearance.t;
 }
 
+type presentation_entry = {
+  radio_path : int list;
+  presentation : Nopal_style.Presentation.t;
+}
+
 type 'msg rendered = {
   tree : node;
   msgs : 'msg list ref;
@@ -95,6 +100,7 @@ type 'msg rendered = {
   box_handlers : 'msg box_handler_entry list;
   link_handlers : 'msg link_handler_entry list;
   appearances : appearance_entry list;
+  presentations : presentation_entry list;
 }
 
 (* A pair derived from a typed field is an overlay over the view's own [attrs]
@@ -133,6 +139,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
   let box_handlers = ref [] in
   let link_handlers = ref [] in
   let appearances = ref [] in
+  let presentations = ref [] in
   let rec go ~form rev_path (el : 'msg Nopal_element.Element.t) : node =
     match el with
     | Empty -> Empty
@@ -254,6 +261,17 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
               go_children
                 ~form:(enclosing ~on_submit children)
                 rev_path children;
+            interaction;
+          }
+    | Label { style; interaction; attrs; control_id; children } ->
+        (* ["for"] has no absent form, so a caller's pair of that key never
+           stands. *)
+        Element
+          {
+            tag = "label";
+            style;
+            attrs = attrs @ [ ("for", control_id) ];
+            children = go_children ~form rev_path children;
             interaction;
           }
     | Button
@@ -451,7 +469,19 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
             children = [];
             interaction;
           }
-    | Radio { style; interaction; attrs; name; checked; disabled; on_select } ->
+    | Radio
+        {
+          style;
+          interaction;
+          attrs;
+          name;
+          checked;
+          disabled;
+          presentation;
+          on_select;
+        } ->
+        presentations :=
+          { radio_path = List.rev rev_path; presentation } :: !presentations;
         if not disabled then
           handlers :=
             {
@@ -468,6 +498,12 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
               deferred_enter = [];
             }
             :: !handlers;
+        let marker =
+          match presentation with
+          | Nopal_style.Presentation.Visually_hidden ->
+              [ ("data-nopal-visually-hidden", "") ]
+          | Nopal_style.Presentation.Visible -> []
+        in
         Element
           {
             tag = "radio";
@@ -476,7 +512,8 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
               attrs
               @ ("name", name)
                 :: ("checked", string_of_bool checked)
-                :: derived_flag "disabled" disabled;
+                :: derived_flag "disabled" disabled
+              @ marker;
             children = [];
             interaction;
           }
@@ -738,6 +775,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
     box_handlers = !box_handlers;
     link_handlers = !link_handlers;
     appearances = !appearances;
+    presentations = !presentations;
   }
 
 let tree r = r.tree
@@ -923,6 +961,11 @@ let has_focused node =
   | Some ix -> Option.is_some ix.Nopal_style.Interaction.focused
   | None -> false
 
+let has_focused_within node =
+  match interaction node with
+  | Some ix -> Option.is_some ix.Nopal_style.Interaction.focused_within
+  | None -> false
+
 let has_attr name node =
   match node with
   | Element { attrs; _ } ->
@@ -1014,8 +1057,19 @@ let click sel r =
     resolve_path sel r.tree |> Option.to_result ~none:(Not_found sel)
   in
   let tag = tag_of_node found in
+  (* A press on a label activates the control its ["for"] names, as the browser
+     does: the control's own click handler fires. A label naming no control, or
+     a control with no handler, answers the label's [No_handler]. *)
+  let target_path =
+    match (tag, attr "for" found) with
+    | "label", Some control_id -> (
+        match resolve_path (By_attr ("id", control_id)) r.tree with
+        | Some (control_path, _) -> control_path
+        | None -> path)
+    | _ -> path
+  in
   let* handler =
-    find_handler_by_path path r.handlers
+    find_handler_by_path target_path r.handlers
     |> Option.to_result ~none:(No_handler { tag; event = "click" })
   in
   match handler.click with
@@ -1074,6 +1128,15 @@ let checkbox_appearance sel r =
   |> Option.map (fun e -> e.appearance)
   |> Option.to_result
        ~none:(No_handler { tag = tag_of_node found; event = "appearance" })
+
+let radio_presentation sel r =
+  let* path, found =
+    resolve_path sel r.tree |> Option.to_result ~none:(Not_found sel)
+  in
+  List.find_opt (fun e -> e.radio_path = path) r.presentations
+  |> Option.map (fun e -> e.presentation)
+  |> Option.to_result
+       ~none:(No_handler { tag = tag_of_node found; event = "presentation" })
 
 let input sel value r =
   let* path, found =

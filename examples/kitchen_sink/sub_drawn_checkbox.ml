@@ -127,6 +127,7 @@ let focus_ring_interaction =
                   color = focus_ring_color;
                 }
               ()));
+    focused_within = None;
   }
 
 let hover_background_interaction =
@@ -134,10 +135,16 @@ let hover_background_interaction =
     Interaction.hover = Some (style_of_paint (paint ~background:hover_fill ()));
     pressed = None;
     focused = None;
+    focused_within = None;
   }
 
 let no_interaction =
-  { Interaction.hover = None; pressed = None; focused = None }
+  {
+    Interaction.hover = None;
+    pressed = None;
+    focused = None;
+    focused_within = None;
+  }
 
 let row_style =
   {

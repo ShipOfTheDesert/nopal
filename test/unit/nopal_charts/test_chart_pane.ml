@@ -32,6 +32,7 @@ let get_column_children (el : msg Element.t) =
           | Box _
           | Row _
           | Form _
+          | Label _
           | Button _
           | Link _
           | Heading _
@@ -51,6 +52,7 @@ let get_column_children (el : msg Element.t) =
   | Text _
   | Row _
   | Form _
+  | Label _
   | Button _
   | Link _
   | Heading _
@@ -80,6 +82,7 @@ let get_fixed_height (el : msg Element.t) =
   | Row _
   | Column _
   | Form _
+  | Label _
   | Button _
   | Link _
   | Heading _
@@ -115,6 +118,7 @@ let test_single_pane () =
       | Box _
       | Row _
       | Form _
+      | Label _
       | Button _
       | Link _
       | Heading _
@@ -228,6 +232,7 @@ let test_pointer_down_on_box () =
   | Row _
   | Column _
   | Form _
+  | Label _
   | Button _
   | Link _
   | Heading _
@@ -264,6 +269,7 @@ let test_pointer_leave_on_box () =
   | Row _
   | Column _
   | Form _
+  | Label _
   | Button _
   | Link _
   | Heading _

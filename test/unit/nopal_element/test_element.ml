@@ -30,6 +30,7 @@ let test_empty_builder () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -56,6 +57,7 @@ let test_text_builder () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -81,6 +83,7 @@ let test_default_styles () =
       | Element.Keyed _
       | Element.Draw _
       | Element.Form _
+      | Element.Label _
       | Element.Virtual_list _ ->
           Alcotest.fail (label ^ ": unexpected variant")
     in
@@ -128,6 +131,7 @@ let test_box_preserves_children () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -154,6 +158,7 @@ let test_button_no_handler () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -180,6 +185,7 @@ let test_button_with_handler () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -208,6 +214,7 @@ let test_button_child () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -242,6 +249,7 @@ let button_semantics (el : 'msg Element.t) =
   | Element.Keyed _
   | Element.Draw _
   | Element.Form _
+  | Element.Label _
   | Element.Virtual_list _ ->
       None
 
@@ -318,6 +326,7 @@ let test_input_defaults () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -344,6 +353,7 @@ let test_input_placeholder () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -377,6 +387,7 @@ let test_input_on_change () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -403,6 +414,7 @@ let test_input_on_submit () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -430,6 +442,7 @@ let test_image_required_fields () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -457,6 +470,7 @@ let test_scroll_child () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -483,6 +497,7 @@ let test_scroll_without_reveal_unchanged () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false);
   (* Affirmative arm on the same fixture. Without it the absence above goes
@@ -512,6 +527,7 @@ let test_scroll_without_reveal_unchanged () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -539,6 +555,7 @@ let scroll_attrs el =
   | Element.Keyed _
   | Element.Draw _
   | Element.Form _
+  | Element.Label _
   | Element.Virtual_list _ ->
       None
 
@@ -586,6 +603,7 @@ let test_scroll_carries_attrs () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -681,6 +699,7 @@ let test_keyed_preserves_fields () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false);
   Alcotest.(check bool)
@@ -705,6 +724,7 @@ let test_keyed_preserves_fields () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -798,6 +818,7 @@ let test_heading_map_preserves_level_and_child () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         Alcotest.fail (label ^ ": a mapped heading is a heading of a button")
   in
@@ -829,6 +850,7 @@ let test_map_transforms_click () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -862,6 +884,7 @@ let test_map_transforms_input () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -910,6 +933,7 @@ let test_map_recursive () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -945,6 +969,7 @@ let test_map_column () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -974,6 +999,7 @@ let test_map_image () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -1004,6 +1030,7 @@ let test_map_scroll () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -1044,6 +1071,7 @@ let test_map_preserves_scroll_attrs () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -1084,6 +1112,7 @@ let test_scroll_reveal_roundtrip () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -1119,6 +1148,7 @@ let test_map_keyed () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -1145,6 +1175,7 @@ let test_map_empty_noop () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -1172,6 +1203,7 @@ let test_map_text_noop () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -1279,6 +1311,7 @@ let checkbox_appearance_of label (el : _ Element.t) =
   | Element.Keyed _
   | Element.Draw _
   | Element.Form _
+  | Element.Label _
   | Element.Virtual_list _ ->
       Alcotest.fail (label ^ ": expected a checkbox")
 
@@ -1318,6 +1351,54 @@ let test_checkbox_equal_distinguishes_appearance () =
   Alcotest.(check bool)
     "Native against Drawn is not equal" false
     (Element.equal (make ()) (make ~appearance:(white_tick ()) ()))
+
+let radio_presentation_of label (el : _ Element.t) =
+  match el with
+  | Element.Radio { presentation; _ } -> presentation
+  | Element.Empty
+  | Element.Text _
+  | Element.Box _
+  | Element.Row _
+  | Element.Column _
+  | Element.Button _
+  | Element.Link _
+  | Element.Heading _
+  | Element.Input _
+  | Element.Image _
+  | Element.Checkbox _
+  | Element.Select _
+  | Element.File_input _
+  | Element.Scroll _
+  | Element.Keyed _
+  | Element.Draw _
+  | Element.Form _
+  | Element.Label _
+  | Element.Virtual_list _ ->
+      Alcotest.fail (label ^ ": expected a radio")
+
+let test_radio_map_preserves_presentation () =
+  let mapped =
+    Element.map
+      (fun m -> Wrapped m)
+      (Element.radio ~presentation:Nopal_style.Presentation.Visually_hidden
+         ~on_select:Click ~name:"size" ())
+  in
+  Alcotest.(check bool)
+    "map keeps the hidden presentation" true
+    (Nopal_style.Presentation.equal Nopal_style.Presentation.Visually_hidden
+       (radio_presentation_of "mapped" mapped))
+
+let test_radio_equal_distinguishes_presentation () =
+  let make ?presentation () = Element.radio ?presentation ~name:"size" () in
+  Alcotest.(check bool)
+    "two hidden radios, separately built, are equal" true
+    (Element.equal
+       (make ~presentation:Nopal_style.Presentation.Visually_hidden ())
+       (make ~presentation:Nopal_style.Presentation.Visually_hidden ()));
+  Alcotest.(check bool)
+    "a visible and a hidden radio are not equal" false
+    (Element.equal (make ())
+       (make ~presentation:Nopal_style.Presentation.Visually_hidden ()))
 
 let test_heading_equal_distinguishes_level () =
   let make ?style ?interaction ?attrs ?(child = "Title") level =
@@ -1549,6 +1630,7 @@ let test_box_default_interaction () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -1581,6 +1663,7 @@ let test_button_with_interaction () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -1608,6 +1691,7 @@ let test_input_with_interaction () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -1634,6 +1718,7 @@ let test_map_preserves_interaction () =
       | Element.Keyed _
       | Element.Draw _
       | Element.Form _
+      | Element.Label _
       | Element.Virtual_list _ ->
           Alcotest.fail (label ^ ": unexpected variant")
     in
@@ -1697,6 +1782,7 @@ let test_styled_text_carries_style () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -1724,6 +1810,7 @@ let test_styled_text_with_default_is_some () =
     | Element.Keyed _
     | Element.Draw _
     | Element.Form _
+    | Element.Label _
     | Element.Virtual_list _ ->
         false)
 
@@ -1756,6 +1843,7 @@ let test_file_input_carries_accept_capture_multiple () =
   | Element.Keyed _
   | Element.Draw _
   | Element.Form _
+  | Element.Label _
   | Element.Virtual_list _ ->
       Alcotest.fail "defaults: expected File_input");
   let handler (_ : Element.file_info list) = Click in
@@ -1807,6 +1895,7 @@ let test_file_input_carries_accept_capture_multiple () =
   | Element.Keyed _
   | Element.Draw _
   | Element.Form _
+  | Element.Label _
   | Element.Virtual_list _ ->
       Alcotest.fail "configured: expected File_input"
 
@@ -1985,6 +2074,7 @@ let link_destination_parts (el : 'msg Element.t) =
   | Element.Keyed _
   | Element.Draw _
   | Element.Form _
+  | Element.Label _
   | Element.Virtual_list _ ->
       None
 
@@ -2210,6 +2300,10 @@ let () =
             test_checkbox_map_preserves_appearance;
           Alcotest.test_case "checkbox_equal_distinguishes_appearance" `Quick
             test_checkbox_equal_distinguishes_appearance;
+          Alcotest.test_case "radio_map_preserves_presentation" `Quick
+            test_radio_map_preserves_presentation;
+          Alcotest.test_case "radio_equal_distinguishes_presentation" `Quick
+            test_radio_equal_distinguishes_presentation;
           Alcotest.test_case "heading_equal_distinguishes_level" `Quick
             test_heading_equal_distinguishes_level;
           Alcotest.test_case "equal_heading_level_matches_numbers" `Quick

@@ -49,6 +49,7 @@ let test_render_box_with_all_states () =
       Ix.hover = Some hover_style;
       pressed = Some pressed_style;
       focused = Some focused_style;
+      focused_within = None;
     }
   in
   let r = render (E.box ~interaction:ix [ E.text "card" ]) in

@@ -87,7 +87,12 @@ let restyled_toast_interaction variant =
     Toast.default_style_for variant
     |> Style.with_paint (fun p -> { p with opacity = 0.8 })
   in
-  { Interaction.hover = Some hover; pressed = None; focused = None }
+  {
+    Interaction.hover = Some hover;
+    pressed = None;
+    focused = None;
+    focused_within = None;
+  }
 
 let view _vp model =
   let config =
