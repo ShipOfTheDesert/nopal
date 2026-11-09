@@ -26,6 +26,7 @@ module Sub_drawn_checkbox = Kitchen_sink_app.Sub_drawn_checkbox
 module Sub_radio_row = Kitchen_sink_app.Sub_radio_row
 module Sub_hidden_radio = Kitchen_sink_app.Sub_hidden_radio
 module Sub_segmented_control = Kitchen_sink_app.Sub_segmented_control
+module Sub_switch = Kitchen_sink_app.Sub_switch
 
 (* Result-task chaining for the Tauri ops (RFC 0118, REQ-F5). See
    {!Kitchen_sink_app.Tauri_op} for the contract; instantiated here with the
@@ -459,6 +460,7 @@ let update model msg =
   | App.Radio_row_msg _
   | App.Hidden_radio_msg _
   | App.Segmented_control_msg _
+  | App.Switch_msg _
   | App.KeyboardHeightChanged _
   | App.Back_demo_push
   | App.Route_changed _
@@ -617,6 +619,10 @@ let serialize_msg : App.msg -> string = function
      that a press reached the model, which then kept its value. *)
   | App.Segmented_control_msg sc_msg ->
       Sub_segmented_control.serialize_msg sc_msg
+  (* Switch: the requested value is what a browser spec counts a press, a key
+     or a label press by, and its absence is the only sign that a disabled
+     switch held; the followed link shows the hint's link navigated in-app. *)
+  | App.Switch_msg switch_msg -> Sub_switch.serialize_msg switch_msg
   (* Mobile signals (RFC 0116): the keyboard-height readout (REQ-N2) and the
      back-demo route change the Tauri back-IPC e2e asserts on via the host
      [get_telemetry] mirror — [Route_changed] proves the hardware-back chain

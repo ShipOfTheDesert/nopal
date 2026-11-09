@@ -281,6 +281,7 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
           attrs;
           button_type;
           disabled;
+          switch;
           on_click;
           on_dblclick;
           child;
@@ -309,10 +310,21 @@ let render (element : 'msg Nopal_element.Element.t) : 'msg rendered =
            button, not an unconfigured one — so it is derived on every render
            and a caller's ["type"] pair never stands. [disabled] is spelled by
            absence, so an enabled button uncovers a caller's
-           ["aria-disabled"]. *)
+           ["aria-disabled"]. A switch derives ["role"] and ["aria-checked"]
+           on every render, off included, so a caller's pair for either never
+           stands on a switch; a plain button derives neither and uncovers
+           both. *)
+        let switch_config =
+          match switch with
+          | Some Nopal_element.Element.Switch_on ->
+              [ ("role", "switch"); ("aria-checked", "true") ]
+          | Some Nopal_element.Element.Switch_off ->
+              [ ("role", "switch"); ("aria-checked", "false") ]
+          | None -> []
+        in
         let button_config =
           ("type", Nopal_element.Element.button_type_to_string button_type)
-          :: derived_flag "aria-disabled" disabled
+          :: (derived_flag "aria-disabled" disabled @ switch_config)
         in
         Element
           {

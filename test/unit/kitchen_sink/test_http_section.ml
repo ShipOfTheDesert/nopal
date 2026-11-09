@@ -190,6 +190,7 @@ let msg_pp fmt msg =
   | Radio_row_msg _ -> Format.fprintf fmt "Radio_row_msg _"
   | Hidden_radio_msg _ -> Format.fprintf fmt "Hidden_radio_msg _"
   | Segmented_control_msg _ -> Format.fprintf fmt "Segmented_control_msg _"
+  | Switch_msg _ -> Format.fprintf fmt "Switch_msg _"
   | KeyboardHeightChanged _ -> Format.fprintf fmt "KeyboardHeightChanged _"
   | Back_demo_push -> Format.fprintf fmt "Back_demo_push"
   | Route_changed _ -> Format.fprintf fmt "Route_changed _"

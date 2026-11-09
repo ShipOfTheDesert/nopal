@@ -11,6 +11,7 @@ type capture = User | Environment
 type autocomplete_mode = On | Off
 type input_type = Plain | Password | Email | Tel | Url | Number | Search
 type button_type = Submit | Push
+type switch_state = Switch_on | Switch_off
 type heading_level = H1 | H2 | H3 | H4 | H5 | H6
 type image_fit = Contain | Cover
 
@@ -73,6 +74,7 @@ type 'msg t =
       attrs : (string * string) list;
       button_type : button_type;
       disabled : bool;
+      switch : switch_state option;
       on_click : 'msg option;
       on_dblclick : 'msg option;
       child : 'msg t;
@@ -228,7 +230,8 @@ let label ?(style = Nopal_style.Style.empty)
 
 let button ?(style = Nopal_style.Style.empty)
     ?(interaction = Nopal_style.Interaction.default) ?(attrs = [])
-    ?(button_type = Push) ?(disabled = false) ?on_click ?on_dblclick child =
+    ?(button_type = Push) ?(disabled = false) ?switch ?on_click ?on_dblclick
+    child =
   Button
     {
       style;
@@ -236,6 +239,7 @@ let button ?(style = Nopal_style.Style.empty)
       attrs;
       button_type;
       disabled;
+      switch;
       on_click;
       on_dblclick;
       child;
@@ -459,6 +463,7 @@ let rec map f = function
         attrs;
         button_type;
         disabled;
+        switch;
         on_click;
         on_dblclick;
         child;
@@ -470,6 +475,7 @@ let rec map f = function
           attrs;
           button_type;
           disabled;
+          switch;
           on_click = Option.map f on_click;
           on_dblclick = Option.map f on_dblclick;
           child = map f child;
@@ -688,6 +694,13 @@ let equal_button_type (t1 : button_type) (t2 : button_type) =
       true
   | (Submit | Push), _ -> false
 
+let equal_switch_state (s1 : switch_state) (s2 : switch_state) =
+  match (s1, s2) with
+  | Switch_on, Switch_on
+  | Switch_off, Switch_off ->
+      true
+  | (Switch_on | Switch_off), _ -> false
+
 let equal_image_fit (f1 : image_fit) (f2 : image_fit) =
   match (f1, f2) with
   | Contain, Contain
@@ -849,6 +862,7 @@ let rec equal a b =
           attrs = a1;
           button_type = bt1;
           disabled = d1;
+          switch = sw1;
           on_click = oc1;
           on_dblclick = od1;
           child = ch1;
@@ -860,6 +874,7 @@ let rec equal a b =
           attrs = a2;
           button_type = bt2;
           disabled = d2;
+          switch = sw2;
           on_click = oc2;
           on_dblclick = od2;
           child = ch2;
@@ -869,6 +884,7 @@ let rec equal a b =
       && equal_attrs a1 a2
       && equal_button_type bt1 bt2
       && Bool.equal d1 d2
+      && Option.equal equal_switch_state sw1 sw2
       && Option.equal ( == ) oc1 oc2
       && Option.equal ( == ) od1 od2
       && equal ch1 ch2

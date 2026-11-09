@@ -77,6 +77,39 @@ let structural_label_naming_no_control_answers_no_handler () =
       Alcotest.fail "expected the label's own No_handler");
   Alcotest.(check int) "nothing was dispatched" 0 (List.length (messages r))
 
+(* A button is a control a label activates: the press reaches the button's own
+   click handler and dispatches what pressing the button would, once. *)
+let labelled_button ~disabled =
+  E.row
+    [
+      E.label ~control_id:"alerts" [ E.text "Send an alert" ];
+      E.button
+        ~attrs:[ ("id", "alerts") ]
+        ~disabled ~on_click:Pressed (E.text "Alerts");
+    ]
+
+let structural_label_press_activates_a_button () =
+  let r = render (labelled_button ~disabled:false) in
+  (match click (By_tag "label") r with
+  | Ok () -> ()
+  | Error (Not_found _ | No_handler _) ->
+      Alcotest.fail "a label press found no button to activate");
+  match messages r with
+  | [ Pressed ] -> ()
+  | _ -> Alcotest.fail "expected the button's message once from the label press"
+
+(* A disabled button keeps no click handler, so the label naming it answers its
+   own [No_handler] and dispatches nothing. The enabled twin above, on the same
+   fixture, is the arm that shows the press reaches the button at all. *)
+let structural_label_press_on_disabled_button_answers_no_handler () =
+  let r = render (labelled_button ~disabled:true) in
+  (match click (By_tag "label") r with
+  | Error (No_handler { tag = "label"; event = "click" }) -> ()
+  | Ok ()
+  | Error (Not_found _ | No_handler _) ->
+      Alcotest.fail "expected the label's own No_handler");
+  Alcotest.(check int) "nothing was dispatched" 0 (List.length (messages r))
+
 let () =
   Alcotest.run "Element.label"
     [
@@ -94,5 +127,10 @@ let () =
           Alcotest.test_case
             "structural_label_naming_no_control_answers_no_handler" `Quick
             structural_label_naming_no_control_answers_no_handler;
+          Alcotest.test_case "structural_label_press_activates_a_button" `Quick
+            structural_label_press_activates_a_button;
+          Alcotest.test_case
+            "structural_label_press_on_disabled_button_answers_no_handler"
+            `Quick structural_label_press_on_disabled_button_answers_no_handler;
         ] );
     ]

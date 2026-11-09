@@ -93,3 +93,7 @@
 (test
  (name test_segmented_control)
  (libraries nopal_ui nopal_test nopal_element nopal_style alcotest test_util))
+
+(test
+ (name test_switch)
+ (libraries nopal_ui nopal_test nopal_element nopal_style alcotest test_util))

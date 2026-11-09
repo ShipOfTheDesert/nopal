@@ -130,6 +130,7 @@ let test_button_creates_button () =
         attrs = [];
         button_type = Push;
         disabled = false;
+        switch = None;
         on_click = None;
         on_dblclick = None;
         child = Text { content = "ok"; text_style = None };
@@ -243,6 +244,7 @@ let test_button_click_dispatches () =
         attrs = [];
         button_type = Push;
         disabled = false;
+        switch = None;
         on_click = Some Click;
         on_dblclick = None;
         child = Text { content = "go"; text_style = None };
@@ -269,6 +271,7 @@ let dblclick_button ~disabled =
       attrs = [];
       button_type = Push;
       disabled;
+      switch = None;
       on_click = None;
       on_dblclick = Some Dbl_click;
       child = Text { content = "go"; text_style = None };
@@ -886,6 +889,7 @@ let test_reconcile_different_variant_replaces () =
         attrs = [];
         button_type = Push;
         disabled = false;
+        switch = None;
         on_click = None;
         on_dblclick = None;
         child = Text { content = "b"; text_style = None };
@@ -1520,6 +1524,7 @@ let test_keyed_into_keyed_removes_old_nonkeyed () =
                 attrs = [];
                 button_type = Push;
                 disabled = false;
+                switch = None;
                 on_click = Some Click;
                 on_dblclick = None;
                 child = Text { content = "old"; text_style = None };
@@ -2281,6 +2286,7 @@ let test_reconcile_button_skips_unchanged_attrs () =
         attrs = [ ("data-id", "x") ];
         button_type = Push;
         disabled = false;
+        switch = None;
         on_click = Some Click;
         on_dblclick = None;
         child = Text { content = "a"; text_style = None };
@@ -2297,6 +2303,7 @@ let test_reconcile_button_skips_unchanged_attrs () =
         attrs = [ ("data-id", "x") ];
         button_type = Push;
         disabled = false;
+        switch = None;
         on_click = Some Click;
         on_dblclick = None;
         child = Text { content = "a"; text_style = None };
@@ -2894,6 +2901,7 @@ let test_reconcile_event_listener_update () =
         attrs = [];
         button_type = Push;
         disabled = false;
+        switch = None;
         on_click = Some Click;
         on_dblclick = None;
         child = Text { content = "a"; text_style = None };
@@ -2908,6 +2916,7 @@ let test_reconcile_event_listener_update () =
         attrs = [];
         button_type = Push;
         disabled = false;
+        switch = None;
         on_click = Some Submit;
         on_dblclick = None;
         child = Text { content = "a"; text_style = None };
@@ -2932,6 +2941,7 @@ let flip_button ~disabled =
       attrs = [];
       button_type = Submit;
       disabled;
+      switch = None;
       on_click = Some Click;
       on_dblclick = None;
       child = Text { content = "save"; text_style = None };
@@ -3044,6 +3054,7 @@ let test_recursive_unlisten_on_remove () =
                 attrs = [];
                 button_type = Push;
                 disabled = false;
+                switch = None;
                 on_click = Some Click;
                 on_dblclick = None;
                 child = Text { content = "inner"; text_style = None };
@@ -4966,6 +4977,7 @@ let test_container_main_axis_non_container_is_none () =
          attrs = [];
          button_type = Push;
          disabled = false;
+         switch = None;
          on_click = None;
          on_dblclick = None;
          child = Empty;

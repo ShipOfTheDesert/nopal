@@ -28,6 +28,7 @@ module Counter_app = struct
         attrs = [];
         button_type = Nopal_element.Element.Push;
         disabled = false;
+        switch = None;
         on_click = Some Increment;
         on_dblclick = None;
         child =
